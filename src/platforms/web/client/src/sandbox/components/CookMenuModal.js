@@ -302,6 +302,13 @@ export default class CookMenuModal {
         current.running = normalizeNumber(payload.running, current.running || 0);
         current.queued = normalizeNumber(payload.queued, current.queued || 0);
         current.status = payload.status || current.status || 'running';
+        if (payload.pauseReason !== undefined) {
+            current.pauseReason = payload.pauseReason;
+        }
+        if (current.status === 'stopped') {
+            current.running = 0;
+            current.queued = 0;
+        }
         current.updatedAt = new Date().toISOString();
         if (!current.collectionName && (collectionMeta?.name || payload.collectionName)) {
             current.collectionName = collectionMeta?.name || payload.collectionName;
@@ -404,6 +411,7 @@ export default class CookMenuModal {
             targetSupply = 0,
             lastProgress,
             liveStatus,
+            pauseReason,
         } = cook;
 
         const normalizedStatus = (status || (running > 0 ? 'running' : 'paused')).toLowerCase();
@@ -422,6 +430,10 @@ export default class CookMenuModal {
         } else if (normalizedStatus === 'paused') {
             parts.push('Paused');
             if (queued > 0) parts.push(`${queued} queued`);
+            if (pauseReason && pauseReason !== 'manual') parts.push(pauseReason);
+        } else if (normalizedStatus === 'stopped') {
+            parts.push('Stopped');
+            if (pauseReason && pauseReason !== 'manual') parts.push(pauseReason);
         } else if (normalizedStatus === 'failed') {
             parts.push('Failed');
         } else {
@@ -448,6 +460,9 @@ export default class CookMenuModal {
         }
         if (normalizedStatus === 'paused') {
             return { icon: '⏸', title: 'Cook paused' };
+        }
+        if (normalizedStatus === 'stopped') {
+            return { icon: '⏹', title: 'Cook stopped' };
         }
         if (normalizedStatus === 'failed') {
             return { icon: '⚠️', title: 'Cook failed' };
@@ -560,6 +575,7 @@ export default class CookMenuModal {
                 <div class="cook-actions">
                     <span class="cook-status-icon" title="Cooking in progress">&#128293;</span>
                     <button data-action="pause" data-id="${c.collectionId}" title="Pause Cook" style="margin-left: 8px;">⏸</button>
+                    <button data-action="stop" data-id="${c.collectionId}" title="Stop Cook" style="margin-left: 8px;">⏹</button>
                     <button data-action="review" data-id="${c.collectionId}" title="Review Pieces" style="margin-left: 8px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: none; border-radius: 4px; padding: 4px 10px;">Review</button>
                 </div>
             </div>
@@ -572,6 +588,7 @@ export default class CookMenuModal {
                 <div class="cook-status-text">${this._formatCookStatus(c)}</div>
                 <div class="cook-actions">
                     <button data-action="resume" data-id="${c.collectionId}" title="Resume Cook">▶️</button>
+                    <button data-action="stop" data-id="${c.collectionId}" title="Stop Cook" style="margin-left: 8px;">⏹</button>
                     <button data-action="review" data-id="${c.collectionId}" title="Review Pieces" style="margin-left: 8px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: none; border-radius: 4px; padding: 4px 10px;">Review</button>
                 </div>
             </div>
@@ -1610,6 +1627,7 @@ export default class CookMenuModal {
                 const id = btn.getAttribute('data-id');
                 if (action === 'pause') this.pauseCook(id);
                 if (action === 'resume') this.resumeCook(id);
+                if (action === 'stop') this.stopCook(id);
                 if (action === 'review') {
                     // Open review window for this collection
                     const collection = this.state.collections.find(c => c.collectionId === id);
@@ -1782,6 +1800,35 @@ export default class CookMenuModal {
             await this.fetchActiveCooks(true);
         } catch (err) {
             alert('Failed to resume cook: ' + (err.message || 'error'));
+        } finally {
+            this.setState({ loading: false });
+        }
+    }
+
+    async stopCook(id) {
+        if (!id) return;
+        if (!window.confirm('Stop this cook? In-flight pieces will finish, but no new pieces will be queued.')) {
+            return;
+        }
+        try {
+            this.setState({ loading: true });
+            const csrf = await this.getCsrfToken();
+            const res = await fetch(`/api/v1/collections/${encodeURIComponent(id)}/cook/stop`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-csrf-token': csrf
+                },
+                credentials: 'include',
+                body: JSON.stringify({ reason: 'manual' })
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || 'stop failed');
+            }
+            await this.fetchActiveCooks(true);
+        } catch (err) {
+            alert('Failed to stop cook: ' + (err.message || 'error'));
         } finally {
             this.setState({ loading: false });
         }

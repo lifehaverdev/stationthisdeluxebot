@@ -200,6 +200,38 @@ function createCookApiRouter(deps = {}) {
     }
   });
 
+  // POST /api/v1/collections/:id/cook/pause
+  router.post('/collections/:id/cook/pause', async (req, res) => {
+    try {
+      const id = req.params.id;
+      const userId = req.user?.userId || req.user?.id || req.body?.userId;
+      const reason = req.body?.reason || 'manual';
+      const payload = { userId, reason };
+      const { data } = await internalApiClient.post(`/internal/v1/data/collections/${encodeURIComponent(id)}/pause`, payload);
+      return res.json(data);
+    } catch (err) {
+      logger.error('cook pause proxy error', err.response?.data || err.message);
+      const status = err.response?.status || 500;
+      return res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+  // POST /api/v1/collections/:id/cook/stop
+  router.post('/collections/:id/cook/stop', async (req, res) => {
+    try {
+      const id = req.params.id;
+      const userId = req.user?.userId || req.user?.id || req.body?.userId;
+      const reason = req.body?.reason || 'manual';
+      const payload = { userId, reason };
+      const { data } = await internalApiClient.post(`/internal/v1/data/collections/${encodeURIComponent(id)}/stop`, payload);
+      return res.json(data);
+    } catch (err) {
+      logger.error('cook stop proxy error', err.response?.data || err.message);
+      const status = err.response?.status || 500;
+      return res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
   /**
    * GET /api/v1/collections/:id/pieces/unreviewed
    * Returns oldest unreviewed generation outputs for a collection (status=completed & no metadata.reviewOutcome)

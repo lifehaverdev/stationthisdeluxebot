@@ -101,6 +101,60 @@ function createCookApi(deps = {}) {
     }
   });
 
+  // POST /internal/v1/data/collections/:id/pause - pause an active cook
+  router.post('/:id/pause', async (req, res) => {
+    try {
+      const collectionId = req.params.id;
+      const userId = req.user?.userId || req.user?.id || req.body?.userId;
+      if (!collectionId || !userId) {
+        return res.status(400).json({ error: 'collectionId and userId required' });
+      }
+
+      if (!cookDb) return res.status(503).json({ error: 'service-unavailable' });
+      const collection = await cookDb.findById(collectionId);
+      if (!collection) {
+        return res.status(404).json({ error: 'collection-not-found' });
+      }
+      if (collection.userId !== userId) {
+        return res.status(403).json({ error: 'unauthorized' });
+      }
+
+      const reason = req.body?.reason || 'manual';
+      const result = await CookOrchestratorService.pauseCook({ collectionId, userId, reason });
+      return res.json({ ...result, status: result?.status || 'paused' });
+    } catch (err) {
+      logger.error('[CookAPI] pause error', err);
+      return res.status(500).json({ error: 'internal-error' });
+    }
+  });
+
+  // POST /internal/v1/data/collections/:id/stop - stop an active cook
+  router.post('/:id/stop', async (req, res) => {
+    try {
+      const collectionId = req.params.id;
+      const userId = req.user?.userId || req.user?.id || req.body?.userId;
+      if (!collectionId || !userId) {
+        return res.status(400).json({ error: 'collectionId and userId required' });
+      }
+
+      if (!cookDb) return res.status(503).json({ error: 'service-unavailable' });
+      const collection = await cookDb.findById(collectionId);
+      if (!collection) {
+        return res.status(404).json({ error: 'collection-not-found' });
+      }
+      if (collection.userId !== userId) {
+        return res.status(403).json({ error: 'unauthorized' });
+      }
+
+      const reason = req.body?.reason || 'manual';
+      const result = await CookOrchestratorService.stopCook({ collectionId, userId, reason });
+      return res.json({ ...result, status: result?.status || 'stopped' });
+    } catch (err) {
+      logger.error('[CookAPI] stop error', err);
+      return res.status(500).json({ error: 'internal-error' });
+    }
+  });
+
   // GET /:id/analytics – collection analytics + export prep
   router.get('/:id/analytics', async (req, res) => {
     try {
@@ -628,6 +682,11 @@ function createCookApi(deps = {}) {
         // ✅ Debug logging for status determination
         logger.debug(`[CookAPI] Collection ${collectionId}: generationCount=${generationCount}, targetSupply=${targetSupply}, running=${running}, isActive=${isActive}, isAwaitingReview=${isAwaitingReview}`);
         
+        const status = orchestratorState?.paused
+          ? 'paused'
+          : (running > 0 ? 'running' : (isAwaitingReview ? 'awaiting_review' : 'paused'));
+        const pauseReason = orchestratorState?.pauseReason || null;
+
         if (isActive || isAwaitingReview) {
           cooks.push({
             collectionId,
@@ -637,6 +696,8 @@ function createCookApi(deps = {}) {
             queued,
             running, // ✅ Running count from orchestrator only
             updatedAt: coll.updatedAt,
+            status,
+            pauseReason,
           });
         }
       }
@@ -799,21 +860,21 @@ function createCookApi(deps = {}) {
   // GET /:id         – get collection by ID
   router.get('/:id', async (req, res, next) => {
     // Prevent collision with other explicit routes like /active, /start etc.
-    if (['start', 'active', 'ping', 'debug', 'status', 'resume'].includes(req.params.id)) return next();
+    if (['start', 'active', 'ping', 'debug', 'status', 'resume', 'pause', 'stop'].includes(req.params.id)) return next();
     req.url = `/collections/${encodeURIComponent(req.params.id)}`;
     return router.handle(req, res);
   });
 
   // PUT /:id         – update collection
   router.put('/:id', async (req, res, next) => {
-    if (['start', 'active', 'ping', 'debug', 'status', 'resume'].includes(req.params.id)) return next();
+    if (['start', 'active', 'ping', 'debug', 'status', 'resume', 'pause', 'stop'].includes(req.params.id)) return next();
     req.url = `/collections/${encodeURIComponent(req.params.id)}`;
     return router.handle(req, res);
   });
 
   // DELETE /:id      – delete a collection
   router.delete('/:id', async (req, res, next) => {
-    if (['start', 'active', 'ping', 'debug', 'status', 'resume'].includes(req.params.id)) return next();
+    if (['start', 'active', 'ping', 'debug', 'status', 'resume', 'pause', 'stop'].includes(req.params.id)) return next();
     req.url = `/collections/${encodeURIComponent(req.params.id)}`;
     return router.handle(req, res);
   });

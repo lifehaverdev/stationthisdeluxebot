@@ -151,6 +151,9 @@ class CookProjectionUpdater {
       case 'CookPaused':
         status.state = 'paused';
         break;
+      case 'CookStopped':
+        status.state = 'stopped';
+        break;
       case 'CookResumed':
         status.state = 'cooking';
         break;

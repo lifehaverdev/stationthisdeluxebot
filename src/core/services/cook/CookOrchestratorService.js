@@ -152,6 +152,8 @@ class CookOrchestratorService {
     const { collectionId, userId } = payload;
     const key = this._getKey(collectionId, userId);
     const state = this.runningByCollection.get(key);
+    const statePaused = state?.paused;
+    const stateStopped = state?.stopped;
     
     // Get current cook status
     let status = 'paused';
@@ -171,6 +173,20 @@ class CookOrchestratorService {
     } else if (eventType === 'CookCompleted') {
       status = 'completed';
       targetSupply = payload.totalSupply || 0;
+      generationCount = await this._getProducedCount(collectionId, userId);
+      if (state) {
+        running = state.running.size;
+      }
+    } else if (eventType === 'CookPaused') {
+      status = 'paused';
+      targetSupply = payload.totalSupply || state?.total || 0;
+      generationCount = await this._getProducedCount(collectionId, userId);
+      if (state) {
+        running = state.running.size;
+      }
+    } else if (eventType === 'CookStopped') {
+      status = 'stopped';
+      targetSupply = payload.totalSupply || state?.total || 0;
       generationCount = await this._getProducedCount(collectionId, userId);
       if (state) {
         running = state.running.size;
@@ -213,6 +229,14 @@ class CookOrchestratorService {
       }
     }
     
+    if (stateStopped && status !== 'completed') {
+      status = 'stopped';
+    } else if (statePaused && status !== 'completed') {
+      status = 'paused';
+    }
+    
+    const pauseReason = payload.reason || state?.pauseReason || null;
+    
     // Emit WebSocket event
     this.webSocketService.sendToUser(String(userId), {
       type: 'cookStatusUpdate',
@@ -224,6 +248,7 @@ class CookOrchestratorService {
         status,
         queued,
         running,
+        pauseReason,
         eventType, // Include the original event type for debugging
       }
     });
@@ -357,7 +382,11 @@ class CookOrchestratorService {
             traitTree, 
             paramOverrides, 
             traitTypes, 
-            paramsTemplate 
+            paramsTemplate,
+            paused: false,
+            pauseReason: null,
+            previousMaxConcurrent: null,
+            stopped: false,
           });
         } else {
           existingState.total = supply;
@@ -365,6 +394,13 @@ class CookOrchestratorService {
           if (producedSoFar < existingState.nextIndex) {
             existingState.nextIndex = producedSoFar;
           }
+          existingState.paused = false;
+          existingState.pauseReason = null;
+          existingState.stopped = false;
+          if (!existingState.maxConcurrent || existingState.maxConcurrent === 0) {
+            existingState.maxConcurrent = existingState.previousMaxConcurrent || 3;
+          }
+          existingState.previousMaxConcurrent = null;
         }
         
     const state = this.runningByCollection.get(key);
@@ -481,6 +517,166 @@ class CookOrchestratorService {
     return { jobId: pieceKey, submission };
   }
 
+  async pauseCook({ collectionId, userId, reason = 'manual' }) {
+    await this._init();
+    const key = this._getKey(collectionId, userId);
+    const releaseLock = await this._acquireLock(key);
+    
+    try {
+      const state = this.runningByCollection.get(key);
+      let cookId = state?.cookId;
+      
+      if (!cookId) {
+        cookId = await this._findLatestCookId(collectionId, userId);
+        if (state && cookId) {
+          state.cookId = cookId;
+        }
+      }
+      
+      if (!state) {
+        this.logger.warn(`[CookOrchestrator] pauseCook called for ${key} but no active state found`);
+        await this.appendEvent('CookPaused', { collectionId, userId, cookId, reason });
+        if (cookId) {
+          await this._markCookDocumentPaused({ cookId, collectionId, userId });
+        }
+        return { paused: false, status: 'not-running' };
+      }
+      
+      if (state.paused) {
+        return { paused: true, status: 'already-paused', running: state.running.size };
+      }
+      
+      state.paused = true;
+      state.pauseReason = reason;
+      state.previousMaxConcurrent = state.maxConcurrent || state.previousMaxConcurrent || 3;
+      state.maxConcurrent = 0;
+      
+      await this.appendEvent('CookPaused', { collectionId, userId, cookId, totalSupply: state.total, reason });
+      await this._markCookDocumentPaused({ cookId, collectionId, userId });
+      
+      const remaining = Math.max(0, state.total - state.nextIndex);
+      return { paused: true, status: 'paused', running: state.running.size, remaining };
+    } catch (err) {
+      this.logger.error(`[CookOrchestrator] pauseCook error for ${key}:`, err);
+      throw err;
+    } finally {
+      releaseLock();
+    }
+  }
+
+  async stopCook({ collectionId, userId, reason = 'manual' }) {
+    await this._init();
+    const key = this._getKey(collectionId, userId);
+    const releaseLock = await this._acquireLock(key);
+    
+    try {
+      const state = this.runningByCollection.get(key);
+      let cookId = state?.cookId;
+      
+      if (!cookId) {
+        cookId = await this._findLatestCookId(collectionId, userId);
+        if (state && cookId) {
+          state.cookId = cookId;
+        }
+      }
+      
+      if (!state) {
+        this.logger.warn(`[CookOrchestrator] stopCook called for ${key} but no active state found`);
+        await this.appendEvent('CookStopped', { collectionId, userId, cookId, reason });
+        if (cookId) {
+          await this._markCookDocumentStopped({ cookId, collectionId, userId, reason });
+        }
+        return { stopped: false, status: 'not-running' };
+      }
+      
+      if (state.stopped) {
+        return { stopped: true, status: 'already-stopped', running: state.running.size };
+      }
+      
+      state.paused = true;
+      state.stopped = true;
+      state.pauseReason = reason;
+      state.previousMaxConcurrent = state.maxConcurrent || state.previousMaxConcurrent || 3;
+      state.maxConcurrent = 0;
+      
+      await this.appendEvent('CookStopped', { collectionId, userId, cookId: state.cookId, totalSupply: state.total, reason });
+      await this._markCookDocumentStopped({ cookId: state.cookId, collectionId, userId, reason });
+      
+      const remaining = Math.max(0, state.total - state.nextIndex);
+      return { stopped: true, status: 'stopped', running: state.running.size, remaining };
+    } catch (err) {
+      this.logger.error(`[CookOrchestrator] stopCook error for ${key}:`, err);
+      throw err;
+    } finally {
+      releaseLock();
+    }
+  }
+
+  async _markCookDocumentPaused({ cookId, collectionId, userId }) {
+    try {
+      let targetCookId = cookId;
+      if (!targetCookId) {
+        targetCookId = await this._findLatestCookId(collectionId, userId);
+      }
+      if (!targetCookId) return null;
+
+      try {
+        await internalApiClient.put(`/internal/v1/data/cook/cooks/${targetCookId}`, { status: 'paused' });
+      } catch (err) {
+        if (err.response?.status === 404) {
+          this.logger.warn(`[CookOrchestrator] Cook ${targetCookId} not found while marking paused`);
+        } else {
+          this.logger.warn(`[CookOrchestrator] Failed to mark cook ${targetCookId} paused: ${err.message}`);
+        }
+      }
+      return targetCookId;
+    } catch (err) {
+      this.logger.warn(`[CookOrchestrator] _markCookDocumentPaused error: ${err.message}`);
+      return null;
+    }
+  }
+
+  async _markCookDocumentStopped({ cookId, collectionId, userId }) {
+    try {
+      let targetCookId = cookId;
+      if (!targetCookId) {
+        targetCookId = await this._findLatestCookId(collectionId, userId);
+      }
+      if (!targetCookId) return null;
+
+      try {
+        await internalApiClient.put(`/internal/v1/data/cook/cooks/${targetCookId}`, { status: 'stopped' });
+      } catch (err) {
+        if (err.response?.status === 404) {
+          this.logger.warn(`[CookOrchestrator] Cook ${targetCookId} not found while marking stopped`);
+        } else {
+          this.logger.warn(`[CookOrchestrator] Failed to mark cook ${targetCookId} stopped: ${err.message}`);
+        }
+      }
+      return targetCookId;
+    } catch (err) {
+      this.logger.warn(`[CookOrchestrator] _markCookDocumentStopped error: ${err.message}`);
+      return null;
+    }
+  }
+
+  async _findLatestCookId(collectionId, userId) {
+    await this._init();
+    if (!this.cooksCol) return null;
+    try {
+      const { ObjectId } = require('mongodb');
+      const query = { collectionId };
+      if (ObjectId.isValid(userId)) {
+        query.initiatorAccountId = new ObjectId(userId);
+      }
+      const doc = await this.cooksCol.findOne(query, { sort: { startedAt: -1 }, projection: { _id: 1 } });
+      return doc && doc._id ? doc._id.toString() : null;
+    } catch (err) {
+      this.logger.warn(`[CookOrchestrator] _findLatestCookId error: ${err.message}`);
+      return null;
+    }
+  }
+
   /**
    * Called when a piece completes. Schedules the next submissions immediately (up to max concurrency) without any worker.
    */
@@ -507,22 +703,23 @@ class CookOrchestratorService {
     }, 60 * 60 * 1000); // 1 hour
     this.processedJobIdsCleanup.set(jobKey, timeout);
     
-    // ✅ ERROR HANDLING: Log failures but continue cook
-    if (!success) {
-      this.logger.warn(`[CookOrchestrator] Generation failed for jobId ${finishedJobId} (collection ${collectionId}), but cook will continue`);
-      await this.appendEvent('PieceFailed', { collectionId, userId, cookId: state.cookId, jobId: finishedJobId });
-    }
+    const shouldMarkFailed = !success;
     
     // Acquire lock to prevent race conditions
     const releaseLock = await this._acquireLock(key);
     
     try {
-    const state = this.runningByCollection.get(key);
+      const state = this.runningByCollection.get(key);
       if (!state) {
         return;
       }
       
-    state.running.delete(String(finishedJobId));
+      if (shouldMarkFailed) {
+        this.logger.warn(`[CookOrchestrator] Generation failed for jobId ${finishedJobId} (collection ${collectionId}), but cook will continue`);
+        await this.appendEvent('PieceFailed', { collectionId, userId, cookId: state.cookId, jobId: finishedJobId });
+      }
+      
+      state.running.delete(String(finishedJobId));
 
     // --- Update the parent cook document with the completed generation ---
     // ✅ Only update cook document for successful generations
@@ -570,7 +767,7 @@ class CookOrchestratorService {
 
     // If done with supply and nothing running, emit completed
     const producedAfter = await this._getProducedCount(collectionId, userId);
-    if (producedAfter >= state.total && state.running.size === 0) {
+    if (!state.stopped && producedAfter >= state.total && state.running.size === 0) {
       await this.appendEvent('CookCompleted', { collectionId, userId, cookId: state.cookId });
       // Final update to cook document
       if (state.cookId) {
@@ -582,18 +779,26 @@ class CookOrchestratorService {
       }
       this.runningByCollection.delete(key);
       return;
+    } else if (state.stopped && state.running.size === 0) {
+      this.logger.info(`[CookOrchestrator] Cook ${key} fully stopped with ${producedAfter}/${state.total} pieces generated`);
+      return;
     }
 
     // Fill available slots up to maxConcurrent, without exceeding supply
-      // Fetch produced count once before loop (not inside loop) for consistency
-      const producedNow = await this._getProducedCount(collectionId, userId);
-      let queued = 0;
-      
-      while (
-        state.running.size < state.maxConcurrent &&
-        state.nextIndex < state.total &&
-        (producedNow + state.running.size) < state.total
-      ) {
+    if (state.paused) {
+      this.logger.info(`[CookOrchestrator] Cook ${key} is paused – skipping queueing new pieces`);
+      return { queued: 0 };
+    }
+
+    // Fetch produced count once before loop (not inside loop) for consistency
+    const producedNow = await this._getProducedCount(collectionId, userId);
+    let queued = 0;
+    
+    while (
+      state.running.size < state.maxConcurrent &&
+      state.nextIndex < state.total &&
+      (producedNow + state.running.size) < state.total
+    ) {
       const idx = state.nextIndex;
       const enq = await this._enqueuePiece({
         collectionId,
@@ -626,9 +831,9 @@ class CookOrchestratorService {
           // Break to avoid infinite loop of failed submissions
           break;
         }
-      }
-      
-      return { queued };
+    }
+    
+    return { queued };
     } finally {
       releaseLock(); // Always release lock, even on error
     }
