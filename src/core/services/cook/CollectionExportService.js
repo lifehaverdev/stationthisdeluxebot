@@ -1,5 +1,5 @@
 const archiver = require('archiver');
-const { PassThrough } = require('stream');
+const { PassThrough, Readable } = require('stream');
 const { ObjectId } = require('mongodb');
 const { PRIORITY } = require('../db/utils/queue');
 
@@ -95,16 +95,60 @@ class CollectionExportService {
       totalSupply: collection.totalSupply || collection.config?.totalSupply || 0,
       status: 'pending',
       progress: { stage: 'queued', current: 0, total: 0 },
-      metadataOptions: sanitizedOptions
+      metadataOptions: sanitizedOptions,
+      jobType: 'archive'
     });
 
     this._scheduleQueueProcessing();
     return this._formatJob(jobDoc);
   }
 
-  async getLatestJob({ userId, collectionId }) {
+  async requestPublish({ userId, collectionId, metadataOptions = {} }) {
+    if (!this.collectionExportsDb || !this.cookCollectionsDb || !this.generationOutputsDb || !this.storageService) {
+      throw new Error('export-service-unavailable');
+    }
+
+    const collection = await this.cookCollectionsDb.findById(collectionId);
+    if (!collection) {
+      throw new Error('collection-not-found');
+    }
+    if (collection.userId !== userId) {
+      throw new Error('unauthorized');
+    }
+
+    if (collection.publishedGallery?.publishedAt && process.env.COLLECTION_PUBLISH_ALLOW_REPUBLISH !== 'true') {
+      throw new Error('already-published');
+    }
+
+    const approvedCount = await this._countApprovedPieces(collectionId, userId);
+    if (!approvedCount) {
+      throw new Error('no-approved-pieces');
+    }
+
+    const activeJob = await this.collectionExportsDb.findActiveForCollection(collectionId, userId);
+    if (activeJob) {
+      return this._formatJob(activeJob);
+    }
+
+    const sanitizedOptions = this._sanitizeMetadataOptions(metadataOptions, collection);
+    const jobDoc = await this.collectionExportsDb.createJob({
+      userId,
+      collectionId,
+      collectionName: collection.name || 'Collection',
+      totalSupply: collection.totalSupply || collection.config?.totalSupply || 0,
+      status: 'pending',
+      progress: { stage: 'queued', current: 0, total: 0 },
+      metadataOptions: sanitizedOptions,
+      jobType: 'gallery'
+    });
+
+    this._scheduleQueueProcessing();
+    return this._formatJob(jobDoc);
+  }
+
+  async getLatestJob({ userId, collectionId, jobType = null }) {
     if (!this.collectionExportsDb) return null;
-    const job = await this.collectionExportsDb.findLatestForCollection(collectionId, userId);
+    const job = await this.collectionExportsDb.findLatestForCollection(collectionId, userId, { jobType });
     return job ? this._formatJob(job) : null;
   }
 
@@ -175,23 +219,43 @@ class CollectionExportService {
 
     let lastError = null;
     try {
-      const { archiveUrl, expiresAt, totalCount, skipped = [] } = await this._buildArchive(jobDoc);
-      await this.collectionExportsDb.updateOne(
-        { _id: jobId },
-        {
-          status: skipped.length ? 'completed_with_skips' : 'completed',
-          finishedAt: new Date(),
-          updatedAt: new Date(),
-          downloadUrl: archiveUrl,
-          expiresAt,
-          progress: { stage: skipped.length ? 'completed_with_skips' : 'completed', current: totalCount, total: totalCount },
-          skipped
-        },
-        {},
-        false,
-        PRIORITY.LOW
-      );
-      this.logger.info(`[CollectionExportService] export complete for collection ${jobDoc.collectionId}${skipped.length ? ` (skipped ${skipped.length})` : ''}`);
+      const jobType = jobDoc.jobType || 'archive';
+      if (jobType === 'gallery') {
+        const { publishResult, totalCount, skipped = [] } = await this._publishToGallery(jobDoc);
+        await this.collectionExportsDb.updateOne(
+          { _id: jobId },
+          {
+            status: skipped.length ? 'completed_with_skips' : 'completed',
+            finishedAt: new Date(),
+            updatedAt: new Date(),
+            progress: { stage: skipped.length ? 'completed_with_skips' : 'completed', current: totalCount - skipped.length, total: totalCount },
+            publishResult,
+            skipped
+          },
+          {},
+          false,
+          PRIORITY.LOW
+        );
+        this.logger.info(`[CollectionExportService] publish complete for collection ${jobDoc.collectionId}${skipped.length ? ` (skipped ${skipped.length})` : ''}`);
+      } else {
+        const { archiveUrl, expiresAt, totalCount, skipped = [] } = await this._buildArchive(jobDoc);
+        await this.collectionExportsDb.updateOne(
+          { _id: jobId },
+          {
+            status: skipped.length ? 'completed_with_skips' : 'completed',
+            finishedAt: new Date(),
+            updatedAt: new Date(),
+            downloadUrl: archiveUrl,
+            expiresAt,
+            progress: { stage: skipped.length ? 'completed_with_skips' : 'completed', current: totalCount, total: totalCount },
+            skipped
+          },
+          {},
+          false,
+          PRIORITY.LOW
+        );
+        this.logger.info(`[CollectionExportService] export complete for collection ${jobDoc.collectionId}${skipped.length ? ` (skipped ${skipped.length})` : ''}`);
+      }
     } catch (err) {
       lastError = err;
       const cancelled = err && err.message === 'export-cancelled';
@@ -223,6 +287,54 @@ class CollectionExportService {
     return lastError;
   }
 
+  _prepareOrderedEntries({ generations, collection, metadataOptions, respectCanonical = true }) {
+    const orderedEntries = [];
+    const canonical = respectCanonical ? collection?.publishedGallery?.canonicalOrder : null;
+    const canonicalMap = new Map();
+    let maxCanonical = 0;
+    if (Array.isArray(canonical)) {
+      canonical.forEach(entry => {
+        if (!entry) return;
+        const genId = entry.generationId || entry.id;
+        const seq = Number(entry.number || entry.sequence || entry.tokenId || entry.index);
+        if (!genId || !Number.isFinite(seq)) return;
+        canonicalMap.set(String(genId), seq);
+        if (seq > maxCanonical) {
+          maxCanonical = seq;
+        }
+      });
+    }
+
+    if (canonicalMap.size > 0) {
+      const remainder = [];
+      for (const generation of generations) {
+        const genId = String(generation._id);
+        if (canonicalMap.has(genId)) {
+          orderedEntries.push({ generation, sequenceNumber: canonicalMap.get(genId) });
+        } else {
+          remainder.push(generation);
+        }
+      }
+      orderedEntries.sort((a, b) => a.sequenceNumber - b.sequenceNumber);
+      let nextNumber = maxCanonical + 1;
+      remainder.forEach(gen => {
+        orderedEntries.push({ generation: gen, sequenceNumber: nextNumber });
+        nextNumber += 1;
+      });
+    } else {
+      let baseOrder = generations.slice();
+      if (metadataOptions?.shuffleOrder) {
+        baseOrder = this._shuffleArray(baseOrder);
+      }
+      baseOrder.forEach((generation, idx) => {
+        orderedEntries.push({ generation, sequenceNumber: idx + 1 });
+      });
+    }
+
+    const maxSequence = orderedEntries.reduce((max, entry) => Math.max(max, entry.sequenceNumber), 0);
+    return { orderedEntries, canonicalApplied: canonicalMap.size > 0, maxSequence };
+  }
+
   async _buildArchive(jobDoc) {
     const { collectionId, userId } = jobDoc;
     const collection = await this.cookCollectionsDb.findById(collectionId);
@@ -235,6 +347,14 @@ class CollectionExportService {
     if (!totalCount) {
       throw new Error('no-approved-pieces');
     }
+
+    const metadataOptions = jobDoc.metadataOptions || this._sanitizeMetadataOptions({}, collection);
+    const ordering = this._prepareOrderedEntries({
+      generations: approvedGenerations,
+      collection,
+      metadataOptions,
+      respectCanonical: true
+    });
 
     await this.collectionExportsDb.updateOne(
       { _id: jobDoc._id },
@@ -252,7 +372,6 @@ class CollectionExportService {
     const uploadPromise = this.storageService.uploadFromStream(passThrough, exportKey, 'application/zip', this.storageService.getBucketName('exports'));
     archive.pipe(passThrough);
 
-    const metadataOptions = jobDoc.metadataOptions || this._sanitizeMetadataOptions({}, collection);
     const skipped = [];
     const manifest = {
       collection: {
@@ -266,20 +385,14 @@ class CollectionExportService {
     };
 
     let processed = 0;
-
-    let orderedGenerations = approvedGenerations.slice();
-    if (metadataOptions.shuffleOrder) {
-      orderedGenerations = this._shuffleArray(orderedGenerations);
-    }
-    const padLength = String(totalCount).length;
+    const padLength = String(Math.max(ordering.maxSequence || ordering.orderedEntries.length, totalCount)).length;
     const metadataEntries = [];
 
-    for (let idx = 0; idx < orderedGenerations.length; idx++) {
-      const generation = orderedGenerations[idx];
+    for (let idx = 0; idx < ordering.orderedEntries.length; idx++) {
+      const { generation, sequenceNumber } = ordering.orderedEntries[idx];
       if (this.abortedJobs.has(String(jobDoc._id))) {
         throw new Error('export-cancelled');
       }
-      const sequenceNumber = idx + 1;
       const paddedNumber = String(sequenceNumber).padStart(padLength, '0');
       const imageBasePath = `images/${paddedNumber}`;
       try {
@@ -328,6 +441,151 @@ class CollectionExportService {
     const expiresAt = new Date(Date.now() + (process.env.EXPORT_DOWNLOAD_TTL_MS ? Number(process.env.EXPORT_DOWNLOAD_TTL_MS) : 24 * 60 * 60 * 1000));
 
     return { archiveUrl: permanentUrl, expiresAt, totalCount, skipped };
+  }
+
+  async _publishToGallery(jobDoc) {
+    const { collectionId, userId } = jobDoc;
+    const collection = await this.cookCollectionsDb.findById(collectionId);
+    if (!collection) {
+      throw new Error('collection-not-found');
+    }
+    if (collection.publishedGallery?.publishedAt && process.env.COLLECTION_PUBLISH_ALLOW_REPUBLISH !== 'true') {
+      throw new Error('already-published');
+    }
+
+    const approvedGenerations = await this._fetchApprovedGenerations({ collectionId, userId });
+    const totalCount = approvedGenerations.length;
+    if (!totalCount) {
+      throw new Error('no-approved-pieces');
+    }
+
+    const metadataOptions = jobDoc.metadataOptions || this._sanitizeMetadataOptions({}, collection);
+    const ordering = this._prepareOrderedEntries({
+      generations: approvedGenerations,
+      collection,
+      metadataOptions,
+      respectCanonical: false
+    });
+
+    await this.collectionExportsDb.updateOne(
+      { _id: jobDoc._id },
+      {
+        progress: { stage: 'publishing_images', current: 0, total: totalCount }
+      },
+      {},
+      false,
+      PRIORITY.LOW
+    );
+
+    const bucketAlias = 'gallery';
+    const keyPrefix = this._buildGalleryKeyPrefix(collectionId);
+    const baseRoot = (this.storageService.getPublicBaseUrl && this.storageService.getPublicBaseUrl(bucketAlias)) || '';
+    const normalizedBase = baseRoot ? baseRoot.replace(/\/$/, '') : '';
+    const baseUrl = normalizedBase && keyPrefix ? `${normalizedBase}/${keyPrefix}` : (normalizedBase || '');
+
+    const skipped = [];
+    const metadataEntries = [];
+    const canonicalOrder = [];
+    let processed = 0;
+
+    for (const entry of ordering.orderedEntries) {
+      if (this.abortedJobs.has(String(jobDoc._id))) {
+        throw new Error('export-cancelled');
+      }
+      const { generation, sequenceNumber } = entry;
+      const fileStem = String(sequenceNumber);
+      try {
+        const downloadResult = await this._fetchWithRetry(() => this._downloadPrimaryImage(generation));
+        const imageKey = keyPrefix ? `${keyPrefix}/${fileStem}.${downloadResult.extension}` : `${fileStem}.${downloadResult.extension}`;
+        const upload = await this.storageService.uploadFromStream(
+          downloadResult.stream,
+          imageKey,
+          downloadResult.contentType || this._mimeFromExtension(downloadResult.extension),
+          bucketAlias
+        );
+        const imageUrl = upload.permanentUrl;
+        const metadataEntry = this._buildMetadataEntry(generation, imageUrl, metadataOptions, sequenceNumber);
+        metadataEntry.image = imageUrl;
+        metadataEntries.push(metadataEntry);
+        canonicalOrder.push({ generationId: String(generation._id), number: sequenceNumber });
+        const metadataKey = keyPrefix ? `${keyPrefix}/${fileStem}.json` : `${fileStem}.json`;
+        await this._uploadJsonAsset(metadataKey, metadataEntry, bucketAlias);
+        processed += 1;
+      } catch (err) {
+        skipped.push({ generationId: String(generation._id), error: err.message || 'publish-failed' });
+        continue;
+      }
+
+      await this.collectionExportsDb.updateOne(
+        { _id: jobDoc._id },
+        {
+          progress: { stage: 'publishing_images', current: processed, total: totalCount },
+          updatedAt: new Date()
+        },
+        {},
+        false,
+        PRIORITY.LOW
+      );
+    }
+
+    await this.collectionExportsDb.updateOne(
+      { _id: jobDoc._id },
+      {
+        progress: { stage: 'publishing_metadata', current: processed, total: totalCount },
+        updatedAt: new Date()
+      },
+      {},
+      false,
+      PRIORITY.LOW
+    );
+
+    const manifest = {
+      collection: {
+        id: collectionId,
+        name: collection.name || 'Collection',
+        totalSupply: collection.totalSupply || collection.config?.totalSupply || 0,
+        description: collection.description || ''
+      },
+      generatedAt: new Date().toISOString(),
+      baseUrl,
+      items: metadataEntries
+    };
+
+    const manifestKey = keyPrefix ? `${keyPrefix}/manifest.json` : 'manifest.json';
+    const metadataIndexKey = keyPrefix ? `${keyPrefix}/metadata.json` : 'metadata.json';
+    const manifestUpload = await this._uploadJsonAsset(manifestKey, manifest, bucketAlias);
+    const metadataUpload = await this._uploadJsonAsset(metadataIndexKey, metadataEntries, bucketAlias);
+
+    await this.collectionExportsDb.updateOne(
+      { _id: jobDoc._id },
+      {
+        progress: { stage: 'finalizing_publish', current: processed, total: totalCount },
+        updatedAt: new Date()
+      },
+      {},
+      false,
+      PRIORITY.LOW
+    );
+
+    const publishResult = {
+      baseUrl,
+      manifestUrl: manifestUpload?.permanentUrl || null,
+      metadataUrl: metadataUpload?.permanentUrl || null,
+      keyPrefix,
+      itemCount: metadataEntries.length
+    };
+
+    await this.cookCollectionsDb.updateCollection(collectionId, {
+      publishedGallery: {
+        ...publishResult,
+        canonicalOrder,
+        metadataOptions,
+        publishedAt: new Date(),
+        jobId: String(jobDoc._id)
+      }
+    });
+
+    return { publishResult, totalCount, skipped };
   }
 
   async _fetchApprovedGenerations({ collectionId, userId }) {
@@ -413,9 +671,46 @@ class CollectionExportService {
     return `exports/${userId}/${collectionId}/${stamp}.zip`;
   }
 
+  _buildGalleryKeyPrefix(collectionId) {
+    return `${collectionId}`;
+  }
+
   _applyNameTemplate(template, number) {
     if (!template) return `Piece #${number}`;
     return template.replace(/\{\{\s*number\s*\}\}/gi, number);
+  }
+
+  async _uploadJsonAsset(key, payload, bucketAlias = 'gallery') {
+    const buffer = Buffer.from(JSON.stringify(payload, null, 2));
+    return this.storageService.uploadFromStream(Readable.from(buffer), key, 'application/json', bucketAlias);
+  }
+
+  async _downloadPrimaryImage(generation) {
+    const urls = this._extractImageUrls(generation);
+    if (!urls.length) {
+      throw new Error(`generation-${generation._id}-missing-images`);
+    }
+    const primaryUrl = urls[0];
+    const response = await this._fetchWithTimeout(primaryUrl);
+    if (!response.ok || !response.body) {
+      throw new Error(`failed-to-fetch-image:${primaryUrl}`);
+    }
+    const contentType = response.headers.get('content-type');
+    const ext = this._inferExtension(primaryUrl, contentType);
+    return {
+      stream: response.body,
+      extension: ext || 'png',
+      contentType: contentType || this._mimeFromExtension(ext || 'png')
+    };
+  }
+
+  _mimeFromExtension(ext = '') {
+    const normalized = (ext || '').toLowerCase();
+    if (normalized === 'png') return 'image/png';
+    if (normalized === 'jpg' || normalized === 'jpeg') return 'image/jpeg';
+    if (normalized === 'webp') return 'image/webp';
+    if (normalized === 'gif') return 'image/gif';
+    return 'application/octet-stream';
   }
 
   async _fetchWithRetry(fn, attempts = Number(process.env.EXPORT_DOWNLOAD_RETRIES || 3)) {
@@ -452,14 +747,22 @@ class CollectionExportService {
   _sanitizeMetadataOptions(options = {}, collection) {
     const fallbackTemplate = `${collection?.name || 'Collection Piece'} #{{number}}`;
     const fallbackDescription = collection?.description || '';
-    return {
-      nameTemplate: (typeof options.nameTemplate === 'string' && options.nameTemplate.trim().length)
+    const lockedMetadata = collection?.publishedGallery?.metadataOptions;
+    const lockedOrder = Array.isArray(collection?.publishedGallery?.canonicalOrder) && collection.publishedGallery.canonicalOrder.length > 0;
+    const resolvedName = (lockedMetadata?.nameTemplate && lockedMetadata.nameTemplate.trim().length)
+      ? lockedMetadata.nameTemplate.trim()
+      : (typeof options.nameTemplate === 'string' && options.nameTemplate.trim().length
         ? options.nameTemplate.trim()
-        : fallbackTemplate,
-      description: (typeof options.description === 'string')
+        : fallbackTemplate);
+    const resolvedDescription = (lockedMetadata && typeof lockedMetadata.description === 'string')
+      ? lockedMetadata.description
+      : (typeof options.description === 'string'
         ? options.description
-        : fallbackDescription,
-      shuffleOrder: !!options.shuffleOrder
+        : fallbackDescription);
+    return {
+      nameTemplate: resolvedName,
+      description: resolvedDescription,
+      shuffleOrder: lockedOrder ? false : !!options.shuffleOrder
     };
   }
 
@@ -601,6 +904,7 @@ class CollectionExportService {
       id: job._id ? String(job._id) : undefined,
       collectionId: job.collectionId,
       userId: job.userId,
+      jobType: job.jobType || 'archive',
       status: job.status,
       progress: job.progress || {},
       downloadUrl: job.downloadUrl || null,
@@ -611,7 +915,8 @@ class CollectionExportService {
       startedAt: job.startedAt,
       finishedAt: job.finishedAt,
       metadataOptions: job.metadataOptions || null,
-      skipped: job.skipped || []
+      skipped: job.skipped || [],
+      publishResult: job.publishResult || null
     };
   }
 

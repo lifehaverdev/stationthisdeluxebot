@@ -32,13 +32,20 @@ class StorageService {
       default: base,
       uploads: base,
       datasets: process.env.R2_DATASETS_BUCKET || 'datasets',
-      exports: process.env.R2_EXPORTS_BUCKET || 'exports'
+      exports: process.env.R2_EXPORTS_BUCKET || 'exports',
+      gallery: process.env.R2_EXPORTS_BUCKET || 'exports'
     };
   }
 
   getBucketName(kind = 'default') {
     if (!this.bucketNames) this._initBucketMap();
     return this.bucketNames[kind] || kind || this.bucketNames.default;
+  }
+
+  getPublicBaseUrl(kind = 'default') {
+    if (!this.bucketNames) this._initBucketMap();
+    const bucket = this.bucketNames[kind] || kind || this.bucketNames.default;
+    return this._resolvePublicUrl(bucket);
   }
 
   _resolveBucketName(input) {
@@ -185,6 +192,10 @@ class StorageService {
     if (bucket === datasetBucket && process.env.R2_DATASETS_PUBLIC_URL) return process.env.R2_DATASETS_PUBLIC_URL;
     const exportsBucket = this.getBucketName('exports');
     if (bucket === exportsBucket && process.env.R2_EXPORTS_PUBLIC_URL) return process.env.R2_EXPORTS_PUBLIC_URL;
+    const galleryBucket = this.getBucketName('gallery');
+    if (bucket === galleryBucket) {
+      return 'https://gallery.miladystation2.net';
+    }
     return null;
   }
 

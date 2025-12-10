@@ -396,7 +396,77 @@ function createCookApi(deps = {}) {
     }
   });
 
+  router.post('/:id/publish', async (req, res) => {
+    try {
+      const exportService = deps.collectionExportService;
+      if (!exportService) {
+        return res.status(503).json({ error: 'export-service-unavailable' });
+      }
+      const collectionId = req.params.id;
+      const userId = req.user?.userId || req.user?.id || req.body?.userId;
+      if (!collectionId || !userId) {
+        return res.status(400).json({ error: 'collectionId and userId required' });
+      }
+      if (!cookDb) return res.status(503).json({ error: 'service-unavailable' });
+      const collection = await cookDb.findById(collectionId);
+      if (!collection) {
+        return res.status(404).json({ error: 'collection-not-found' });
+      }
+      if (collection.userId !== userId) {
+        return res.status(403).json({ error: 'unauthorized' });
+      }
+
+      const metadataOptions = req.body?.metadataOptions || {};
+      const job = await exportService.requestPublish({ userId, collectionId, metadataOptions });
+      return res.json(job);
+    } catch (err) {
+      if (['already-published', 'no-approved-pieces', 'export-service-unavailable'].includes(err.message)) {
+        const status = err.message === 'export-service-unavailable' ? 503 : 400;
+        return res.status(status).json({ error: err.message });
+      }
+      logger.error('[CookAPI] publish enqueue error', err);
+      return res.status(500).json({ error: 'internal-error' });
+    }
+  });
+
   router.get('/:id/export/status', async (req, res) => {
+    try {
+      const exportService = deps.collectionExportService;
+      if (!exportService) {
+        return res.status(503).json({ error: 'export-service-unavailable' });
+      }
+      const collectionId = req.params.id;
+      const userId = req.user?.userId || req.user?.id || req.query?.userId;
+      if (!collectionId || !userId) {
+        return res.status(400).json({ error: 'collectionId and userId required' });
+      }
+
+      const jobTypeParam = req.query.type;
+      const normalizedJobType = jobTypeParam === 'gallery' || jobTypeParam === 'archive'
+        ? jobTypeParam
+        : null;
+      const exportId = req.query.exportId;
+      let job = null;
+      if (exportId) {
+        job = await exportService.getJobById(exportId);
+      } else {
+        job = await exportService.getLatestJob({ userId, collectionId, jobType: normalizedJobType });
+      }
+
+      if (!job) {
+        return res.status(404).json({ error: 'export-not-found' });
+      }
+      if (job.userId !== userId || job.collectionId !== collectionId) {
+        return res.status(403).json({ error: 'unauthorized' });
+      }
+      return res.json(job);
+    } catch (err) {
+      logger.error('[CookAPI] export status error', err);
+      return res.status(500).json({ error: err.message || 'internal-error' });
+    }
+  });
+
+  router.get('/:id/publish/status', async (req, res) => {
     try {
       const exportService = deps.collectionExportService;
       if (!exportService) {
@@ -413,7 +483,7 @@ function createCookApi(deps = {}) {
       if (exportId) {
         job = await exportService.getJobById(exportId);
       } else {
-        job = await exportService.getLatestJob({ userId, collectionId });
+        job = await exportService.getLatestJob({ userId, collectionId, jobType: 'gallery' });
       }
 
       if (!job) {
@@ -424,7 +494,7 @@ function createCookApi(deps = {}) {
       }
       return res.json(job);
     } catch (err) {
-      logger.error('[CookAPI] export status error', err);
+      logger.error('[CookAPI] publish status error', err);
       return res.status(500).json({ error: err.message || 'internal-error' });
     }
   });
@@ -656,19 +726,7 @@ function createCookApi(deps = {}) {
               ]
             },
             { status: 'completed' }, // ✅ Use same status filter as _getProducedCount
-              { deliveryStrategy: { $ne: 'spell_step' } },
-              {
-                $or: [
-                  { 'metadata.reviewOutcome': { $exists: false } },
-                { 'metadata.reviewOutcome': { $ne: 'rejected' } } // ✅ Match _getProducedCount logic
-              ]
-            },
-            {
-              $or: [
-                { reviewOutcome: { $exists: false } },
-                { reviewOutcome: { $ne: 'rejected' } } // ✅ Also check flat field
-              ]
-            }
+              { deliveryStrategy: { $ne: 'spell_step' } }
           ]
         };
         

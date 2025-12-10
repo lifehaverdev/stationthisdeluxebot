@@ -9,6 +9,7 @@ class CollectionExportsDB extends BaseDB {
   async createJob(doc) {
     const payload = {
       ...doc,
+      jobType: doc.jobType || 'archive',
       status: doc.status || 'pending',
       progress: doc.progress || { stage: 'queued', current: 0, total: 0 },
       createdAt: doc.createdAt || new Date(),
@@ -23,16 +24,24 @@ class CollectionExportsDB extends BaseDB {
     return this.findOne({ _id });
   }
 
-  async findActiveForCollection(collectionId, userId) {
-    return this.findOne({
+  async findActiveForCollection(collectionId, userId, { jobType } = {}) {
+    const query = {
       collectionId,
       userId,
       status: { $in: ['pending', 'running'] }
-    }, { sort: { createdAt: -1 } });
+    };
+    if (jobType) {
+      query.jobType = jobType;
+    }
+    return this.findOne(query, { sort: { createdAt: -1 } });
   }
 
-  async findLatestForCollection(collectionId, userId) {
-    return this.findOne({ collectionId, userId }, { sort: { createdAt: -1 } });
+  async findLatestForCollection(collectionId, userId, { jobType } = {}) {
+    const query = { collectionId, userId };
+    if (jobType) {
+      query.jobType = jobType;
+    }
+    return this.findOne(query, { sort: { createdAt: -1 } });
   }
 
   async findNextPending() {

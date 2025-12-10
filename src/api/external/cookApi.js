@@ -87,10 +87,41 @@ function createCookApiRouter(deps = {}) {
       const userId = req.user?.userId || req.user?.id || req.query?.userId;
       const params = { userId };
       if (req.query?.exportId) params.exportId = req.query.exportId;
+      if (req.query?.type) params.type = req.query.type;
       const { data } = await internalApiClient.get(`/internal/v1/data/collections/${encodeURIComponent(req.params.id)}/export/status`, { params });
       return res.json(data);
     } catch (err) {
       logger.error('collection export status proxy error', err.response?.data || err.message);
+      const status = err.response?.status || 500;
+      return res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+  router.post('/collections/:id/publish', async (req, res) => {
+    try {
+      const userId = req.user?.userId || req.user?.id || req.body?.userId;
+      const metadataOptions = req.body?.metadataOptions;
+      const { data } = await internalApiClient.post(`/internal/v1/data/collections/${encodeURIComponent(req.params.id)}/publish`, {
+        userId,
+        metadataOptions
+      });
+      return res.json(data);
+    } catch (err) {
+      logger.error('collection publish proxy error', err.response?.data || err.message);
+      const status = err.response?.status || 500;
+      return res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+  router.get('/collections/:id/publish/status', async (req, res) => {
+    try {
+      const userId = req.user?.userId || req.user?.id || req.query?.userId;
+      const params = { userId };
+      if (req.query?.exportId) params.exportId = req.query.exportId;
+      const { data } = await internalApiClient.get(`/internal/v1/data/collections/${encodeURIComponent(req.params.id)}/publish/status`, { params });
+      return res.json(data);
+    } catch (err) {
+      logger.error('collection publish status proxy error', err.response?.data || err.message);
       const status = err.response?.status || 500;
       return res.status(status).json(err.response?.data || { error: 'proxy-error' });
     }

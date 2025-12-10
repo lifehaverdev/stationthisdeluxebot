@@ -1384,6 +1384,71 @@
     to { transform: translateY(-50%) rotate(360deg); }
 }
 
+.publish-btn {
+    align-self: flex-start;
+    padding: 10px 18px;
+    border-radius: 8px;
+    border: none;
+    background: linear-gradient(135deg, #f093fb, #f5576c);
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.publish-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.publish-btn.is-running {
+    position: relative;
+    pointer-events: none;
+}
+
+.publish-btn.is-running::after {
+    content: '';
+    position: absolute;
+    left: 8px;
+    top: 50%;
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(255,255,255,0.6);
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    transform: translateY(-50%);
+}
+
+.publish-divider {
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    margin: 20px 0;
+}
+
+.publish-section {
+    margin-top: 12px;
+}
+
+.export-lock-note {
+    display: block;
+    margin-top: 4px;
+    font-size: 12px;
+    color: rgba(255,255,255,0.6);
+}
+
+.publish-base {
+    margin-top: 6px;
+    font-size: 12px;
+    color: rgba(255,255,255,0.65);
+}
+
+.publish-base code {
+    background: rgba(255,255,255,0.08);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
 .cancel-export-btn {
     margin-left: 10px;
     padding: 10px 18px;

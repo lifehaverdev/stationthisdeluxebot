@@ -166,10 +166,21 @@ export default class CookMenuModal {
             if (res.status === 304) return;
             if (!res.ok) throw new Error('failed');
             const data = await res.json();
+            const collections = data.collections || [];
+            const selectedId = this.state.selectedCollection?.collectionId;
+            const updatedSelection = selectedId ? collections.find(c => c.collectionId === selectedId) : null;
             if (this.state.view === 'home') {
-            this.setState({ collections: data.collections || [] });
+            const nextState = { collections };
+            if (updatedSelection) nextState.selectedCollection = updatedSelection;
+            this.setState(nextState);
             } else {
-                Object.assign(this.state, { collections: data.collections || [] });
+                Object.assign(this.state, { collections });
+                if (updatedSelection) {
+                    this.state.selectedCollection = updatedSelection;
+                    if (this.modalElement && this.state.view === 'detail') {
+                        this.render();
+                    }
+                }
             }
         } catch (err) {
             console.warn('[CookMenuModal] collections fetch error', err);
@@ -767,34 +778,50 @@ export default class CookMenuModal {
             ? this.state.exportForm
             : this._buildExportFormDefaults(selectedCollection);
         const collectionId = selectedCollection?.collectionId;
-        const exportJob = collectionId ? (this.state.exportJobs?.[collectionId] || null) : null;
+        const activeJob = collectionId ? (this.state.exportJobs?.[collectionId] || null) : null;
+        const exportJob = activeJob && (activeJob.jobType === 'archive' || !activeJob.jobType) ? activeJob : null;
+        const publishJob = activeJob && activeJob.jobType === 'gallery' ? activeJob : null;
         const targetSupply = selectedCollection?.totalSupply || selectedCollection?.config?.totalSupply || summary.totalSupply || 0;
         const approvedCount = summary.approvedCount || 0;
         const readyForExport = approvedCount > 0;
+        const jobInProgress = activeJob && ['pending', 'running'].includes(activeJob.status);
         const exportInProgress = exportJob && ['pending', 'running'].includes(exportJob.status);
-        const exportButtonDisabled = !readyForExport || exportInProgress;
+        const publishInProgress = publishJob && ['pending', 'running'].includes(publishJob.status);
+        const publishInfo = selectedCollection?.publishedGallery || null;
+        const publishLocked = !!publishInfo?.publishedAt || !!publishJob;
+        const exportButtonDisabled = !readyForExport || jobInProgress;
         const exportButtonLabel = exportInProgress
             ? 'Preparing Export…'
             : (readyForExport ? 'Export Collection (ZIP)' : 'Approve Pieces to Export');
         const exportButtonClass = exportInProgress ? 'export-collection-btn is-running' : 'export-collection-btn';
         const exportButtonDisabledAttr = exportButtonDisabled ? ' disabled' : '';
-        const exportStatusMarkup = this.renderExportStatus(exportJob, readyForExport, targetSupply, approvedCount);
-        const showCancel = exportInProgress;
+        const exportStatusMarkup = this.renderExportStatus(exportJob, readyForExport, targetSupply, approvedCount, activeJob);
+        const showCancel = jobInProgress;
+        const publishButtonDisabled = publishLocked || !readyForExport || jobInProgress;
+        const publishButtonLabel = publishLocked
+            ? 'Published'
+            : (publishInProgress ? 'Publishing…' : 'Publish to Gallery');
+        const publishButtonClass = publishInProgress ? 'publish-btn is-running' : 'publish-btn';
+        const publishStatusMarkup = this.renderPublishStatus({ job: publishJob, info: publishInfo, readyForExport });
+        const shuffleDisabledAttr = publishLocked ? ' disabled' : '';
+        const nameHelpText = '<small>Use <code>{{number}}</code> where the sequential number should appear.</small>';
+        const lockNote = publishLocked ? '<small class="export-lock-note">Ordering locked to published manifest.</small>' : '';
         const exportConfigMarkup = (!exportInProgress)
             ? `
                 <div class="export-config">
                     <label>
                         Metadata Name Template
-                        <input type="text" class="export-name-template" value="${escapeText(currentExportForm.nameTemplate || '')}" placeholder="${escapeText((selectedCollection?.name || 'Piece') + ' #{{number}}')}">
-                        <small>Use <code>{{number}}</code> where the sequential number should appear.</small>
+                        <input type="text" class="export-name-template" value="${escapeText(currentExportForm.nameTemplate || '')}" placeholder="${escapeText((selectedCollection?.name || 'Piece') + ' #{{number}}')}"${publishLocked ? ' disabled' : ''}>
+                        ${nameHelpText}
                     </label>
                     <label>
                         Description
-                        <textarea class="export-description" rows="3" placeholder="Describe your collection...">${escapeText(currentExportForm.description || '')}</textarea>
+                        <textarea class="export-description" rows="3" placeholder="Describe your collection..."${publishLocked ? ' disabled' : ''}>${escapeText(currentExportForm.description || '')}</textarea>
                     </label>
                     <label class="export-shuffle-row">
-                        <input type="checkbox" class="export-shuffle"${currentExportForm.shuffleOrder ? ' checked' : ''}>
+                        <input type="checkbox" class="export-shuffle"${currentExportForm.shuffleOrder ? ' checked' : ''}${shuffleDisabledAttr}>
                         Shuffle approved pieces before exporting
+                        ${lockNote}
                     </label>
                 </div>
             `
@@ -806,9 +833,18 @@ export default class CookMenuModal {
             ${exportConfigMarkup}
             <div class="export-buttons-row">
                 <button class="${exportButtonClass}"${exportButtonDisabledAttr} data-label="${exportButtonLabel}">${exportButtonLabel}</button>
-                ${showCancel ? '<button class="cancel-export-btn">Cancel Export</button>' : ''}
+                ${showCancel ? `<button class="cancel-export-btn">${publishJob ? 'Cancel Publish' : 'Cancel Export'}</button>` : ''}
             </div>
             ${exportStatusMarkup}
+            <div class="publish-divider"></div>
+            <div class="publish-section">
+                <h3>Publish to gallery.miladystation2.net</h3>
+                <p>Stream your approved pieces to our gallery host. Publishing locks numbering order for future exports.</p>
+                <div class="export-buttons-row">
+                    <button class="${publishButtonClass}" data-label="${publishButtonLabel}"${publishButtonDisabled ? ' disabled' : ''}>${publishButtonLabel}</button>
+                </div>
+                ${publishStatusMarkup}
+            </div>
         `;
     }
 
@@ -927,7 +963,7 @@ export default class CookMenuModal {
         `;
     }
 
-    renderExportStatus(job, readyForExport, targetSupply, approvedCount) {
+    renderExportStatus(job, readyForExport, targetSupply, approvedCount, activeJob = null) {
         if (!readyForExport) {
             const supplyMsg = targetSupply > 0
                 ? `Approved ${approvedCount}/${targetSupply}. You can still export early, but finished pieces only.`
@@ -935,6 +971,9 @@ export default class CookMenuModal {
             return `<div class="export-status muted">${supplyMsg}</div>`;
         }
         if (!job) {
+            if (activeJob && ['pending', 'running'].includes(activeJob.status) && activeJob.jobType === 'gallery') {
+                return '<div class="export-status muted">Publishing in progress. Exporting is locked until it completes.</div>';
+            }
             return '<div class="export-status muted">No export requested yet.</div>';
         }
         const status = job.status || 'pending';
@@ -948,6 +987,8 @@ export default class CookMenuModal {
             parts.push(`Running (${current}/${total || '?'})`);
         } else if (status === 'completed') {
             parts.push('Ready for download');
+        } else if (status === 'completed_with_skips') {
+            parts.push('Ready (some items skipped)');
         } else if (status === 'cancelled') {
             parts.push('Cancelled');
         } else if (status === 'failed') {
@@ -969,6 +1010,61 @@ export default class CookMenuModal {
         </div>`;
     }
 
+    renderPublishStatus({ job, info, readyForExport }) {
+        if (!readyForExport) {
+            return '<div class="export-status muted">Approve at least one piece to enable publishing.</div>';
+        }
+        if (job) {
+            const status = job.status || 'pending';
+            if ((status === 'completed' || status === 'completed_with_skips') && job.publishResult) {
+                const result = job.publishResult;
+                const baseLabel = result.baseUrl ? `<div class="publish-base">Base path: <code>${this._escapeHtml(result.baseUrl)}</code></div>` : '';
+                const links = [
+                    result.baseUrl ? `<a href="${result.baseUrl}" target="_blank" rel="noopener">Open Gallery</a>` : '',
+                    result.manifestUrl ? `<a href="${result.manifestUrl}" target="_blank" rel="noopener">Manifest</a>` : '',
+                    result.metadataUrl ? `<a href="${result.metadataUrl}" target="_blank" rel="noopener">Metadata</a>` : ''
+                ].filter(Boolean).join(' • ');
+                return `<div class="export-status export-completed">
+                    <div>Publishing complete</div>
+                    ${links ? `<div class="export-actions">${links}</div>` : ''}
+                    ${baseLabel}
+                </div>`;
+            }
+            const parts = [];
+            if (status === 'pending') {
+                parts.push('Queued – awaiting worker');
+            } else if (status === 'running') {
+                const current = job.progress?.current || 0;
+                const total = job.progress?.total || 0;
+                parts.push(`Publishing (${current}/${total || '?'})`);
+            } else if (status === 'completed' || status === 'completed_with_skips') {
+                parts.push('Publishing complete');
+            } else if (status === 'failed') {
+                parts.push(`Failed: ${job.error || 'Unexpected error'}`);
+            }
+            if (job.progress?.stage) {
+                parts.push(this._formatExportStage(job.progress.stage));
+            }
+            return `<div class="export-status export-${status}">
+                <div>${parts.join(' • ')}</div>
+            </div>`;
+        }
+        if (info && (info.baseUrl || info.manifestUrl)) {
+            const publishedAt = info.publishedAt ? new Date(info.publishedAt).toLocaleString() : null;
+            const baseLink = info.baseUrl ? `<a href="${info.baseUrl}" target="_blank" rel="noopener">Open Gallery</a>` : '';
+            const manifestLink = info.manifestUrl ? `<a href="${info.manifestUrl}" target="_blank" rel="noopener">Manifest</a>` : '';
+            const metadataLink = info.metadataUrl ? `<a href="${info.metadataUrl}" target="_blank" rel="noopener">Metadata</a>` : '';
+            const links = [baseLink, manifestLink, metadataLink].filter(Boolean).join(' • ');
+            const baseLabel = info.baseUrl ? `<div class="publish-base">Base path: <code>${this._escapeHtml(info.baseUrl)}</code></div>` : '';
+            return `<div class="export-status export-completed">
+                <div>Published${publishedAt ? ` ${publishedAt}` : ''}</div>
+                ${links ? `<div class="export-actions">${links}</div>` : ''}
+                ${baseLabel}
+            </div>`;
+        }
+        return '<div class="export-status muted">Not published yet.</div>';
+    }
+
     _formatExportStage(stage) {
         if (!stage) return '';
         const map = {
@@ -977,8 +1073,12 @@ export default class CookMenuModal {
             collecting: 'Collecting approved pieces',
             uploading: 'Uploading archive',
             completed: 'Completed',
+            completed_with_skips: 'Completed (with skips)',
             failed: 'Failed',
-            cancelled: 'Cancelled'
+            cancelled: 'Cancelled',
+            publishing_images: 'Publishing images',
+            publishing_metadata: 'Publishing metadata',
+            finalizing_publish: 'Finalizing publish'
         };
         return map[stage] || stage;
     }
@@ -1216,10 +1316,67 @@ export default class CookMenuModal {
         }
     }
 
+    async handlePublishCollection(buttonEl) {
+        const collectionId = this.state.selectedCollection?.collectionId;
+        if (!collectionId) return;
+        if (this.state.selectedCollection?.publishedGallery?.publishedAt) {
+            alert('This collection has already been published.');
+            return;
+        }
+        try {
+            const csrf = await this.getCsrfToken();
+            const defaults = this._buildExportFormDefaults(this.state.selectedCollection);
+            const form = this.state.exportForm && this.state.exportForm.collectionId === collectionId
+                ? this.state.exportForm
+                : defaults;
+            const metadataOptions = {
+                nameTemplate: (form.nameTemplate || defaults.nameTemplate).trim(),
+                description: form.description ?? defaults.description,
+                shuffleOrder: !!form.shuffleOrder
+            };
+            if (buttonEl) {
+                buttonEl.disabled = true;
+                buttonEl.classList.add('is-running');
+                buttonEl.textContent = 'Publishing…';
+            }
+            const res = await fetch(`/api/v1/collections/${encodeURIComponent(collectionId)}/publish`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-csrf-token': csrf
+                },
+                credentials: 'include',
+                body: JSON.stringify({ metadataOptions })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.error || 'Failed to start publish');
+            }
+            this._updateExportJobState(collectionId, data);
+            if (data.status !== 'completed' && data.status !== 'failed') {
+                this._scheduleExportPoll(collectionId, data.id);
+            }
+        } catch (err) {
+            console.error('[CookMenuModal] publish error:', err);
+            const friendly = err.message === 'no-approved-pieces'
+                ? 'You need at least one approved piece before publishing.'
+                : (err.message === 'already-published' ? 'This collection is already published.' : err.message);
+            alert(friendly || 'Failed to start publish. Please try again.');
+        } finally {
+            if (buttonEl) {
+                buttonEl.disabled = false;
+                buttonEl.classList.remove('is-running');
+                buttonEl.textContent = buttonEl.dataset.label || 'Publish to Gallery';
+            }
+        }
+    }
+
     async handleCancelExport() {
         const collectionId = this.state.selectedCollection?.collectionId;
         if (!collectionId) return;
-        if (!confirm('Cancel the current export job?')) return;
+        const activeJob = this.state.exportJobs?.[collectionId] || null;
+        const noun = activeJob?.jobType === 'gallery' ? 'publish' : 'export';
+        if (!confirm(`Cancel the current ${noun} job?`)) return;
         try {
             const csrf = await this.getCsrfToken();
             const res = await fetch(`/api/v1/collections/${encodeURIComponent(collectionId)}/export/cancel`, {
@@ -1257,6 +1414,9 @@ export default class CookMenuModal {
             this._refreshExportSection();
         }
         this._markExportStatusFetched(collectionId);
+        if (jobData && jobData.jobType === 'gallery' && ['completed', 'completed_with_skips'].includes(jobData.status)) {
+            this.fetchCollections(true);
+        }
     }
 
     _refreshExportSection() {
@@ -1274,6 +1434,10 @@ export default class CookMenuModal {
         const exportBtn = root.querySelector('.export-collection-btn');
         if (exportBtn) {
             exportBtn.onclick = () => this.handleExportCollection(exportBtn);
+        }
+        const publishBtn = root.querySelector('.publish-btn');
+        if (publishBtn) {
+            publishBtn.onclick = () => this.handlePublishCollection(publishBtn);
         }
         const cancelBtn = root.querySelector('.cancel-export-btn');
         if (cancelBtn) {
@@ -2240,10 +2404,11 @@ export default class CookMenuModal {
                 shuffleOrder: false
             };
         }
+        const lockedMeta = collection.publishedGallery?.metadataOptions || null;
         return {
-            nameTemplate: `${collection.name || 'Collection Piece'} #{{number}}`,
-            description: collection.description || '',
-            shuffleOrder: false,
+            nameTemplate: lockedMeta?.nameTemplate || `${collection.name || 'Collection Piece'} #{{number}}`,
+            description: lockedMeta?.description !== undefined ? lockedMeta.description : (collection.description || ''),
+            shuffleOrder: lockedMeta?.shuffleOrder ?? false,
             collectionId: collection.collectionId
         };
     }
