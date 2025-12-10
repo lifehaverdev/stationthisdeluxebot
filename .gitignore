@@ -9,6 +9,7 @@ temp/*
 tmp/*
 output/*
 reports/*
+secrets/*
 # Logs
 logs
 *.log
