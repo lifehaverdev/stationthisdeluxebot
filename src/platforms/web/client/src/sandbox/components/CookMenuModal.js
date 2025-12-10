@@ -413,21 +413,59 @@ export default class CookMenuModal {
         }
     }
 
+    _getReviewStats(cook = {}) {
+        const generationCount = Number.isFinite(cook.generationCount) ? cook.generationCount : Math.max(0, Number(cook.generationCount) || 0);
+        const rejectedCount = Number.isFinite(cook.rejectedCount) ? cook.rejectedCount : Math.max(0, Number(cook.rejectedCount) || 0);
+        const providedApproved = Number.isFinite(cook.approvedCount) ? cook.approvedCount : null;
+        const providedPending = Number.isFinite(cook.pendingReviewCount) ? cook.pendingReviewCount : null;
+
+        let approvedCount = providedApproved;
+        let pendingReviewCount = providedPending;
+
+        if (approvedCount === null && pendingReviewCount === null) {
+            approvedCount = Math.max(0, generationCount - rejectedCount);
+            pendingReviewCount = 0;
+        } else if (approvedCount === null && pendingReviewCount !== null) {
+            approvedCount = Math.max(0, generationCount - rejectedCount - pendingReviewCount);
+        } else if (approvedCount !== null && pendingReviewCount === null) {
+            pendingReviewCount = Math.max(0, generationCount - approvedCount - rejectedCount);
+        }
+
+        return {
+            generationCount,
+            approvedCount: Math.max(0, approvedCount || 0),
+            rejectedCount,
+            pendingReviewCount: Math.max(0, pendingReviewCount || 0)
+        };
+    }
+
+    _buildCookTitle(cook = {}) {
+        const name = cook.collectionName || 'Untitled';
+        const targetSupply = Number.isFinite(cook.targetSupply) && cook.targetSupply > 0 ? cook.targetSupply : null;
+        const { generationCount, approvedCount } = this._getReviewStats(cook);
+        const safeApproved = targetSupply ? Math.min(approvedCount, targetSupply) : approvedCount;
+        const showGenerated = generationCount !== approvedCount ? ` (Generated ${generationCount})` : '';
+        if (targetSupply) {
+            return `${name} – Approved ${safeApproved}/${targetSupply}${showGenerated}`;
+        }
+        return `${name} – Approved ${safeApproved}${showGenerated}`;
+    }
+
     _formatCookStatus(cook = {}) {
         const {
             status,
             running = 0,
             queued = 0,
-            generationCount = 0,
             targetSupply = 0,
             lastProgress,
             liveStatus,
             pauseReason,
         } = cook;
 
+        const { approvedCount, rejectedCount, pendingReviewCount } = this._getReviewStats(cook);
         const normalizedStatus = (status || (running > 0 ? 'running' : 'paused')).toLowerCase();
         const piecesRemaining = Number.isFinite(targetSupply) && targetSupply > 0
-            ? Math.max(0, targetSupply - generationCount)
+            ? Math.max(0, targetSupply - approvedCount)
             : null;
         const pct = typeof lastProgress === 'number'
             ? Math.max(0, Math.min(100, Math.round(lastProgress * 100)))
@@ -458,7 +496,13 @@ export default class CookMenuModal {
             parts.push(liveStatus);
         }
         if (piecesRemaining !== null && normalizedStatus !== 'paused') {
-            parts.push(`${piecesRemaining} remaining`);
+            parts.push(`${piecesRemaining} approvals remaining`);
+        }
+        if (pendingReviewCount > 0) {
+            parts.push(`${pendingReviewCount} pending review`);
+        }
+        if (rejectedCount > 0) {
+            parts.push(`${rejectedCount} rejected`);
         }
 
         return parts.filter(Boolean).join(' • ') || 'Status unavailable';
@@ -495,9 +539,7 @@ export default class CookMenuModal {
 
         const titleEl = item.querySelector('.cook-title');
         if (titleEl) {
-            const generationCount = typeof cook.generationCount === 'number' ? cook.generationCount : 0;
-            const targetSupply = typeof cook.targetSupply === 'number' ? cook.targetSupply : 0;
-            titleEl.textContent = `${cook.collectionName || 'Untitled'} – ${generationCount}/${targetSupply}`;
+            titleEl.textContent = this._buildCookTitle(cook);
         }
 
         const statusEl = item.querySelector('.cook-status-text');
@@ -562,7 +604,8 @@ export default class CookMenuModal {
         activeCooks.forEach(c => {
             const running = c.running || 0;
             const queued = c.queued || 0;
-            const generationCount = c.generationCount || 0;
+            const stats = this._getReviewStats(c);
+            const generationCount = stats.generationCount || 0;
             const targetSupply = c.targetSupply || 0;
             const isComplete = targetSupply > 0 && generationCount >= targetSupply;
             const hasActiveJobs = running > 0 || queued > 0;
@@ -583,9 +626,11 @@ export default class CookMenuModal {
         });
         
         // Render actively running cooks with fire icon (using HTML entity to avoid encoding issues)
-        const runningHtml = runningCooks.length ? runningCooks.map(c => `
+        const runningHtml = runningCooks.length ? runningCooks.map(c => {
+            const title = this._buildCookTitle(c);
+            return `
             <div class="cook-status-item" data-id="${c.collectionId}">
-                <div class="cook-title">${c.collectionName || 'Untitled'} – ${c.generationCount}/${c.targetSupply}</div>
+                <div class="cook-title">${title}</div>
                 <div class="cook-status-text">${this._formatCookStatus(c)}</div>
                 <div class="cook-actions">
                     <span class="cook-status-icon" title="Cooking in progress">&#128293;</span>
@@ -594,12 +639,15 @@ export default class CookMenuModal {
                     <button data-action="review" data-id="${c.collectionId}" title="Review Pieces" style="margin-left: 8px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: none; border-radius: 4px; padding: 4px 10px;">Review</button>
                 </div>
             </div>
-        `).join('') : '';
+        `;
+        }).join('') : '';
         
         // Render paused cooks with ▶️ icon
-        const pausedHtml = pausedCooks.length ? pausedCooks.map(c => `
+        const pausedHtml = pausedCooks.length ? pausedCooks.map(c => {
+            const title = this._buildCookTitle(c);
+            return `
             <div class="cook-status-item" data-id="${c.collectionId}">
-                <div class="cook-title">${c.collectionName || 'Untitled'} – ${c.generationCount}/${c.targetSupply}</div>
+                <div class="cook-title">${title}</div>
                 <div class="cook-status-text">${this._formatCookStatus(c)}</div>
                 <div class="cook-actions">
                     <button data-action="resume" data-id="${c.collectionId}" title="Resume Cook">▶️</button>
@@ -607,29 +655,36 @@ export default class CookMenuModal {
                     <button data-action="review" data-id="${c.collectionId}" title="Review Pieces" style="margin-left: 8px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: none; border-radius: 4px; padding: 4px 10px;">Review</button>
                 </div>
             </div>
-        `).join('') : '';
+        `;
+        }).join('') : '';
         
-        const stoppedHtml = stoppedCooks.length ? stoppedCooks.map(c => `
+        const stoppedHtml = stoppedCooks.length ? stoppedCooks.map(c => {
+            const title = this._buildCookTitle(c);
+            return `
             <div class="cook-status-item" data-id="${c.collectionId}">
-                <div class="cook-title">${c.collectionName || 'Untitled'} – ${c.generationCount}/${c.targetSupply}</div>
+                <div class="cook-title">${title}</div>
                 <div class="cook-status-text">${this._formatCookStatus(c)}</div>
                 <div class="cook-actions">
                     <button data-action="start" data-id="${c.collectionId}" title="Start Cook">▶️ Start</button>
                     <button data-action="review" data-id="${c.collectionId}" title="Review Pieces" style="margin-left: 8px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: none; border-radius: 4px; padding: 4px 10px;">Review</button>
                 </div>
             </div>
-        `).join('') : '';
+        `;
+        }).join('') : '';
         
         // Render awaiting review section
-        const reviewHtml = awaitingReview.length ? awaitingReview.map(c => `
+        const reviewHtml = awaitingReview.length ? awaitingReview.map(c => {
+            const title = this._buildCookTitle(c);
+            return `
             <div class="cook-status-item" data-id="${c.collectionId}">
-                <div class="cook-title">${c.collectionName || 'Untitled'} – ${c.generationCount}/${c.targetSupply}</div>
+                <div class="cook-title">${title}</div>
                 <div class="cook-status-text">${this._formatCookStatus(c)}</div>
                 <div class="cook-actions">
                     <button data-action="review" data-id="${c.collectionId}" title="Review Pieces" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">Review</button>
                 </div>
             </div>
-        `).join('') : '<div class="empty-message">No cooks awaiting review.</div>';
+        `;
+        }).join('') : '<div class="empty-message">No cooks awaiting review.</div>';
 
         const collHtml = collections.length ? collections.map(c => `
             <div class="collection-card" data-id="${c.collectionId}">${c.name || 'Untitled'}</div>

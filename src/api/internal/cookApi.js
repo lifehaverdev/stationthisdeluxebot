@@ -711,27 +711,43 @@ function createCookApi(deps = {}) {
           userIdObj = userId;
         }
         
-        const countQuery = {
-            $and: [
-              {
-                $or: [
-                  { 'metadata.collectionId': collectionId },
-                  { collectionId } // legacy flat field
-                ]
-              },
-            {
-              $or: [
-                { masterAccountId: userIdObj }, // ✅ Match ObjectId format
-                { masterAccountId: userId } // ✅ Also try string format
-              ]
-            },
-            { status: 'completed' }, // ✅ Use same status filter as _getProducedCount
-              { deliveryStrategy: { $ne: 'spell_step' } }
+        const baseMatch = [
+          {
+            $or: [
+              { 'metadata.collectionId': collectionId },
+              { collectionId } // legacy flat field
+            ]
+          },
+          {
+            $or: [
+              { masterAccountId: userIdObj },
+              { masterAccountId: userId }
+            ]
+          },
+          { status: 'completed' },
+          { deliveryStrategy: { $ne: 'spell_step' } }
+        ];
+
+        const countQuery = { $and: baseMatch };
+        const reviewAcceptedFilter = {
+          $or: [
+            { 'metadata.reviewOutcome': { $in: ['accepted', 'approved'] } },
+            { reviewOutcome: { $in: ['accepted', 'approved'] } }
           ]
         };
+        const reviewRejectedFilter = {
+          $or: [
+            { 'metadata.reviewOutcome': { $in: ['rejected'] } },
+            { reviewOutcome: { $in: ['rejected'] } }
+          ]
+        };
+        const approvedQuery = { $and: [...baseMatch, reviewAcceptedFilter] };
+        const rejectedQuery = { $and: [...baseMatch, reviewRejectedFilter] };
         
-        const [generated] = await Promise.all([
+        const [generated, approved, rejected] = await Promise.all([
           genOutputsCol.countDocuments(countQuery),
+          genOutputsCol.countDocuments(approvedQuery),
+          genOutputsCol.countDocuments(rejectedQuery),
         ]);
         
         // ✅ Diagnostic logging to help diagnose counting issues (INFO level so it shows up)
@@ -771,6 +787,9 @@ function createCookApi(deps = {}) {
         
         const targetSupply = coll.totalSupply || coll.config?.totalSupply || 0;
         const generationCount = generated;
+        const approvedCount = approved;
+        const rejectedCount = rejected;
+        const pendingReviewCount = Math.max(0, generationCount - approvedCount - rejectedCount);
         // ✅ Use running count from orchestrator (in-memory state) - no deprecated job store
         const running = runningFromOrchestrator;
         const queued = 0; // ✅ No queued jobs - orchestrator handles scheduling directly
@@ -807,6 +826,9 @@ function createCookApi(deps = {}) {
             collectionId,
             collectionName: coll.name || 'Untitled',
             generationCount,
+            approvedCount,
+            rejectedCount,
+            pendingReviewCount,
             targetSupply,
             queued,
             running, // ✅ Running count from orchestrator only
