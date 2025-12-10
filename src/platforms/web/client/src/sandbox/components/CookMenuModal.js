@@ -603,7 +603,7 @@ export default class CookMenuModal {
                 <div class="cook-title">${c.collectionName || 'Untitled'} – ${c.generationCount}/${c.targetSupply}</div>
                 <div class="cook-status-text">${this._formatCookStatus(c)}</div>
                 <div class="cook-actions">
-                    <span class="cook-status-icon" title="Cook stopped">⏹</span>
+                    <button data-action="start" data-id="${c.collectionId}" title="Start Cook">▶️ Start</button>
                     <button data-action="review" data-id="${c.collectionId}" title="Review Pieces" style="margin-left: 8px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: none; border-radius: 4px; padding: 4px 10px;">Review</button>
                 </div>
             </div>
@@ -1643,6 +1643,7 @@ export default class CookMenuModal {
                 const id = btn.getAttribute('data-id');
                 if (action === 'pause') this.pauseCook(id);
                 if (action === 'resume') this.resumeCook(id);
+                if (action === 'start') this.startCookFromList(id);
                 if (action === 'stop') this.stopCook(id);
                 if (action === 'review') {
                     // Open review window for this collection
@@ -1719,6 +1720,159 @@ export default class CookMenuModal {
             console.warn('[CookMenuModal] failed to fetch csrf', err);
             return '';
         }
+    }
+
+    _resolveCollectionGenerator(collection) {
+        if (!collection) return { toolId: null, spellId: null };
+        const config = collection.config || {};
+        const normalizedType = (collection.generatorType || '').toLowerCase();
+        if (normalizedType === 'tool') {
+            return { toolId: collection.toolId || config.toolId || null, spellId: null };
+        }
+        if (normalizedType === 'spell') {
+            return { toolId: null, spellId: collection.spellId || config.spellId || null };
+        }
+        if (collection.toolId || config.toolId) {
+            return { toolId: collection.toolId || config.toolId, spellId: null };
+        }
+        if (collection.spellId || config.spellId) {
+            return { toolId: null, spellId: collection.spellId || config.spellId };
+        }
+        return { toolId: null, spellId: null };
+    }
+
+    async _startCookFromDetail() {
+        let coll = this.state.selectedCollection;
+        if (!coll) return;
+        try {
+            if (this.state.overviewDirty) {
+                const shouldSave = confirm('You have unsaved changes. These changes will not be included in the cook. Save changes first?');
+                if (shouldSave) {
+                    await this.saveOverviewChanges();
+                    await this.fetchCollections(true);
+                    const updated = this.state.collections.find(c => c.collectionId === coll.collectionId);
+                    if (updated) {
+                        coll = updated;
+                        this.setState({ selectedCollection: updated });
+                    }
+                }
+            }
+
+            const { toolId, spellId } = this._resolveCollectionGenerator(coll);
+            if (!toolId && !spellId) {
+                alert('Please select a generator (tool or spell) before starting.');
+                return;
+            }
+
+            const supply = this.state.pendingSupply !== null
+                ? this.state.pendingSupply
+                : Number(coll.totalSupply || coll.config?.totalSupply || 0);
+            if (!Number.isFinite(supply) || supply <= 0) {
+                alert('Please set a valid Total Supply (>0).');
+                return;
+            }
+
+            const paramOverrides = Object.keys(this.state.pendingParamOverrides).length > 0
+                ? { ...this.state.paramOverrides, ...this.state.pendingParamOverrides }
+                : (coll.config?.paramOverrides || this.state.paramOverrides || {});
+            const traitTree = coll.config?.traitTree || [];
+
+            this.setState({ loading: true });
+            const data = await this._startCookRequest({
+                collectionId: coll.collectionId,
+                toolId,
+                spellId,
+                traitTree,
+                paramOverrides,
+                totalSupply: supply
+            });
+            alert(`Cook started${typeof data.queued === 'number' ? ` (queued ${data.queued})` : ''}`);
+            await this.fetchActiveCooks(true);
+        } catch (err) {
+            alert('Failed to start cook: ' + (err.message || 'error'));
+        } finally {
+            this.setState({ loading: false });
+        }
+    }
+
+    async startCookFromList(id) {
+        if (!id) return;
+        try {
+            this.setState({ loading: true });
+            let coll = this.state.collections.find(c => c.collectionId === id);
+            if (!coll) {
+                const res = await fetch(`/api/v1/collections/${encodeURIComponent(id)}`, { credentials: 'include', cache: 'no-store' });
+                if (!res.ok) throw new Error('Collection not found');
+                coll = await res.json();
+            }
+
+            const { toolId, spellId } = this._resolveCollectionGenerator(coll);
+            if (!toolId && !spellId) {
+                throw new Error('Please select a generator (tool or spell) before starting.');
+            }
+
+            const supply = Number(coll.totalSupply || coll.config?.totalSupply || 0);
+            if (!Number.isFinite(supply) || supply <= 0) {
+                throw new Error('Please set a valid Total Supply (>0) before starting.');
+            }
+
+            const traitTree = coll.config?.traitTree || [];
+            const paramOverrides = coll.config?.paramOverrides || {};
+            const data = await this._startCookRequest({
+                collectionId: id,
+                toolId,
+                spellId,
+                traitTree,
+                paramOverrides,
+                totalSupply: supply
+            });
+            alert(`Cook started${typeof data.queued === 'number' ? ` (queued ${data.queued})` : ''}`);
+            await this.fetchActiveCooks(true);
+        } catch (err) {
+            alert('Failed to start cook: ' + (err.message || 'error'));
+        } finally {
+            this.setState({ loading: false });
+        }
+    }
+
+    async _startCookRequest({ collectionId, toolId, spellId, traitTree = [], paramOverrides = {}, totalSupply }) {
+        const normalizedSupply = Number(totalSupply);
+        if (!Number.isFinite(normalizedSupply) || normalizedSupply <= 0) {
+            throw new Error('Please set a valid Total Supply (>0).');
+        }
+        const payload = {
+            traitTree: Array.isArray(traitTree) ? traitTree : [],
+            paramOverrides: (paramOverrides && typeof paramOverrides === 'object') ? paramOverrides : {},
+            totalSupply: normalizedSupply
+        };
+        if (toolId) {
+            payload.toolId = toolId;
+        } else if (spellId) {
+            payload.spellId = spellId;
+        } else {
+            throw new Error('Please select a generator (tool or spell) before starting.');
+        }
+        const csrf = await this.getCsrfToken();
+        const res = await fetch(`/api/v1/collections/${encodeURIComponent(collectionId)}/cook/start`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-csrf-token': csrf
+            },
+            credentials: 'include',
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            if (data?.error === 'generator-not-found') {
+                throw new Error('The selected generator could not be found. Please choose another tool or spell.');
+            }
+            if (data?.error === 'spellId-or-toolId-required') {
+                throw new Error('Please select a generator (tool or spell) before starting.');
+            }
+            throw new Error(data?.error || 'start failed');
+        }
+        return data;
     }
 
     async pauseCook(id) {
@@ -2230,58 +2384,7 @@ export default class CookMenuModal {
             this.hide();
             import('../window/CollectionWindow.js').then(m=>{m.createCollectionReviewWindow(this.state.selectedCollection);} );
         };
-        if(modal.querySelector('.start-cook-btn')) modal.querySelector('.start-cook-btn').onclick=async()=>{
-            let coll=this.state.selectedCollection; if(!coll) return;
-            if(!(coll.toolId||coll.spellId)){ alert('Please select a generator (tool or spell) before starting.'); return; }
-            
-            // Warn if there are unsaved changes
-            if (this.state.overviewDirty) {
-                if (!confirm('You have unsaved changes. These changes will not be included in the cook. Save changes first?')) {
-                    // User chose not to save, but still allow starting cook with saved values
-                } else {
-                    // User wants to save first
-                    await this.saveOverviewChanges();
-                    // Refresh collection to get updated values
-                    await this.fetchCollections(true);
-                    const updated = this.state.collections.find(c => c.collectionId === coll.collectionId);
-                    if (updated) {
-                        this.setState({ selectedCollection: updated });
-                        coll = updated;
-                    }
-                }
-            }
-            
-            // Use pending supply if available, otherwise use saved
-            const supply = this.state.pendingSupply !== null 
-                ? this.state.pendingSupply 
-                : (Number(coll.totalSupply)||0);
-            if(supply<=0){ alert('Please set a valid Total Supply (>0).'); return; }
-            
-            // Use pending param overrides if available, otherwise use saved
-            const paramOverrides = Object.keys(this.state.pendingParamOverrides).length > 0
-                ? { ...this.state.paramOverrides, ...this.state.pendingParamOverrides }
-                : (coll.config?.paramOverrides||this.state.paramOverrides||{});
-            
-            const id=coll.collectionId;
-            try{
-                this.setState({ loading:true });
-                const csrf = await this.getCsrfToken();
-                const payload={
-                    toolId: coll.toolId,
-                    spellId: coll.spellId,
-                    traitTree: coll.config?.traitTree||[],
-                    paramOverrides: paramOverrides,
-                    totalSupply: supply
-                };
-                console.log('[CookMenuModal] startCook payload', payload);
-                const res=await fetch(`/api/v1/collections/${encodeURIComponent(id)}/cook/start`,{method:'POST',headers:{'Content-Type':'application/json','x-csrf-token':csrf},credentials:'include',body:JSON.stringify(payload)});
-                const data = await res.json().catch(()=>({}));
-                console.log('[CookMenuModal] startCook response', data);
-                if(!res.ok){throw new Error(data.error||'start failed');}
-                alert(`Cook started${typeof data.queued==='number'?` (queued ${data.queued})`:''}`);
-                await this.fetchActiveCooks(true);
-            }catch(e){alert('Failed to start cook: '+(e.message||'error'))}finally{this.setState({ loading:false });}
-        };
+        if(modal.querySelector('.start-cook-btn')) modal.querySelector('.start-cook-btn').onclick=()=>{ this._startCookFromDetail(); };
         if(modal.querySelector('.delete-collection-btn')) modal.querySelector('.delete-collection-btn').onclick=()=>{
             const { selectedCollection } = this.state;
             if(!selectedCollection) return;

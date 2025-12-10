@@ -498,12 +498,9 @@ function createCookApi(deps = {}) {
   // POST /internal/cook/start
   router.post('/start', async (req, res) => {
     try {
-      const { collectionId, userId, spellId, toolId } = req.body;
+      const { collectionId, userId, spellId, toolId } = req.body || {};
       if (!collectionId || !userId) {
         return res.status(400).json({ error: 'collectionId and userId required' });
-      }
-      if (!spellId && !toolId) {
-        return res.status(400).json({ error: 'spellId or toolId required' });
       }
 
       // ✅ AUTHORIZATION CHECK: Verify collection exists and user owns it
@@ -516,29 +513,57 @@ function createCookApi(deps = {}) {
         return res.status(403).json({ error: 'unauthorized' });
       }
 
-      const { traitTypes = [], paramsTemplate = {}, traitTree = [], paramOverrides = {}, totalSupply } = req.body;
+      const { traitTypes = [], paramsTemplate = {}, traitTree = [], paramOverrides = {}, totalSupply } = req.body || {};
+
+      const collToolId = collection.toolId || collection.config?.toolId;
+      const collSpellId = collection.spellId || collection.config?.spellId;
+      let finalToolId = toolId || collToolId;
+      let finalSpellId = null;
+      if (finalToolId) {
+        finalSpellId = null;
+      } else {
+        finalSpellId = spellId || collSpellId;
+        if (!finalSpellId) {
+          return res.status(400).json({ error: 'spellId-or-toolId-required' });
+        }
+      }
+
+      const finalTraitTree = (Array.isArray(traitTree) && traitTree.length)
+        ? traitTree
+        : (collection.config?.traitTree || []);
+      const finalParamOverrides = (paramOverrides && Object.keys(paramOverrides).length)
+        ? paramOverrides
+        : (collection.config?.paramOverrides || {});
+      const finalTotalSupply = Number.isFinite(totalSupply) && Number(totalSupply) > 0
+        ? Number(totalSupply)
+        : (collection.totalSupply || collection.config?.totalSupply || 1);
 
       if(!cooksDb) return res.status(503).json({ error: 'cooksDb-unavailable' });
-      const cook = await cooksDb.createCook({ collectionId, initiatorAccountId: userId, targetSupply: totalSupply });
+      const cook = await cooksDb.createCook({ collectionId, initiatorAccountId: userId, targetSupply: finalTotalSupply });
       const cookId = cook._id;
 
       const result = await CookOrchestratorService.startCook({
         collectionId,
         userId,
         cookId,
-        spellId,
-        toolId,
+        spellId: finalSpellId,
+        toolId: finalToolId,
         traitTypes,
         paramsTemplate,
-        traitTree,
-        paramOverrides,
-        totalSupply: Number.isFinite(totalSupply) ? totalSupply : 1,
+        traitTree: finalTraitTree,
+        paramOverrides: finalParamOverrides,
+        totalSupply: Number.isFinite(finalTotalSupply) && finalTotalSupply > 0 ? finalTotalSupply : 1,
       });
 
       logger.info(`[CookAPI] Started cook. Queued ${result.queued} for collection ${collectionId} by user ${userId}`);
       return res.json({ queued: result.queued, status: 'queued' });
     } catch (err) {
       logger.error('[CookAPI] start error', err);
+      const spellMissing = err?.response?.data?.error?.code === 'SPELL_CAST_FAILED'
+        || /spell .* not found/i.test(err?.message || '');
+      if (spellMissing) {
+        return res.status(400).json({ error: 'generator-not-found' });
+      }
       return res.status(500).json({ error: 'internal-error' });
     }
   });
@@ -813,11 +838,22 @@ function createCookApi(deps = {}) {
       // This handles cases where collection was migrated from spell to tool
       const unsetFields = {};
       
-      if (update.toolId || (update.config && update.config.toolId)) {
+      const wantsTool = Boolean(
+        update.toolId ||
+        update.generatorType === 'tool' ||
+        (update.config && update.config.toolId)
+      );
+      const wantsSpell = Boolean(
+        update.spellId ||
+        update.generatorType === 'spell' ||
+        (update.config && update.config.spellId)
+      );
+      
+      if (wantsTool) {
         // Setting toolId - clear spellId fields (both top-level and in config)
         unsetFields.spellId = '';
         unsetFields['config.spellId'] = '';
-      } else if (update.spellId || (update.config && update.config.spellId)) {
+      } else if (wantsSpell) {
         // Setting spellId - clear toolId fields (both top-level and in config)
         unsetFields.toolId = '';
         unsetFields['config.toolId'] = '';
