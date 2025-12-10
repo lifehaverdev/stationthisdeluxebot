@@ -603,6 +603,9 @@ class CookOrchestratorService {
       await this._markCookDocumentStopped({ cookId: state.cookId, collectionId, userId, reason });
       
       const remaining = Math.max(0, state.total - state.nextIndex);
+      if (state.running.size === 0) {
+        this.runningByCollection.delete(key);
+      }
       return { stopped: true, status: 'stopped', running: state.running.size, remaining };
     } catch (err) {
       this.logger.error(`[CookOrchestrator] stopCook error for ${key}:`, err);
@@ -781,6 +784,7 @@ class CookOrchestratorService {
       return;
     } else if (state.stopped && state.running.size === 0) {
       this.logger.info(`[CookOrchestrator] Cook ${key} fully stopped with ${producedAfter}/${state.total} pieces generated`);
+      this.runningByCollection.delete(key);
       return;
     }
 

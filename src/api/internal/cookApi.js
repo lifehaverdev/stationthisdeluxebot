@@ -580,6 +580,22 @@ function createCookApi(deps = {}) {
         }
       }
 
+      const normalizedUserId = String(userId);
+      const projectionStatusCache = new Map();
+      const getProjectionStatus = async (collectionId) => {
+        if (!CookProjectionUpdater || typeof CookProjectionUpdater.getStatus !== 'function') {
+          return null;
+        }
+        if (!projectionStatusCache.has(collectionId)) {
+          const lookup = CookProjectionUpdater.getStatus(collectionId, normalizedUserId).catch((err) => {
+            logger.warn(`[CookAPI] projection status lookup failed for collection ${collectionId}: ${err.message}`);
+            return null;
+          });
+          projectionStatusCache.set(collectionId, lookup);
+        }
+        return projectionStatusCache.get(collectionId);
+      };
+
       // Build status per collection
       const cooks = [];
       for (const coll of (collections || [])) {
@@ -682,9 +698,25 @@ function createCookApi(deps = {}) {
         // ✅ Debug logging for status determination
         logger.debug(`[CookAPI] Collection ${collectionId}: generationCount=${generationCount}, targetSupply=${targetSupply}, running=${running}, isActive=${isActive}, isAwaitingReview=${isAwaitingReview}`);
         
-        const status = orchestratorState?.paused
-          ? 'paused'
-          : (running > 0 ? 'running' : (isAwaitingReview ? 'awaiting_review' : 'paused'));
+        const projectionStatus = await getProjectionStatus(collectionId);
+        const normalizedProjectionState = typeof projectionStatus?.state === 'string'
+          ? projectionStatus.state.toLowerCase()
+          : null;
+        const projectionIndicatesStopped = normalizedProjectionState === 'stopped';
+        const projectionIndicatesPaused = normalizedProjectionState === 'paused';
+        const projectionIndicatesRunning = normalizedProjectionState === 'cooking';
+        const projectionIndicatesCompleted = normalizedProjectionState === 'completed';
+
+        let status = 'paused';
+        if (orchestratorState?.stopped || projectionIndicatesStopped) {
+          status = 'stopped';
+        } else if (running > 0 || projectionIndicatesRunning) {
+          status = 'running';
+        } else if (isAwaitingReview || projectionIndicatesCompleted) {
+          status = 'awaiting_review';
+        } else if (orchestratorState?.paused || projectionIndicatesPaused) {
+          status = 'paused';
+        }
         const pauseReason = orchestratorState?.pauseReason || null;
 
         if (isActive || isAwaitingReview) {

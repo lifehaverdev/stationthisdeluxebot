@@ -542,10 +542,11 @@ export default class CookMenuModal {
             `;
         }
         
-        // ✅ Separate cooks into actively running, paused, and awaiting review
+        // ✅ Separate cooks into running, paused, stopped, and awaiting review
         const runningCooks = [];
         const pausedCooks = [];
         const awaitingReview = [];
+        const stoppedCooks = [];
         
         activeCooks.forEach(c => {
             const running = c.running || 0;
@@ -554,15 +555,18 @@ export default class CookMenuModal {
             const targetSupply = c.targetSupply || 0;
             const isComplete = targetSupply > 0 && generationCount >= targetSupply;
             const hasActiveJobs = running > 0 || queued > 0;
+            const normalizedStatus = (c.status || (running > 0 ? 'running' : 'paused')).toLowerCase();
             
-            if (isComplete && !hasActiveJobs) {
+            if (normalizedStatus === 'stopped') {
+                stoppedCooks.push(c);
+            } else if (normalizedStatus === 'awaiting_review' || (isComplete && !hasActiveJobs)) {
                 // All pieces generated, awaiting review
                 awaitingReview.push(c);
-            } else if (running > 0) {
+            } else if (running > 0 || normalizedStatus === 'running') {
                 // Actively running
                 runningCooks.push(c);
             } else {
-                // Paused/stopped but not complete
+                // Paused but not complete
                 pausedCooks.push(c);
             }
         });
@@ -594,6 +598,17 @@ export default class CookMenuModal {
             </div>
         `).join('') : '';
         
+        const stoppedHtml = stoppedCooks.length ? stoppedCooks.map(c => `
+            <div class="cook-status-item" data-id="${c.collectionId}">
+                <div class="cook-title">${c.collectionName || 'Untitled'} – ${c.generationCount}/${c.targetSupply}</div>
+                <div class="cook-status-text">${this._formatCookStatus(c)}</div>
+                <div class="cook-actions">
+                    <span class="cook-status-icon" title="Cook stopped">⏹</span>
+                    <button data-action="review" data-id="${c.collectionId}" title="Review Pieces" style="margin-left: 8px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: none; border-radius: 4px; padding: 4px 10px;">Review</button>
+                </div>
+            </div>
+        `).join('') : '';
+        
         // Render awaiting review section
         const reviewHtml = awaitingReview.length ? awaitingReview.map(c => `
             <div class="cook-status-item" data-id="${c.collectionId}">
@@ -612,8 +627,9 @@ export default class CookMenuModal {
         return `
             ${runningCooks.length > 0 ? `<h2>Active Cooks</h2><div class="cook-status-list">${runningHtml}</div>` : ''}
             ${pausedCooks.length > 0 ? `<h2>Paused Cooks</h2><div class="cook-status-list">${pausedHtml}</div>` : ''}
+            ${stoppedCooks.length > 0 ? `<h2>Stopped Cooks</h2><div class="cook-status-list">${stoppedHtml}</div>` : ''}
             ${awaitingReview.length > 0 ? `<h2>Awaiting Review</h2><div class="cook-status-list">${reviewHtml}</div>` : ''}
-            ${runningCooks.length === 0 && pausedCooks.length === 0 && awaitingReview.length === 0 ? '<h2>Active Cooks</h2><div class="empty-message">No active cooks.</div>' : ''}
+            ${runningCooks.length === 0 && pausedCooks.length === 0 && awaitingReview.length === 0 && stoppedCooks.length === 0 ? '<h2>Active Cooks</h2><div class="empty-message">No active cooks.</div>' : ''}
             <hr>
             <h2>My Collections</h2>
             <div class="collection-grid">${collHtml}<div class="collection-card new" data-action="new">＋</div></div>
