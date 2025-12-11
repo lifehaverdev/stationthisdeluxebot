@@ -695,6 +695,11 @@ function createCookApi(deps = {}) {
       const cooks = [];
       for (const coll of (collections || [])) {
         const collectionId = coll.collectionId;
+        try {
+          await CookOrchestratorService.reconcileState({ collectionId, userId });
+        } catch (reconErr) {
+          logger.warn(`[CookAPI] reconcileState failed for ${collectionId}: ${reconErr.message}`);
+        }
         // ✅ Get running count from CookOrchestratorService (in-memory state)
         const orchestratorKey = `${collectionId}:${userId}`;
         const orchestratorState = CookOrchestratorService.runningByCollection?.get(orchestratorKey);

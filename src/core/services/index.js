@@ -44,6 +44,7 @@ const { initializeTrainingServices } = require('./training');
 const GuestAccountService = require('./guestAccountService');
 const GuestAuthService = require('./guestAuthService');
 const SpellPaymentService = require('./spellPaymentService');
+const createCaptionTaskService = require('./CaptionTaskService');
 
 /**
  * Initialize all core services
@@ -100,6 +101,16 @@ async function initializeServices(options = {}) {
     }
     const initializedDbServices = dbService.initializeDbServices(logger);
     logger.info('Database services initialized.');
+    try {
+      createCaptionTaskService({
+        logger,
+        db: initializedDbServices.data,
+        websocketService: webSocketService,
+      });
+      logger.info('[initializeServices] CaptionTaskService initialized.');
+    } catch (err) {
+      logger.error('[initializeServices] Failed to initialize CaptionTaskService:', err);
+    }
 
     // --- Initialize On-Chain Services ---
     const ethereumServices = {}; // chainId -> EthereumService

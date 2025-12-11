@@ -115,6 +115,26 @@ function createDatasetsApiRouter(deps = {}) {
     }
   });
 
+  // DELETE /:id (remove dataset)
+  router.delete('/:id', async (req, res) => {
+    const { id } = req.params;
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
+    }
+    const ownerId = user.masterAccountId || user.userId;
+    try {
+      const { data } = await client.delete(`/internal/v1/data/datasets/${encodeURIComponent(id)}`, {
+        data: { masterAccountId: ownerId },
+      });
+      res.json(data);
+    } catch (err) {
+      const status = err.response?.status || 500;
+      logger.error('delete dataset proxy error', err.response?.data || err.message);
+      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
   // POST /:id/caption-via-spell – generate captions via selected spell
   router.post('/:id/caption-via-spell', async (req, res) => {
     const { id } = req.params;
@@ -143,6 +163,64 @@ function createDatasetsApiRouter(deps = {}) {
     } catch (err) {
       const status = err.response?.status || 500;
       logger.error('get captions proxy error', err.response?.data || err.message);
+      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+  // POST /:id/caption-task/cancel – cancel active caption generation
+  router.post('/:id/caption-task/cancel', async (req, res) => {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
+    }
+    const ownerId = user.masterAccountId || user.userId;
+    const { id } = req.params;
+    try {
+      const payload = { masterAccountId: ownerId };
+      const { data } = await client.post(`/internal/v1/data/datasets/${encodeURIComponent(id)}/caption-task/cancel`, payload);
+      res.json(data);
+    } catch (err) {
+      const status = err.response?.status || 500;
+      logger.error('cancel caption task proxy error', err.response?.data || err.message);
+      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+  // DELETE /:id/captions/:captionId – remove a caption set
+  router.delete('/:id/captions/:captionId', async (req, res) => {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
+    }
+    const ownerId = user.masterAccountId || user.userId;
+    const { id, captionId } = req.params;
+    try {
+      const { data } = await client.delete(`/internal/v1/data/datasets/${encodeURIComponent(id)}/captions/${encodeURIComponent(captionId)}`, {
+        data: { masterAccountId: ownerId },
+      });
+      res.json(data);
+    } catch (err) {
+      const status = err.response?.status || 500;
+      logger.error('delete caption set proxy error', err.response?.data || err.message);
+      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+  // POST /:id/captions/:captionId/default – mark caption set as default
+  router.post('/:id/captions/:captionId/default', async (req, res) => {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
+    }
+    const ownerId = user.masterAccountId || user.userId;
+    const { id, captionId } = req.params;
+    try {
+      const payload = { masterAccountId: ownerId };
+      const { data } = await client.post(`/internal/v1/data/datasets/${encodeURIComponent(id)}/captions/${encodeURIComponent(captionId)}/default`, payload);
+      res.json(data);
+    } catch (err) {
+      const status = err.response?.status || 500;
+      logger.error('set default caption set proxy error', err.response?.data || err.message);
       res.status(status).json(err.response?.data || { error: 'proxy-error' });
     }
   });

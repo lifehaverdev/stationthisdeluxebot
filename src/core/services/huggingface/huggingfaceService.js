@@ -225,23 +225,36 @@ class HuggingFaceService {
     }
 
     const raw = await response.text();
-    this.logger.debug('[HuggingFace] Raw SSE payload:', raw);
+    this.logger.debug(`[HuggingFace] Raw SSE payload length: ${raw.length}`);
 
     const events = this._parseSSE(raw);
     let finalData = null;
     let lastGeneratingData = null;
     let errorMessage = null;
+    let generatingEvents = 0;
 
     events.forEach(({ name, data }) => {
-      this.logger.info(`[HuggingFace] Event ${name} => ${data}`);
+      if (name === 'generating') {
+        generatingEvents += 1;
+        lastGeneratingData = data;
+        return;
+      }
+
+      const preview = this._formatPayloadForLog(data);
+      const suffix = preview ? ` => ${preview}` : '';
+      this.logger.info(`[HuggingFace] Event ${name}${suffix}`);
       if (name === 'error') {
         errorMessage = this._extractErrorMessage(data);
       } else if (name === 'complete') {
         finalData = data;
-      } else if (name === 'generating') {
-        lastGeneratingData = data;
       }
     });
+
+    if (generatingEvents > 0) {
+      const preview = this._formatPayloadForLog(lastGeneratingData);
+      const summarySuffix = preview ? ` Last chunk: ${preview}` : '';
+      this.logger.info(`[HuggingFace] Received ${generatingEvents} generating events.${summarySuffix}`);
+    }
 
     if (errorMessage) {
       throw new Error(errorMessage);
@@ -274,7 +287,7 @@ class HuggingFaceService {
           events.push({ name: currentEvent.name || 'message', data: currentEvent.data.join('\n') });
         }
         currentEvent = { name: trimmed.replace('event:', '').trim(), data: [] };
-        this.logger.info(`[HuggingFace] SSE event detected on line ${index}: ${currentEvent.name}`);
+        this.logger.debug(`[HuggingFace] SSE event detected on line ${index}: ${currentEvent.name}`);
         return;
       }
       if (trimmed.startsWith('data:')) {
@@ -288,6 +301,23 @@ class HuggingFaceService {
     }
 
     return events;
+  }
+
+  _formatPayloadForLog(payload, limit = 160) {
+    if (payload === undefined || payload === null) return '';
+    let value = payload;
+    if (typeof value !== 'string') {
+      try {
+        value = JSON.stringify(value);
+      } catch (error) {
+        value = String(value);
+      }
+    }
+    let sanitized = value.replace(/\s+/g, ' ').trim();
+    if (sanitized.length > limit) {
+      sanitized = `${sanitized.slice(0, limit)}…`;
+    }
+    return sanitized;
   }
 
   _extractErrorMessage(payload) {

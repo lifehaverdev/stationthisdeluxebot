@@ -191,6 +191,7 @@ class StepContinuator {
      * @param {boolean} isLastStep - Whether this is the last step (to avoid duplicate notifications)
      */
     async _finalizeSpell(spell, castId, stepGenerationIds, completedGeneration, originalContext, isLastStep = false) {
+        let finalGenerationRecordForEvent = null;
         // Check if cast is already completed to prevent duplicate finalization
         if (castId) {
             const isCompleted = await this.castManager.checkCastStatus(castId);
@@ -287,17 +288,59 @@ class StepContinuator {
                         notificationEvents.emit('generationUpdated', updatedRecord);
                         this.logger.info(`[StepContinuator] Emitted generationUpdated event for final spell completion ${completedGeneration._id}`);
                     }
+                    finalGenerationRecordForEvent = updatedRecord || completedGeneration;
                 } catch (emitErr) {
                     this.logger.error(`[StepContinuator] Failed to emit event for final step: ${emitErr.message}`);
+                    finalGenerationRecordForEvent = completedGeneration;
                 }
             } catch (updateErr) {
                 this.logger.error(`[StepContinuator] Failed to update final step record: ${updateErr.message}`);
                 // Fallback: create a new final record if update fails
-                await this._createFinalNotificationRecord(spell, castId, stepGenerationIds, completedGeneration, originalContext, totalCostUsd, totalPointsSpent);
+                finalGenerationRecordForEvent = await this._createFinalNotificationRecord(
+                    spell,
+                    castId,
+                    stepGenerationIds,
+                    completedGeneration,
+                    originalContext,
+                    totalCostUsd,
+                    totalPointsSpent
+                );
             }
         } else {
             // Create final generation record for spell completion notification
-            await this._createFinalNotificationRecord(spell, castId, stepGenerationIds, completedGeneration, originalContext, totalCostUsd, totalPointsSpent);
+            finalGenerationRecordForEvent = await this._createFinalNotificationRecord(
+                spell,
+                castId,
+                stepGenerationIds,
+                completedGeneration,
+                originalContext,
+                totalCostUsd,
+                totalPointsSpent
+            );
+        }
+
+        try {
+            const finalGenerationId = Array.isArray(stepGenerationIds) && stepGenerationIds.length
+                ? stepGenerationIds[stepGenerationIds.length - 1]
+                : (completedGeneration?._id?.toString() || null);
+            notificationEvents.emit('spellCompletion', {
+                spellSlug: spell.slug || (spell._id && spell._id.toString()) || null,
+                spellId: spell._id ? spell._id.toString() : null,
+                castId: castId || null,
+                masterAccountId: originalContext?.masterAccountId || null,
+                stepGenerationIds,
+                finalGenerationId,
+                finalGenerationRecord: finalGenerationRecordForEvent || null,
+                finalStepSnapshot: {
+                    outputs: completedGeneration?.outputs || null,
+                    responsePayload: completedGeneration?.responsePayload || null,
+                    text: completedGeneration?.text || null,
+                    result: completedGeneration?.result || null
+                },
+                captionTask: originalContext?.captionTask || null,
+            });
+        } catch (emitErr) {
+            this.logger.warn(`[StepContinuator] Failed to emit spellCompletion event: ${emitErr.message}`);
         }
     }
 
@@ -316,6 +359,9 @@ class StepContinuator {
             castId: completedGeneration.metadata.castId || null,
             requestPayload: originalContext.parameterOverrides,
             responsePayload: completedGeneration.responsePayload,
+            outputs: completedGeneration.outputs || null,
+            text: completedGeneration.text || null,
+            result: completedGeneration.result || null,
             status: 'completed',
             deliveryStatus: 'pending', // So the dispatcher picks it up
             notificationPlatform: originalContext.platform,
@@ -343,10 +389,10 @@ class StepContinuator {
             }
         };
 
-        await this.generationRecordManager.createGenerationRecord(finalGenerationParams);
+        const { generationId } = await this.generationRecordManager.createGenerationRecord(finalGenerationParams);
         this.logger.info(`[StepContinuator] Final notification record for spell "${spell.name}" created.`);
+        return { _id: generationId, ...finalGenerationParams };
     }
 }
 
 module.exports = StepContinuator;
-

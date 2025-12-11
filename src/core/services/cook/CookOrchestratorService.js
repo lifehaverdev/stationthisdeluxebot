@@ -256,6 +256,78 @@ class CookOrchestratorService {
     this.logger.debug(`[CookOrchestrator] Emitted cookStatusUpdate for ${collectionId}: status=${status}, generationCount=${generationCount}/${targetSupply}, running=${running}, eventType=${eventType}`);
   }
 
+  async _pruneCompletedRunningJobs({ state, collectionId, userId }) {
+    if (!state || !state.running || state.running.size === 0) {
+      return 0;
+    }
+
+    await this._init();
+    const jobIds = Array.from(state.running);
+    if (!this.outputsCol) return 0;
+
+    const docs = await this.outputsCol.find(
+      { 'metadata.jobId': { $in: jobIds } },
+      { projection: { 'metadata.jobId': 1, status: 1 } }
+    ).toArray();
+
+    const terminalStatuses = new Set(['completed', 'failed', 'payment_failed', 'timeout', 'cancelled_by_user']);
+    const statusByJob = new Map();
+    for (const doc of docs) {
+      const jobId = doc?.metadata?.jobId || doc?.jobId;
+      if (jobId) {
+        statusByJob.set(jobId, doc.status);
+      }
+    }
+
+    let pruned = 0;
+    for (const jobId of jobIds) {
+      const status = statusByJob.get(jobId);
+      if (status && terminalStatuses.has(status)) {
+        state.running.delete(jobId);
+        pruned += 1;
+        this.logger.warn(`[CookOrchestrator] Pruned stale running job ${jobId} for collection ${collectionId}`);
+      }
+    }
+
+    return pruned;
+  }
+
+  async reconcileState({ collectionId, userId, checkCompletion = true } = {}) {
+    if (!collectionId || !userId) {
+      return { pruned: 0, running: 0, completed: false };
+    }
+    const key = this._getKey(collectionId, userId);
+    const state = this.runningByCollection.get(key);
+    if (!state) {
+      return { pruned: 0, running: 0, completed: false };
+    }
+
+    const releaseLock = await this._acquireLock(key);
+    try {
+      const pruned = await this._pruneCompletedRunningJobs({ state, collectionId, userId });
+      let completed = false;
+      if (checkCompletion && !state.stopped && (state.running?.size || 0) === 0 && state.total) {
+        const produced = await this._getProducedCount(collectionId, userId);
+        if (produced >= state.total) {
+          await this.appendEvent('CookCompleted', { collectionId, userId, cookId: state.cookId, totalSupply: state.total });
+          if (state.cookId) {
+            try {
+              await internalApiClient.put(`/internal/v1/data/cook/cooks/${state.cookId}`, { status: 'completed' });
+            } catch (err) {
+              this.logger.warn(`[CookOrchestrator] Failed to mark cook ${state.cookId} completed during reconciliation: ${err.message}`);
+            }
+          }
+          this.runningByCollection.delete(key);
+          completed = true;
+          this.logger.info(`[CookOrchestrator] Reconciled cook ${collectionId}:${userId} to completed state`);
+        }
+      }
+      return { pruned, running: state.running?.size || 0, completed };
+    } finally {
+      releaseLock();
+    }
+  }
+
   _getKey(collectionId, userId) {
     return `${collectionId}:${userId}`;
   }
@@ -520,6 +592,10 @@ class CookOrchestratorService {
           state.cookId = cookId;
         }
       }
+
+      if (state) {
+        await this._pruneCompletedRunningJobs({ state, collectionId, userId });
+      }
       
       if (!state) {
         this.logger.warn(`[CookOrchestrator] pauseCook called for ${key} but no active state found`);
@@ -566,6 +642,10 @@ class CookOrchestratorService {
         if (state && cookId) {
           state.cookId = cookId;
         }
+      }
+
+      if (state) {
+        await this._pruneCompletedRunningJobs({ state, collectionId, userId });
       }
       
       if (!state) {

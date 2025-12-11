@@ -15,6 +15,36 @@ function createDatasetsApi(dependencies) {
     return router;
   }
 
+  // Track scheduled caption timers so we can cancel them if needed
+  const activeCaptionTimers = new Map(); // datasetId -> Set<Timeout>
+  const registerCaptionTimer = (datasetId, timer) => {
+    if (!datasetId || !timer) return;
+    const key = String(datasetId);
+    if (!activeCaptionTimers.has(key)) {
+      activeCaptionTimers.set(key, new Set());
+    }
+    activeCaptionTimers.get(key).add(timer);
+  };
+  const unregisterCaptionTimer = (datasetId, timer) => {
+    if (!datasetId || !timer) return;
+    const key = String(datasetId);
+    const timers = activeCaptionTimers.get(key);
+    if (!timers) return;
+    timers.delete(timer);
+    if (!timers.size) {
+      activeCaptionTimers.delete(key);
+    }
+  };
+  const clearCaptionTimers = (datasetId) => {
+    if (!datasetId) return;
+    const key = String(datasetId);
+    const timers = activeCaptionTimers.get(key);
+    if (timers) {
+      timers.forEach((timer) => clearTimeout(timer));
+      activeCaptionTimers.delete(key);
+    }
+  };
+
   // GET /internal/v1/data/datasets/owner/:masterAccountId - List datasets by owner
   router.get('/owner/:masterAccountId', async (req, res, next) => {
     const { masterAccountId } = req.params;
@@ -337,14 +367,47 @@ function createDatasetsApi(dependencies) {
 
       const intervalMs = Number(process.env.CAPTION_CAST_INTERVAL_MS || '30000');
 
+      // Create or reuse an in-progress caption set so captions are written as soon as they're ready
+      let activeCaptionSetId = null;
+      try {
+        const partialCaptionSet = await datasetDb.addCaptionSet(datasetId, {
+          method: spellSlug,
+          hash: imagesHash,
+          captions: Array(dataset.images.length).fill(null),
+          createdBy: new ObjectId(masterAccountId),
+          status: 'in_progress',
+        });
+        activeCaptionSetId = partialCaptionSet?._id || null;
+      } catch (captionSetErr) {
+        logger.warn('[DatasetsAPI] Failed to initialize caption set scaffold:', captionSetErr.message);
+      }
+
       const scheduleCast = (idx) => {
         const imageUrl = dataset.images[idx];
-        setTimeout(async () => {
+        const timer = setTimeout(async () => {
+          try {
+            const current = await datasetDb.findOne(
+              { _id: new ObjectId(datasetId) },
+              { projection: { captionTask: 1 } }
+            );
+            if (!current?.captionTask || current.captionTask.status !== 'running') {
+              logger.info(`[DatasetsAPI] Caption task for dataset ${datasetId} no longer running. Skipping idx ${idx}.`);
+              return;
+            }
+          } catch (statusErr) {
+            logger.warn(`[DatasetsAPI] Failed to verify caption task status before casting idx ${idx}:`, statusErr.message);
+          }
           // Use 'web-sandbox' so NotificationDispatcher emits WebSocket updates
           const context = {
             masterAccountId,
             platform: 'web-sandbox',
             parameterOverrides: { ...parameterOverrides, imageUrl },
+            captionTask: {
+              datasetId,
+              imageIndex: idx,
+              totalImages: dataset.images.length,
+              spellSlug,
+            },
           };
           try {
             const result = await spellsService.castSpell(spellSlug, context, castsDb);
@@ -357,8 +420,11 @@ function createDatasetsApi(dependencies) {
             );
           } catch (castErr) {
             logger.error(`[DatasetsAPI] Failed casting spell for image ${idx}:`, castErr.message);
+          } finally {
+            unregisterCaptionTimer(datasetId, timer);
           }
         }, idx * intervalMs); // stagger by env-config interval
+        registerCaptionTimer(datasetId, timer);
       };
 
       dataset.images.forEach((_, idx) => scheduleCast(idx));
@@ -387,7 +453,8 @@ function createDatasetsApi(dependencies) {
         startedAt: new Date(),
         imagesHash,
         castMap,
-        captions: Array(dataset.images.length).fill(null)
+        captions: Array(dataset.images.length).fill(null),
+        activeCaptionSetId,
       };
 
       await datasetDb.updateOne({ _id: new ObjectId(datasetId) }, { $set: { captionTask } });
@@ -413,6 +480,133 @@ function createDatasetsApi(dependencies) {
     } catch (err) {
       logger.error('[DatasetsAPI] Failed fetching caption sets:', err);
       res.status(500).json({ error: { code: 'FETCH_ERROR', message: 'Could not fetch caption sets' } });
+    }
+  });
+
+  // POST /internal/v1/data/datasets/:datasetId/caption-task/cancel – cancel in-progress caption generation
+  router.post('/:datasetId/caption-task/cancel', async (req, res) => {
+    const { datasetId } = req.params;
+    const { masterAccountId } = req.body || {};
+
+    if (!masterAccountId) {
+      return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'masterAccountId is required' } });
+    }
+
+    try {
+      const dataset = await datasetDb.findOne({ _id: new ObjectId(datasetId) }, {
+        projection: { ownerAccountId: 1, captionTask: 1 },
+      });
+      if (!dataset) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Dataset not found' } });
+      }
+      if (dataset.ownerAccountId.toString() !== masterAccountId) {
+        return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'You can only cancel your own caption tasks' } });
+      }
+      const isRunning = dataset.captionTask && dataset.captionTask.status === 'running';
+      clearCaptionTimers(datasetId);
+      if (!isRunning) {
+        return res.json({ success: true, data: { cancelled: false, reason: 'not-running' } });
+      }
+
+      await datasetDb.updateOne({ _id: dataset._id }, {
+        $unset: { captionTask: '' },
+        $set: { updatedAt: new Date() },
+      });
+
+      try {
+        const websocketService = require('../../core/services/websocket/server');
+        websocketService.sendToUser(masterAccountId, {
+          type: 'captionProgress',
+          payload: {
+            datasetId,
+            status: 'cancelled',
+          },
+        });
+      } catch (wsErr) {
+        logger.warn('[DatasetsAPI] Failed to emit caption cancel event via websocket:', wsErr.message);
+      }
+
+      res.json({ success: true, data: { cancelled: true } });
+    } catch (err) {
+      logger.error('[DatasetsAPI] Failed cancelling caption task:', err);
+      res.status(500).json({ error: { code: 'CANCEL_ERROR', message: 'Failed to cancel caption task' } });
+    }
+  });
+
+  // DELETE /internal/v1/data/datasets/:datasetId/captions/:captionId – remove caption set
+  router.delete('/:datasetId/captions/:captionId', async (req, res) => {
+    const { datasetId, captionId } = req.params;
+    const { masterAccountId } = req.body || {};
+
+    if (!masterAccountId) {
+      return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'masterAccountId is required' } });
+    }
+
+    try {
+      const dataset = await datasetDb.findOne({ _id: new ObjectId(datasetId) }, { projection: { ownerAccountId: 1, captionSets: 1 } });
+      if (!dataset) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Dataset not found' } });
+      }
+      if (dataset.ownerAccountId.toString() !== masterAccountId) {
+        return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'You can only modify your own datasets' } });
+      }
+
+      const captionSets = dataset.captionSets || [];
+      const target = captionSets.find((cs) => cs._id.toString() === captionId);
+      if (!target) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Caption set not found' } });
+      }
+
+      const fallback = captionSets.find((cs) => cs._id.toString() !== captionId);
+      await datasetDb.removeCaptionSet(datasetId, captionId);
+
+      if (target.isDefault && fallback) {
+        await datasetDb.setDefaultCaptionSet(datasetId, fallback._id.toString());
+      }
+
+      res.json({
+        success: true,
+        data: {
+          deleted: true,
+          reassignedDefault: Boolean(target.isDefault && fallback),
+          fallbackCaptionSetId: target.isDefault && fallback ? fallback._id.toString() : null,
+        },
+      });
+    } catch (err) {
+      logger.error('[DatasetsAPI] Failed deleting caption set:', err);
+      res.status(500).json({ error: { code: 'DELETE_ERROR', message: 'Failed to delete caption set' } });
+    }
+  });
+
+  // POST /internal/v1/data/datasets/:datasetId/captions/:captionId/default – set default caption set
+  router.post('/:datasetId/captions/:captionId/default', async (req, res) => {
+    const { datasetId, captionId } = req.params;
+    const { masterAccountId } = req.body || {};
+
+    if (!masterAccountId) {
+      return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'masterAccountId is required' } });
+    }
+
+    try {
+      const dataset = await datasetDb.findOne({ _id: new ObjectId(datasetId) }, { projection: { ownerAccountId: 1, captionSets: 1 } });
+      if (!dataset) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Dataset not found' } });
+      }
+      if (dataset.ownerAccountId.toString() !== masterAccountId) {
+        return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'You can only modify your own datasets' } });
+      }
+
+      const captionSets = dataset.captionSets || [];
+      const target = captionSets.find((cs) => cs._id.toString() === captionId);
+      if (!target) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Caption set not found' } });
+      }
+
+      await datasetDb.setDefaultCaptionSet(datasetId, captionId);
+      res.json({ success: true, data: { captionSetId: captionId } });
+    } catch (err) {
+      logger.error('[DatasetsAPI] Failed setting default caption set:', err);
+      res.status(500).json({ error: { code: 'UPDATE_ERROR', message: 'Failed to set default caption set' } });
     }
   });
 

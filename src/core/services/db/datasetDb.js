@@ -84,10 +84,100 @@ class DatasetDB extends BaseDB {
   }
 
   async addCaptionSet(datasetId, captionSet) {
-    const enriched = { _id: new ObjectId(), createdAt: new Date(), ...captionSet };
-    return this.updateOne(
+    const enriched = {
+      _id: new ObjectId(),
+      createdAt: new Date(),
+      status: captionSet?.status || 'completed',
+      ...captionSet,
+    };
+    await this.updateOne(
       { _id: new ObjectId(datasetId) },
       { $push: { captionSets: enriched }, $set: { updatedAt: new Date() } }
+    );
+    return enriched;
+  }
+
+  async updateCaptionInSet(datasetId, captionSetId, imageIndex, caption) {
+    if (imageIndex === undefined || imageIndex === null) return null;
+    return this.updateOne(
+      { _id: new ObjectId(datasetId) },
+      {
+        $set: {
+          [`captionSets.$[target].captions.${imageIndex}`]: caption,
+          updatedAt: new Date(),
+        },
+      },
+      {
+        arrayFilters: [{ 'target._id': new ObjectId(captionSetId) }],
+      }
+    );
+  }
+
+  async setCaptionSetStatus(datasetId, captionSetId, status, extra = {}) {
+    const setPayload = {
+      'captionSets.$[target].status': status,
+      updatedAt: new Date(),
+    };
+
+    if (status === 'completed') {
+      setPayload['captionSets.$[target].completedAt'] = new Date();
+    } else if (extra.completedAt !== undefined) {
+      setPayload['captionSets.$[target].completedAt'] = extra.completedAt;
+    }
+
+    for (const [key, value] of Object.entries(extra)) {
+      if (value === undefined || key === 'completedAt') continue;
+      setPayload[`captionSets.$[target].${key}`] = value;
+    }
+
+    return this.updateOne(
+      { _id: new ObjectId(datasetId) },
+      { $set: setPayload },
+      {
+        arrayFilters: [{ 'target._id': new ObjectId(captionSetId) }],
+      }
+    );
+  }
+
+  async removeCaptionSet(datasetId, captionSetId) {
+    if (!datasetId || !captionSetId) return null;
+    return this.updateOne(
+      { _id: new ObjectId(datasetId) },
+      {
+        $pull: { captionSets: { _id: new ObjectId(captionSetId) } },
+        $set: { updatedAt: new Date() }
+      }
+    );
+  }
+
+  async setDefaultCaptionSet(datasetId, captionSetId) {
+    if (!datasetId) return null;
+    const dsId = new ObjectId(datasetId);
+    const timestamp = new Date();
+
+    if (!captionSetId) {
+      return this.updateOne(
+        { _id: dsId },
+        { $set: { 'captionSets.$[].isDefault': false, updatedAt: timestamp } }
+      );
+    }
+
+    const capId = new ObjectId(captionSetId);
+    return this.updateOne(
+      { _id: dsId },
+      {
+        $set: {
+          'captionSets.$[selected].isDefault': true,
+          'captionSets.$[others].isDefault': false,
+          updatedAt: timestamp,
+        },
+      },
+      {
+        arrayFilters: [
+          { 'selected._id': capId },
+          { 'others._id': { $ne: capId } },
+        ],
+      }
     );
   }
 

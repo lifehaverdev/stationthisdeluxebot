@@ -1225,6 +1225,182 @@
   transition: all 0.2s ease;
 }
 
+.caption-progress-panel {
+  margin: 12px 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.caption-progress-card {
+  border: 1px solid #2b2b2b;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.caption-progress-card.selected-dataset {
+  border-color: #4a90e2;
+  box-shadow: 0 0 8px rgba(74, 144, 226, 0.4);
+}
+
+.caption-progress-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.caption-progress-title {
+  font-weight: 600;
+  color: #f0f0f0;
+}
+
+.caption-progress-method {
+  font-size: 12px;
+  color: #999;
+}
+
+.caption-progress-status {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f5c16c;
+}
+
+.caption-progress-card.status-completed .caption-progress-status {
+  color: #6dd5ed;
+}
+
+.caption-progress-card.status-failed .caption-progress-status {
+  color: #ff8a80;
+}
+
+.caption-progress-bar {
+  width: 100%;
+  height: 6px;
+  background: #1a1a1a;
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.caption-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #f6d365, #fda085);
+  transition: width 0.3s ease;
+}
+
+.caption-progress-card.status-completed .caption-progress-fill {
+  background: linear-gradient(90deg, #2193b0, #6dd5ed);
+}
+
+.caption-progress-card.status-failed .caption-progress-fill {
+  background: linear-gradient(90deg, #ff7e5f, #feb47b);
+}
+
+.caption-progress-text {
+  font-size: 12px;
+  color: #b5b5b5;
+  margin-top: 6px;
+}
+
+.caption-progress-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.caption-progress-footer .btn-danger {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+.caption-viewer-dialog {
+  width: min(900px, 90vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.caption-viewer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.caption-viewer-close {
+  background: none;
+  border: none;
+  color: #f0f0f0;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.caption-viewer-meta {
+  display: flex;
+  gap: 24px;
+  font-size: 13px;
+  color: #b5b5b5;
+  margin-top: 4px;
+}
+
+.caption-viewer-list {
+  margin-top: 12px;
+  overflow-y: auto;
+  padding-right: 4px;
+  max-height: 60vh;
+}
+
+.caption-viewer-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+  align-items: flex-start;
+}
+
+.caption-viewer-row img,
+.caption-thumb.placeholder {
+  width: 80px;
+  height: 80px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #1d1d1d;
+  border: 1px solid #2a2a2a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #bcbcbc;
+  font-weight: 600;
+}
+
+.caption-text-block {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.caption-row-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #dedede;
+}
+
+.caption-text-block textarea {
+  width: 100%;
+  min-height: 70px;
+  resize: vertical;
+  border-radius: 6px;
+  border: 1px solid #2b2b2b;
+  background: #0f0f0f;
+  color: #f6f6f6;
+  padding: 8px;
+  font-family: inherit;
+  font-size: 13px;
+}
+
 /* Responsive Design for Advanced Features */
 @media (max-width: 768px) {
   .datasets-grid {

@@ -44,6 +44,7 @@ export default class ModsMenuModal {
       loadingCaptions: false,
       captionError: null,
       captionerSpells: [],
+      captionTasks: {},
     };
     this.modalElement = null;
     this.handleKeyDown = this.handleKeyDown.bind(this);
@@ -54,6 +55,7 @@ export default class ModsMenuModal {
     // WebSocket integration
     this.ws = window.websocketClient;
     this.setupWebSocketListeners();
+    this._captionTaskCleanupTimers = {};
 
     // Listen for uploads from UploadWindow so we can attach to dataset being edited
     this._uploadListener = async (e) => {
@@ -113,13 +115,15 @@ export default class ModsMenuModal {
 
       // Caption generation progress updates
       this.ws.on('captionProgress', (data) => {
-        const { captionSetId, progress, status, datasetId } = data;
-        if (datasetId !== this.state.selectedDatasetId) return;
+        const { captionSetId, status, datasetId } = data;
+        const normalizedDatasetId = this.normalizeId(datasetId);
+        this.handleCaptionTaskEvent(data);
+        if (normalizedDatasetId !== this.normalizeId(this.state.selectedDatasetId)) return;
         if(captionSetId){
-          const idx = this.state.captionSets.findIndex(c => c._id === captionSetId);
+          const normalizedId=this.normalizeId(captionSetId);
+          const idx = this.state.captionSets.findIndex(c => this.normalizeId(c._id) === normalizedId);
           if (idx !== -1) {
             const cs = this.state.captionSets[idx];
-            if(progress!=null) cs.progress = progress;
             if(status) cs.status = status;
             if (status === 'COMPLETED' || status === 'FAILED') {
               cs.completedAt = new Date();
@@ -242,7 +246,9 @@ export default class ModsMenuModal {
       const res = await fetch(`/api/v1/datasets/owner/${masterAccountId}`, { credentials: 'include' });
       if (!res.ok) throw new Error('Failed');
       const data = await res.json();
-      this.setState({ datasets: data.data?.datasets || [] });
+      const datasets = data.data?.datasets || [];
+      const captionTasks = this.hydrateCaptionTasksFromDatasets(datasets);
+      this.setState({ datasets, captionTasks });
     } catch(err){ console.warn('[ModsMenuModal] fetchDatasets error', err); }
   }
 
@@ -373,17 +379,28 @@ export default class ModsMenuModal {
     if (e.key === 'Escape') this.hide();
   }
 
+  ensureModalShell() {
+    if (!this.modalElement) return;
+    if (this.modalElement.querySelector('.mods-modal-container')) return;
+    this.modalElement.innerHTML = `
+      <div class="mods-modal-container">
+        <button class="close-btn" aria-label="Close">×</button>
+        <div class="mods-root-tabs"></div>
+        <div class="mods-content"></div>
+      </div>`;
+  }
+
   render() {
     if (!this.modalElement) return;
+    this.ensureModalShell();
 
     const { rootTab, view, categories, currentCategory, currentLoraCategory, loraCategories, counts, models, loading, error, favoriteIds, selectedTags, extraTags } = this.state;
 
     // Top tab bar
-    const tabBar = `
-      <div class="mods-root-tabs">
+    const tabButtons = `
         <button class="root-tab-btn${rootTab==='browse'?' active':''}" data-tab="browse">Browse</button>
         <button class="root-tab-btn${rootTab==='train'?' active':''}" data-tab="train">Train</button>
-      </div>`;
+      `;
 
     // Build browse view content (reuse original logic)
     let browseContent = '';
@@ -722,10 +739,12 @@ export default class ModsMenuModal {
                 <button class="btn-primary" id="export-selected" disabled>Export Selected</button>
               </div>
             </div>
-            <div class="datasets-grid">${datasets.map(ds=>`
-              <div class="dataset-card" data-id="${ds._id}">
+            <div class="datasets-grid">${datasets.map(ds=>{
+              const dsId = this.normalizeId(ds._id);
+              return `
+              <div class="dataset-card" data-id="${dsId}">
                 <div class="dataset-header">
-                  <input type="checkbox" class="dataset-select" data-id="${ds._id}" />
+                  <input type="checkbox" class="dataset-select" data-id="${dsId}" />
                   <h4>${ds.name||'Unnamed Dataset'}</h4>
                   <span class="visibility-badge visibility-${ds.visibility||'private'}">${ds.visibility||'private'}</span>
                 </div>
@@ -748,14 +767,15 @@ export default class ModsMenuModal {
                   </div>
                 </div>
                 <div class="dataset-actions">
-                  <button class="btn-secondary edit-dataset" data-id="${ds._id}">Edit</button>
-                  <button class="btn-primary use-dataset" data-id="${ds._id}">Use for Training</button>
-                  <button class="btn-danger delete-dataset" data-id="${ds._id}">Delete</button>
+                  <button class="btn-secondary edit-dataset" data-id="${dsId}">Edit</button>
+                  <button class="btn-primary use-dataset" data-id="${dsId}">Use for Training</button>
+                  <button class="btn-danger delete-dataset" data-id="${dsId}">Delete</button>
                 </div>
-              </div>
-            `).join('')}</div>
+              </div>`;
+            }).join('')}</div>
           ` : '<div class="empty-message">No datasets yet. Create your first dataset to get started!</div>'
         );
+        const captionProgressHtml = this.renderCaptionProgressPanel();
         const trList = loadingTrain ? '' : trainError ? '' : (
           trainings.length ? 
           '<div class="trainings-grid">'+trainings.map(tr=>`
@@ -799,21 +819,25 @@ export default class ModsMenuModal {
           </div>
           <div class="train-section">
             <div class="train-section-header"><h3>Captions</h3><button class="add-caption-btn" ${!this.state.selectedDatasetId?'disabled':''}>＋</button></div>
+            ${captionProgressHtml}
             ${this.state.loadingCaptions?
               '<div class="loading-spinner">Loading…</div>':
               this.state.captionError?`<div class="error-message">${this.state.captionError}</div>`:
               (!this.state.selectedDatasetId?'<div class="empty-message">Select a dataset above to view caption sets.</div>':
-                (this.state.captionSets.length? `<div class="captions-grid">${this.state.captionSets.map(cs=>`
-                  <div class="caption-card" data-id="${cs._id}">
+                (this.state.captionSets.length? `<div class="captions-grid">${this.state.captionSets.map(cs=>{
+                  const capId = this.normalizeId(cs._id);
+                  return `
+                  <div class="caption-card" data-id="${capId}">
                     <div class="caption-header"><h4>${cs.method}</h4><span class="caption-count">${cs.captions?.length||0} captions</span></div>
                     <div class="caption-meta"><span>${new Date(cs.createdAt||cs.created||Date.now()).toLocaleString()}</span>${cs.isDefault?'<span class="badge">Default</span>':''}</div>
                     <div class="caption-actions">
-                      <button class="btn-secondary view-caption" data-id="${cs._id}">View</button>
-                      <button class="btn-primary download-caption" data-id="${cs._id}">Download</button>
-                      <button class="btn-danger delete-caption" data-id="${cs._id}">Delete</button>
-                      ${cs.isDefault?'':'<button class="btn-primary set-default" data-id="'+cs._id+'">Set Default</button>'}
+                      <button class="btn-secondary view-caption" data-id="${capId}">View</button>
+                      <button class="btn-primary download-caption" data-id="${capId}">Download</button>
+                      <button class="btn-danger delete-caption" data-id="${capId}">Delete</button>
+                      ${cs.isDefault?'':`<button class="btn-primary set-default" data-id="${capId}">Set Default</button>`}
                     </div>
-                  </div>`).join('')}</div>`:'<div class="empty-message">No caption sets found.</div>'))}
+                  </div>`;
+                }).join('')}</div>`:'<div class="empty-message">No caption sets found.</div>'))}
           </div>
           <div class="train-section">
             <div class="train-section-header"><h3>Trainings</h3><button class="add-training-btn">＋</button></div>
@@ -822,19 +846,21 @@ export default class ModsMenuModal {
       }
     }
 
-    // base modal html
-    this.modalElement.innerHTML = `
-      <div class="mods-modal-container">
-        <button class="close-btn" aria-label="Close">×</button>
-        ${tabBar}
-        <div class="mods-content"></div>
-      </div>`;
+    const tabBarEl = this.modalElement.querySelector('.mods-root-tabs');
+    if (tabBarEl) {
+      tabBarEl.innerHTML = tabButtons;
+    }
 
     const contentEl = this.modalElement.querySelector('.mods-content');
+    if (!contentEl) return;
+    const preserveScroll = rootTab === 'train' ? contentEl.scrollTop : null;
     if(rootTab==='browse') {
       contentEl.innerHTML = browseContent;
     } else {
       contentEl.innerHTML = mainContent;
+    }
+    if (preserveScroll !== null) {
+      contentEl.scrollTop = preserveScroll;
     }
 
     // Attach category btn events if browse
@@ -1052,7 +1078,7 @@ export default class ModsMenuModal {
       if(editBtn) {
         editBtn.onclick = (e) => {
           e.stopPropagation();
-          const dataset = this.state.datasets.find(ds => ds._id === datasetId);
+          const dataset = this.getDatasetById(datasetId);
           if(dataset) this.openDatasetForm(dataset);
         };
       }
@@ -1143,6 +1169,45 @@ export default class ModsMenuModal {
       }
     });
 
+    // Caption card actions
+    this.modalElement.querySelectorAll('.view-caption').forEach(btn=>{
+      btn.onclick=(e)=>{
+        e.stopPropagation();
+        const set=this.getCaptionSetById(btn.getAttribute('data-id'));
+        if(set) this.openCaptionViewer(set);
+      };
+    });
+    this.modalElement.querySelectorAll('.download-caption').forEach(btn=>{
+      btn.onclick=(e)=>{
+        e.stopPropagation();
+        const set=this.getCaptionSetById(btn.getAttribute('data-id'));
+        if(set) this.downloadCaptionSet(set);
+      };
+    });
+    this.modalElement.querySelectorAll('.delete-caption').forEach(btn=>{
+      btn.onclick=(e)=>{
+        e.stopPropagation();
+        const id=btn.getAttribute('data-id');
+        const normalized=this.normalizeId(id);
+        this.deleteCaptionSet(normalized);
+      };
+    });
+    this.modalElement.querySelectorAll('.set-default').forEach(btn=>{
+      btn.onclick=(e)=>{
+        e.stopPropagation();
+        const id=btn.getAttribute('data-id');
+        this.setDefaultCaptionSet(this.normalizeId(id));
+      };
+    });
+    this.modalElement.querySelectorAll('.cancel-caption-task').forEach(btn=>{
+      btn.onclick=(e)=>{
+        e.preventDefault();
+        e.stopPropagation();
+        const datasetId = btn.getAttribute('data-id');
+        this.cancelCaptionTask(datasetId);
+      };
+    });
+
     // Import button
     const impBtn = this.modalElement.querySelector('.import-btn');
     if (impBtn) {
@@ -1151,9 +1216,12 @@ export default class ModsMenuModal {
   }
 
   attachCloseEvents() {
-    this.modalElement.querySelector('.close-btn').addEventListener('click', () => this.hide());
+    if (!this.modalElement) return;
     this.modalElement.addEventListener('click', (e) => {
-      if (e.target === this.modalElement) this.hide();
+      if (e.target === this.modalElement || e.target.closest('.close-btn')) {
+        e.preventDefault();
+        this.hide();
+      }
     });
     document.addEventListener('keydown', this.handleKeyDown);
   }
@@ -1508,6 +1576,195 @@ export default class ModsMenuModal {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   }
 
+  normalizeId(value) {
+    if (!value) return '';
+    if (typeof value === 'string') return value;
+    if (typeof value === 'object' && value.$oid) return value.$oid;
+    if (typeof value.toString === 'function') return value.toString();
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+
+  getDatasetById(datasetId) {
+    const target = this.normalizeId(datasetId);
+    return this.state.datasets.find(ds => this.normalizeId(ds._id) === target) || null;
+  }
+
+  getCaptionSetById(captionSetId) {
+    const target = this.normalizeId(captionSetId);
+    return this.state.captionSets.find(cs => this.normalizeId(cs._id) === target) || null;
+  }
+
+  hydrateCaptionTasksFromDatasets(datasets = []) {
+    const tasks = { ...this.state.captionTasks };
+    const now = Date.now();
+    datasets.forEach(ds => {
+      const dsId = this.normalizeId(ds?._id);
+      if (!dsId) return;
+      const task = ds.captionTask;
+      if (task && task.status === 'running') {
+        const completedMap = {};
+        (task.captions || []).forEach((caption, idx) => {
+          if (caption) completedMap[idx] = true;
+        });
+        tasks[dsId] = {
+          datasetId: dsId,
+          datasetName: ds.name || 'Dataset',
+          method: task.spellSlug || task.method || 'captioner',
+          total: (ds.images || []).length || (task.castMap || []).length || (task.captions || []).length || 0,
+          completedMap,
+          completedCount: Object.keys(completedMap).length,
+          status: 'running',
+          updatedAt: now,
+        };
+      } else if (tasks[dsId] && tasks[dsId].status === 'running') {
+        delete tasks[dsId];
+      }
+    });
+    return tasks;
+  }
+
+  setCaptionTask(datasetId, task) {
+    const id = this.normalizeId(datasetId);
+    if (!id) return;
+    const next = { ...this.state.captionTasks };
+    if (task) next[id] = task;
+    else delete next[id];
+    this.setState({ captionTasks: next });
+  }
+
+  scheduleCaptionTaskCleanup(datasetId, delay = 8000) {
+    const id = this.normalizeId(datasetId);
+    if (!id) return;
+    if (this._captionTaskCleanupTimers[id]) {
+      clearTimeout(this._captionTaskCleanupTimers[id]);
+    }
+    this._captionTaskCleanupTimers[id] = setTimeout(() => {
+      delete this._captionTaskCleanupTimers[id];
+      const task = this.state.captionTasks[id];
+      if (task && task.status !== 'running') {
+        this.setCaptionTask(id, null);
+      }
+    }, delay);
+  }
+
+  markCaptionTaskStarting(datasetId, method) {
+    const id = this.normalizeId(datasetId);
+    if (!id) return;
+    const dataset = this.getDatasetById(id);
+    const total = (dataset?.images || []).length;
+    const task = {
+      datasetId: id,
+      datasetName: dataset?.name || 'Dataset',
+      method: method || 'captioner',
+      total,
+      completedMap: {},
+      completedCount: 0,
+      status: 'running',
+      updatedAt: Date.now(),
+    };
+    this.setCaptionTask(id, task);
+  }
+
+  handleCaptionTaskEvent(data = {}) {
+    const id = this.normalizeId(data.datasetId);
+    if (!id) return;
+    const dataset = this.getDatasetById(id);
+    const prev = this.state.captionTasks[id] || {};
+    const statusRaw = (data.status || '').toLowerCase();
+    let completedMap = statusRaw === 'started' ? {} : { ...(prev.completedMap || {}) };
+    if (Number.isInteger(data.imageIndex)) {
+      completedMap[data.imageIndex] = true;
+    }
+    if (Array.isArray(data.completedIndices)) {
+      data.completedIndices.forEach(idx => {
+        if (Number.isInteger(idx)) completedMap[idx] = true;
+      });
+    }
+    const castMapLength = Array.isArray(data.castMap)
+      ? data.castMap.length
+      : (data.castMap && typeof data.castMap === 'object' ? Object.keys(data.castMap).length : 0);
+    const total = castMapLength || data.totalImages || prev.total || (dataset?.images || []).length || 0;
+    let status = statusRaw || prev.status || 'running';
+    if (status === 'started') status = 'running';
+    let completedCount = Object.keys(completedMap).length;
+    if (status === 'completed' && total) {
+      completedCount = total;
+    }
+    const task = {
+      datasetId: id,
+      datasetName: dataset?.name || prev.datasetName || 'Dataset',
+      method: data.spellSlug || prev.method || dataset?.captionTask?.spellSlug || 'captioner',
+      total,
+      completedMap,
+      completedCount,
+      status,
+      updatedAt: Date.now(),
+    };
+    if (status !== 'running') {
+      task.completedAt = Date.now();
+    }
+    this.setCaptionTask(id, task);
+    if (status !== 'running') {
+      this.scheduleCaptionTaskCleanup(id);
+    }
+  }
+
+  renderCaptionProgressPanel() {
+    const selectedId = this.normalizeId(this.state.selectedDatasetId);
+    const entries = Object.values(this.state.captionTasks || {}).filter(task => {
+      if (!task) return false;
+      if (task.status === 'running') return true;
+      return task.datasetId === selectedId;
+    });
+    if (!entries.length) return '';
+    const ordered = entries.sort((a, b) => {
+      if (a.datasetId === selectedId && b.datasetId !== selectedId) return -1;
+      if (b.datasetId === selectedId && a.datasetId !== selectedId) return 1;
+      if (a.status === 'running' && b.status !== 'running') return -1;
+      if (b.status === 'running' && a.status !== 'running') return 1;
+      return (b.updatedAt || 0) - (a.updatedAt || 0);
+    });
+    return `<div class="caption-progress-panel">${ordered.map(task => this.renderCaptionProgressCard(task, selectedId)).join('')}</div>`;
+  }
+
+  renderCaptionProgressCard(task, selectedId) {
+    if (!task) return '';
+    const percent = task.total ? Math.min(100, Math.round((Math.min(task.completedCount, task.total) / task.total) * 100)) : (task.status === 'completed' ? 100 : 0);
+    const statusLabel = task.status === 'completed'
+      ? 'Completed'
+      : task.status === 'failed'
+        ? 'Failed'
+        : 'Captioning…';
+    const secondary = task.status === 'running' && task.total
+      ? `${task.completedCount}/${task.total} images`
+      : `${task.completedCount} images`;
+    const highlightClass = selectedId && task.datasetId === selectedId ? ' selected-dataset' : '';
+    const actions = task.status === 'running'
+      ? `<button class="btn-danger cancel-caption-task" data-id="${task.datasetId}">Cancel</button>`
+      : '';
+    return `
+      <div class="caption-progress-card status-${task.status}${highlightClass}">
+        <div class="caption-progress-top">
+          <div>
+            <div class="caption-progress-title">${this.escapeHtml(task.datasetName || 'Dataset')}</div>
+            <div class="caption-progress-method">${this.escapeHtml(task.method || '')}</div>
+          </div>
+          <span class="caption-progress-status">${statusLabel}</span>
+        </div>
+        <div class="caption-progress-bar">
+          <div class="caption-progress-fill" style="width:${percent}%;"></div>
+        </div>
+        <div class="caption-progress-footer">
+          <div class="caption-progress-text">${secondary}</div>
+          ${actions}
+        </div>
+      </div>`;
+  }
+
   // Batch operation methods
   selectAllItems(type) {
     const checkboxes = this.modalElement.querySelectorAll(`.${type}-select`);
@@ -1647,10 +1904,12 @@ export default class ModsMenuModal {
     // Update the display
     const grid = this.modalElement.querySelector('.datasets-grid');
     if(grid) {
-      grid.innerHTML = filteredDatasets.map(ds=>`
-        <div class="dataset-card" data-id="${ds._id}">
+      grid.innerHTML = filteredDatasets.map(ds=>{
+        const dsId = this.normalizeId(ds._id);
+        return `
+        <div class="dataset-card" data-id="${dsId}">
           <div class="dataset-header">
-            <input type="checkbox" class="dataset-select" data-id="${ds._id}" />
+            <input type="checkbox" class="dataset-select" data-id="${dsId}" />
             <h4>${ds.name||'Unnamed Dataset'}</h4>
             <span class="visibility-badge visibility-${ds.visibility||'private'}">${ds.visibility||'private'}</span>
           </div>
@@ -1673,12 +1932,12 @@ export default class ModsMenuModal {
             </div>
           </div>
           <div class="dataset-actions">
-            <button class="btn-secondary edit-dataset" data-id="${ds._id}">Edit</button>
-            <button class="btn-primary use-dataset" data-id="${ds._id}">Use for Training</button>
-            <button class="btn-danger delete-dataset" data-id="${ds._id}">Delete</button>
+            <button class="btn-secondary edit-dataset" data-id="${dsId}">Edit</button>
+            <button class="btn-primary use-dataset" data-id="${dsId}">Use for Training</button>
+            <button class="btn-danger delete-dataset" data-id="${dsId}">Delete</button>
           </div>
-        </div>
-      `).join('');
+        </div>`;
+      }).join('');
     }
   }
 
@@ -2212,8 +2471,11 @@ export default class ModsMenuModal {
     try{
       const res= await fetch(`/api/v1/datasets/${encodeURIComponent(datasetId)}/captions`,{credentials:'include'});
       if(!res.ok) throw new Error('Failed');
-      const data= await res.json();
-      this.setState({captionSets:data.captionSets||[],loadingCaptions:false});
+      const payload= await res.json();
+      const list = Array.isArray(payload?.data)
+        ? payload.data
+        : (payload?.data?.captionSets || payload?.captionSets || []);
+      this.setState({captionSets:Array.isArray(list)?list:[],loadingCaptions:false});
     }catch(err){
       console.warn('[ModsMenuModal] fetchCaptionSets error',err);
       this.setState({loadingCaptions:false,captionError:'Could not load caption sets.'});
@@ -2224,7 +2486,11 @@ export default class ModsMenuModal {
     const overlay=document.createElement('div');
     overlay.className='import-overlay';
 
-    const dsOptions=this.state.datasets.map(d=>`<option value="${d._id}" ${d._id===initialDatasetId?'selected':''}>${d.name}</option>`).join('');
+    const normalizedInitialId = this.normalizeId(initialDatasetId);
+    const dsOptions=this.state.datasets.map(d=>{
+      const value=this.normalizeId(d._id);
+      return `<option value="${value}" ${value===normalizedInitialId?'selected':''}>${d.name}</option>`;
+    }).join('');
     if(!this.state.captionerSpells.length){ await this.fetchCaptionerSpells(); }
     const spellOpts=(this.state.captionerSpells.length?this.state.captionerSpells:[{slug:'',name:'(no captioner spells found)'}]).map(s=>`<option value="${s.slug||s.spellId}">${s.name||s.displayName}</option>`).join('');
     overlay.innerHTML=`<div class="import-dialog"><h3>Generate Captions</h3>
@@ -2253,10 +2519,169 @@ export default class ModsMenuModal {
           method:'POST',credentials:'include',headers:{'Content-Type':'application/json','x-csrf-token':csrfToken},
           body:JSON.stringify({spellSlug,triggerWords:triggers,masterAccountId})});
         if(!res.ok) throw new Error('Generate failed');
+        this.markCaptionTaskStarting(dsId, spellSlug);
         cleanup();
         this.fetchCaptionSets(dsId);
       }catch(err){errEl.textContent=err.message||'Generate failed';errEl.style.display='block';overlay.querySelector('.confirm-generate-btn').disabled=false;}
     };
+  }
+
+  normalizeCaptionEntries(captionSet, datasetId = this.state.selectedDatasetId){
+    if(!captionSet) return [];
+    const dataset = this.getDatasetById(datasetId);
+    const datasetImages = dataset?.images || [];
+    return (captionSet.captions || []).map((entry, idx) => {
+      const normalized = { imageUrl: datasetImages[idx] || '', text: '' };
+      if (typeof entry === 'string') {
+        normalized.text = entry;
+      } else if (entry && typeof entry === 'object') {
+        normalized.text = entry.caption || entry.text || entry.description || '';
+        normalized.imageUrl = entry.imageUrl || entry.url || normalized.imageUrl;
+      }
+      return normalized;
+    });
+  }
+
+  openCaptionViewer(captionSet){
+    if(!captionSet) return;
+    const entries = this.normalizeCaptionEntries(captionSet);
+    const overlay=document.createElement('div');
+    overlay.className='import-overlay caption-viewer-overlay';
+    const createdAt = new Date(captionSet.createdAt||captionSet.created||Date.now()).toLocaleString();
+    overlay.innerHTML=`<div class="import-dialog caption-viewer-dialog">
+      <div class="caption-viewer-header">
+        <h3>${this.escapeHtml(captionSet.method||'Caption Set')}</h3>
+        <button class="caption-viewer-close" aria-label="Close">×</button>
+      </div>
+      <div class="caption-viewer-meta">
+        <span>${entries.length} captions</span>
+        <span>${createdAt}</span>
+      </div>
+      <div class="caption-viewer-list">
+        ${entries.length? entries.map((entry,idx)=>`
+          <div class="caption-viewer-row">
+            ${entry.imageUrl?`<img src="${this.escapeHtml(entry.imageUrl)}" alt="Image ${idx+1}" />`:`<div class="caption-thumb placeholder">#${idx+1}</div>`}
+            <div class="caption-text-block">
+              <div class="caption-row-title">Image ${idx+1}</div>
+              <textarea readonly data-caption-idx="${idx}"></textarea>
+            </div>
+          </div>
+        `).join('') : '<div class="empty-message">No captions available.</div>'}
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    const cleanup=()=>{ if(overlay.parentNode){ overlay.parentNode.removeChild(overlay); } };
+    overlay.addEventListener('click',(e)=>{ if(e.target===overlay) cleanup(); });
+    overlay.querySelector('.caption-viewer-close').onclick=cleanup;
+    overlay.querySelectorAll('textarea[data-caption-idx]').forEach(textarea=>{
+      const idx=parseInt(textarea.getAttribute('data-caption-idx'),10);
+      textarea.value = entries[idx]?.text || '';
+    });
+  }
+
+  downloadCaptionSet(captionSet){
+    if(!captionSet) return;
+    const entries = this.normalizeCaptionEntries(captionSet);
+    if(!entries.length){
+      alert('This caption set has no captions yet.');
+      return;
+    }
+    const header='imageUrl,caption';
+    const rows=entries.map(entry=>`${this.toCsvValue(entry.imageUrl)},${this.toCsvValue(entry.text)}`);
+    const csv=[header,...rows].join('\n');
+    const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    const stamp=(captionSet.method||'captions').replace(/\s+/g,'-').toLowerCase();
+    a.href=url;
+    a.download=`${stamp}-dataset-captions.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  async deleteCaptionSet(captionSetId){
+    const datasetId = this.state.selectedDatasetId;
+    if(!datasetId || !captionSetId) return;
+    if(!confirm('Delete this caption set? This action cannot be undone.')) return;
+    try{
+      const csrfRes = await fetch('/api/v1/csrf-token');
+      const { csrfToken } = await csrfRes.json();
+      const res = await fetch(`/api/v1/datasets/${encodeURIComponent(datasetId)}/captions/${encodeURIComponent(captionSetId)}`,{
+        method:'DELETE',
+        credentials:'include',
+        headers:{'Content-Type':'application/json','x-csrf-token':csrfToken},
+        body:JSON.stringify({})
+      });
+      if(!res.ok) throw new Error('Failed');
+      this.fetchCaptionSets(datasetId);
+    }catch(err){
+      console.error('[ModsMenuModal] deleteCaptionSet error',err);
+      this.setState({captionError:'Failed to delete caption set.'});
+    }
+  }
+
+  async setDefaultCaptionSet(captionSetId){
+    const datasetId = this.state.selectedDatasetId;
+    if(!datasetId || !captionSetId) return;
+    try{
+      const csrfRes = await fetch('/api/v1/csrf-token');
+      const { csrfToken } = await csrfRes.json();
+      const res = await fetch(`/api/v1/datasets/${encodeURIComponent(datasetId)}/captions/${encodeURIComponent(captionSetId)}/default`,{
+        method:'POST',
+        credentials:'include',
+        headers:{'Content-Type':'application/json','x-csrf-token':csrfToken},
+        body:JSON.stringify({})
+      });
+      if(!res.ok) throw new Error('Failed');
+      this.fetchCaptionSets(datasetId);
+    }catch(err){
+      console.error('[ModsMenuModal] setDefaultCaptionSet error',err);
+      this.setState({captionError:'Failed to update default caption set.'});
+    }
+  }
+
+  async cancelCaptionTask(datasetId){
+    const id = this.normalizeId(datasetId || this.state.selectedDatasetId);
+    if(!id) return;
+    const confirmed = confirm('Cancel caption generation for this dataset?');
+    if(!confirmed) return;
+    try{
+      const csrfRes = await fetch('/api/v1/csrf-token');
+      const { csrfToken } = await csrfRes.json();
+      const res = await fetch(`/api/v1/datasets/${encodeURIComponent(id)}/caption-task/cancel`,{
+        method:'POST',
+        credentials:'include',
+        headers:{'Content-Type':'application/json','x-csrf-token':csrfToken},
+        body:JSON.stringify({})
+      });
+      if(!res.ok) throw new Error('Failed');
+      this.handleCaptionTaskEvent({ datasetId:id, status:'cancelled' });
+      if (this.normalizeId(this.state.selectedDatasetId) === id) {
+        this.fetchCaptionSets(id);
+      }
+    }catch(err){
+      console.error('[ModsMenuModal] cancelCaptionTask error',err);
+      alert('Failed to cancel caption task. Please try again.');
+    }
+  }
+
+  escapeHtml(str=''){
+    return String(str)
+      .replace(/&/g,'&amp;')
+      .replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;')
+      .replace(/'/g,'&#39;');
+  }
+
+  toCsvValue(value){
+    const str=value==null?'':String(value);
+    if(/[",\n]/.test(str)){
+      return `"${str.replace(/"/g,'""')}"`;
+    }
+    return str;
   }
 
   /**
@@ -2270,8 +2695,11 @@ export default class ModsMenuModal {
       // lightweight – ask for only first item
       const res = await fetch(`/api/v1/datasets/${encodeURIComponent(datasetId)}/captions?limit=1`, { credentials:'include' });
       if(!res.ok) return false;
-      const data = await res.json();
-      return (data.captionSets||[]).length>0;
+      const payload = await res.json();
+      const list = Array.isArray(payload?.data)
+        ? payload.data
+        : (payload?.data?.captionSets || payload?.captionSets || []);
+      return Array.isArray(list) && list.length>0;
     }catch{ return false; }
   }
 
