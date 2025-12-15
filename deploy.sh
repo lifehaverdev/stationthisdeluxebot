@@ -251,7 +251,7 @@ start_caddy() {
 }
 
 health_check_app() {
-  local retries=20
+  local retries=40
   local delay=5
   log "Checking application health..."
   while (( retries > 0 )); do
