@@ -658,6 +658,66 @@
     border: 1px solid #333;
 }
 
+.spell-flow-edit-banner {
+    margin-top: 16px;
+    padding: 16px;
+    border-radius: 10px;
+    border: 1px dashed rgba(255, 255, 255, 0.2);
+    background-color: rgba(255, 255, 255, 0.02);
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.spell-flow-edit-banner strong {
+    display: block;
+    font-size: 0.95em;
+    margin-bottom: 4px;
+}
+
+.spell-flow-edit-banner p {
+    margin: 0;
+    font-size: 0.85em;
+    color: rgba(255, 255, 255, 0.75);
+}
+
+.spell-flow-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+}
+
+.spell-flow-actions button {
+    border: none;
+    border-radius: 999px;
+    padding: 6px 16px;
+    font-weight: 600;
+    cursor: pointer;
+    background: linear-gradient(120deg, #5ae0ff, #7c8cff);
+    color: #0f1118;
+}
+
+.flow-unsaved-indicator {
+    font-size: 0.75em;
+    color: #f9c152;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.spell-inputs-display ul {
+    list-style: none;
+    padding-left: 16px;
+    margin: 8px 0 0;
+}
+
+.spell-inputs-display li {
+    margin-bottom: 4px;
+    color: #e0e0e0;
+}
+
 .spell-detail-steps h4 {
     margin: 0 0 12px 0;
     font-size: 1em;

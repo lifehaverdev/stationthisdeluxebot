@@ -9,6 +9,7 @@
 - `DatasetPacker`: packages downloaded datasets (images + `dataset_info.json`) into a tarball with a manifest + SHA256.
 - `SshTransport`: light wrapper around `ssh/scp` for file transfer and remote commands.
 - `push-dataset.js`: packs a local dataset and ships it to `/opt/stationthis/jobs/<jobId>/dataset` on a remote host, ready for extraction.
+- `launch-session.js`: one-shot helper that rents a 4090, uploads the dataset + rendered config, and finally drops you into an interactive SSH session pointed at the prepared job root.
 
 ## Gaps Before Remote Training Works
 - **Dataset readiness**: many datasets lack captions or consistent structure. The packer simply tars whatever is on disk; we need validation (e.g., ensure captions exist or auto-generate) before shipping.

@@ -1,6 +1,7 @@
 // src/platforms/web/client/src/sandbox/components/SpellsMenuModal.js
 import { getAvailableTools, getLastClickPosition } from '../state.js';
 import { createSpellWindow } from '../window/SpellWindow.js';
+import { openSpellEditorOverlay } from '../node/overlays/spellEditorOverlay.js';
 
 export default class SpellsMenuModal {
     constructor(options = {}) {
@@ -22,9 +23,13 @@ export default class SpellsMenuModal {
             newSpellIsPublic: false,
             subgraph: options.initialData?.subgraph || null,
             newSpellExposedInputs: {},
+            editExposedInputMap: {},
+            pendingSpellStructure: null,
         };
         this.modalElement = null;
         this.handleKeyDown = this.handleKeyDown.bind(this);
+        this._modalFlowHidden = false;
+        this._modalPrevDisplay = '';
 
         if (this.state.subgraph) {
             this.state.view = 'create';
@@ -39,16 +44,34 @@ export default class SpellsMenuModal {
     }
 
     handleSpellClick(spell) {
+        const { sanitizedSpell, exposureMap } = this.prepareSpellForEdit(spell);
         this.setState({
-            selectedSpell: { ...spell },
+            selectedSpell: sanitizedSpell,
             view: 'spellDetail',
-            error: null
+            error: null,
+            pendingSpellStructure: null,
+            isEditingSpell: false,
+            editExposedInputMap: exposureMap
         });
     }
 
     async handleSaveSpell() {
-        const { selectedSpell, spells } = this.state;
+        const { selectedSpell, spells, pendingSpellStructure } = this.state;
         if (!selectedSpell) return;
+
+        const spellId = selectedSpell._id;
+        if (!spellId) {
+            this.setState({ error: 'Unable to determine spell identifier.' });
+            return;
+        }
+
+        const currentExposedInputs = this.getCurrentExposedInputs();
+        
+        const masterAccountId = await this.getCurrentMasterAccountId();
+        if (!masterAccountId) {
+            this.setState({ error: 'Could not verify your account. Please log in again.' });
+            return;
+        }
         
         // Validate spell name
         const newName = (selectedSpell.name || '').trim();
@@ -59,7 +82,7 @@ export default class SpellsMenuModal {
         
         // Uniqueness check (case-insensitive, exclude current spell)
         const newNameLower = newName.toLowerCase();
-        const isDuplicate = spells.some(s => s._id !== selectedSpell._id && (s.name || '').trim().toLowerCase() === newNameLower);
+        const isDuplicate = spells.some(s => s._id !== spellId && (s.name || '').trim().toLowerCase() === newNameLower);
         if (isDuplicate) {
             this.setState({ error: 'You already have a spell with this name. Please choose a different name.' });
             return;
@@ -71,64 +94,69 @@ export default class SpellsMenuModal {
             this.setState({ error: 'You do not have permission to edit this spell.' });
             return;
         }
-        
+
+        const structure = pendingSpellStructure || {
+            steps: selectedSpell.steps || [],
+            connections: selectedSpell.connections || []
+        };
+
         this.setState({ loading: true, error: null });
         try {
-            // Get CSRF token
             const csrfRes = await fetch('/api/v1/csrf-token');
             const { csrfToken } = await csrfRes.json();
-            const res = await fetch(`/api/v1/spells/${selectedSpell._id}`, {
+            const payload = {
+                masterAccountId,
+                name: selectedSpell.name,
+                description: selectedSpell.description,
+                isPublic: !!selectedSpell.isPublic,
+                steps: structure.steps,
+                connections: structure.connections,
+                exposedInputs: currentExposedInputs,
+            };
+            const res = await fetch(`/api/v1/spells/${spellId}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
                     'x-csrf-token': csrfToken
                 },
                 credentials: 'include',
-                body: JSON.stringify({
-                    name: selectedSpell.name,
-                    description: selectedSpell.description,
-                    isPublic: !!selectedSpell.isPublic,
-                })
+                body: JSON.stringify(payload)
             });
             
             if (!res.ok) {
                 const errData = await res.json().catch(() => ({}));
-                throw new Error(errData.message || 'Failed to save spell');
+                throw new Error(errData.error || errData.message || 'Failed to save spell');
             }
-            
-            // After saving, exit edit mode and refresh
-            const updatedSpell = await res.json();
+
+            const refreshedSpell = await this.fetchSpellById(spellId) || selectedSpell;
+            const { sanitizedSpell, exposureMap } = this.prepareSpellForEdit(refreshedSpell);
+
             this.setState({ 
                 loading: false, 
                 isEditingSpell: false,
-                selectedSpell: updatedSpell,
+                selectedSpell: sanitizedSpell,
+                pendingSpellStructure: null,
+                editExposedInputMap: exposureMap,
                 error: null
             });
             
-            // Refresh spell list
             await this.fetchUserSpells();
             
-            // Re-render to show updated spell in display mode
-            this.render();
-            
-            // Show success message
             setTimeout(() => {
-                const content = this.modalElement.querySelector('.spells-modal-content');
-                if (content) {
-                    const successMsg = document.createElement('div');
-                    successMsg.className = 'success-message';
-                    successMsg.textContent = 'Spell saved successfully!';
-                    const detailView = content.querySelector('.spell-detail-view');
-                    if (detailView) {
-                        detailView.insertBefore(successMsg, detailView.firstChild);
-                        setTimeout(() => successMsg.remove(), 3000);
-                    }
+                const content = this.modalElement?.querySelector('.spells-modal-content');
+                if (!content) return;
+                const successMsg = document.createElement('div');
+                successMsg.className = 'success-message';
+                successMsg.textContent = 'Spell saved successfully!';
+                const detailView = content.querySelector('.spell-detail-view');
+                if (detailView) {
+                    detailView.insertBefore(successMsg, detailView.firstChild);
+                    setTimeout(() => successMsg.remove(), 3000);
                 }
             }, 100);
         } catch (err) {
+            console.error('[SpellsMenuModal] Save spell failed:', err);
             this.setState({ error: err.message || 'Failed to save spell.', loading: false });
-            // Re-render to show error message
-            this.render();
         }
     }
 
@@ -155,7 +183,7 @@ export default class SpellsMenuModal {
                 try { const errData = await res.json(); errMsg = errData.error || errMsg; } catch {}
                 throw new Error(errMsg);
             }
-            this.setState({ loading: false, view: 'main', selectedSpell: null });
+            this.setState({ loading: false, view: 'main', selectedSpell: null, pendingSpellStructure: null, isEditingSpell: false, editExposedInputMap: {} });
             this.fetchUserSpells();
         } catch (err) {
             this.setState({ error: err.message || 'Failed to delete spell.', loading: false });
@@ -196,6 +224,93 @@ export default class SpellsMenuModal {
         const userIdStr = currentUserId.toString();
         
         return creatorId === userIdStr || ownedBy === userIdStr;
+    }
+
+    prepareSpellForEdit(spell) {
+        if (!spell) {
+            return { sanitizedSpell: null, exposureMap: {} };
+        }
+        const sanitizedExposedInputs = this.sanitizeExposedInputs(spell);
+        const exposureMap = {};
+        sanitizedExposedInputs.forEach(input => {
+            exposureMap[`${input.nodeId}__${input.paramKey}`] = true;
+        });
+        return {
+            sanitizedSpell: { ...spell, exposedInputs: sanitizedExposedInputs },
+            exposureMap
+        };
+    }
+
+    sanitizeExposedInputs(spell) {
+        if (!spell) return [];
+        const currentExposures = Array.isArray(spell.exposedInputs) ? spell.exposedInputs : [];
+        const potentialInputs = this.getPotentialExposedInputs(spell);
+        if (!potentialInputs.length) return currentExposures;
+        const allowed = new Set(potentialInputs.map(input => input.uniqueId));
+        return currentExposures.filter(input => allowed.has(`${input.nodeId}__${input.paramKey}`));
+    }
+
+    getPotentialExposedInputs(spell) {
+        if (!spell || !Array.isArray(spell.steps) || spell.steps.length === 0) return [];
+        const availableTools = getAvailableTools?.() || [];
+        if (!availableTools.length) return [];
+        const toolMap = new Map(availableTools.map(tool => [tool.toolId, tool]));
+        const connectedInputs = new Set();
+        if (Array.isArray(spell.connections)) {
+            spell.connections.forEach(conn => {
+                if (conn.toWindowId && conn.toInput) {
+                    connectedInputs.add(`${conn.toWindowId}__${conn.toInput}`);
+                }
+            });
+        }
+        const potential = [];
+        spell.steps.forEach(step => {
+            const nodeId = step.id || step.stepId;
+            if (!nodeId) return;
+            const toolIdentifier = step.toolIdentifier || step.toolId;
+            const tool = toolIdentifier ? (toolMap.get(toolIdentifier) || availableTools.find(t => t.toolId === toolIdentifier)) : null;
+            if (!tool || !tool.inputSchema) return;
+            Object.entries(tool.inputSchema).forEach(([paramKey, paramDef]) => {
+                const uniqueId = `${nodeId}__${paramKey}`;
+                if (connectedInputs.has(uniqueId)) return;
+                potential.push({
+                    nodeId,
+                    paramKey,
+                    nodeDisplayName: step.displayName || tool.displayName || toolIdentifier || nodeId,
+                    paramDisplayName: paramDef.displayName || paramKey,
+                    uniqueId
+                });
+            });
+        });
+        return potential;
+    }
+
+    getCurrentExposedInputs() {
+        const map = this.state.editExposedInputMap || {};
+        const keys = Object.keys(map);
+        if (keys.length === 0) {
+            return Array.isArray(this.state.selectedSpell?.exposedInputs) ? this.state.selectedSpell.exposedInputs : [];
+        }
+        return keys.filter(key => map[key]).map(key => {
+            const [nodeId, paramKey] = key.split('__');
+            return { nodeId, paramKey };
+        });
+    }
+
+    updateExposedInputSelection(uniqueId, checked) {
+        if (!uniqueId) return;
+        const newMap = { ...this.state.editExposedInputMap };
+        if (checked) {
+            newMap[uniqueId] = true;
+        } else {
+            delete newMap[uniqueId];
+        }
+        const updatedExposures = Object.keys(newMap).map(key => {
+            const [nodeId, paramKey] = key.split('__');
+            return { nodeId, paramKey };
+        });
+        const updatedSpell = this.state.selectedSpell ? { ...this.state.selectedSpell, exposedInputs: updatedExposures } : this.state.selectedSpell;
+        this.setState({ editExposedInputMap: newMap, selectedSpell: updatedSpell });
     }
 
     show() {
@@ -300,10 +415,10 @@ export default class SpellsMenuModal {
             btn.onclick = () => {
                 const tab = btn.getAttribute('data-tab');
                 if (tab === 'main') {
-                    this.setState({ view: 'main', selectedSpell: null });
+                    this.setState({ view: 'main', selectedSpell: null, pendingSpellStructure: null, isEditingSpell: false, editExposedInputMap: {} });
                     this.fetchUserSpells();
                 } else if (tab === 'marketplace') {
-                    this.setState({ view: 'marketplace', selectedSpell: null });
+                    this.setState({ view: 'marketplace', selectedSpell: null, pendingSpellStructure: null, isEditingSpell: false, editExposedInputMap: {} });
                     this.fetchMarketplaceSpells();
                 }
             };
@@ -547,14 +662,14 @@ export default class SpellsMenuModal {
                     viewBtn.onclick = (e) => {
                         e.stopPropagation();
                         const spell = this.state.marketplaceSpells[idx];
-                        this.setState({ view: 'marketDetail', selectedSpell: spell });
+                        this.setState({ view: 'marketDetail', selectedSpell: spell, editExposedInputMap: {} });
                     };
                 }
                 // Also allow clicking the item itself
                 item.addEventListener('click', (e) => {
                     if (e.target.closest('.view-spell-btn')) return;
                     const spell = this.state.marketplaceSpells[idx];
-                    this.setState({ view: 'marketDetail', selectedSpell: spell });
+                    this.setState({ view: 'marketDetail', selectedSpell: spell, editExposedInputMap: {} });
                 });
             });
         }
@@ -581,7 +696,7 @@ export default class SpellsMenuModal {
             
             if (backBtn) {
                 backBtn.onclick = () => {
-                    this.setState({ view: 'marketplace', selectedSpell: null });
+                    this.setState({ view: 'marketplace', selectedSpell: null, editExposedInputMap: {} });
                     this.fetchMarketplaceSpells();
                 };
             }
@@ -799,6 +914,8 @@ export default class SpellsMenuModal {
         // Check if user owns the spell
         const canEdit = await this.isSpellOwner(selectedSpell);
         const isEditable = isEditingSpell && canEdit;
+        const hasPendingFlowChanges = !!this.state.pendingSpellStructure;
+        const exposuresSection = isEditingSpell ? this.renderEditableExposedInputs(selectedSpell) : this.renderExposedInputsDisplay(selectedSpell);
         
         let stepsHtml = '';
         if (selectedSpell.steps) {
@@ -816,6 +933,19 @@ export default class SpellsMenuModal {
                 </div>
             `;
         }
+
+        const flowEditorControls = isEditable ? `
+            <div class="spell-flow-edit-banner">
+                <div>
+                    <strong>Edit Spell Flow</strong>
+                    <p>Tweak tool parameters or connections in the sandbox overlay.</p>
+                </div>
+                <div class="spell-flow-actions">
+                    ${hasPendingFlowChanges ? '<span class="flow-unsaved-indicator">Unsaved flow changes</span>' : ''}
+                    <button class="open-spell-flow-editor-btn">Open Editor</button>
+                </div>
+            </div>
+        ` : '';
         
         const nameValue = (selectedSpell.name || '').replace(/"/g, '&quot;');
         const descValue = (selectedSpell.description || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -873,7 +1003,9 @@ export default class SpellsMenuModal {
                 ` : ''}
                 
                 ${stepsHtml}
-                
+                ${flowEditorControls}
+                ${exposuresSection}
+
                 <div class="spell-detail-actions">
                     ${isEditingSpell ? `
                         <button class="save-spell-btn">Save Changes</button>
@@ -883,6 +1015,68 @@ export default class SpellsMenuModal {
                     `}
                     <button class="back-spell-btn">Back</button>
                 </div>
+            </div>
+        `;
+    }
+
+    renderEditableExposedInputs(spell) {
+        const potentialInputs = this.getPotentialExposedInputs(spell);
+        if (!potentialInputs.length) {
+            return `
+                <div class="spell-inputs-selection">
+                    <h4>Expose Inputs</h4>
+                    <div class="empty-message">No eligible inputs are available to expose right now.</div>
+                </div>
+            `;
+        }
+        const map = this.state.editExposedInputMap || {};
+        const selectedCount = Object.keys(map).length;
+        const countText = selectedCount ? ` (${selectedCount} selected)` : '';
+        return `
+            <div class="spell-inputs-selection">
+                <h4>Expose Inputs${countText}</h4>
+                <p class="input-help-text">Select which parameters stay open for users when casting this spell.</p>
+                <ul class="spell-inputs-list">
+                    ${potentialInputs.map(input => `
+                        <li class="spell-input-item ${map[input.uniqueId] ? 'exposed' : ''}">
+                            <label>
+                                <input type="checkbox" class="edit-exposed-input-checkbox" data-input-id="${input.uniqueId}" ${map[input.uniqueId] ? 'checked' : ''}>
+                                <span class="spell-input-nodename">${input.nodeDisplayName}:</span>
+                                <span class="spell-input-paramname">${input.paramDisplayName}</span>
+                            </label>
+                        </li>
+                    `).join('')}
+                </ul>
+            </div>
+        `;
+    }
+
+    renderExposedInputsDisplay(spell) {
+        const exposures = Array.isArray(spell?.exposedInputs) ? spell.exposedInputs : [];
+        if (!exposures.length) {
+            return `
+                <div class="spell-inputs-selection spell-inputs-display">
+                    <h4>Exposed Inputs</h4>
+                    <div class="empty-message">No inputs are currently exposed.</div>
+                </div>
+            `;
+        }
+        const metadata = {};
+        this.getPotentialExposedInputs(spell).forEach(input => {
+            metadata[input.uniqueId] = input;
+        });
+        const listItems = exposures.map(input => {
+            const uniqueId = `${input.nodeId}__${input.paramKey}`;
+            const meta = metadata[uniqueId];
+            if (meta) {
+                return `<li>${meta.nodeDisplayName}: ${meta.paramDisplayName}</li>`;
+            }
+            return `<li>${input.nodeId}: ${input.paramKey}</li>`;
+        }).join('');
+        return `
+            <div class="spell-inputs-selection spell-inputs-display">
+                <h4>Exposed Inputs</h4>
+                <ul>${listItems}</ul>
             </div>
         `;
     }
@@ -957,6 +1151,7 @@ export default class SpellsMenuModal {
         const deleteBtn = this.modalElement.querySelector('.delete-spell-btn');
         const backBtn = this.modalElement.querySelector('.back-spell-btn');
         const copyBtn = this.modalElement.querySelector('.copy-link-btn');
+        const flowBtn = this.modalElement.querySelector('.open-spell-flow-editor-btn');
         
         if (editBtn) {
             editBtn.onclick = () => {
@@ -974,11 +1169,12 @@ export default class SpellsMenuModal {
                 const spellId = selectedSpell._id || selectedSpell.slug;
                 this.fetchSpellById(spellId).then(spell => {
                     if (spell) {
-                        this.setState({ selectedSpell: spell, isEditingSpell: false });
+                        const { sanitizedSpell, exposureMap } = this.prepareSpellForEdit(spell);
+                        this.setState({ selectedSpell: sanitizedSpell, isEditingSpell: false, pendingSpellStructure: null, editExposedInputMap: exposureMap });
                         // Re-render to show display view
                         this.render();
                     } else {
-                        this.setState({ isEditingSpell: false });
+                        this.setState({ isEditingSpell: false, pendingSpellStructure: null });
                         this.render();
                     }
                 });
@@ -989,7 +1185,7 @@ export default class SpellsMenuModal {
         }
         if (backBtn) {
             backBtn.onclick = () => {
-                this.setState({ view: 'main', selectedSpell: null, isEditingSpell: false });
+                this.setState({ view: 'main', selectedSpell: null, isEditingSpell: false, pendingSpellStructure: null, editExposedInputMap: {} });
                 this.fetchUserSpells();
             };
         }
@@ -1003,6 +1199,21 @@ export default class SpellsMenuModal {
                     setTimeout(() => copyBtn.textContent = 'Copy', 1500);
                 }
             };
+        }
+
+        if (flowBtn) {
+            flowBtn.onclick = () => this.launchSpellFlowEditor(flowBtn);
+        }
+
+        if (isEditingSpell) {
+            const exposureCheckboxes = this.modalElement.querySelectorAll('.edit-exposed-input-checkbox');
+            exposureCheckboxes.forEach(checkbox => {
+                checkbox.onchange = (e) => {
+                    const inputId = e.target.dataset.inputId;
+                    const checked = e.target.checked;
+                    this.updateExposedInputSelection(inputId, checked);
+                };
+            });
         }
     }
 
@@ -1066,6 +1277,56 @@ export default class SpellsMenuModal {
     handleKeyDown(e) {
         if (e.key === 'Escape') {
             this.hide();
+        }
+    }
+
+    async launchSpellFlowEditor(triggerButton = null) {
+        const { selectedSpell, pendingSpellStructure } = this.state;
+        if (!selectedSpell) return;
+
+        const workingSpell = pendingSpellStructure
+            ? { ...selectedSpell, steps: pendingSpellStructure.steps, connections: pendingSpellStructure.connections }
+            : selectedSpell;
+
+        try {
+            if (triggerButton) triggerButton.disabled = true;
+            this.hideModalForFlowEditor();
+            const result = await openSpellEditorOverlay(workingSpell);
+            if (result) {
+                const updatedSpell = {
+                    ...selectedSpell,
+                    steps: result.steps,
+                    connections: result.connections
+                };
+                const { sanitizedSpell, exposureMap } = this.prepareSpellForEdit(updatedSpell);
+                this.setState({
+                    selectedSpell: sanitizedSpell,
+                    pendingSpellStructure: result,
+                    editExposedInputMap: exposureMap,
+                    error: null
+                });
+            }
+        } catch (err) {
+            console.error('[SpellsMenuModal] Spell editor overlay failed:', err);
+            this.setState({ error: err.message || 'Failed to open the spell editor overlay.' });
+        } finally {
+            this.restoreModalAfterFlowEditor();
+            if (triggerButton) triggerButton.disabled = false;
+        }
+    }
+
+    hideModalForFlowEditor() {
+        if (this.modalElement && !this._modalFlowHidden) {
+            this._modalPrevDisplay = this.modalElement.style.display || '';
+            this.modalElement.style.display = 'none';
+            this._modalFlowHidden = true;
+        }
+    }
+
+    restoreModalAfterFlowEditor() {
+        if (this.modalElement && this._modalFlowHidden) {
+            this.modalElement.style.display = this._modalPrevDisplay || '';
+            this._modalFlowHidden = false;
         }
     }
 

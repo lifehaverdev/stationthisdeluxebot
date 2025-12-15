@@ -327,7 +327,45 @@ function createDatasetsApi(dependencies) {
   // POST /internal/v1/data/datasets/:datasetId/caption-via-spell - Generate captions via arbitrary spell
   router.post('/:datasetId/caption-via-spell', async (req, res) => {
     const { datasetId } = req.params;
-    const { spellSlug, masterAccountId, parameterOverrides = {} } = req.body;
+    const { spellSlug, masterAccountId } = req.body;
+
+    const rawOverrides = (req.body && req.body.parameterOverrides) || {};
+    const parameterOverrides = (rawOverrides && typeof rawOverrides === 'object' && !Array.isArray(rawOverrides))
+      ? { ...rawOverrides }
+      : {};
+
+    const coerceString = (val) => (typeof val === 'string' ? val.trim() : '');
+    const firstFromList = (input) => {
+      if (Array.isArray(input)) {
+        return input.map(entry => coerceString(entry)).find(Boolean) || '';
+      }
+      if (typeof input === 'string') {
+        return input
+          .split(',')
+          .map(part => part.trim())
+          .find(Boolean) || '';
+      }
+      return '';
+    };
+
+    const triggerCandidate =
+      coerceString(parameterOverrides.stringB) ||
+      coerceString(parameterOverrides.triggerWord) ||
+      firstFromList(parameterOverrides.triggerWords) ||
+      coerceString(req.body?.triggerWord) ||
+      firstFromList(req.body?.triggerWords);
+
+    if (triggerCandidate) {
+      if (!coerceString(parameterOverrides.triggerWord)) {
+        parameterOverrides.triggerWord = triggerCandidate;
+      }
+      if (!Array.isArray(parameterOverrides.triggerWords) || !parameterOverrides.triggerWords.length) {
+        parameterOverrides.triggerWords = [triggerCandidate];
+      }
+      if (!coerceString(parameterOverrides.stringB)) {
+        parameterOverrides.stringB = triggerCandidate;
+      }
+    }
 
     logger.info(`[DatasetsAPI] POST /${datasetId}/caption-via-spell - spell=${spellSlug}`);
 

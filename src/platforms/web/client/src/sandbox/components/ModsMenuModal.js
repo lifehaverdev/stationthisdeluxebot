@@ -56,6 +56,8 @@ export default class ModsMenuModal {
     this.ws = window.websocketClient;
     this.setupWebSocketListeners();
     this._captionTaskCleanupTimers = {};
+    this._captionSpellCache = {};
+    this._crcTable = null;
 
     // Listen for uploads from UploadWindow so we can attach to dataset being edited
     this._uploadListener = async (e) => {
@@ -733,19 +735,15 @@ export default class ModsMenuModal {
                   <option value="unlisted">Unlisted</option>
                 </select>
               </div>
-              <div class="batch-actions">
-                <button class="btn-secondary" id="select-all">Select All</button>
-                <button class="btn-danger" id="delete-selected" disabled>Delete Selected</button>
-                <button class="btn-primary" id="export-selected" disabled>Export Selected</button>
-              </div>
             </div>
             <div class="datasets-grid">${datasets.map(ds=>{
               const dsId = this.normalizeId(ds._id);
+              const isSelected=this.normalizeId(this.state.selectedDatasetId)===dsId;
               return `
-              <div class="dataset-card" data-id="${dsId}">
+              <div class="dataset-card${isSelected?' selected':''}" data-id="${dsId}">
                 <div class="dataset-header">
-                  <input type="checkbox" class="dataset-select" data-id="${dsId}" />
                   <h4>${ds.name||'Unnamed Dataset'}</h4>
+                  ${isSelected?'<span class="selected-indicator">Selected</span>':''}
                   <span class="visibility-badge visibility-${ds.visibility||'private'}">${ds.visibility||'private'}</span>
                 </div>
                 <div class="dataset-preview">
@@ -1043,21 +1041,6 @@ export default class ModsMenuModal {
     }
 
     // Batch operation handlers
-    const selectAllBtn = this.modalElement.querySelector('#select-all');
-    if(selectAllBtn) {
-      selectAllBtn.onclick = () => this.selectAllItems('dataset');
-    }
-
-    const deleteSelectedBtn = this.modalElement.querySelector('#delete-selected');
-    if(deleteSelectedBtn) {
-      deleteSelectedBtn.onclick = () => this.batchDelete('dataset');
-    }
-
-    const exportSelectedBtn = this.modalElement.querySelector('#export-selected');
-    if(exportSelectedBtn) {
-      exportSelectedBtn.onclick = () => this.batchExport('dataset');
-    }
-
     // Dataset search and filter
     const searchInput = this.modalElement.querySelector('#dataset-search');
     if(searchInput) {
@@ -1069,58 +1052,7 @@ export default class ModsMenuModal {
       filterSelect.onchange = () => this.filterDatasets();
     }
 
-    // Dataset card actions
-    this.modalElement.querySelectorAll('.dataset-card').forEach(card => {
-      const datasetId = card.getAttribute('data-id');
-      
-      // Edit dataset
-      const editBtn = card.querySelector('.edit-dataset');
-      if(editBtn) {
-        editBtn.onclick = (e) => {
-          e.stopPropagation();
-          const dataset = this.getDatasetById(datasetId);
-          if(dataset) this.openDatasetForm(dataset);
-        };
-      }
-
-      // Use for training
-      const useBtn = card.querySelector('.use-dataset');
-      if(useBtn) {
-        useBtn.onclick = (e) => {
-          e.stopPropagation();
-          this.openTrainingForm({ datasetId });
-        };
-      }
-
-      // Delete dataset
-      const deleteBtn = card.querySelector('.delete-dataset');
-      if(deleteBtn) {
-        deleteBtn.onclick = (e) => {
-          e.stopPropagation();
-          this.deleteDataset(datasetId);
-        };
-      }
-
-      // Checkbox change
-      const checkbox = card.querySelector('.dataset-select');
-      if(checkbox) {
-        checkbox.onchange = () => this.updateBatchActions();
-      }
-
-      // Click anywhere on card to select dataset and load captions
-      card.addEventListener('click',(e)=>{
-        if(e.target.closest('.dataset-actions, input.dataset-select')) return;
-        const id=card.getAttribute('data-id');
-        if(id!==this.state.selectedDatasetId){
-          this.setState({selectedDatasetId:id, captionSets:[]},()=>{
-            // Enable caption button
-            const btn=this.modalElement.querySelector('.add-caption-btn');
-            if(btn) btn.removeAttribute('disabled');
-          });
-          this.fetchCaptionSets(id);
-        }
-      });
-    });
+    this.bindDatasetCardEvents();
 
     // Click row to edit
     this.modalElement.querySelectorAll('.ds-item').forEach((li,idx)=>{
@@ -1576,6 +1508,248 @@ export default class ModsMenuModal {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   }
 
+  triggerFileDownload(blob, fileName) {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  sanitizeFilenamePart(value, fallback = 'file') {
+    const raw = (value || '').toString().trim().toLowerCase();
+    const collapsed = raw.replace(/[^a-z0-9-_]+/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+    return collapsed || fallback;
+  }
+
+  resolveImageUrl(source){
+    if(!source) return '';
+    if(typeof source === 'string') return source;
+    if(typeof source === 'object'){
+      return source.imageUrl || source.url || source.src || source.path || '';
+    }
+    return '';
+  }
+
+  extractImageFilename(source){
+    if(!source) return '';
+    let candidate = '';
+    let context = '';
+    if (typeof source === 'string') {
+      candidate = source;
+      context = source;
+    } else if (typeof source === 'object') {
+      candidate =
+        source.imageFilename ||
+        source.imageName ||
+        source.filename ||
+        source.fileName ||
+        source.name ||
+        source.originalFilename ||
+        source.originalFileName ||
+        source.imageUrl ||
+        source.url ||
+        source.src ||
+        source.path ||
+        '';
+      context =
+        source.imageUrl ||
+        source.url ||
+        source.src ||
+        source.path ||
+        candidate;
+    }
+    if(!candidate) return '';
+    const withoutQuery = candidate.split('?')[0].split('#')[0];
+    const decoded = this.safeDecodeURIComponent(withoutQuery);
+    const parts = decoded.split('/');
+    const filename = parts.length ? parts.pop() : decoded;
+    return this.stripStoragePrefix((filename || '').trim(), context || decoded);
+  }
+
+  stripFileExtension(name = ''){
+    return name.replace(/\.[^.]+$/, '').trim();
+  }
+
+  stripStoragePrefix(filename = '', source = ''){
+    if(!filename) return '';
+    const cleaned = filename.replace(/^[/\\]+/, '');
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-(.+)$/i;
+    const match = cleaned.match(uuidPattern);
+    if(match && match[1]){
+      const shouldStrip = this.sourceLooksLikeInternalUpload(source) || !source;
+      if(shouldStrip){
+        return match[1];
+      }
+    }
+    const slashIdx = cleaned.indexOf('/');
+    if(slashIdx !== -1){
+      const remainder = cleaned.slice(slashIdx + 1);
+      const nestedMatch = remainder.match(uuidPattern);
+      if(nestedMatch && nestedMatch[1] && (this.sourceLooksLikeInternalUpload(source) || !source)){
+        return nestedMatch[1];
+      }
+      return remainder;
+    }
+    return cleaned;
+  }
+
+  sourceLooksLikeInternalUpload(source = ''){
+    if(!source) return false;
+    const value = source.toString();
+    if(/web-upload-user/i.test(value)) return true;
+    if(/\/\/[^/]*(?:r2\.|\.r2|cloudflarestorage)/i.test(value)) return true;
+    if(/\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-/i.test(value) && /(milady|stationthis|cloudflare|\.r2)/i.test(value)){
+      return true;
+    }
+    return false;
+  }
+
+  safeDecodeURIComponent(value){
+    try{
+      return decodeURIComponent(value);
+    }catch(err){
+      return value;
+    }
+  }
+
+  deriveCaptionFileBase(entry, idx) {
+    const fallback = `image-${String(idx + 1).padStart(3, '0')}`;
+    const candidate =
+      this.stripFileExtension(entry?.imageFilename || '') ||
+      this.stripFileExtension(this.extractImageFilename(entry?.imageUrl)) ||
+      '';
+    if (!candidate) return fallback;
+    return candidate;
+  }
+
+  buildCaptionTextFiles(entries) {
+    const used = new Set();
+    return entries.map((entry, idx) => {
+      const base = this.deriveCaptionFileBase(entry, idx);
+      let name = `${base}.txt`;
+      let counter = 2;
+      while (used.has(name)) {
+        name = `${base}-${counter++}.txt`;
+      }
+      used.add(name);
+      return { name, content: (entry?.text || '').toString() };
+    });
+  }
+
+  createZipFromTextFiles(files) {
+    if (!files?.length) return null;
+    if (typeof TextEncoder === 'undefined') {
+      console.error('TextEncoder not available for caption export.');
+      return null;
+    }
+    const encoder = new TextEncoder();
+    const localChunks = [];
+    const centralChunks = [];
+    let offset = 0;
+    let centralSize = 0;
+    const timestamp = this.getMsDosDateTimeParts();
+
+    files.forEach(file => {
+      const nameBytes = encoder.encode(file.name);
+      const dataBytes = encoder.encode(file.content || '');
+      const crc = this.computeCrc32(dataBytes);
+
+      const localHeader = new ArrayBuffer(30);
+      const localView = new DataView(localHeader);
+      localView.setUint32(0, 0x04034b50, true);
+      localView.setUint16(4, 0x0014, true);
+      localView.setUint16(6, 0, true);
+      localView.setUint16(8, 0, true);
+      localView.setUint16(10, timestamp.time, true);
+      localView.setUint16(12, timestamp.date, true);
+      localView.setUint32(14, crc >>> 0, true);
+      localView.setUint32(18, dataBytes.length, true);
+      localView.setUint32(22, dataBytes.length, true);
+      localView.setUint16(26, nameBytes.length, true);
+      localView.setUint16(28, 0, true);
+
+      const localHeaderBytes = new Uint8Array(localHeader);
+      localChunks.push(localHeaderBytes, nameBytes, dataBytes);
+
+      const centralHeader = new ArrayBuffer(46);
+      const centralView = new DataView(centralHeader);
+      centralView.setUint32(0, 0x02014b50, true);
+      centralView.setUint16(4, 0x0014, true);
+      centralView.setUint16(6, 0x0014, true);
+      centralView.setUint16(8, 0, true);
+      centralView.setUint16(10, 0, true);
+      centralView.setUint16(12, timestamp.time, true);
+      centralView.setUint16(14, timestamp.date, true);
+      centralView.setUint32(16, crc >>> 0, true);
+      centralView.setUint32(20, dataBytes.length, true);
+      centralView.setUint32(24, dataBytes.length, true);
+      centralView.setUint16(28, nameBytes.length, true);
+      centralView.setUint16(30, 0, true);
+      centralView.setUint16(32, 0, true);
+      centralView.setUint16(34, 0, true);
+      centralView.setUint16(36, 0, true);
+      centralView.setUint32(38, 0, true);
+      centralView.setUint32(42, offset, true);
+
+      const centralHeaderBytes = new Uint8Array(centralHeader);
+      centralChunks.push(centralHeaderBytes, nameBytes.slice());
+      centralSize += centralHeaderBytes.length + nameBytes.length;
+
+      offset += localHeaderBytes.length + nameBytes.length + dataBytes.length;
+    });
+
+    const footer = new ArrayBuffer(22);
+    const footerView = new DataView(footer);
+    footerView.setUint32(0, 0x06054b50, true);
+    footerView.setUint16(4, 0, true);
+    footerView.setUint16(6, 0, true);
+    footerView.setUint16(8, files.length, true);
+    footerView.setUint16(10, files.length, true);
+    footerView.setUint32(12, centralSize, true);
+    footerView.setUint32(16, offset, true);
+    footerView.setUint16(20, 0, true);
+
+    return new Blob([...localChunks, ...centralChunks, new Uint8Array(footer)], { type: 'application/zip' });
+  }
+
+  getMsDosDateTimeParts(date = new Date()) {
+    const year = Math.max(1980, date.getFullYear());
+    const dosDate = ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
+    const dosTime = (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2);
+    return {
+      date: dosDate & 0xffff,
+      time: dosTime & 0xffff,
+    };
+  }
+
+  getCrc32Table() {
+    if (this._crcTable) return this._crcTable;
+    const table = new Uint32Array(256);
+    for (let i = 0; i < 256; i += 1) {
+      let c = i;
+      for (let j = 0; j < 8; j += 1) {
+        c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+      }
+      table[i] = c >>> 0;
+    }
+    this._crcTable = table;
+    return table;
+  }
+
+  computeCrc32(bytes) {
+    const table = this.getCrc32Table();
+    let crc = 0xffffffff;
+    for (let i = 0; i < bytes.length; i += 1) {
+      crc = table[(crc ^ bytes[i]) & 0xff] ^ (crc >>> 8);
+    }
+    return (crc ^ 0xffffffff) >>> 0;
+  }
+
   normalizeId(value) {
     if (!value) return '';
     if (typeof value === 'string') return value;
@@ -1765,52 +1939,48 @@ export default class ModsMenuModal {
       </div>`;
   }
 
-  // Batch operation methods
-  selectAllItems(type) {
-    const checkboxes = this.modalElement.querySelectorAll(`.${type}-select`);
-    checkboxes.forEach(cb => cb.checked = true);
-    this.updateBatchActions();
-  }
+  bindDatasetCardEvents(root = this.modalElement) {
+    if (!root) return;
+    root.querySelectorAll('.dataset-card').forEach(card => {
+      const datasetId = card.getAttribute('data-id');
 
-  updateBatchActions() {
-    const selectedDatasets = this.modalElement.querySelectorAll('.dataset-select:checked');
-    const selectedTrainings = this.modalElement.querySelectorAll('.training-select:checked');
-    
-    const deleteBtn = this.modalElement.querySelector('#delete-selected');
-    const exportBtn = this.modalElement.querySelector('#export-selected');
-    
-    if (selectedDatasets.length > 0 || selectedTrainings.length > 0) {
-      deleteBtn.disabled = false;
-      exportBtn.disabled = false;
-    } else {
-      deleteBtn.disabled = true;
-      exportBtn.disabled = true;
-    }
-  }
-
-  async batchDelete(type) {
-    const selected = this.modalElement.querySelectorAll(`.${type}-select:checked`);
-    const ids = Array.from(selected).map(cb => cb.dataset.id);
-    
-    if (ids.length === 0) return;
-    
-    const confirmed = confirm(`Delete ${ids.length} ${type}? This action cannot be undone.`);
-    if (!confirmed) return;
-    
-    try {
-      const response = await fetch(`/api/v1/${type}/batch-delete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids })
-      });
-      
-      if (response.ok) {
-        this.fetchDatasets();
-        this.fetchTrainings();
+      const editBtn = card.querySelector('.edit-dataset');
+      if (editBtn) {
+        editBtn.onclick = (e) => {
+          e.stopPropagation();
+          const dataset = this.getDatasetById(datasetId);
+          if (dataset) this.openDatasetForm(dataset);
+        };
       }
-    } catch (error) {
-      console.error('Batch delete failed:', error);
-    }
+
+      const useBtn = card.querySelector('.use-dataset');
+      if (useBtn) {
+        useBtn.onclick = (e) => {
+          e.stopPropagation();
+          this.openTrainingForm({ datasetId });
+        };
+      }
+
+      const deleteBtn = card.querySelector('.delete-dataset');
+      if (deleteBtn) {
+        deleteBtn.onclick = (e) => {
+          e.stopPropagation();
+          this.deleteDataset(datasetId);
+        };
+      }
+
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('.dataset-actions')) return;
+        const id = card.getAttribute('data-id');
+        if (id !== this.state.selectedDatasetId) {
+          this.setState({ selectedDatasetId: id, captionSets: [] }, () => {
+            const btn = this.modalElement.querySelector('.add-caption-btn');
+            if (btn) btn.removeAttribute('disabled');
+          });
+          this.fetchCaptionSets(id);
+        }
+      });
+    });
   }
 
   // Analytics dashboard
@@ -1904,13 +2074,15 @@ export default class ModsMenuModal {
     // Update the display
     const grid = this.modalElement.querySelector('.datasets-grid');
     if(grid) {
+      const selectedId = this.normalizeId(this.state.selectedDatasetId);
       grid.innerHTML = filteredDatasets.map(ds=>{
         const dsId = this.normalizeId(ds._id);
+        const isSelected = selectedId && dsId === selectedId;
         return `
-        <div class="dataset-card" data-id="${dsId}">
+        <div class="dataset-card${isSelected?' selected':''}" data-id="${dsId}">
           <div class="dataset-header">
-            <input type="checkbox" class="dataset-select" data-id="${dsId}" />
             <h4>${ds.name||'Unnamed Dataset'}</h4>
+            ${isSelected?'<span class="selected-indicator">Selected</span>':''}
             <span class="visibility-badge visibility-${ds.visibility||'private'}">${ds.visibility||'private'}</span>
           </div>
           <div class="dataset-preview">
@@ -1938,36 +2110,7 @@ export default class ModsMenuModal {
           </div>
         </div>`;
       }).join('');
-    }
-  }
-
-  // Batch export functionality
-  async batchExport(type) {
-    const selected = this.modalElement.querySelectorAll(`.${type}-select:checked`);
-    const ids = Array.from(selected).map(cb => cb.dataset.id);
-    
-    if (ids.length === 0) return;
-    
-    try {
-      const response = await fetch(`/api/v1/${type}/batch-export`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids })
-      });
-      
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${type}-export-${new Date().toISOString().split('T')[0]}.zip`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      }
-    } catch (error) {
-      console.error('Batch export failed:', error);
+      this.bindDatasetCardEvents(grid);
     }
   }
 
@@ -2492,11 +2635,20 @@ export default class ModsMenuModal {
       return `<option value="${value}" ${value===normalizedInitialId?'selected':''}>${d.name}</option>`;
     }).join('');
     if(!this.state.captionerSpells.length){ await this.fetchCaptionerSpells(); }
-    const spellOpts=(this.state.captionerSpells.length?this.state.captionerSpells:[{slug:'',name:'(no captioner spells found)'}]).map(s=>`<option value="${s.slug||s.spellId}">${s.name||s.displayName}</option>`).join('');
-    overlay.innerHTML=`<div class="import-dialog"><h3>Generate Captions</h3>
+    const spellOpts=(this.state.captionerSpells.length?this.state.captionerSpells:[{slug:'',name:'(no captioner spells found)'}]).map(s=>{
+      const value=s.slug||s.spellId||'';
+      const internalId=s.spellId||'';
+      return `<option value="${value}" data-spell-id="${internalId}">${s.name||s.displayName}</option>`;
+    }).join('');
+    overlay.innerHTML=`<div class="import-dialog caption-generator-dialog"><h3>Generate Captions</h3>
       <label>Dataset:<br><select class="cap-dataset">${dsOptions}</select></label><br>
-      <label>Captioner Spell:<br><select class="cap-method">${spellOpts}</select></label><br>
-      <label>Trigger Words (optional):<br><input type="text" class="cap-triggers" placeholder="comma,separated" /></label>
+      <label>Captioner Spell:<br><select class="cap-method">${spellOpts}</select></label>
+      <div class="cap-parameter-section">
+        <div class="cap-param-info">Image URLs are injected automatically for each dataset photo. Add any extra spell inputs (for example, set <code>stringB</code> to your trigger word) so captions stay consistent.</div>
+        <div class="cap-param-rows"></div>
+        <button type="button" class="add-cap-param">＋ Add Parameter</button>
+      </div>
+      <div class="cap-spell-preview"><div class="cap-spell-preview-content">Select a spell to see how its exposed inputs map to caption generation.</div></div>
       <div class="error-message" style="display:none"></div>
       <div class="btn-row"><button class="confirm-generate-btn">Generate</button><button class="cancel-generate-btn">Cancel</button></div>
     </div>`;
@@ -2506,18 +2658,72 @@ export default class ModsMenuModal {
     const cleanup=()=>{document.body.removeChild(overlay);};
     overlay.querySelector('.cancel-generate-btn').onclick=cleanup;
     overlay.onclick=(e)=>{if(e.target===overlay) cleanup();};
+    const rowsContainer=overlay.querySelector('.cap-param-rows');
+    const addParamRow=(key='',value='')=>{
+      const row=document.createElement('div');
+      row.className='cap-param-row';
+      row.innerHTML=`<input type="text" class="cap-param-key" placeholder="parameter key" />
+        <input type="text" class="cap-param-value" placeholder="value" />
+        <button type="button" class="cap-param-remove" title="Remove">×</button>`;
+      const keyInput=row.querySelector('.cap-param-key');
+      const valInput=row.querySelector('.cap-param-value');
+      if(key) keyInput.value=key;
+      if(value) valInput.value=value;
+      row.querySelector('.cap-param-remove').onclick=()=>{
+        if(rowsContainer.children.length<=1){
+          keyInput.value='';
+          valInput.value='';
+          return;
+        }
+        row.remove();
+      };
+      rowsContainer.appendChild(row);
+    };
+    overlay.querySelector('.add-cap-param').onclick=()=>addParamRow('', '');
+    addParamRow('stringB','');
+    const methodSelect = overlay.querySelector('.cap-method');
+    const previewContainer = overlay.querySelector('.cap-spell-preview-content');
+    const refreshPreview = async () => {
+      if(!previewContainer) return;
+      const slug = methodSelect.value;
+      const selectedOption = methodSelect.options[methodSelect.selectedIndex];
+      const spellId = selectedOption?.dataset?.spellId || '';
+      previewContainer.innerHTML = '<div class="cap-spell-preview-loading">Loading spell mapping…</div>';
+      try {
+        const definition = await this.fetchSpellDefinition(slug, spellId);
+        if(!definition){
+          previewContainer.innerHTML = '<div class="cap-spell-preview-empty">Spell inputs unavailable. You can still provide overrides manually.</div>';
+          return;
+        }
+        previewContainer.innerHTML = this.renderCaptionSpellPreview(definition);
+      } catch(err){
+        previewContainer.innerHTML = '<div class="cap-spell-preview-empty">Unable to load spell mapping.</div>';
+      }
+    };
+    methodSelect.onchange = refreshPreview;
+    refreshPreview();
     overlay.querySelector('.confirm-generate-btn').onclick=async ()=>{
       const spellSlug=overlay.querySelector('.cap-method').value;
-      const triggers=overlay.querySelector('.cap-triggers').value.trim();
+      const parameterOverrides={};
+      rowsContainer.querySelectorAll('.cap-param-row').forEach(row=>{
+        const key=row.querySelector('.cap-param-key').value.trim();
+        const value=row.querySelector('.cap-param-value').value;
+        if(!key || value===undefined || value===null || value==='') return;
+        parameterOverrides[key]=value;
+      });
       overlay.querySelector('.confirm-generate-btn').disabled=true;
       try{
         const dsId=overlay.querySelector('.cap-dataset').value;
         const csrfRes=await fetch('/api/v1/csrf-token');
         const {csrfToken}=await csrfRes.json();
         const masterAccountId = await this.getCurrentMasterAccountId();
+        const payload={spellSlug,masterAccountId,parameterOverrides};
+        if(parameterOverrides.triggerWord){
+          payload.triggerWord=parameterOverrides.triggerWord;
+        }
         const res=await fetch(`/api/v1/datasets/${encodeURIComponent(dsId)}/caption-via-spell`,{
           method:'POST',credentials:'include',headers:{'Content-Type':'application/json','x-csrf-token':csrfToken},
-          body:JSON.stringify({spellSlug,triggerWords:triggers,masterAccountId})});
+          body:JSON.stringify(payload)});
         if(!res.ok) throw new Error('Generate failed');
         this.markCaptionTaskStarting(dsId, spellSlug);
         cleanup();
@@ -2526,17 +2732,125 @@ export default class ModsMenuModal {
     };
   }
 
+  async fetchSpellDefinition(primaryIdentifier, fallbackIdentifier = '') {
+    const attempts = [primaryIdentifier, fallbackIdentifier].filter(Boolean);
+    for (const key of attempts) {
+      if (this._captionSpellCache[key]) {
+        return this._captionSpellCache[key];
+      }
+    }
+    for (const key of attempts) {
+      try {
+        const res = await fetch(`/api/v1/spells/registry/${encodeURIComponent(key)}`, {
+          credentials: 'include',
+          cache: 'no-store'
+        });
+        if (!res.ok) continue;
+        const payload = await res.json();
+        attempts.forEach(id => {
+          if (id) this._captionSpellCache[id] = payload;
+        });
+        return payload;
+      } catch (err) {
+        console.warn('[ModsMenuModal] fetchSpellDefinition error', err);
+      }
+    }
+    return null;
+  }
+
+  renderCaptionSpellPreview(definition) {
+    if (!definition) {
+      return '<div class="cap-spell-preview-empty">Spell inputs unavailable.</div>';
+    }
+    const rows = this.buildCaptionSpellInputSummaries(definition);
+    const template = this.extractStringPrimitiveTemplate(definition);
+    const rowsHtml = rows.length
+      ? rows.map(row => `
+        <div class="cap-spell-preview-row">
+          <div class="cap-spell-preview-key">${this.escapeHtml(row.param)}</div>
+          <div class="cap-spell-preview-note">
+            <div class="cap-spell-preview-step">${this.escapeHtml(row.tool)}</div>
+            <div class="cap-spell-preview-desc">${this.escapeHtml(row.note)}</div>
+          </div>
+        </div>`).join('')
+      : '<div class="cap-spell-preview-empty">No exposed inputs detected.</div>';
+    const templateHtml = template
+      ? `<div class="cap-spell-template">
+          <div class="cap-spell-template-label">String template (stringA)</div>
+          <textarea readonly>${this.escapeHtml(template)}</textarea>
+        </div>`
+      : '';
+    return `<div class="cap-spell-preview-body">${rowsHtml}${templateHtml}</div>`;
+  }
+
+  buildCaptionSpellInputSummaries(definition) {
+    const rows = [];
+    if (!definition) return rows;
+    const stepsById = {};
+    (definition.steps || []).forEach(step => {
+      const key = step.stepId || step.id || step.nodeId;
+      if (key) stepsById[key] = step;
+    });
+
+    const pushRow = (param, tool, note) => {
+      rows.push({ param, tool, note });
+    };
+
+    const joyStep = (definition.steps || []).find(s => s.toolIdentifier === 'joycaption');
+    const joyLabel = joyStep?.displayName || 'JoyCaption';
+    pushRow('imageUrl', joyLabel, 'Automatically set to each dataset image.');
+
+    const seen = new Set(['imageUrl']);
+    const exposures = Array.isArray(definition.exposedInputs) ? definition.exposedInputs : [];
+    exposures.forEach(exp => {
+      const param = exp.paramKey || exp.param || '';
+      if (!param || seen.has(`${exp.nodeId}:${param}`)) return;
+      const toolLabel = stepsById[exp.nodeId]?.displayName || stepsById[exp.nodeId]?.toolIdentifier || 'Spell Step';
+      let note = 'Provide this parameter below when creating the caption set.';
+      if (param === 'imageUrl') {
+        note = 'Automatically set to each dataset image.';
+      } else if (param === 'stringB') {
+        note = 'Trigger word replacement value. Set it below so xxx becomes your token.';
+      }
+      seen.add(`${exp.nodeId}:${param}`);
+      pushRow(param, toolLabel, note);
+    });
+
+    return rows;
+  }
+
+  extractStringPrimitiveTemplate(definition) {
+    if (!definition) return '';
+    const step = (definition.steps || []).find(s => s.toolIdentifier === 'string-primitive');
+    const template = step?.parameterMappings?.stringA?.value;
+    return typeof template === 'string' ? template : '';
+  }
+
   normalizeCaptionEntries(captionSet, datasetId = this.state.selectedDatasetId){
     if(!captionSet) return [];
     const dataset = this.getDatasetById(datasetId);
     const datasetImages = dataset?.images || [];
     return (captionSet.captions || []).map((entry, idx) => {
-      const normalized = { imageUrl: datasetImages[idx] || '', text: '' };
+      const datasetImageEntry = datasetImages[idx];
+      const normalized = {
+        imageUrl: this.resolveImageUrl(datasetImageEntry),
+        imageFilename: this.extractImageFilename(datasetImageEntry),
+        text: ''
+      };
       if (typeof entry === 'string') {
         normalized.text = entry;
       } else if (entry && typeof entry === 'object') {
         normalized.text = entry.caption || entry.text || entry.description || '';
         normalized.imageUrl = entry.imageUrl || entry.url || normalized.imageUrl;
+        normalized.imageFilename =
+          entry.imageFilename ||
+          entry.filename ||
+          entry.fileName ||
+          entry.imageName ||
+          normalized.imageFilename;
+      }
+      if (!normalized.imageFilename) {
+        normalized.imageFilename = this.extractImageFilename(normalized.imageUrl);
       }
       return normalized;
     });
@@ -2586,19 +2900,17 @@ export default class ModsMenuModal {
       alert('This caption set has no captions yet.');
       return;
     }
-    const header='imageUrl,caption';
-    const rows=entries.map(entry=>`${this.toCsvValue(entry.imageUrl)},${this.toCsvValue(entry.text)}`);
-    const csv=[header,...rows].join('\n');
-    const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    const stamp=(captionSet.method||'captions').replace(/\s+/g,'-').toLowerCase();
-    a.href=url;
-    a.download=`${stamp}-dataset-captions.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const files = this.buildCaptionTextFiles(entries);
+    const zipBlob = this.createZipFromTextFiles(files);
+    if(!zipBlob){
+      alert('Unable to prepare caption download. Please try again.');
+      return;
+    }
+    const dataset = this.getDatasetById(this.state.selectedDatasetId);
+    const datasetPart = this.sanitizeFilenamePart(dataset?.name || 'dataset', 'dataset');
+    const methodPart = this.sanitizeFilenamePart(captionSet.method || 'captions', 'captions');
+    const fileName = `${datasetPart}-${methodPart}-captions.zip`;
+    this.triggerFileDownload(zipBlob, fileName);
   }
 
   async deleteCaptionSet(captionSetId){
@@ -2674,14 +2986,6 @@ export default class ModsMenuModal {
       .replace(/>/g,'&gt;')
       .replace(/"/g,'&quot;')
       .replace(/'/g,'&#39;');
-  }
-
-  toCsvValue(value){
-    const str=value==null?'':String(value);
-    if(/[",\n]/.test(str)){
-      return `"${str.replace(/"/g,'""')}"`;
-    }
-    return str;
   }
 
   /**

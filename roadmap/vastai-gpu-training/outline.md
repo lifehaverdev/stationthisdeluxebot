@@ -69,6 +69,48 @@ A reusable "remote trainer" stack where the TrainingOrchestrator can pick any re
 7. When tool completes, worker uploads final artifacts to R2, updates `trainingDb`, registers LoRA, and calls `VastAIService.terminateJob` to shut down the rental.
 8. Job transitions to `COMPLETED`; dataset/model credits applied; worker cleans up local temp files.
 
+## Dataset + Config Handoff (Flux LoRA Pilot)
+The immediate blocker is turning a “dataset + captions + ai-toolkit config” bundle into something the rented machine can execute without manual tweaking. We’ll standardize both the **local staging** story and the **remote filesystem** layout so the CLI + worker can reason about deterministic paths.
+
+### Local Staging
+1. **Dataset prep** – run `scripts/datasets/validate.js <datasetId>` to confirm min images, captions, and naming. The validator emits a manifest JSON + `captions.jsonl` so captions travel with each image.
+2. **Pack & hash** – use `DatasetPacker` to produce `dataset_<jobId>.tar.zst`. Tarball contains `images/`, `captions/`, `captions.jsonl`, and `manifest.json`. Store alongside `job.json` inside `.stationthis/jobs/<jobId>/` on the orchestrator while waiting for transfer.
+3. **Config templating** – the source-of-truth ai-toolkit config lives at `roadmap/vastai-gpu-training/configs/flux-lora-ai-toolkit.yml`. It includes placeholders such as `{{JOB_ROOT}}/dataset/images` and is easy to edit in-repo. Before upload, `scripts/vastai/render-config.js` swaps placeholders with the concrete remote job root and writes the rendered file to `.stationthis/jobs/<jobId>/config/flux-lora-ai-toolkit.yml`.
+
+### Remote Layout
+- Every job gets a deterministic root: `/opt/stationthis/jobs/<jobId>` (created by bootstrap script).
+- Subfolders:
+  - `dataset/` – untarred dataset that mirrors the packer layout (`images/`, `captions/`, `captions.jsonl`).
+  - `config/` – rendered ai-toolkit YAML + `job.json` snapshot.
+  - `scripts/` – generated `launch_flux.sh` (runs config), helper to resume, and a symlink to datasets when reusing.
+  - `logs/` – stdout/stderr from the `ai-toolkit` run plus `rsync.log` for debugging transfers.
+  - `output/` – checkpoints + previews that ArtifactCollector syncs back.
+
+### Launch Command
+1. `push-dataset.js` copies `dataset_<jobId>.tar.zst`, the rendered config, and `job.json` via `rsync`. After the copy finishes it remotely executes `prepare_job_structure.sh` which:
+   - verifies disk space
+   - extracts the dataset tarball into `$JOB_ROOT/dataset`
+   - writes a `JOB_ROOT` file with the absolute path (so later shells don’t recompute it)
+   - installs or updates `ai-toolkit` if missing
+2. `launch_flux.sh` then runs:
+   ```bash
+   export JOB_ROOT=/opt/stationthis/jobs/<jobId>
+   cd "$JOB_ROOT"
+   python3 -m ai_toolkit.train \
+     --config config/flux-lora-ai-toolkit.yml \
+     --dataset-dir dataset/images \
+     --captions-file dataset/captions.jsonl \
+     --output-dir output
+   ```
+   Paths in the YAML already point to `$JOB_ROOT`, so the flags are mostly belts-and-braces. The script tees stdout/stderr into `logs/train-YYYYMMDD_HHMMSS.log` and emits a heartbeat JSON after each epoch so the worker can resume tailing even if SSH disconnects.
+
+### Why keep the config under `roadmap/vastai-gpu-training/configs/`
+- Close to the written roadmap, so PM/ML folks can iterate without touching prod code.
+- Version-controlled history of every knob we tweak for flux before we promote it into `src/core/services/training/tools/flux-lora/`.
+- Scripts load the template directly from disk (no bundling step) which keeps the experiment feedback loop tight.
+
+Once the recipe hardens, we’ll duplicate the YAML into the official tool registry directory, but during R&D the roadmap-backed template is the safe place to keep editing rights open while still referencing predictable dataset paths.
+
 ## Failure & Recovery Strategy
 - **Provisioning failure** → mark job `FAILED_PROVISIONING`, notify orchestrator, refund points.
 - **Transfer/Command failure** → capture remote logs and attach to job; worker attempts automatic retry of failed step (max 3). If the worker process dies mid-training, on restart it checks provider metadata and reconnects via SSH to continue log streaming until training finishes or times out.

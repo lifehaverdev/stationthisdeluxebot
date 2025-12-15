@@ -1,5 +1,6 @@
 @import url('./components/mint-spell-fab.css');
 @import './components/workspaceSuite.css';
+@import './components/spellEditorOverlay.css';
 /* Base layout */
 .sandbox-main {
     display: flex;

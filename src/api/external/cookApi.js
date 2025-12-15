@@ -1,5 +1,7 @@
 const express = require('express');
 
+const MAX_BULK_REVIEW_DECISIONS = 50;
+
 /**
  * createCookApiRouter
  * External-facing router for Cook Mode (Collections).
@@ -309,6 +311,58 @@ function createCookApiRouter(deps = {}) {
       return res.json(data);
     } catch (err) {
       logger.error('review outcome proxy error', err.response?.data || err.message);
+      const status = err.response?.status || 500;
+      return res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+  /**
+   * POST /api/v1/collections/:collectionId/pieces/review/bulk
+   * Body: { decisions: [{ generationId, outcome }] }
+   */
+  router.post('/collections/:collectionId/pieces/review/bulk', async (req, res) => {
+    try {
+      const { decisions } = req.body || {};
+      if (!Array.isArray(decisions) || decisions.length === 0) {
+        return res.status(400).json({ error: 'missing_decisions' });
+      }
+      const normalized = [];
+      const allowedOutcomes = new Set(['accepted', 'rejected']);
+      for (const rawDecision of decisions.slice(0, MAX_BULK_REVIEW_DECISIONS)) {
+        if (!rawDecision) continue;
+        const generationId = String(rawDecision.generationId || '').trim();
+        const outcome = String(rawDecision.outcome || '').toLowerCase();
+        if (!generationId || !allowedOutcomes.has(outcome)) continue;
+        normalized.push({ generationId, outcome });
+      }
+      if (!normalized.length) {
+        return res.status(400).json({ error: 'no_valid_decisions' });
+      }
+
+      const results = [];
+      for (const { generationId, outcome } of normalized) {
+        try {
+          const payload = { 'metadata.reviewOutcome': outcome };
+          await internalApiClient.put(`/internal/v1/data/generations/${encodeURIComponent(generationId)}`, payload);
+          results.push({ generationId, outcome, status: 'ok' });
+        } catch (err) {
+          logger.error('bulk review outcome proxy error', {
+            generationId,
+            error: err.response?.data || err.message
+          });
+          results.push({
+            generationId,
+            outcome,
+            status: 'error',
+            error: err.response?.data?.error || err.response?.data || err.message
+          });
+        }
+      }
+      const hasErrors = results.some(r => r.status === 'error');
+      const statusCode = hasErrors ? 207 : 200;
+      return res.status(statusCode).json({ results });
+    } catch (err) {
+      logger.error('bulk review outcome proxy error', err.response?.data || err.message);
       const status = err.response?.status || 500;
       return res.status(status).json(err.response?.data || { error: 'proxy-error' });
     }

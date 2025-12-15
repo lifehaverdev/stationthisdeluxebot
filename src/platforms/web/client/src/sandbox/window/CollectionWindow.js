@@ -4,6 +4,13 @@ import { getToolWindows } from '../state.js';
 import { generationIdToWindowMap, generationCompletionManager } from '../node/websocketHandlers.js';
 import { showTextOverlay } from '../node/overlays/textOverlay.js';
 
+const MAX_REVIEW_BATCH_SIZE = 50;
+const DEFAULT_REVIEW_BATCH_SIZE = 12;
+const DEFAULT_REVIEW_PREFETCH_THRESHOLD = 3;
+const DEFAULT_REVIEW_FLUSH_THRESHOLD = 6;
+const DEFAULT_REVIEW_FLUSH_INTERVAL_MS = 5000;
+const MAX_REVIEW_SUBMISSION_BATCH_SIZE = 50;
+
 /**
  * CollectionWindow – unified window for collection test & review.
  * mode: 'test' | 'review'
@@ -142,6 +149,27 @@ export default class CollectionWindow extends BaseWindow {
 
     this.mode = mode;
     this.collection = collection;
+    this._reviewQueue = [];
+    this._activeReview = null;
+    this._reviewFetchPromise = null;
+    this._pendingReviewDecisions = [];
+    this._reviewFlushPromise = null;
+    this._reviewFlushTimer = null;
+    this._reviewBatchSize = Math.min(
+      Math.max(collection?.config?.reviewBatchSize || DEFAULT_REVIEW_BATCH_SIZE, 1),
+      MAX_REVIEW_BATCH_SIZE
+    );
+    const prefetchCfg = collection?.config?.reviewPrefetchThreshold ?? DEFAULT_REVIEW_PREFETCH_THRESHOLD;
+    const maxPrefetch = Math.max(1, this._reviewBatchSize - 1);
+    this._reviewPrefetchThreshold = Math.max(1, Math.min(prefetchCfg, maxPrefetch));
+    this._reviewFlushThreshold = Math.min(
+      Math.max(collection?.config?.reviewFlushThreshold || DEFAULT_REVIEW_FLUSH_THRESHOLD, 1),
+      MAX_REVIEW_SUBMISSION_BATCH_SIZE
+    );
+    const flushInterval = Number(collection?.config?.reviewFlushIntervalMs) || DEFAULT_REVIEW_FLUSH_INTERVAL_MS;
+    this._reviewFlushIntervalMs = Math.max(flushInterval, 1000);
+    this._reviewSyncBannerState = { text: 'All decisions synced ✅', variant: 'ok' };
+
     // Store reference to this instance on the DOM element for WebSocket handler access
     this.el._collectionWindowInstance = this;
     // Tag as spell window to enable shared websocket progress handling when testing a spell
@@ -154,6 +182,25 @@ export default class CollectionWindow extends BaseWindow {
     // Tag as collection-test-window for WebSocket handler identification
     if (mode === 'test') {
       this.el.classList.add('collection-test-window');
+    }
+
+    if (this.mode === 'review') {
+      this._beforeUnloadHandler = () => {
+        if (this._pendingReviewDecisions?.length) {
+          this._flushPendingReviews({ force: true, keepAlive: true }).catch(() => {});
+        }
+      };
+      window.addEventListener('beforeunload', this._beforeUnloadHandler);
+      const prevOnClose = this.onClose;
+      this.onClose = () => {
+        prevOnClose?.();
+        if (this._beforeUnloadHandler) {
+          window.removeEventListener('beforeunload', this._beforeUnloadHandler);
+        }
+        if (this._pendingReviewDecisions?.length) {
+          this._flushPendingReviews({ force: true, keepAlive: true }).catch(() => {});
+        }
+      };
     }
 
     this.renderBody();
@@ -179,90 +226,363 @@ export default class CollectionWindow extends BaseWindow {
   /* ---------------- Review Mode ---------------- */
   _renderReview() {
     const body = this.body;
-    body.innerHTML = `<div style="text-align:center;"><button class="start-review-btn">Start Reviewing</button></div>`;
-
-    body.addEventListener('click', (e) => {
-      if (e.target.classList.contains('start-review-btn')) {
-        this._loadNextReview();
-      }
-    });
+    body.innerHTML = '';
+    const startWrap = document.createElement('div');
+    startWrap.style.textAlign = 'center';
+    startWrap.style.padding = '8px';
+    const startBtn = document.createElement('button');
+    startBtn.className = 'start-review-btn';
+    startBtn.textContent = 'Start Reviewing';
+    startBtn.onclick = () => {
+      startBtn.disabled = true;
+      startBtn.textContent = 'Loading pieces…';
+      this._reviewQueue = [];
+      this._activeReview = null;
+      this._loadNextReview({ showLoading: true }).catch(() => {
+        startBtn.disabled = false;
+        startBtn.textContent = 'Start Reviewing';
+      });
+    };
+    startWrap.appendChild(startBtn);
+    body.appendChild(startWrap);
   }
 
-  async _loadNextReview() {
+  async _loadNextReview({ showLoading = false } = {}) {
     const body = this.body;
-    body.textContent = 'Loading…';
+    if (showLoading) {
+      body.textContent = 'Loading…';
+    }
+
     try {
-      const res = await fetch(`/api/v1/collections/${encodeURIComponent(this.collection.collectionId)}/pieces/unreviewed`);
-      const json = await res.json();
-      console.log('[CollectionWindow] unreviewed API response', json);
-      const gen = (json.generations || [])[0];
-      console.log('[CollectionWindow] selected generation', gen);
+      const gen = await this._getNextReviewPiece({ showLoading: true });
       if (!gen) {
-        body.textContent = 'No unreviewed pieces 🎉';
+        this._renderNoPiecesMessage();
         return;
       }
-      body.innerHTML = '';
-      const resultDiv = document.createElement('div');
-      resultDiv.className = 'result-container';
-      body.appendChild(resultDiv);
-      // --- Normalise outputs similarly to websocketHandlers ---
-      const outputs = gen.outputs || gen.responsePayload || gen.artifactUrls || {};
-      console.log('[CollectionWindow] raw outputs', outputs);
-      let outputData;
-      if (Array.isArray(outputs) && outputs[0]?.data?.images?.[0]?.url) {
-        outputData = { type: 'image', url: outputs[0].data.images[0].url, generationId: gen._id };
-      } else if (Array.isArray(outputs.images) && outputs.images.length) {
-        const firstImg = outputs.images[0];
-        outputData = { type: 'image', url: (typeof firstImg==='string'? firstImg : firstImg.url), generationId: gen._id };
-      } else if (outputs.image) {
-        // single image string field
-        outputData = { type: 'image', url: outputs.image, generationId: gen._id };
-      } else if (outputs.imageUrl) {
-        outputData = { type: 'image', url: outputs.imageUrl, generationId: gen._id };
-      } else if (outputs.text) {
-        outputData = { type: 'text', text: outputs.text, generationId: gen._id };
-      } else if (outputs.response) {
-        outputData = { type: 'text', text: outputs.response, generationId: gen._id };
-      } else if (outputs.steps && Array.isArray(outputs.steps)) {
-        outputData = { type: 'spell', steps: outputs.steps, generationId: gen._id };
-      } else {
-        outputData = { type: 'unknown', generationId: gen._id, ...outputs };
-      }
-      console.log('[CollectionWindow] outputData selected', outputData);
-      renderResultContent(resultDiv, outputData);
-
-      const btnRow = document.createElement('div');
-      const acceptBtn = document.createElement('button');
-      acceptBtn.textContent = 'Accept ✅';
-      const rejectBtn = document.createElement('button');
-      rejectBtn.textContent = 'Reject ❌';
-      btnRow.append(acceptBtn, rejectBtn);
-      body.appendChild(btnRow);
-
-      const getCsrfToken = async () => {
-        if (CollectionWindow._csrfToken) return CollectionWindow._csrfToken;
-        try {
-          const res = await fetch('/api/v1/csrf-token', { credentials: 'include' });
-          const data = await res.json();
-          CollectionWindow._csrfToken = data.csrfToken;
-          return CollectionWindow._csrfToken;
-        } catch { return ''; }
-      };
-
-      const mark = async (outcome) => {
-        const csrf = await getCsrfToken();
-        await fetch(`/api/v1/collections/${encodeURIComponent(this.collection.collectionId)}/pieces/${encodeURIComponent(gen._id)}/review`, {
-          method: 'PUT',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrf },
-          body: JSON.stringify({ outcome })
-        });
-        this._loadNextReview();
-      };
-      acceptBtn.onclick = () => mark('accepted');
-      rejectBtn.onclick = () => mark('rejected');
+      this._renderReviewPiece(gen);
+      this._maybePrefetchReviews();
     } catch (e) {
+      console.error('[CollectionWindow] Failed to load review piece', e);
       body.textContent = 'Error loading piece';
+    }
+  }
+
+  async _getNextReviewPiece({ showLoading } = {}) {
+    if (!Array.isArray(this._reviewQueue)) this._reviewQueue = [];
+    if (this._reviewQueue.length === 0) {
+      const fetched = await this._fetchReviewBatch({ showLoading });
+      if (!fetched) return null;
+    }
+    return this._reviewQueue.shift() || null;
+  }
+
+  async _fetchReviewBatch({ showLoading = false } = {}) {
+    if (this._reviewFetchPromise) {
+      return this._reviewFetchPromise;
+    }
+    const loadPromise = (async () => {
+      if (showLoading && !this._activeReview) {
+        this.body.textContent = 'Loading…';
+      }
+      const limit = this._reviewBatchSize;
+      const url = `/api/v1/collections/${encodeURIComponent(this.collection.collectionId)}/pieces/unreviewed?limit=${limit}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`HTTP ${res.status}: ${text}`);
+      }
+      const json = await res.json();
+      console.log('[CollectionWindow] batched unreviewed API response', json);
+      const gens = Array.isArray(json.generations) ? json.generations : [];
+      const existingIds = new Set(this._reviewQueue.map(g => g?._id).filter(Boolean));
+      if (this._activeReview?._id) existingIds.add(this._activeReview._id);
+      const deduped = gens.filter(g => g && g._id && !existingIds.has(g._id));
+      deduped.forEach(g => existingIds.add(g._id));
+      if (deduped.length) {
+        this._reviewQueue.push(...deduped);
+      }
+      return deduped.length;
+    })();
+    this._reviewFetchPromise = loadPromise;
+    try {
+      const count = await loadPromise;
+      return count;
+    } catch (err) {
+      if (showLoading) {
+        this.body.textContent = 'Error loading pieces';
+      }
+      console.error('[CollectionWindow] Failed to fetch review batch', err);
+      return 0;
+    } finally {
+      this._reviewFetchPromise = null;
+    }
+  }
+
+  _maybePrefetchReviews() {
+    if (!this._reviewQueue) this._reviewQueue = [];
+    if (this._reviewQueue.length < this._reviewPrefetchThreshold) {
+      this._fetchReviewBatch().catch(err => {
+        console.error('[CollectionWindow] Prefetch review batch failed', err);
+      });
+    }
+  }
+
+  _renderReviewPiece(gen) {
+    const body = this.body;
+    this._activeReview = gen;
+    body.innerHTML = '';
+    const resultDiv = document.createElement('div');
+    resultDiv.className = 'result-container';
+    body.appendChild(resultDiv);
+
+    const outputData = this._normaliseReviewOutput(gen);
+    console.log('[CollectionWindow] rendering review generation', gen, outputData);
+    renderResultContent(resultDiv, outputData);
+
+    const btnRow = document.createElement('div');
+    const acceptBtn = document.createElement('button');
+    acceptBtn.textContent = 'Accept ✅';
+    const rejectBtn = document.createElement('button');
+    rejectBtn.textContent = 'Reject ❌';
+    btnRow.append(acceptBtn, rejectBtn);
+    body.appendChild(btnRow);
+
+    this._attachReviewSyncBanner();
+    this._updateReviewSyncBanner();
+    let markInFlight = false;
+    const mark = async (outcome) => {
+      if (markInFlight) return;
+      markInFlight = true;
+      acceptBtn.disabled = true;
+      rejectBtn.disabled = true;
+      try {
+        this._bufferReviewDecision(gen._id, outcome);
+        this._activeReview = null;
+        await this._loadNextReview({ showLoading: true });
+      } catch (err) {
+        console.error('[CollectionWindow] Failed to advance after decision', err);
+        this._setReviewSyncBanner('Failed to load next piece. Please try again.', 'error');
+      }
+      markInFlight = false;
+    };
+    acceptBtn.onclick = () => mark('accepted');
+    rejectBtn.onclick = () => mark('rejected');
+  }
+
+  _normaliseReviewOutput(gen) {
+    const outputs = gen.outputs || gen.responsePayload || gen.artifactUrls || {};
+    console.log('[CollectionWindow] raw outputs', outputs);
+    if (Array.isArray(outputs) && outputs[0]?.data?.images?.[0]?.url) {
+      return { type: 'image', url: outputs[0].data.images[0].url, generationId: gen._id };
+    }
+    if (Array.isArray(outputs.images) && outputs.images.length) {
+      const firstImg = outputs.images[0];
+      return { type: 'image', url: (typeof firstImg === 'string' ? firstImg : firstImg.url), generationId: gen._id };
+    }
+    if (outputs.image) {
+      return { type: 'image', url: outputs.image, generationId: gen._id };
+    }
+    if (outputs.imageUrl) {
+      return { type: 'image', url: outputs.imageUrl, generationId: gen._id };
+    }
+    if (outputs.text) {
+      return { type: 'text', text: outputs.text, generationId: gen._id };
+    }
+    if (outputs.response) {
+      return { type: 'text', text: outputs.response, generationId: gen._id };
+    }
+    if (outputs.steps && Array.isArray(outputs.steps)) {
+      return { type: 'spell', steps: outputs.steps, generationId: gen._id };
+    }
+    return { type: 'unknown', generationId: gen._id, ...outputs };
+  }
+
+  _bufferReviewDecision(generationId, outcome) {
+    if (!generationId || !outcome) return;
+    if (!Array.isArray(this._pendingReviewDecisions)) this._pendingReviewDecisions = [];
+    this._pendingReviewDecisions.push({ generationId, outcome });
+    console.log('[CollectionWindow] queued review decision', generationId, outcome, 'pending:', this._pendingReviewDecisions.length);
+    this._updateReviewSyncBanner();
+    this._scheduleReviewFlush();
+  }
+
+  _scheduleReviewFlush() {
+    const pending = this._pendingReviewDecisions?.length || 0;
+    if (!pending) return;
+    if (pending >= this._reviewFlushThreshold) {
+      if (this._reviewFlushTimer) {
+        clearTimeout(this._reviewFlushTimer);
+        this._reviewFlushTimer = null;
+      }
+      this._flushPendingReviews().catch(err => {
+        console.error('[CollectionWindow] Review flush failed', err);
+      });
+      return;
+    }
+    if (this._reviewFlushTimer) return;
+    this._reviewFlushTimer = setTimeout(() => {
+      this._reviewFlushTimer = null;
+      if (this._pendingReviewDecisions?.length) {
+        this._flushPendingReviews().catch(err => {
+          console.error('[CollectionWindow] Review flush failed', err);
+        });
+      }
+    }, this._reviewFlushIntervalMs);
+  }
+
+  async _flushPendingReviews({ force = false, keepAlive = false } = {}) {
+    if (this.mode !== 'review') return;
+    if (this._reviewFlushPromise) {
+      if (force) {
+        try {
+          await this._reviewFlushPromise;
+        } catch {
+          // ignore – we'll retry below
+        }
+      } else {
+        return this._reviewFlushPromise;
+      }
+    }
+    if (this._reviewFlushTimer) {
+      clearTimeout(this._reviewFlushTimer);
+      this._reviewFlushTimer = null;
+    }
+    const pending = this._pendingReviewDecisions?.splice?.(0, this._pendingReviewDecisions.length) || [];
+    if (!pending.length) return;
+
+    this._setReviewSyncBanner(`Syncing ${pending.length} decision${pending.length === 1 ? '' : 's'}…`, 'pending');
+    const csrfToken = await this._getCsrfToken();
+
+    const chunks = [];
+    for (let i = 0; i < pending.length; i += MAX_REVIEW_SUBMISSION_BATCH_SIZE) {
+      chunks.push(pending.slice(i, i + MAX_REVIEW_SUBMISSION_BATCH_SIZE));
+    }
+
+    const flushPromise = (async () => {
+      const failed = [];
+      for (const chunk of chunks) {
+        try {
+          const resp = await this._postBulkReviewDecisions(chunk, { csrfToken, keepAlive });
+          const results = Array.isArray(resp?.results) ? resp.results : [];
+          if (results.length) {
+            const erroredIds = results.filter(r => r?.status === 'error').map(r => r.generationId);
+            if (erroredIds.length) {
+              failed.push(...chunk.filter(dec => erroredIds.includes(dec.generationId)));
+            }
+          }
+        } catch (err) {
+          console.error('[CollectionWindow] Bulk review request failed', err);
+          failed.push(...chunk);
+        }
+      }
+      if (failed.length) {
+        // Requeue failed ones at the front for retry
+        this._pendingReviewDecisions.unshift(...failed);
+        throw new Error('bulk_review_failed');
+      }
+    })();
+
+    this._reviewFlushPromise = flushPromise;
+    try {
+      await flushPromise;
+      this._updateReviewSyncBanner();
+    } catch (err) {
+      this._setReviewSyncBanner('Failed to sync some reviews. Retrying automatically…', 'error');
+      this._scheduleReviewFlush();
+      throw err;
+    } finally {
+      this._reviewFlushPromise = null;
+    }
+  }
+
+  async _postBulkReviewDecisions(decisions, { csrfToken = '', keepAlive = false } = {}) {
+    if (!Array.isArray(decisions) || decisions.length === 0) return null;
+    const res = await fetch(`/api/v1/collections/${encodeURIComponent(this.collection.collectionId)}/pieces/review/bulk`, {
+      method: 'POST',
+      credentials: 'include',
+      keepalive: keepAlive,
+      headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrfToken },
+      body: JSON.stringify({ decisions })
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || 'Bulk review failed');
+    }
+    return res.json().catch(() => ({}));
+  }
+
+  _attachReviewSyncBanner() {
+    if (!this._reviewSyncBanner) {
+      this._reviewSyncBanner = document.createElement('div');
+      this._reviewSyncBanner.className = 'review-sync-banner';
+      this._reviewSyncBanner.style.marginTop = '8px';
+      this._reviewSyncBanner.style.fontSize = '12px';
+      this._reviewSyncBanner.style.color = '#bfc3d9';
+    }
+    if (!this._reviewSyncBanner.parentElement) {
+      this.body.appendChild(this._reviewSyncBanner);
+    }
+    if (this._reviewSyncBannerState) {
+      this._setReviewSyncBanner(this._reviewSyncBannerState.text, this._reviewSyncBannerState.variant);
+    }
+  }
+
+  _setReviewSyncBanner(text, variant = 'info') {
+    this._reviewSyncBannerState = { text, variant };
+    if (!this._reviewSyncBanner) return;
+    const colorMap = {
+      error: '#ff8f8f',
+      pending: '#f0d37a',
+      ok: '#aee8a1',
+    };
+    this._reviewSyncBanner.style.color = colorMap[variant] || '#bfc3d9';
+    this._reviewSyncBanner.textContent = text;
+  }
+
+  _updateReviewSyncBanner() {
+    const pending = this._pendingReviewDecisions?.length || 0;
+    if (pending > 0) {
+      this._setReviewSyncBanner(`Pending decisions: ${pending} (syncing automatically…)`, 'pending');
+    } else {
+      this._setReviewSyncBanner('All decisions synced ✅', 'ok');
+    }
+  }
+
+  async _getCsrfToken() {
+    if (CollectionWindow._csrfToken) return CollectionWindow._csrfToken;
+    try {
+      const res = await fetch('/api/v1/csrf-token', { credentials: 'include' });
+      const data = await res.json();
+      CollectionWindow._csrfToken = data.csrfToken;
+      return CollectionWindow._csrfToken;
+    } catch {
+      return '';
+    }
+  }
+
+  _renderNoPiecesMessage() {
+    const body = this.body;
+    body.innerHTML = '';
+    const wrap = document.createElement('div');
+    wrap.style.textAlign = 'center';
+    wrap.style.padding = '12px';
+    wrap.innerHTML = '<div>No unreviewed pieces 🎉</div>';
+    const refreshBtn = document.createElement('button');
+    refreshBtn.textContent = 'Check Again';
+    refreshBtn.style.marginTop = '8px';
+    refreshBtn.onclick = () => {
+      this._reviewQueue = [];
+      this._activeReview = null;
+      this._loadNextReview({ showLoading: true });
+    };
+    wrap.appendChild(refreshBtn);
+    body.appendChild(wrap);
+    this._attachReviewSyncBanner();
+    this._updateReviewSyncBanner();
+    if (this._pendingReviewDecisions?.length) {
+      this._flushPendingReviews({ force: true }).catch(err => {
+        console.error('[CollectionWindow] Failed to flush pending reviews after completion', err);
+      });
     }
   }
 

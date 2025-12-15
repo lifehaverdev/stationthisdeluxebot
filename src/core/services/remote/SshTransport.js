@@ -72,6 +72,26 @@ class SshTransport {
       scp.on('error', reject);
     });
   }
+
+  download(remotePath, localPath, options = {}) {
+    return new Promise((resolve, reject) => {
+      const args = [...this.commonSshArgs];
+      if (options.recursive) {
+        args.push('-r');
+      }
+      args.push(`${this.sshTarget}:${remotePath}`, localPath);
+      this.logger.info(`[SCP] ${remotePath} -> ${localPath}`);
+      const scp = spawn('scp', args, { stdio: options.stdio || 'inherit' });
+      scp.on('close', (code) => {
+        if (code === 0) {
+          resolve();
+        } else {
+          reject(new Error(`SCP download failed with code ${code}`));
+        }
+      });
+      scp.on('error', reject);
+    });
+  }
 }
 
 module.exports = SshTransport;
