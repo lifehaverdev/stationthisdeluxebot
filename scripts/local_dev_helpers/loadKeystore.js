@@ -78,11 +78,7 @@ To make it work, please run it like this:
       keystorePath = path.join(os.homedir(), keystorePath.slice(1));
     }
 
-    const resolvedPath = path.resolve(keystorePath);
-    if (!fs.existsSync(resolvedPath)) {
-      console.error(`\nError: File not found at the resolved path: ${resolvedPath}`);
-      process.exit(1);
-    }
+    const resolvedPath = resolveKeystoreFilePath(keystorePath);
 
     const password = await ask('Enter your keystore password: ', true);
 
@@ -106,6 +102,38 @@ To make it work, please run it like this:
     }
     process.exit(1);
   }
+}
+
+function resolveKeystoreFilePath(inputPath) {
+  let resolvedPath = path.resolve(inputPath);
+  if (!fs.existsSync(resolvedPath)) {
+    console.error(`\nError: File not found at the resolved path: ${resolvedPath}`);
+    process.exit(1);
+  }
+
+  const stat = fs.statSync(resolvedPath);
+  if (stat.isDirectory()) {
+    const entries = fs.readdirSync(resolvedPath)
+      .filter(name => !name.startsWith('.'))
+      .filter(name => name.toLowerCase().endsWith('.json') || name.startsWith('UTC'));
+
+    if (!entries.length) {
+      console.error(`\nError: Directory provided but no keystore JSON files found in: ${resolvedPath}`);
+      process.exit(1);
+    }
+
+    const enriched = entries.map(name => {
+      const fullPath = path.join(resolvedPath, name);
+      const stats = fs.statSync(fullPath);
+      return { name, fullPath, mtime: stats.mtimeMs };
+    });
+    enriched.sort((a, b) => b.mtime - a.mtime);
+    const selected = enriched[0];
+    console.error(`[loadKeystore] Provided path is a directory; using newest file: ${selected.name}`);
+    resolvedPath = selected.fullPath;
+  }
+
+  return resolvedPath;
 }
 
 main(); 

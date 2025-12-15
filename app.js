@@ -6,7 +6,14 @@
 
 //const express = require('express');
 const path = require('path');
-const { v4: uuidv4 } = require('uuid'); // For request IDs in errors
+const { randomUUID } = require('crypto');
+let uuidv4;
+try {
+  ({ v4: uuidv4 } = require('uuid')); // Prefer external lib when available
+} catch (err) {
+  console.warn('[app] uuid package not found, falling back to crypto.randomUUID');
+  uuidv4 = () => randomUUID();
+}
 
 // Store application start time
 const APP_START_TIME = new Date();

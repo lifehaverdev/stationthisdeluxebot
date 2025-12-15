@@ -336,6 +336,10 @@ run_logged "Starting application container..." docker run -d \
   "${IMAGE_NAME}"
 
 if ! health_check_app; then
+  log "Health check failed; collecting container logs..."
+  if docker ps -a --format '{{.Names}}' | grep -q "^${APP_CONTAINER}$"; then
+    docker logs "${APP_CONTAINER}" | tail -n 200 >> "${LOG_FILE}" 2>&1 || true
+  fi
   log "Health check failed; attempting to revert to previous image."
   stop_container_if_exists "${APP_CONTAINER}"
   if docker image inspect "${OLD_IMAGE_NAME}" >/dev/null 2>&1; then
