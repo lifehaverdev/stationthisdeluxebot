@@ -33,8 +33,20 @@ const csrfExcluded = [
 ];
 
 // Helper: robust path matching (ignores query params, matches prefix)
-function isCsrfExcluded(url) {
+function isCsrfExcluded(url = '') {
   return csrfExcluded.some(excluded => url.startsWith(excluded));
+}
+
+// Requests that authenticate via explicit headers (API keys, bearer tokens) are not
+// vulnerable to CSRF because browsers cannot attach these headers automatically.
+function isExplicitlyAuthenticated(req) {
+  if (!req || !req.headers) return false;
+  if (req.headers['x-api-key']) return true;
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
+    return true;
+  }
+  return false;
 }
 
 // Create the csurf middleware instance
@@ -49,7 +61,7 @@ function csrfProtection(req, res, next) {
       console.debug('[CSRF]', req.method, req.originalUrl, 'excluded:', isCsrfExcluded(req.originalUrl));
     }
     */
-  if (isCsrfExcluded(req.originalUrl)) return next();
+  if (isCsrfExcluded(req.originalUrl) || isExplicitlyAuthenticated(req)) return next();
   
   // Wrap CSRF error handling to provide better error messages
   return csrf(req, res, (err) => {

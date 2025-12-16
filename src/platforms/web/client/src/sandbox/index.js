@@ -38,37 +38,74 @@ import { saveWorkspace, loadWorkspace } from './workspaces.js';
 import initWorkspaceTabs from './components/WorkspaceTabs.js';
 import { initCostHUD } from './components/costHud.js';
 import { websocketClient } from '/js/websocketClient.js';
+import { initSessionKeepAlive, forceSessionRefresh } from './utils/sessionKeepAlive.js';
 
-// Intercept fetch to detect 401 / unauthorized responses and prompt re-auth without page reload
+// Intercept fetch to detect 401 / unauthorized responses, attempt silent refresh,
+// and only prompt users when their session truly expired.
 (function interceptUnauthorized() {
     if (window.__fetch401InterceptorAttached__) return;
     window.__fetch401InterceptorAttached__ = true;
     const originalFetch = window.fetch;
+
+    const skippable401Endpoints = [
+        '/api/v1/generations/status',
+        '/api/v1/auth/session/refresh'
+    ];
+
+    function shouldSkip401Handling(url, options) {
+        if (!url) return false;
+        if (url.includes('/api/v1/workspaces/') && (!options || options.method === 'GET')) {
+            return true;
+        }
+        return skippable401Endpoints.some(endpoint => url.includes(endpoint));
+    }
+
     window.fetch = async function(...args) {
-        const resp = await originalFetch.apply(this, args);
+        const [input, options] = args;
+        let clonedRequest = null;
+        if (input instanceof Request) {
+            try {
+                clonedRequest = input.clone();
+            } catch (err) {
+                console.warn('[Sandbox] Failed to clone request for retry:', err);
+            }
+        }
+        let resp = await originalFetch.apply(this, args);
         if (resp && resp.status === 401) {
-            // Don't trigger reauth for workspace GET requests (they can be public)
-            const url = args[0];
-            if (typeof url === 'string' && url.includes('/api/v1/workspaces/') && args[1]?.method === 'GET') {
+            const requestUrl = (() => {
+                if (typeof input === 'string') return input;
+                if (input instanceof Request) return input.url;
+                if (input && typeof input.url === 'string') return input.url;
+                if (input instanceof URL) return input.toString();
+                return '';
+            })();
+
+            if (shouldSkip401Handling(requestUrl, options)) {
                 return resp;
             }
-            // Skip reauth prompts for endpoints that require API keys (not user sessions)
-            const skippable401Endpoints = [
-                '/api/v1/generations/status'
-            ];
-            if (typeof url === 'string' && skippable401Endpoints.some(endpoint => url.includes(endpoint))) {
-                return resp;
+
+            if (!clonedRequest) {
+                try {
+                    clonedRequest = new Request(input, options);
+                } catch (err) {
+                    console.warn('[Sandbox] Unable to recreate request for retry:', err);
+                }
             }
-            
-            // Don't trigger reauth if modal is already open or if this is a workspace operation
-            // that might legitimately fail (e.g., trying to save without being logged in)
+
+            if (requestUrl && !requestUrl.includes('/api/v1/auth/session/refresh')) {
+                const refreshed = await forceSessionRefresh();
+                if (refreshed && clonedRequest) {
+                    const retryResp = await originalFetch.call(this, clonedRequest.clone());
+                    if (retryResp && retryResp.status !== 401) {
+                        return retryResp;
+                    }
+                    resp = retryResp;
+                }
+            }
+
             if (typeof window.openReauthModal === 'function' && !window.__reauthModalOpen__) {
-                // Check if we have a JWT in localStorage (from landing page login)
-                // If we do, the cookie might not be set yet - give it a moment
                 const jwtInStorage = localStorage.getItem('jwt');
                 if (jwtInStorage && !document.cookie.includes('jwt=')) {
-                    // JWT exists in storage but not in cookie - cookie might be setting
-                    // Wait a bit and check again before showing reauth modal
                     setTimeout(() => {
                         if (!document.cookie.includes('jwt=') && !window.__reauthModalOpen__) {
                             window.openReauthModal();
@@ -106,6 +143,7 @@ import './test/debugTest.js'; // Initialize debug test utility
 document.addEventListener('DOMContentLoaded', async () => {
     // Initialize state
     initState();
+    initSessionKeepAlive();
 
     // Ensure WebSocket connection is established for real-time updates
     // Note: Handlers are registered in toolWindow.js via registerWebSocketHandlers()

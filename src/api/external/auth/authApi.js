@@ -70,6 +70,29 @@ function createAuthApi(dependencies) {
   if (!internalApiClient) {
     throw new Error('[AuthApi] Missing required dependency "internalApiClient"');
   }
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret) {
+    throw new Error('[AuthApi] JWT_SECRET is not defined in environment variables.');
+  }
+  const configuredDurationMs = Number(process.env.SESSION_DURATION_MS);
+  const sessionDurationMs = Number.isFinite(configuredDurationMs) && configuredDurationMs > 0
+    ? configuredDurationMs
+    : 12 * 60 * 60 * 1000; // default 12h
+  const sessionDurationSeconds = Math.floor(sessionDurationMs / 1000);
+
+  function issueSessionCookie(res, payload) {
+    if (!jwtSecret) {
+      throw new Error('JWT_SECRET is not configured.');
+    }
+    const token = jwt.sign(payload, jwtSecret, { expiresIn: sessionDurationSeconds });
+    res.cookie('jwt', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: sessionDurationMs
+    });
+    return token;
+  }
   
   // Get ethereum service - prefer mainnet (chainId '1'), fallback to any available
   const getEthereumService = () => {
@@ -105,6 +128,39 @@ function createAuthApi(dependencies) {
       const status = err.response ? err.response.status : 500;
       const msg = err.response?.data?.error?.message || err.message;
       res.status(status).json({ error: { code: 'USER_CORE_ERROR', message: msg } });
+    }
+  });
+
+  /**
+   * POST /session/refresh
+   * Re-issues a session cookie if the existing JWT is still valid.
+   */
+  router.post('/session/refresh', async (req, res) => {
+    try {
+      const existingToken = req.cookies?.jwt;
+      if (!existingToken) {
+        return res.status(401).json({ error: { code: 'NO_SESSION', message: 'No active session.' } });
+      }
+
+      let decoded;
+      try {
+        decoded = jwt.verify(existingToken, jwtSecret);
+      } catch (err) {
+        if (err.name === 'TokenExpiredError') {
+          return res.status(401).json({ error: { code: 'SESSION_EXPIRED', message: 'Session expired.' } });
+        }
+        throw err;
+      }
+
+      const { iat, exp, ...payload } = decoded;
+      issueSessionCookie(res, payload);
+      return res.status(200).json({ success: true, expiresInMs: sessionDurationMs });
+    } catch (error) {
+      logger.error('[AuthApi] /session/refresh failed:', error);
+      if (error.message === 'JWT_SECRET is not configured.') {
+        return res.status(500).json({ error: { code: 'CONFIG_ERROR', message: 'Server configuration error.' } });
+      }
+      return res.status(500).json({ error: { code: 'SESSION_REFRESH_FAILED', message: 'Could not refresh session.' } });
     }
   });
 
@@ -384,24 +440,7 @@ function createAuthApi(dependencies) {
                     });
                     const { user } = response.data;
 
-                    const jwtSecret = process.env.JWT_SECRET;
-                    if (!jwtSecret) {
-                      logger.error('JWT_SECRET is not defined in environment variables.');
-                      return res.status(500).json({ error: { code: 'CONFIG_ERROR', message: 'Server configuration error.' } });
-                    }
-                    
-                    const token = jwt.sign(
-                        { userId: user._id, address: lowerCaseAddress },
-                        jwtSecret,
-                        { expiresIn: '1h' }
-                    );
-
-                    res.cookie('jwt', token, {
-                      httpOnly: true,
-                      secure: process.env.NODE_ENV === 'production',
-                      sameSite: 'lax',
-                      maxAge: 60 * 60 * 1000 // 1 hour
-                    });
+                    issueSessionCookie(res, { userId: user._id, address: lowerCaseAddress });
                     return res.status(200).json({ success: true, message: 'Login successful' });
                 } else {
                     logger.warn(`[AuthApi] Extracted signature did not match address. Recovered: ${recoveredAddress.toLowerCase()}, Expected: ${lowerCaseAddress}`);
@@ -421,24 +460,7 @@ function createAuthApi(dependencies) {
                         });
                         const { user } = response.data;
 
-                        const jwtSecret = process.env.JWT_SECRET;
-                        if (!jwtSecret) {
-                          logger.error('JWT_SECRET is not defined in environment variables.');
-                          return res.status(500).json({ error: { code: 'CONFIG_ERROR', message: 'Server configuration error.' } });
-                        }
-                        
-                        const token = jwt.sign(
-                            { userId: user._id, address: lowerCaseAddress },
-                            jwtSecret,
-                            { expiresIn: '1h' }
-                        );
-
-                        res.cookie('jwt', token, {
-                          httpOnly: true,
-                          secure: process.env.NODE_ENV === 'production',
-                          sameSite: 'lax',
-                          maxAge: 60 * 60 * 1000 // 1 hour
-                        });
+                        issueSessionCookie(res, { userId: user._id, address: lowerCaseAddress });
                         return res.status(200).json({ success: true, message: 'Login successful' });
                     }
                 }
@@ -715,24 +737,7 @@ function createAuthApi(dependencies) {
         });
         const { user } = response.data;
 
-        const jwtSecret = process.env.JWT_SECRET;
-        if (!jwtSecret) {
-          logger.error('JWT_SECRET is not defined in environment variables.');
-          return res.status(500).json({ error: { code: 'CONFIG_ERROR', message: 'Server configuration error.' } });
-        }
-        
-        const token = jwt.sign(
-            { userId: user._id, address: lowerCaseAddress },
-            jwtSecret,
-            { expiresIn: '1h' }
-        );
-
-        res.cookie('jwt', token, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'lax',
-          maxAge: 60 * 60 * 1000 // 1 hour
-        });
+        issueSessionCookie(res, { userId: user._id, address: lowerCaseAddress });
         res.status(200).json({ success: true, message: 'Login successful' });
 
     } catch (error) {
@@ -782,24 +787,7 @@ function createAuthApi(dependencies) {
       const response = await internalApiClient.post('/internal/v1/data/auth/verify-password', { username, password });
       const { user } = response.data;
 
-      const jwtSecret = process.env.JWT_SECRET;
-      if (!jwtSecret) {
-        logger.error('JWT_SECRET is not defined in environment variables.');
-        return res.status(500).json({ error: { code: 'CONFIG_ERROR', message: 'Server configuration error.' } });
-      }
-      
-      const token = jwt.sign(
-          { userId: user._id, username: user.profile.username },
-          jwtSecret,
-          { expiresIn: '1h' }
-      );
-
-      res.cookie('jwt', token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 60 * 60 * 1000 // 1 hour
-      });
+      issueSessionCookie(res, { userId: user._id, username: user.profile.username });
       res.status(200).json({ success: true, message: 'Login successful' });
 
     } catch (error) {
@@ -832,24 +820,7 @@ function createAuthApi(dependencies) {
 
         const { user } = response.data;
 
-        const jwtSecret = process.env.JWT_SECRET;
-        if (!jwtSecret) {
-          logger.error('JWT_SECRET is not defined in environment variables.');
-          return res.status(500).json({ error: { code: 'CONFIG_ERROR', message: 'Server configuration error.' } });
-        }
-        
-        const token = jwt.sign(
-            { userId: user.masterAccountId, isApiKeyAuth: true },
-            jwtSecret,
-            { expiresIn: '1h' }
-        );
-
-        res.cookie('jwt', token, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'lax',
-          maxAge: 60 * 60 * 1000 // 1 hour
-        });
+        issueSessionCookie(res, { userId: user.masterAccountId, isApiKeyAuth: true });
         res.status(200).json({ success: true, message: 'Login successful' });
 
     } catch (error) {
