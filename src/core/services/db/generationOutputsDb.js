@@ -1,4 +1,5 @@
 const { BaseDB, ObjectId } = require('./BaseDB');
+const { getCachedClient } = require('./utils/queue');
 // const { getCachedClient } = require('./utils/queue'); // Not needed here anymore
 
 class GenerationOutputsDB extends BaseDB {
@@ -155,6 +156,37 @@ class GenerationOutputsDB extends BaseDB {
   async findGenerations(filter, options = {}) {
     // this.logger.info(`[GenerationOutputsDB] findGenerations called with filter: ${JSON.stringify(filter)}`, { options });
     return this.findMany(filter, options);
+  }
+
+  async ensureIndexes() {
+    try {
+      const client = await getCachedClient();
+      const collection = client.db(this.dbName).collection(this.collectionName);
+      await collection.createIndexes([
+        {
+          key: {
+            'metadata.collectionId': 1,
+            status: 1,
+            deliveryStrategy: 1,
+            'metadata.reviewOutcome': 1,
+            requestTimestamp: 1
+          },
+          name: 'review_queue_idx',
+          background: true,
+        },
+        {
+          key: {
+            masterAccountId: 1,
+            requestTimestamp: -1,
+          },
+          name: 'master_request_ts_idx',
+          background: true,
+        }
+      ]);
+      this.logger.info('[GenerationOutputsDB] Review indexes ensured.');
+    } catch (error) {
+      this.logger.error('[GenerationOutputsDB] Failed to ensure indexes:', error);
+    }
   }
 
   /**

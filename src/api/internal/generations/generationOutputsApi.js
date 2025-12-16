@@ -1,7 +1,61 @@
 const express = require('express');
 const { ObjectId, Decimal128 } = require('mongodb');
 const notificationEvents = require('../../../core/events/notificationEvents');
-const { getCachedClient } = require('../../../core/services/db/utils/queue');
+
+const DEFAULT_GENERATION_LIMIT = 100;
+const MAX_GENERATION_LIMIT = 200;
+
+function parseLimit(value) {
+  if (!value) return DEFAULT_GENERATION_LIMIT;
+  const parsed = parseInt(value, 10);
+  if (Number.isNaN(parsed)) return DEFAULT_GENERATION_LIMIT;
+  return Math.max(1, Math.min(parsed, MAX_GENERATION_LIMIT));
+}
+
+function parseSkip(value) {
+  if (!value) return 0;
+  const parsed = parseInt(value, 10);
+  if (Number.isNaN(parsed) || parsed < 0) return 0;
+  return parsed;
+}
+
+function parseSort(sortValue) {
+  if (!sortValue) {
+    return { requestTimestamp: 1 };
+  }
+  const sort = {};
+  const parts = sortValue.split(',');
+  for (const rawPart of parts) {
+    const part = rawPart.trim();
+    if (!part) continue;
+    const [field, directionRaw] = part.split(':').map(str => str && str.trim()).filter(Boolean);
+    if (!field) continue;
+    const parsedDir = directionRaw ? parseInt(directionRaw, 10) : null;
+    if (!Number.isNaN(parsedDir)) {
+      sort[field] = parsedDir === 0 ? 1 : parsedDir;
+    } else if (directionRaw && directionRaw.toLowerCase() === 'desc') {
+      sort[field] = -1;
+    } else {
+      sort[field] = 1;
+    }
+  }
+  if (!Object.keys(sort).length) {
+    return { requestTimestamp: 1 };
+  }
+  return sort;
+}
+
+function parseProjection(fieldsValue) {
+  if (!fieldsValue) return null;
+  const projection = {};
+  const fields = fieldsValue.split(',');
+  for (const rawField of fields) {
+    const field = rawField.trim();
+    if (!field) continue;
+    projection[field] = 1;
+  }
+  return Object.keys(projection).length ? projection : null;
+}
 
 // This function initializes the routes for the Generation Outputs API
 module.exports = function generationOutputsApi(dependencies) {
@@ -42,16 +96,19 @@ module.exports = function generationOutputsApi(dependencies) {
     logger.info('[generationOutputsApi] GET / - Received request with query:', req.query);
     try {
       const filter = {};
-      
-      // Generic query parameter processing
+      const reservedQueryKeys = new Set(['limit', 'skip', 'page', 'sort', 'fields', 'projection']);
+
       for (const key in req.query) {
+        if (reservedQueryKeys.has(key)) continue;
         const value = req.query[key];
 
         if (key.endsWith('_in')) {
           const field = key.slice(0, -3);
-          // Handle both array format and comma-separated string format
-          let values = Array.isArray(value) ? value : (typeof value === 'string' && value.includes(',') ? value.split(',').map(v => v.trim()) : [value]);
-          // Convert _id values to ObjectIds for MongoDB queries
+          let values = Array.isArray(value)
+            ? value
+            : (typeof value === 'string' && value.includes(',')
+              ? value.split(',').map(v => v.trim())
+              : [value]);
           if (field === '_id') {
             filter[field] = { $in: values.map(v => ObjectId.isValid(v) ? new ObjectId(v) : v) };
           } else {
@@ -61,26 +118,42 @@ module.exports = function generationOutputsApi(dependencies) {
           const field = key.slice(0, -3);
           filter[field] = { $ne: value };
         } else if (key.endsWith('_gte')) {
-            const field = key.slice(0, -4);
-            if (!filter[field]) filter[field] = {};
-            filter[field].$gte = new Date(value);
+          const field = key.slice(0, -4);
+          if (!filter[field]) filter[field] = {};
+          filter[field].$gte = new Date(value);
         } else if (key.endsWith('_lte')) {
-            const field = key.slice(0, -4);
-            if (!filter[field]) filter[field] = {};
-            filter[field].$lte = new Date(value);
+          const field = key.slice(0, -4);
+          if (!filter[field]) filter[field] = {};
+          filter[field].$lte = new Date(value);
         } else {
-          // Allow dot notation for nested metadata fields e.g., "metadata.run_id"
-          if (key.startsWith('metadata.')) {
-              filter[key] = value;
-          } else {
-              filter[key] = value;
-          }
+          filter[key] = value;
         }
       }
 
-      logger.debug('[generationOutputsApi] GET / - Constructed filter:', filter);
+      const limit = parseLimit(req.query.limit);
+      const skip = parseSkip(req.query.skip);
+      const sort = parseSort(req.query.sort);
+      const projection = parseProjection(req.query.fields || req.query.projection);
 
-      const generations = await db.generationOutputs.findGenerations(filter);
+      const page = parseInt(req.query.page, 10);
+      let effectiveSkip = 0;
+      if (!Number.isNaN(page) && page > 0) {
+        effectiveSkip = (page - 1) * limit;
+      } else if (skip) {
+        effectiveSkip = skip;
+      }
+      const queryOptions = { limit, sort };
+      if (effectiveSkip) queryOptions.skip = effectiveSkip;
+      if (projection) queryOptions.projection = projection;
+
+      logger.debug('[generationOutputsApi] GET / - Filter & options:', { filter, queryOptions });
+
+      const startMs = Date.now();
+      const generations = await db.generationOutputs.findGenerations(filter, queryOptions);
+      const durationMs = Date.now() - startMs;
+      if (durationMs > 5000) {
+        logger.warn('[generationOutputsApi] GET / - Slow query detected', { durationMs, collectionId: filter['metadata.collectionId'], limit, sort });
+      }
 
       if (!generations) {
         logger.info('[generationOutputsApi] GET / - No generations found matching criteria or db method returned null/undefined.');

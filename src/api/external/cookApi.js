@@ -10,6 +10,7 @@ const MAX_BULK_REVIEW_DECISIONS = 50;
 function createCookApiRouter(deps = {}) {
   const router = express.Router();
   const internalApiClient = deps.internalApiClient || (deps.internal && deps.internal.client);
+  const longRunningApiClient = deps.longRunningApiClient || internalApiClient;
   const logger = (deps.logger || console).child ? (deps.logger || console).child({ mod: 'ExternalCookApi' }) : (deps.logger || console);
 
   if (!internalApiClient) {
@@ -275,13 +276,18 @@ function createCookApiRouter(deps = {}) {
     try {
       const collectionId = req.params.id;
       const limit = Math.max(1, Math.min(parseInt(req.query.limit || '1', 10), 50));
+      const fetchLimit = Math.min(limit * 2, 100);
       const params = {
         'metadata.collectionId': collectionId,
         status: 'completed',
         deliveryStrategy_ne: 'spell_step',
-        'metadata.reviewOutcome_ne': 'accepted'
+        'metadata.reviewOutcome_ne': 'accepted',
+        limit: fetchLimit,
+        sort: 'requestTimestamp:1',
+        fields: 'requestTimestamp,outputs,artifactUrls,metadata,responsePayload,status,deliveryStrategy'
       };
-      const { data } = await internalApiClient.get('/internal/v1/data/generations', { params });
+      const apiClient = longRunningApiClient || internalApiClient;
+      const { data } = await apiClient.get('/internal/v1/data/generations', { params });
       let gens = Array.isArray(data.generations) ? data.generations : [];
       // Apply second _ne in memory and sort oldest first
       gens = gens.filter(g => !['accepted', 'rejected'].includes(g.metadata?.reviewOutcome))

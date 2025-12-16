@@ -102,6 +102,14 @@ async function initializeServices(options = {}) {
     const initializedDbServices = dbService.initializeDbServices(logger);
     logger.info('Database services initialized.');
     try {
+      const generationOutputsDb = initializedDbServices?.data?.generationOutputs;
+      if (generationOutputsDb && typeof generationOutputsDb.ensureIndexes === 'function') {
+        await generationOutputsDb.ensureIndexes();
+      }
+    } catch (indexErr) {
+      logger.error('Failed to ensure generation outputs indexes:', indexErr);
+    }
+    try {
       createCaptionTaskService({
         logger,
         db: initializedDbServices.data,

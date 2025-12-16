@@ -169,6 +169,11 @@ export default class CollectionWindow extends BaseWindow {
     const flushInterval = Number(collection?.config?.reviewFlushIntervalMs) || DEFAULT_REVIEW_FLUSH_INTERVAL_MS;
     this._reviewFlushIntervalMs = Math.max(flushInterval, 1000);
     this._reviewSyncBannerState = { text: 'All decisions synced ✅', variant: 'ok' };
+    this._reviewIdleFlushDelayMs = Math.max(this._reviewFlushIntervalMs, 1500);
+    this._reviewFlushBackoffMs = 2500;
+    this._reviewFlushRetryAttempts = 0;
+    this._reviewFlushRetryTimer = null;
+    this._lastReviewActionAt = 0;
 
     // Store reference to this instance on the DOM element for WebSocket handler access
     this.el._collectionWindowInstance = this;
@@ -403,6 +408,8 @@ export default class CollectionWindow extends BaseWindow {
     this._pendingReviewDecisions.push({ generationId, outcome });
     console.log('[CollectionWindow] queued review decision', generationId, outcome, 'pending:', this._pendingReviewDecisions.length);
     this._updateReviewSyncBanner();
+    this._lastReviewActionAt = Date.now();
+    this._reviewFlushRetryAttempts = 0;
     this._scheduleReviewFlush();
   }
 
@@ -419,15 +426,43 @@ export default class CollectionWindow extends BaseWindow {
       });
       return;
     }
-    if (this._reviewFlushTimer) return;
+    const now = Date.now();
+    const idleTime = now - (this._lastReviewActionAt || now);
+    const shouldFlushNow = idleTime >= this._reviewIdleFlushDelayMs;
+    if (shouldFlushNow && !this._reviewFlushPromise && !this._reviewFlushRetryTimer) {
+      if (this._reviewFlushTimer) {
+        clearTimeout(this._reviewFlushTimer);
+        this._reviewFlushTimer = null;
+      }
+      this._flushPendingReviews().catch(err => {
+        console.error('[CollectionWindow] Review flush failed (idle trigger)', err);
+      });
+      return;
+    }
+    if (this._reviewFlushTimer || this._reviewFlushPromise || this._reviewFlushRetryTimer) return;
     this._reviewFlushTimer = setTimeout(() => {
       this._reviewFlushTimer = null;
       if (this._pendingReviewDecisions?.length) {
-        this._flushPendingReviews().catch(err => {
-          console.error('[CollectionWindow] Review flush failed', err);
+        this._flushPendingReviews({ force: true }).catch(err => {
+          console.error('[CollectionWindow] Review flush failed (timer)', err);
         });
       }
-    }, this._reviewFlushIntervalMs);
+    }, this._reviewIdleFlushDelayMs);
+  }
+
+  _startFlushRetryBackoff() {
+    if (this._reviewFlushRetryTimer) return;
+    if (!this._pendingReviewDecisions?.length) return;
+    const attempts = Math.min(this._reviewFlushRetryAttempts, 4);
+    const delay = this._reviewFlushBackoffMs * Math.pow(2, attempts);
+    this._reviewFlushRetryAttempts++;
+    this._reviewFlushRetryTimer = setTimeout(() => {
+      this._reviewFlushRetryTimer = null;
+      if (!this._pendingReviewDecisions?.length) return;
+      this._flushPendingReviews({ keepAlive: true }).catch(err => {
+        console.error('[CollectionWindow] Review flush retry failed', err);
+      });
+    }, delay);
   }
 
   async _flushPendingReviews({ force = false, keepAlive = false } = {}) {
@@ -485,10 +520,11 @@ export default class CollectionWindow extends BaseWindow {
     this._reviewFlushPromise = flushPromise;
     try {
       await flushPromise;
+      this._reviewFlushRetryAttempts = 0;
       this._updateReviewSyncBanner();
     } catch (err) {
       this._setReviewSyncBanner('Failed to sync some reviews. Retrying automatically…', 'error');
-      this._scheduleReviewFlush();
+      this._startFlushRetryBackoff();
       throw err;
     } finally {
       this._reviewFlushPromise = null;
@@ -497,18 +533,30 @@ export default class CollectionWindow extends BaseWindow {
 
   async _postBulkReviewDecisions(decisions, { csrfToken = '', keepAlive = false } = {}) {
     if (!Array.isArray(decisions) || decisions.length === 0) return null;
-    const res = await fetch(`/api/v1/collections/${encodeURIComponent(this.collection.collectionId)}/pieces/review/bulk`, {
-      method: 'POST',
-      credentials: 'include',
-      keepalive: keepAlive,
-      headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrfToken },
-      body: JSON.stringify({ decisions })
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(text || 'Bulk review failed');
-    }
-    return res.json().catch(() => ({}));
+    const submit = async (token, attempt = 1) => {
+      const res = await fetch(`/api/v1/collections/${encodeURIComponent(this.collection.collectionId)}/pieces/review/bulk`, {
+        method: 'POST',
+        credentials: 'include',
+        keepalive: keepAlive,
+        headers: { 'Content-Type': 'application/json', 'x-csrf-token': token || '' },
+        body: JSON.stringify({ decisions })
+      });
+      if (res.status === 403 && attempt === 1) {
+        // Token likely expired – refresh and retry once.
+        CollectionWindow._csrfToken = null;
+        const refreshed = await this._getCsrfToken({ forceRefresh: true });
+        if (refreshed) {
+          return submit(refreshed, attempt + 1);
+        }
+      }
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || 'Bulk review failed');
+      }
+      return res.json().catch(() => ({}));
+    };
+    const tokenToUse = csrfToken || await this._getCsrfToken();
+    return submit(tokenToUse, 1);
   }
 
   _attachReviewSyncBanner() {
@@ -548,16 +596,33 @@ export default class CollectionWindow extends BaseWindow {
     }
   }
 
-  async _getCsrfToken() {
-    if (CollectionWindow._csrfToken) return CollectionWindow._csrfToken;
-    try {
-      const res = await fetch('/api/v1/csrf-token', { credentials: 'include' });
-      const data = await res.json();
-      CollectionWindow._csrfToken = data.csrfToken;
+  async _getCsrfToken({ forceRefresh = false } = {}) {
+    if (forceRefresh) {
+      CollectionWindow._csrfToken = null;
+      CollectionWindow._csrfTokenPromise = null;
+    } else if (CollectionWindow._csrfToken) {
       return CollectionWindow._csrfToken;
-    } catch {
-      return '';
     }
+    if (CollectionWindow._csrfTokenPromise) {
+      return CollectionWindow._csrfTokenPromise;
+    }
+    CollectionWindow._csrfTokenPromise = (async () => {
+      try {
+        const res = await fetch('/api/v1/csrf-token', { credentials: 'include' });
+        if (!res.ok) {
+          throw new Error(`Failed to fetch CSRF token: HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        CollectionWindow._csrfToken = data.csrfToken || '';
+        return CollectionWindow._csrfToken;
+      } catch (err) {
+        console.warn('[CollectionWindow] Failed to fetch CSRF token', err);
+        return '';
+      } finally {
+        CollectionWindow._csrfTokenPromise = null;
+      }
+    })();
+    return CollectionWindow._csrfTokenPromise;
   }
 
   _renderNoPiecesMessage() {
