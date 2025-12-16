@@ -10,7 +10,7 @@
  */
 
 const csurf = require('csurf');
-const { createLogger } = require('../../utils/logger');
+const { createLogger } = require('../../../utils/logger');
 const csrfLogger = createLogger('csrf');
 
 // List of public-facing auth endpoints to exclude from CSRF protection
