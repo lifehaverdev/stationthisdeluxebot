@@ -10,6 +10,8 @@
  */
 
 const csurf = require('csurf');
+const { createLogger } = require('../../utils/logger');
+const csrfLogger = createLogger('csrf');
 
 // List of public-facing auth endpoints to exclude from CSRF protection
 // Also excludes API key-authenticated routes (admin, etc.) since CSRF only applies to session-based auth
@@ -66,11 +68,14 @@ function csrfProtection(req, res, next) {
   // Wrap CSRF error handling to provide better error messages
   return csrf(req, res, (err) => {
     if (err && err.code === 'EBADCSRFTOKEN') {
-      // Log the error for debugging
-      if (process.env.LOG_LEVEL === 'debug') {
-        // eslint-disable-next-line no-console
-        console.debug('[CSRF] Invalid token for', req.method, req.originalUrl);
-      }
+      const headerToken = req.headers['x-csrf-token'] ? 'present' : 'missing';
+      csrfLogger.warn('[CSRF] Invalid token', {
+        method: req.method,
+        url: req.originalUrl,
+        userId: req.user?.userId || req.user?.id || 'anonymous',
+        remoteAddress: req.ip,
+        headerToken
+      });
       return res.status(403).json({
         error: {
           code: 'CSRF_TOKEN_INVALID',

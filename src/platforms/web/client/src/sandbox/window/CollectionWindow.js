@@ -174,6 +174,9 @@ export default class CollectionWindow extends BaseWindow {
     this._reviewFlushRetryAttempts = 0;
     this._reviewFlushRetryTimer = null;
     this._lastReviewActionAt = 0;
+    this._reviewedGenerationIds = new Set();
+    this._reviewedGenerationOrder = [];
+    this._reviewedGenerationLimit = 500;
 
     // Store reference to this instance on the DOM element for WebSocket handler access
     this.el._collectionWindowInstance = this;
@@ -301,7 +304,7 @@ export default class CollectionWindow extends BaseWindow {
       const gens = Array.isArray(json.generations) ? json.generations : [];
       const existingIds = new Set(this._reviewQueue.map(g => g?._id).filter(Boolean));
       if (this._activeReview?._id) existingIds.add(this._activeReview._id);
-      const deduped = gens.filter(g => g && g._id && !existingIds.has(g._id));
+      const deduped = gens.filter(g => g && g._id && !existingIds.has(g._id) && !this._reviewedGenerationIds.has(String(g._id)));
       deduped.forEach(g => existingIds.add(g._id));
       if (deduped.length) {
         this._reviewQueue.push(...deduped);
@@ -329,6 +332,18 @@ export default class CollectionWindow extends BaseWindow {
       this._fetchReviewBatch().catch(err => {
         console.error('[CollectionWindow] Prefetch review batch failed', err);
       });
+    }
+  }
+
+  _rememberReviewedGeneration(generationId) {
+    if (!generationId) return;
+    const idStr = String(generationId);
+    if (this._reviewedGenerationIds.has(idStr)) return;
+    this._reviewedGenerationIds.add(idStr);
+    this._reviewedGenerationOrder.push(idStr);
+    if (this._reviewedGenerationOrder.length > this._reviewedGenerationLimit) {
+      const removed = this._reviewedGenerationOrder.shift();
+      this._reviewedGenerationIds.delete(removed);
     }
   }
 
@@ -410,6 +425,7 @@ export default class CollectionWindow extends BaseWindow {
     this._updateReviewSyncBanner();
     this._lastReviewActionAt = Date.now();
     this._reviewFlushRetryAttempts = 0;
+    this._rememberReviewedGeneration(generationId);
     this._scheduleReviewFlush();
   }
 
