@@ -425,7 +425,6 @@ export default class CollectionWindow extends BaseWindow {
     this._updateReviewSyncBanner();
     this._lastReviewActionAt = Date.now();
     this._reviewFlushRetryAttempts = 0;
-    this._rememberReviewedGeneration(generationId);
     this._scheduleReviewFlush();
   }
 
@@ -515,12 +514,14 @@ export default class CollectionWindow extends BaseWindow {
         try {
           const resp = await this._postBulkReviewDecisions(chunk, { csrfToken, keepAlive });
           const results = Array.isArray(resp?.results) ? resp.results : [];
-          if (results.length) {
-            const erroredIds = results.filter(r => r?.status === 'error').map(r => r.generationId);
-            if (erroredIds.length) {
-              failed.push(...chunk.filter(dec => erroredIds.includes(dec.generationId)));
-            }
+          const erroredIds = results.filter(r => r?.status === 'error').map(r => r.generationId);
+          if (erroredIds.length) {
+            failed.push(...chunk.filter(dec => erroredIds.includes(dec.generationId)));
           }
+          const successful = chunk.filter(dec => !erroredIds.includes(dec.generationId));
+          successful.forEach(decision => {
+            this._rememberReviewedGeneration(decision.generationId);
+          });
         } catch (err) {
           console.error('[CollectionWindow] Bulk review request failed', err);
           failed.push(...chunk);
