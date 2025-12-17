@@ -294,7 +294,7 @@ export default class CollectionWindow extends BaseWindow {
       }
       const limit = this._reviewBatchSize;
       const url = `/api/v1/collections/${encodeURIComponent(this.collection.collectionId)}/pieces/unreviewed?limit=${limit}`;
-      const res = await fetch(url);
+      const res = await fetch(url, { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } });
       if (!res.ok) {
         const text = await res.text();
         throw new Error(`HTTP ${res.status}: ${text}`);
