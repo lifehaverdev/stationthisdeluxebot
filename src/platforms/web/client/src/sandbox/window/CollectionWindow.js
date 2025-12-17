@@ -560,7 +560,7 @@ export default class CollectionWindow extends BaseWindow {
   async _commitReviewDecisions(decisions, { csrfToken = '', keepAlive = false } = {}) {
     if (!Array.isArray(decisions) || decisions.length === 0) return null;
     const submit = async (token, attempt = 1) => {
-      const res = await fetch(`/api/v1/collections/${encodeURIComponent(this.collection.collectionId)}/pieces/review/bulk`, {
+      const res = await fetch('/api/v1/review-queue/commit', {
         method: 'POST',
         credentials: 'include',
         keepalive: keepAlive,
