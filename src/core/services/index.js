@@ -106,8 +106,12 @@ async function initializeServices(options = {}) {
       if (generationOutputsDb && typeof generationOutputsDb.ensureIndexes === 'function') {
         await generationOutputsDb.ensureIndexes();
       }
+      const reviewQueueDb = initializedDbServices?.data?.reviewQueue;
+      if (reviewQueueDb && typeof reviewQueueDb.ensureIndexes === 'function') {
+        await reviewQueueDb.ensureIndexes();
+      }
     } catch (indexErr) {
-      logger.error('Failed to ensure generation outputs indexes:', indexErr);
+      logger.error('Failed to ensure DB indexes:', indexErr);
     }
     try {
       createCaptionTaskService({

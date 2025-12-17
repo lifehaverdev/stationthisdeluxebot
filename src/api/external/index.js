@@ -19,6 +19,7 @@ const { authenticateUser, authenticateUserOrApiKey } = require('../../platforms/
 const { createPointsApi, createRatesApi } = require('./economy');
 const createSpellsApi = require('./spells');
 const createCookApiRouter = require('./cookApi');
+const createReviewQueueApiRouter = require('./reviewQueueApi');
 const createWorkspacesApiRouter = require('./workspacesApi');
 const createPaymentsApi = require('./payments/paymentsApi');
 
@@ -452,6 +453,13 @@ function initializeExternalApi(dependencies) {
     logger.info('External Cook API router mounted (collections & cooks endpoints).');
   } else {
     logger.warn('External Cook API router not mounted due to missing dependencies.');
+  }
+  const reviewQueueRouter = createReviewQueueApiRouter({ ...dependencies, authenticateUserOrApiKey });
+  if (reviewQueueRouter) {
+    externalApiRouter.use('/', reviewQueueRouter);
+    logger.info('External Review Queue API router mounted.');
+  } else {
+    logger.warn('External Review Queue API router not mounted.');
   }
 
   // Mount the Generation Execution API router (Protected by dualAuth)

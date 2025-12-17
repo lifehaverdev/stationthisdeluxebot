@@ -24,6 +24,7 @@ const internalApiClient = require('../../utils/internalApiClient');
 const initializeWalletsApi = require('./wallets'); // path updated after folder reorg
 const { createAuthApi } = require('./auth');
 const { createCookApi } = require('./cookApi');
+const createReviewQueueApi = require('./reviewQueue/reviewQueueApi');
 // createCreditLedgerApi and createPointsApi now from economy aggregator above
 const { createStorageApi } = require('./storage'); // path updated after folder reorg
 const generationExecutionApi = createGenerationExecutionApi; // from aggregator
@@ -267,6 +268,15 @@ function initializeInternalServices(dependencies = {}) {
     logger.info('[InternalAPI] Storage API service mounted to /v1/data/storage');
   } else {
     logger.error('[InternalAPI] Failed to create Storage API router.');
+  }
+
+  // Review Queue API
+  const reviewQueueApiRouter = createReviewQueueApi(apiDependencies);
+  if (reviewQueueApiRouter) {
+    v1DataRouter.use('/review-queue', reviewQueueApiRouter);
+    logger.info('[InternalAPI] Review Queue API service mounted to /v1/data/review-queue');
+  } else {
+    logger.error('[InternalAPI] Failed to create Review Queue API router.');
   }
 
   // Points API Service:

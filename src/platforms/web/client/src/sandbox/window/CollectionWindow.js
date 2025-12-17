@@ -174,9 +174,7 @@ export default class CollectionWindow extends BaseWindow {
     this._reviewFlushRetryAttempts = 0;
     this._reviewFlushRetryTimer = null;
     this._lastReviewActionAt = 0;
-    this._reviewedGenerationIds = new Set();
-    this._reviewedGenerationOrder = [];
-    this._reviewedGenerationLimit = 500;
+    this._claimedQueueIds = new Set();
 
     // Store reference to this instance on the DOM element for WebSocket handler access
     this.el._collectionWindowInstance = this;
@@ -197,6 +195,7 @@ export default class CollectionWindow extends BaseWindow {
         if (this._pendingReviewDecisions?.length) {
           this._flushPendingReviews({ force: true, keepAlive: true }).catch(() => {});
         }
+        this._releaseOutstandingQueueItems().catch(() => {});
       };
       window.addEventListener('beforeunload', this._beforeUnloadHandler);
       const prevOnClose = this.onClose;
@@ -208,6 +207,7 @@ export default class CollectionWindow extends BaseWindow {
         if (this._pendingReviewDecisions?.length) {
           this._flushPendingReviews({ force: true, keepAlive: true }).catch(() => {});
         }
+        this._releaseOutstandingQueueItems().catch(() => {});
       };
     }
 
@@ -293,19 +293,41 @@ export default class CollectionWindow extends BaseWindow {
         this.body.textContent = 'Loading…';
       }
       const limit = this._reviewBatchSize;
-      const url = `/api/v1/collections/${encodeURIComponent(this.collection.collectionId)}/pieces/unreviewed?limit=${limit}`;
-      const res = await fetch(url, { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } });
+      const csrfToken = await this._getCsrfToken();
+      const res = await fetch('/api/v1/review-queue/pop', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-csrf-token': csrfToken || '',
+          'Cache-Control': 'no-cache'
+        },
+        body: JSON.stringify({
+          collectionId: this.collection.collectionId,
+          limit
+        })
+      });
       if (!res.ok) {
         const text = await res.text();
         throw new Error(`HTTP ${res.status}: ${text}`);
       }
       const json = await res.json();
-      console.log('[CollectionWindow] batched unreviewed API response', json);
-      const gens = Array.isArray(json.generations) ? json.generations : [];
-      const existingIds = new Set(this._reviewQueue.map(g => g?._id).filter(Boolean));
-      if (this._activeReview?._id) existingIds.add(this._activeReview._id);
-      const deduped = gens.filter(g => g && g._id && !existingIds.has(g._id) && !this._reviewedGenerationIds.has(String(g._id)));
-      deduped.forEach(g => existingIds.add(g._id));
+      console.log('[CollectionWindow] review queue pop response', json);
+      const items = Array.isArray(json.items) ? json.items : [];
+      const existingIds = new Set(this._reviewQueue.map(entry => entry?.generationId).filter(Boolean));
+      if (this._activeReview?.generationId) existingIds.add(this._activeReview.generationId);
+      const normalized = items.map(item => {
+        const queueId = item.queueId || item._id;
+        const generation = item.generation || item;
+        const generationId = generation?._id || generation?.id || item.generationId;
+        if (!queueId || !generationId || !generation) return null;
+        return { queueId, generationId, generation };
+      }).filter(Boolean);
+      const deduped = normalized.filter(entry => !existingIds.has(entry.generationId));
+      deduped.forEach(entry => {
+        existingIds.add(entry.generationId);
+        this._claimedQueueIds.add(entry.queueId);
+      });
       if (deduped.length) {
         this._reviewQueue.push(...deduped);
       }
@@ -335,21 +357,15 @@ export default class CollectionWindow extends BaseWindow {
     }
   }
 
-  _rememberReviewedGeneration(generationId) {
-    if (!generationId) return;
-    const idStr = String(generationId);
-    if (this._reviewedGenerationIds.has(idStr)) return;
-    this._reviewedGenerationIds.add(idStr);
-    this._reviewedGenerationOrder.push(idStr);
-    if (this._reviewedGenerationOrder.length > this._reviewedGenerationLimit) {
-      const removed = this._reviewedGenerationOrder.shift();
-      this._reviewedGenerationIds.delete(removed);
+  _renderReviewPiece(entry) {
+    if (!entry) return;
+    const gen = entry.generation || entry;
+    if (!gen) {
+      this.body.textContent = 'Unable to load piece';
+      return;
     }
-  }
-
-  _renderReviewPiece(gen) {
     const body = this.body;
-    this._activeReview = gen;
+    this._activeReview = entry;
     body.innerHTML = '';
     const resultDiv = document.createElement('div');
     resultDiv.className = 'result-container';
@@ -376,7 +392,7 @@ export default class CollectionWindow extends BaseWindow {
       acceptBtn.disabled = true;
       rejectBtn.disabled = true;
       try {
-        this._bufferReviewDecision(gen._id, outcome);
+        this._bufferReviewDecision(entry.queueId, gen._id, outcome);
         this._activeReview = null;
         await this._loadNextReview({ showLoading: true });
       } catch (err) {
@@ -417,10 +433,10 @@ export default class CollectionWindow extends BaseWindow {
     return { type: 'unknown', generationId: gen._id, ...outputs };
   }
 
-  _bufferReviewDecision(generationId, outcome) {
-    if (!generationId || !outcome) return;
+  _bufferReviewDecision(queueId, generationId, outcome) {
+    if (!queueId || !generationId || !outcome) return;
     if (!Array.isArray(this._pendingReviewDecisions)) this._pendingReviewDecisions = [];
-    this._pendingReviewDecisions.push({ generationId, outcome });
+    this._pendingReviewDecisions.push({ queueId, generationId, outcome });
     console.log('[CollectionWindow] queued review decision', generationId, outcome, 'pending:', this._pendingReviewDecisions.length);
     this._updateReviewSyncBanner();
     this._lastReviewActionAt = Date.now();
@@ -512,25 +528,18 @@ export default class CollectionWindow extends BaseWindow {
       const failed = [];
       for (const chunk of chunks) {
         try {
-          const resp = await this._postBulkReviewDecisions(chunk, { csrfToken, keepAlive });
-          const results = Array.isArray(resp?.results) ? resp.results : [];
-          const erroredIds = results.filter(r => r?.status === 'error').map(r => r.generationId);
-          if (erroredIds.length) {
-            failed.push(...chunk.filter(dec => erroredIds.includes(dec.generationId)));
-          }
-          const successful = chunk.filter(dec => !erroredIds.includes(dec.generationId));
-          successful.forEach(decision => {
-            this._rememberReviewedGeneration(decision.generationId);
+          await this._commitReviewDecisions(chunk, { csrfToken, keepAlive });
+          chunk.forEach(decision => {
+            if (decision.queueId) this._claimedQueueIds.delete(decision.queueId);
           });
         } catch (err) {
-          console.error('[CollectionWindow] Bulk review request failed', err);
+          console.error('[CollectionWindow] Review commit request failed', err);
           failed.push(...chunk);
         }
       }
       if (failed.length) {
-        // Requeue failed ones at the front for retry
         this._pendingReviewDecisions.unshift(...failed);
-        throw new Error('bulk_review_failed');
+        throw new Error('review_commit_failed');
       }
     })();
 
@@ -548,7 +557,7 @@ export default class CollectionWindow extends BaseWindow {
     }
   }
 
-  async _postBulkReviewDecisions(decisions, { csrfToken = '', keepAlive = false } = {}) {
+  async _commitReviewDecisions(decisions, { csrfToken = '', keepAlive = false } = {}) {
     if (!Array.isArray(decisions) || decisions.length === 0) return null;
     const submit = async (token, attempt = 1) => {
       const res = await fetch(`/api/v1/collections/${encodeURIComponent(this.collection.collectionId)}/pieces/review/bulk`, {
@@ -574,6 +583,39 @@ export default class CollectionWindow extends BaseWindow {
     };
     const tokenToUse = csrfToken || await this._getCsrfToken();
     return submit(tokenToUse, 1);
+  }
+
+  async _releaseOutstandingQueueItems() {
+    if (!this._claimedQueueIds || !this._claimedQueueIds.size) return;
+    const queueIds = new Set(this._claimedQueueIds);
+    if (this._activeReview?.queueId) queueIds.add(this._activeReview.queueId);
+    if (this._reviewQueue?.length) {
+      this._reviewQueue.forEach(entry => {
+        if (entry?.queueId) queueIds.add(entry.queueId);
+      });
+    }
+    if (this._pendingReviewDecisions?.length) {
+      this._pendingReviewDecisions.forEach(dec => {
+        if (dec?.queueId) queueIds.add(dec.queueId);
+      });
+    }
+    await this._releaseClaimedQueueAssignments(Array.from(queueIds));
+  }
+
+  async _releaseClaimedQueueAssignments(queueIds = []) {
+    if (!Array.isArray(queueIds) || !queueIds.length) return;
+    try {
+      const csrfToken = await this._getCsrfToken();
+      await fetch('/api/v1/review-queue/release', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrfToken || '' },
+        body: JSON.stringify({ queueIds })
+      });
+      queueIds.forEach(id => this._claimedQueueIds.delete(id));
+    } catch (err) {
+      console.warn('[CollectionWindow] Failed to release queue assignments', err);
+    }
   }
 
   _attachReviewSyncBanner() {
@@ -661,6 +703,7 @@ export default class CollectionWindow extends BaseWindow {
     body.appendChild(wrap);
     this._attachReviewSyncBanner();
     this._updateReviewSyncBanner();
+    this._releaseOutstandingQueueItems().catch(() => {});
     if (this._pendingReviewDecisions?.length) {
       this._flushPendingReviews({ force: true }).catch(err => {
         console.error('[CollectionWindow] Failed to flush pending reviews after completion', err);
