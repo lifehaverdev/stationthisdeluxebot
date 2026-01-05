@@ -160,6 +160,32 @@ Steps to deploy a fresh droplet:
    ```
    The existing container is replaced with an updated image with zero downtime.
 
+### Swap on 1 GB Droplets (Required)
+
+The $6/mo droplet only has 1 GB of RAM. Docker builds (especially `npm install --omit=dev`) will fail or hang without swap. Provision a 2 GB swapfile once after provisioning:
+
+```bash
+sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+```
+
+Persist it across reboots by adding this line to `/etc/fstab`:
+
+```
+/swapfile none swap sw 0 0
+```
+
+Verify with:
+
+```bash
+swapon --show
+free -h
+```
+
+With swap enabled the deploy script completes reliably on the tiny droplet.
+
 ### Reverse Proxy & TLS with Caddy
 
 The droplet runs an **edge Caddy server** (installed via the [official script](https://caddyserver.com/docs/install#debian-ubuntu) or Docker). Caddy automatically provisions free Let’s Encrypt certificates and forwards traffic to the app container.

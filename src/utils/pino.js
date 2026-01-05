@@ -2,17 +2,29 @@ const pino = require('pino');
 const config = require('../config');
 
 // Create a pino logger instance specifically for HTTP requests
+let prettyTransport = null;
+if (!config.IS_PRODUCTION) {
+  try {
+    // Only load pino-pretty when it is installed (local dev). Production builds omit devDeps.
+    require.resolve('pino-pretty');
+    prettyTransport = {
+      target: 'pino-pretty',
+      options: {
+        colorize: true,
+        translateTime: 'SYS:standard',
+        ignore: 'pid,hostname',
+        singleLine: true,
+      },
+    };
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[pino] pino-pretty not available; falling back to JSON logs.');
+  }
+}
+
 const httpLogger = pino({
   level: config.LOG_LEVEL,
-  transport: {
-    target: 'pino-pretty',
-    options: {
-      colorize: true,
-      translateTime: 'SYS:standard',
-      ignore: 'pid,hostname',
-      singleLine: true,
-    },
-  },
+  ...(prettyTransport ? { transport: prettyTransport } : {}),
 });
 
 // Export a pre-configured pino-http instance
