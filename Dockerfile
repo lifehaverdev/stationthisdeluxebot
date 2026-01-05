@@ -14,10 +14,10 @@ RUN apt-get update \
 # This layer is only invalidated if package.json or package-lock.json changes
 COPY package*.json ./
 
-# Install only production dependencies
+# Install only production dependencies (skip dev stack for faster builds)
 ENV NODE_ENV=production
 RUN npm install -g pm2 \
-    && npm ci --production
+    && npm install --omit=dev
 
 # Copy the rest of the application code
 # Note: Docker will automatically invalidate this cache when files change
