@@ -304,13 +304,13 @@ log "Cleaning up docker cache..."
 docker builder prune -a -f --filter "until=24h" >> "${LOG_FILE}" 2>&1 || true
 docker image prune -a -f --filter "until=24h" >> "${LOG_FILE}" 2>&1 || true
 
-log "Building new docker image..."
+log "Building new docker image (streaming build output)..."
 if docker image inspect "${IMAGE_NAME}:latest" >/dev/null 2>&1; then
   CACHE_FROM_ARG="--build-arg BUILDKIT_INLINE_CACHE=1 --cache-from ${IMAGE_NAME}:latest"
 else
   CACHE_FROM_ARG="--build-arg BUILDKIT_INLINE_CACHE=1"
 fi
-docker build ${CACHE_FROM_ARG} -t "${IMAGE_NAME}:latest" . >> "${LOG_FILE}" 2>&1
+docker build ${CACHE_FROM_ARG} -t "${IMAGE_NAME}:latest" . 2>&1 | tee -a "${LOG_FILE}"
 
 ensure_network
 start_caddy
