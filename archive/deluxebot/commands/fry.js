@@ -1,5 +1,7 @@
 // Import necessary libraries
 const Jimp = require('jimp');
+// NOTE: Legacy implementation previously used node-canvas for watermarking.
+// canvas dependency has been removed from runtime builds, so this command is kept for reference only.
 const { createCanvas, loadImage } = require('canvas');
 const { getPhotoUrl, lobby } = require('../utils/bot/bot')
 const { sendPhoto, react } = require('../utils/utils')
