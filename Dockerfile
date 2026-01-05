@@ -17,7 +17,7 @@ COPY package*.json ./
 # Install only production dependencies
 ENV NODE_ENV=production
 RUN npm install -g pm2 \
-    && npm ci --omit=dev
+    && npm ci --production
 
 # Copy the rest of the application code
 # Note: Docker will automatically invalidate this cache when files change
