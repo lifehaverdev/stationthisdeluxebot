@@ -37,6 +37,10 @@ WORKER_RESUME_ENDPOINT="/collections/export/worker/resume"
 WORKER_WAIT_TIMEOUT="${WORKER_WAIT_TIMEOUT:-1800}"   # seconds
 WORKER_POLL_INTERVAL="${WORKER_POLL_INTERVAL:-15}"
 
+# Health check tuning (defaults: 40 attempts, 5s apart = ~200s total)
+HEALTH_CHECK_RETRIES="${HEALTH_CHECK_RETRIES:-80}"
+HEALTH_CHECK_DELAY="${HEALTH_CHECK_DELAY:-5}"
+
 # Build config
 export DOCKER_BUILDKIT=1
 
@@ -251,8 +255,8 @@ start_caddy() {
 }
 
 health_check_app() {
-  local retries=40
-  local delay=5
+  local retries="${HEALTH_CHECK_RETRIES}"
+  local delay="${HEALTH_CHECK_DELAY}"
   log "Checking application health..."
   while (( retries > 0 )); do
     if docker run --rm --network "${NETWORK_NAME}" curlimages/curl:8.5.0 -sS -f "http://${CONTAINER_ALIAS}:4000/api/health" >/dev/null 2>&1; then
