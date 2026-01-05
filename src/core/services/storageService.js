@@ -38,22 +38,27 @@ class StorageService {
   }
 
   getBucketName(kind = 'default') {
-    if (!this.bucketNames) this._initBucketMap();
-    return this.bucketNames[kind] || kind || this.bucketNames.default;
+    return this._resolveBucketConfig(kind).bucket;
   }
 
   getPublicBaseUrl(kind = 'default') {
-    if (!this.bucketNames) this._initBucketMap();
-    const bucket = this.bucketNames[kind] || kind || this.bucketNames.default;
-    return this._resolvePublicUrl(bucket);
+    const { bucket, alias } = this._resolveBucketConfig(kind);
+    return this._resolvePublicUrl(bucket, alias);
   }
 
   _resolveBucketName(input) {
-    if (!input) return this.getBucketName('default');
-    if (this.bucketNames && this.bucketNames[input]) {
-      return this.bucketNames[input];
+    return this._resolveBucketConfig(input).bucket;
+  }
+
+  _resolveBucketConfig(input) {
+    if (!this.bucketNames) this._initBucketMap();
+    if (!input) {
+      return { bucket: this.bucketNames.default, alias: 'default' };
     }
-    return input;
+    if (this.bucketNames[input]) {
+      return { bucket: this.bucketNames[input], alias: input };
+    }
+    return { bucket: input, alias: null };
   }
 
   /**
@@ -69,8 +74,8 @@ class StorageService {
       throw new Error('StorageService is not configured.');
     }
 
-    const bucket = this._resolveBucketName(bucketName);
-    const publicBaseUrl = this._resolvePublicUrl(bucket);
+    const { bucket, alias } = this._resolveBucketConfig(bucketName);
+    const publicBaseUrl = this._resolvePublicUrl(bucket, alias);
     const key = `${userId}/${uuidv4()}-${fileName}`;
     try {
       const cmd = new PutObjectCommand({
@@ -105,7 +110,8 @@ class StorageService {
       throw new Error('StorageService is not configured.');
     }
 
-    const bucket = this._resolveBucketName(bucketName);
+    const resolved = this._resolveBucketConfig(bucketName);
+    const bucket = resolved.bucket;
     try {
       const uploadParams = {
         Bucket: bucket,
@@ -123,19 +129,21 @@ class StorageService {
       };
 
       let finalBucket = bucket;
+      let finalAlias = resolved.alias;
       try {
         await attemptUpload(uploadParams);
       } catch (error) {
         if (error?.Code === 'NoSuchBucket' && bucket !== this.bucketNames.default) {
           this.logger.warn(`Bucket "${bucket}" missing; falling back to default bucket "${this.bucketNames.default}" for upload key ${key}.`);
           finalBucket = this.bucketNames.default;
+          finalAlias = 'default';
           await attemptUpload({ ...uploadParams, Bucket: finalBucket });
         } else {
           throw error;
         }
       }
 
-      const publicBase = this._resolvePublicUrl(finalBucket);
+      const publicBase = this._resolvePublicUrl(finalBucket, finalAlias);
       const permanentUrl = `${publicBase}/${key}`;
       this.logger.info(`Successfully uploaded stream to ${permanentUrl}`);
       return { permanentUrl, key, bucket: finalBucket };
@@ -162,38 +170,46 @@ class StorageService {
     }
   }
 
-  _resolvePublicUrl(bucket) {
+  _resolvePublicUrl(bucket, alias = null) {
     if (!bucket) return process.env.R2_PUBLIC_URL;
     if (!this._publicUrlCache) this._publicUrlCache = new Map();
-    if (this._publicUrlCache.has(bucket)) {
-      return this._publicUrlCache.get(bucket);
+    const cacheKey = alias ? `${bucket}::${alias}` : bucket;
+    if (this._publicUrlCache.has(cacheKey)) {
+      return this._publicUrlCache.get(cacheKey);
     }
 
-    const override = this._lookupBucketOverride(bucket);
+    const override = this._lookupBucketOverride(bucket, alias);
     if (override) {
-      this._publicUrlCache.set(bucket, override);
+      this._publicUrlCache.set(cacheKey, override);
       return override;
     }
 
     const derived = this._deriveUrlFromDefault(bucket);
     if (derived) {
-      this._publicUrlCache.set(bucket, derived);
+      this._publicUrlCache.set(cacheKey, derived);
       return derived;
     }
 
-    this._publicUrlCache.set(bucket, process.env.R2_PUBLIC_URL || '');
+    const fallback = process.env.R2_PUBLIC_URL || '';
+    this._publicUrlCache.set(cacheKey, fallback);
     return process.env.R2_PUBLIC_URL || '';
   }
 
-  _lookupBucketOverride(bucket) {
+  _lookupBucketOverride(bucket, alias = null) {
     const defaultBucket = this.getBucketName('default');
-    if (bucket === defaultBucket && process.env.R2_PUBLIC_URL) return process.env.R2_PUBLIC_URL;
-    const datasetBucket = this.getBucketName('datasets');
-    if (bucket === datasetBucket && process.env.R2_DATASETS_PUBLIC_URL) return process.env.R2_DATASETS_PUBLIC_URL;
-    const exportsBucket = this.getBucketName('exports');
-    if (bucket === exportsBucket && process.env.R2_EXPORTS_PUBLIC_URL) return process.env.R2_EXPORTS_PUBLIC_URL;
-    const galleryBucket = this.getBucketName('gallery');
-    if (bucket === galleryBucket) {
+    if ((alias === 'default' || alias === 'uploads' || (!alias && bucket === defaultBucket)) && process.env.R2_PUBLIC_URL) {
+      return process.env.R2_PUBLIC_URL;
+    }
+    if (alias === 'datasets' && process.env.R2_DATASETS_PUBLIC_URL) {
+      return process.env.R2_DATASETS_PUBLIC_URL;
+    }
+    if (alias === 'exports' && process.env.R2_EXPORTS_PUBLIC_URL) {
+      return process.env.R2_EXPORTS_PUBLIC_URL;
+    }
+    if (alias === 'gallery') {
+      if (process.env.R2_GALLERY_PUBLIC_URL) {
+        return process.env.R2_GALLERY_PUBLIC_URL;
+      }
       return 'https://gallery.miladystation2.net';
     }
     return null;

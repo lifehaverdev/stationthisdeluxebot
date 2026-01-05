@@ -374,6 +374,18 @@ function createCookApiRouter(deps = {}) {
     }
   });
 
+  router.post('/collections/:id/review/reset', async (req, res) => {
+    try {
+      const userId = req.user?.userId || req.user?.id || req.body?.userId;
+      const { data } = await internalApiClient.post(`/internal/v1/data/collections/${encodeURIComponent(req.params.id)}/review/reset`, { userId });
+      return res.json(data);
+    } catch (err) {
+      logger.error('review reset proxy error', err.response?.data || err.message);
+      const status = err.response?.status || 500;
+      return res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
 
   // Placeholder routes for pause/resume/delete etc.
   // They will proxy to internal cook routes when implemented.

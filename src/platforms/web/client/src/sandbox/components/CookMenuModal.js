@@ -818,6 +818,7 @@ export default class CookMenuModal {
             ${overviewDirty ? '<button class="save-overview-btn" style="margin-right:8px;">Save Changes</button>' : ''}
             <button class="test-btn">Test</button>
             <button class="review-btn">Review</button>
+            <button class="reset-review-btn" title="Mark all pieces as unreviewed" style="margin-left:8px;">Restart Review</button>
             <button class="start-cook-btn">Start Cook</button>
             <button class="delete-collection-btn" style="float:right;color:#f55">Delete</button>
         </div>`;
@@ -2240,6 +2241,50 @@ export default class CookMenuModal {
         }
     }
 
+    async resetCollectionReviews(collectionId) {
+        if (!collectionId) return;
+        const confirmed = window.confirm('Reset all review decisions for this collection? This will mark every piece as unreviewed.');
+        if (!confirmed) return;
+        try {
+            this.setState({ loading: true, error: null });
+            const csrf = await this.getCsrfToken();
+            const res = await fetch(`/api/v1/collections/${encodeURIComponent(collectionId)}/review/reset`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-csrf-token': csrf
+                },
+                credentials: 'include',
+                body: JSON.stringify({})
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(data.error || 'reset failed');
+            }
+            const resetCount = typeof data.resetCount === 'number' ? data.resetCount : null;
+            if (this._analyticsCache) {
+                this._analyticsCache.delete(collectionId);
+            }
+            await Promise.all([
+                this.fetchActiveCooks(true),
+                this.fetchCollections(true)
+            ]);
+            if (this.state.detailTab === 'analytics') {
+                this.loadCollectionAnalytics(collectionId);
+            }
+            if (resetCount !== null) {
+                alert(`Review reset complete. ${resetCount} piece${resetCount === 1 ? '' : 's'} are pending review again.`);
+            } else {
+                alert('Review reset complete. Pieces will reappear in the review queue shortly.');
+            }
+        } catch (err) {
+            console.error('[CookMenuModal] reset reviews error:', err);
+            alert('Failed to reset review data: ' + (err.message || 'unexpected error'));
+        } finally {
+            this.setState({ loading: false });
+        }
+    }
+
     async createCollection() {
         // Switch to create form view
         this.setState({ view: 'create' });
@@ -2603,6 +2648,11 @@ export default class CookMenuModal {
         if(modal.querySelector('.review-btn')) modal.querySelector('.review-btn').onclick=()=>{
             this.hide();
             import('../window/CollectionWindow.js').then(m=>{m.createCollectionReviewWindow(this.state.selectedCollection);} );
+        };
+        if(modal.querySelector('.reset-review-btn')) modal.querySelector('.reset-review-btn').onclick=()=>{
+            const { selectedCollection } = this.state;
+            if(!selectedCollection) return;
+            this.resetCollectionReviews(selectedCollection.collectionId);
         };
         if(modal.querySelector('.start-cook-btn')) modal.querySelector('.start-cook-btn').onclick=()=>{ this._startCookFromDetail(); };
         if(modal.querySelector('.delete-collection-btn')) modal.querySelector('.delete-collection-btn').onclick=()=>{

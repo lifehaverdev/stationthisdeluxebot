@@ -155,6 +155,69 @@ function createCookApi(deps = {}) {
     }
   });
 
+  // POST /internal/v1/data/collections/:id/review/reset - clear review outcomes so queue can restart
+  router.post('/:id/review/reset', async (req, res) => {
+    try {
+      const collectionId = req.params.id;
+      const userId = req.user?.userId || req.user?.id || req.body?.userId;
+      if (!collectionId || !userId) {
+        return res.status(400).json({ error: 'collectionId and userId required' });
+      }
+      if (!cookDb) return res.status(503).json({ error: 'service-unavailable' });
+      if (!generationOutputsDb) {
+        return res.status(503).json({ error: 'generationOutputs-unavailable' });
+      }
+
+      const collection = await cookDb.findById(collectionId);
+      if (!collection) {
+        return res.status(404).json({ error: 'collection-not-found' });
+      }
+      const ownerId = collection.userId ? String(collection.userId) : null;
+      if (ownerId && ownerId !== String(userId)) {
+        return res.status(403).json({ error: 'unauthorized' });
+      }
+
+      const masterMatch = [];
+      if (ObjectId.isValid(userId)) {
+        masterMatch.push({ masterAccountId: new ObjectId(userId) });
+      }
+      masterMatch.push({ masterAccountId: userId });
+
+      const filter = {
+        $and: [
+          {
+            $or: [
+              { 'metadata.collectionId': collectionId },
+              { collectionId }
+            ]
+          },
+          { $or: masterMatch },
+          {
+            $or: [
+              { 'metadata.reviewOutcome': { $exists: true } },
+              { reviewOutcome: { $exists: true } }
+            ]
+          }
+        ]
+      };
+
+      const update = {
+        $unset: {
+          'metadata.reviewOutcome': '',
+          reviewOutcome: ''
+        }
+      };
+
+      const result = await generationOutputsDb.updateMany(filter, update);
+      const resetCount = result?.modifiedCount || 0;
+      logger.info(`[CookAPI] Reset review outcomes for collection ${collectionId} by user ${userId} (${resetCount} docs updated)`);
+      return res.json({ resetCount });
+    } catch (err) {
+      logger.error('[CookAPI] review reset error', err);
+      return res.status(500).json({ error: 'internal-error' });
+    }
+  });
+
   // GET /:id/analytics – collection analytics + export prep
   router.get('/:id/analytics', async (req, res) => {
     try {
