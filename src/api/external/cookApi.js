@@ -424,6 +424,32 @@ function createCookApiRouter(deps = {}) {
     }
   });
 
+  router.post('/collections/:id/cull/requeue', async (req, res) => {
+    try {
+      const userId = req.user?.userId || req.user?.id || req.body?.userId;
+      const payload = { ...(req.body || {}), userId };
+      const { data } = await internalApiClient.post(`/internal/v1/data/collections/${encodeURIComponent(req.params.id)}/cull/requeue`, payload);
+      return res.json(data);
+    } catch (err) {
+      logger.error('cull requeue proxy error', err.response?.data || err.message);
+      const status = err.response?.status || 500;
+      return res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+  router.post('/collections/:id/cull/revive', async (req, res) => {
+    try {
+      const userId = req.user?.userId || req.user?.id || req.body?.userId;
+      const payload = { ...(req.body || {}), userId };
+      const { data } = await internalApiClient.post(`/internal/v1/data/collections/${encodeURIComponent(req.params.id)}/cull/revive`, payload);
+      return res.json(data);
+    } catch (err) {
+      logger.error('cull revive proxy error', err.response?.data || err.message);
+      const status = err.response?.status || 500;
+      return res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
   router.get('/collections/:id/cull/stats', async (req, res) => {
     try {
       const userId = req.user?.userId || req.user?.id || req.query.userId;
@@ -432,6 +458,23 @@ function createCookApiRouter(deps = {}) {
       return res.json(data);
     } catch (err) {
       logger.error('cull stats proxy error', err.response?.data || err.message);
+      const status = err.response?.status || 500;
+      return res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+  router.get('/collections/:id/cull/excluded', async (req, res) => {
+    try {
+      const userId = req.user?.userId || req.user?.id || req.query.userId;
+      const params = {
+        userId,
+        limit: req.query.limit,
+        cursor: req.query.cursor
+      };
+      const { data } = await internalApiClient.get(`/internal/v1/data/collections/${encodeURIComponent(req.params.id)}/cull/excluded`, { params });
+      return res.json(data);
+    } catch (err) {
+      logger.error('cull excluded proxy error', err.response?.data || err.message);
       const status = err.response?.status || 500;
       return res.status(status).json(err.response?.data || { error: 'proxy-error' });
     }

@@ -13,6 +13,7 @@ function createCookApi(deps = {}) {
   const cookDb = deps.db?.collections || deps.db?.cookCollections;
   const cooksDb = deps.db?.cooks;
   const generationOutputsDb = deps.db?.generationOutputs;
+  const reviewQueueDb = deps.db?.reviewQueue;
 
   const buildGenerationMatchClauses = (collectionId, userId) => {
     const ownerMatch = [];
@@ -69,6 +70,12 @@ function createCookApi(deps = {}) {
       { 'metadata.cullStatus': { $in: ['', null, 'pending'] } },
       { cullStatus: { $exists: false } },
       { cullStatus: { $in: ['', null, 'pending'] } }
+    ]
+  });
+  const buildCullKeepFilter = () => ({
+    $or: [
+      { 'metadata.cullStatus': 'keep' },
+      { cullStatus: 'keep' }
     ]
   });
   
@@ -413,9 +420,327 @@ function createCookApi(deps = {}) {
         }
       };
       const result = await generationOutputsDb.updateMany(filter, update);
-      return res.json({ resetCount: result?.modifiedCount || 0 });
+      let queueReset = 0;
+      if (reviewQueueDb?.updateMany) {
+        try {
+          const queueResult = await reviewQueueDb.updateMany(
+            {
+              collectionId,
+              mode: 'cull',
+              status: { $nin: ['pending', 'in_progress'] }
+            },
+            {
+              $set: { status: 'pending' },
+              $unset: { assignedTo: '', assignedAt: '', reviewedAt: '' }
+            }
+          );
+          queueReset = queueResult?.modifiedCount || 0;
+        } catch (queueErr) {
+          logger.warn('[CookAPI] failed to reset cull queue statuses', queueErr);
+        }
+      }
+      return res.json({ resetCount: result?.modifiedCount || 0, queueReset });
     } catch (err) {
       logger.error('[CookAPI] cull reset error', err);
+      return res.status(500).json({ error: 'internal-error' });
+    }
+  });
+
+  router.post('/:id/cull/requeue', async (req, res) => {
+    try {
+      const collectionId = req.params.id;
+      const userId = req.user?.userId || req.user?.id || req.body?.userId;
+      if (!collectionId || !userId) {
+        return res.status(400).json({ error: 'collectionId and userId required' });
+      }
+      if (!cookDb || !generationOutputsDb) {
+        return res.status(503).json({ error: 'service-unavailable' });
+      }
+      const collection = await cookDb.findById(collectionId);
+      if (!collection) {
+        return res.status(404).json({ error: 'collection-not-found' });
+      }
+      if (collection.userId !== userId) {
+        return res.status(403).json({ error: 'unauthorized' });
+      }
+      const filter = {
+        $and: [
+          ...buildGenerationMatchClauses(collectionId, userId),
+          buildAcceptedFilter(),
+          buildCullKeepFilter()
+        ]
+      };
+      const update = {
+        $set: {
+          'metadata.cullStatus': 'pending',
+          cullStatus: 'pending',
+          'metadata.exportExcluded': false,
+          exportExcluded: false
+        },
+        $unset: {
+          'metadata.cullReviewedAt': ''
+        }
+      };
+      const updateResult = await generationOutputsDb.updateMany(filter, update);
+      let queueReset = 0;
+      if (reviewQueueDb?.updateMany) {
+        try {
+          const queueResult = await reviewQueueDb.updateMany(
+            {
+              collectionId,
+              mode: 'cull',
+              status: 'keep'
+            },
+            {
+              $set: { status: 'pending' },
+              $unset: { assignedTo: '', assignedAt: '', reviewedAt: '' }
+            }
+          );
+          queueReset = queueResult?.modifiedCount || 0;
+        } catch (queueErr) {
+          logger.warn('[CookAPI] failed to requeue cull entries', queueErr);
+        }
+      }
+      return res.json({
+        requeued: updateResult?.modifiedCount || 0,
+        queueReset
+      });
+    } catch (err) {
+      logger.error('[CookAPI] cull requeue error', err);
+      return res.status(500).json({ error: 'internal-error' });
+    }
+  });
+
+  router.post('/:id/cull/revive', async (req, res) => {
+    try {
+      const collectionId = req.params.id;
+      const userId = req.user?.userId || req.user?.id || req.body?.userId;
+      if (!collectionId || !userId) {
+        return res.status(400).json({ error: 'collectionId and userId required' });
+      }
+      if (!cookDb || !generationOutputsDb) {
+        return res.status(503).json({ error: 'service-unavailable' });
+      }
+      const collection = await cookDb.findById(collectionId);
+      if (!collection) {
+        return res.status(404).json({ error: 'collection-not-found' });
+      }
+      if (collection.userId !== userId) {
+        return res.status(403).json({ error: 'unauthorized' });
+      }
+      const limitRaw = Number(req.body?.limit);
+      const limit = Math.max(1, Math.min(Number.isFinite(limitRaw) ? limitRaw : 20, 200));
+      const ids = Array.isArray(req.body?.generationIds)
+        ? req.body.generationIds
+            .map(id => (ObjectId.isValid(id) ? new ObjectId(id) : null))
+            .filter(Boolean)
+        : [];
+      let filter;
+      if (ids.length > 0) {
+        filter = { _id: { $in: ids } };
+      } else {
+        const baseMatch = buildGenerationMatchClauses(collectionId, userId);
+        filter = {
+          $and: [
+            ...baseMatch,
+            buildAcceptedFilter(),
+            buildCulledFilter()
+          ]
+        };
+      }
+      const docs = ids.length
+        ? ids.map(id => ({ _id: id }))
+        : await generationOutputsDb.findGenerations(filter, {
+            limit,
+            sort: { 'metadata.cullReviewedAt': -1, _id: -1 },
+            projection: { _id: 1 }
+          });
+      const targetIds = docs
+        .map(doc => (doc?._id ? (ObjectId.isValid(doc._id) ? new ObjectId(doc._id) : null) : null))
+        .filter(Boolean);
+      if (!targetIds.length) {
+        return res.json({ revived: 0, queueReset: 0 });
+      }
+      const updateResult = await generationOutputsDb.updateMany(
+        { _id: { $in: targetIds } },
+        {
+          $set: {
+            'metadata.cullStatus': 'pending',
+            cullStatus: 'pending',
+            'metadata.exportExcluded': false,
+            exportExcluded: false
+          },
+          $unset: {
+            'metadata.cullReviewedAt': ''
+          }
+        }
+      );
+      let queueReset = 0;
+      if (reviewQueueDb?.updateMany) {
+        try {
+          const queueResult = await reviewQueueDb.updateMany(
+            {
+              collectionId,
+              mode: 'cull',
+              generationId: { $in: targetIds }
+            },
+            {
+              $set: { status: 'pending' },
+              $unset: { assignedTo: '', assignedAt: '', reviewedAt: '' }
+            }
+          );
+          queueReset = queueResult?.modifiedCount || 0;
+        } catch (queueErr) {
+          logger.warn('[CookAPI] failed to revive cull queue entries', queueErr);
+        }
+      }
+      return res.json({
+        revived: updateResult?.modifiedCount || 0,
+        queueReset
+      });
+    } catch (err) {
+      logger.error('[CookAPI] cull revive error', err);
+      return res.status(500).json({ error: 'internal-error' });
+    }
+  });
+
+  router.get('/:id/cull/excluded', async (req, res) => {
+    try {
+      const collectionId = req.params.id;
+      const userId = req.query.userId || req.user?.userId || req.user?.id || req.userId;
+      if (!collectionId || !userId) {
+        return res.status(400).json({ error: 'collectionId and userId required' });
+      }
+      if (!cookDb || !generationOutputsDb) {
+        return res.status(503).json({ error: 'service-unavailable' });
+      }
+      const collection = await cookDb.findById(collectionId);
+      if (!collection) {
+        return res.status(404).json({ error: 'collection-not-found' });
+      }
+      if (collection.userId !== userId) {
+        return res.status(403).json({ error: 'unauthorized' });
+      }
+      const limitRaw = Number(req.query.limit);
+      const limit = Math.max(1, Math.min(Number.isFinite(limitRaw) ? limitRaw : 24, 100));
+      const cursor = req.query.cursor;
+      let cursorFilter = null;
+      if (cursor && ObjectId.isValid(cursor)) {
+        cursorFilter = { _id: { $lt: new ObjectId(cursor) } };
+      }
+      const baseMatch = buildGenerationMatchClauses(collectionId, userId);
+      const matchClauses = [
+        ...baseMatch,
+        buildAcceptedFilter(),
+        buildCulledFilter()
+      ];
+      if (cursorFilter) matchClauses.push(cursorFilter);
+      const docs = await generationOutputsDb.findGenerations(
+        { $and: matchClauses },
+        {
+          limit,
+          sort: { 'metadata.cullReviewedAt': -1, _id: -1 },
+          projection: {
+            outputs: 1,
+            responsePayload: 1,
+            artifactUrls: 1,
+            metadata: 1,
+            requestTimestamp: 1,
+            createdAt: 1,
+            status: 1,
+            deliveryStrategy: 1
+          }
+        }
+      );
+      const items = (docs || []).map(doc => ({
+        generationId: doc._id,
+        generation: doc
+      }));
+      const nextCursor = docs.length === limit ? docs[docs.length - 1]._id?.toString() : null;
+      return res.json({ items, nextCursor });
+    } catch (err) {
+      logger.error('[CookAPI] cull excluded fetch error', err);
+      return res.status(500).json({ error: 'internal-error' });
+    }
+  });
+
+  router.post('/:id/cull/revive', async (req, res) => {
+    try {
+      const collectionId = req.params.id;
+      const userId = req.user?.userId || req.user?.id || req.body?.userId;
+      if (!collectionId || !userId) {
+        return res.status(400).json({ error: 'collectionId and userId required' });
+      }
+      if (!cookDb || !generationOutputsDb) {
+        return res.status(503).json({ error: 'service-unavailable' });
+      }
+      const collection = await cookDb.findById(collectionId);
+      if (!collection) {
+        return res.status(404).json({ error: 'collection-not-found' });
+      }
+      if (collection.userId !== userId) {
+        return res.status(403).json({ error: 'unauthorized' });
+      }
+      const limitRaw = Number(req.body?.limit);
+      const limit = Math.max(1, Math.min(Number.isFinite(limitRaw) ? limitRaw : 20, 200));
+      const baseMatch = buildGenerationMatchClauses(collectionId, userId);
+      const filter = {
+        $and: [
+          ...baseMatch,
+          buildAcceptedFilter(),
+          buildCulledFilter()
+        ]
+      };
+      const docs = await generationOutputsDb.findGenerations(filter, {
+        limit,
+        sort: { 'metadata.cullReviewedAt': -1, _id: -1 },
+        projection: { _id: 1 }
+      });
+      const ids = (docs || [])
+        .map(doc => (doc?._id ? (ObjectId.isValid(doc._id) ? new ObjectId(doc._id) : null) : null))
+        .filter(Boolean);
+      if (!ids.length) {
+        return res.json({ revived: 0, queueReset: 0 });
+      }
+      const updateResult = await generationOutputsDb.updateMany(
+        { _id: { $in: ids } },
+        {
+          $set: {
+            'metadata.cullStatus': 'pending',
+            cullStatus: 'pending',
+            'metadata.exportExcluded': false,
+            exportExcluded: false
+          },
+          $unset: {
+            'metadata.cullReviewedAt': ''
+          }
+        }
+      );
+      let queueReset = 0;
+      if (reviewQueueDb?.updateMany) {
+        try {
+          const queueResult = await reviewQueueDb.updateMany(
+            {
+              collectionId,
+              mode: 'cull',
+              generationId: { $in: ids }
+            },
+            {
+              $set: { status: 'pending' },
+              $unset: { assignedTo: '', assignedAt: '', reviewedAt: '' }
+            }
+          );
+          queueReset = queueResult?.modifiedCount || 0;
+        } catch (queueErr) {
+          logger.warn('[CookAPI] failed to revive cull queue entries', queueErr);
+        }
+      }
+      return res.json({
+        revived: updateResult?.modifiedCount || 0,
+        queueReset
+      });
+    } catch (err) {
+      logger.error('[CookAPI] cull revive error', err);
       return res.status(500).json({ error: 'internal-error' });
     }
   });

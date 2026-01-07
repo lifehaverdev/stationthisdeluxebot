@@ -190,6 +190,7 @@ export default class CollectionWindow extends BaseWindow {
     this._cullStats = null;
     this._cullStatsLoading = false;
     this._cullSummaryEl = null;
+    this._cullDeltaEl = null;
     this._lastCullStatsFetchAt = 0;
     this._pendingCullStatsTimeout = null;
     this._cullStatsPromise = null;
@@ -291,14 +292,21 @@ export default class CollectionWindow extends BaseWindow {
     if (this.isCullMode) {
       const summary = document.createElement('div');
       summary.className = 'cull-summary';
-      summary.style.cssText = 'padding: 8px 12px; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 13px; color: #d0d0d0;';
+      summary.style.cssText = 'padding: 8px 12px; margin-bottom: 8px; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 13px; color: #d0d0d0;';
       summary.textContent = 'Loading supply stats…';
       body.appendChild(summary);
+      const deltaBanner = document.createElement('div');
+      deltaBanner.className = 'cull-target-delta';
+      deltaBanner.style.cssText = 'padding: 6px 10px; margin-bottom: 12px; background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 13px; color: #fff;';
+      deltaBanner.textContent = 'Calculating target gap…';
+      body.appendChild(deltaBanner);
       this._cullSummaryEl = summary;
+      this._cullDeltaEl = deltaBanner;
       this._updateCullSummary();
       this._fetchCullStatsForWindow().catch(err => console.warn('[CollectionWindow] cull stats load error', err));
     } else {
       this._cullSummaryEl = null;
+      this._cullDeltaEl = null;
     }
 
     const startWrap = document.createElement('div');
@@ -538,13 +546,41 @@ export default class CollectionWindow extends BaseWindow {
   }
 
   _updateCullSummary() {
-    if (!this.isCullMode || !this._cullSummaryEl) return;
-    if (this._cullStats) {
-      this._cullSummaryEl.textContent = this._formatCullSummaryText(this._cullStats);
-    } else if (this._cullStatsLoading) {
-      this._cullSummaryEl.textContent = 'Loading supply stats…';
-    } else {
-      this._cullSummaryEl.textContent = 'No approved pieces available for culling yet.';
+    if (!this.isCullMode) return;
+    if (this._cullSummaryEl) {
+      if (this._cullStats) {
+        this._cullSummaryEl.textContent = this._formatCullSummaryText(this._cullStats);
+      } else if (this._cullStatsLoading) {
+        this._cullSummaryEl.textContent = 'Loading supply stats…';
+      } else {
+        this._cullSummaryEl.textContent = 'No approved pieces available for culling yet.';
+      }
+    }
+    if (this._cullDeltaEl) {
+      if (!this._cullStats) {
+        this._cullDeltaEl.textContent = this._cullStatsLoading ? 'Calculating target gap…' : 'Target gap unavailable';
+        this._cullDeltaEl.style.color = '#fff';
+        return;
+      }
+      const kept = Number(this._cullStats.keptCount || 0);
+      const target = Number(this._cullStats.targetSupply || this.collection?.totalSupply || this.collection?.config?.totalSupply || 0);
+      if (!target) {
+        this._cullDeltaEl.textContent = `Kept ${kept} so far`;
+        this._cullDeltaEl.style.color = '#fff';
+        return;
+      }
+      const over = Math.max(0, kept - target);
+      const shortfall = Math.max(0, target - kept);
+      if (over > 0) {
+        this._cullDeltaEl.textContent = `${over} piece${over === 1 ? '' : 's'} still need to be dropped to hit ${target}.`;
+        this._cullDeltaEl.style.color = '#ffb347';
+      } else if (shortfall > 0) {
+        this._cullDeltaEl.textContent = `${shortfall} slot${shortfall === 1 ? '' : 's'} open – revive excluded pieces to fill them.`;
+        this._cullDeltaEl.style.color = '#7dd97d';
+      } else {
+        this._cullDeltaEl.textContent = 'Target met – any additional excludes will create extra room.';
+        this._cullDeltaEl.style.color = '#7dd97d';
+      }
     }
   }
 

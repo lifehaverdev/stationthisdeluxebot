@@ -825,6 +825,8 @@ export default class CookMenuModal {
         const hasCullDecisions = cullStats
             ? ((culledCount || 0) > 0 || ((keptCount || 0) > (pendingCullCount || 0)))
             : false;
+        const shouldOfferCullRetry = !pendingCullCount && aboveTarget > 0 && keptCount > 0;
+        const shouldOfferRevive = culledCount > 0;
         
         // Escape HTML for safe display
         const escapeHtml = (str) => String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
@@ -832,10 +834,21 @@ export default class CookMenuModal {
         const safeSupply = escapeHtml(String(displaySupply));
         
         const cullButtonAttr = cullButtonDisabled ? ' disabled' : '';
+        const repeatCullAttr = keptCount > 0 ? '' : ' disabled';
+        const cullButtonsHtml = [
+            `<button class="cull-btn"${cullButtonAttr}>${cullButtonLabel}</button>`
+        ];
+        if (shouldOfferCullRetry) {
+            cullButtonsHtml.push(`<button class="repeat-cull-btn"${repeatCullAttr} style="margin-left:6px;">Cull Again</button>`);
+        }
+        if (shouldOfferRevive) {
+            const reviveAttr = culledCount > 0 ? '' : ' disabled';
+            cullButtonsHtml.push(`<button class="revive-cull-btn"${reviveAttr} style="margin-left:6px;">Revive Excluded</button>`);
+        }
         const metaRows=`
           <tr><td>Description</td><td>${safeDescription}</td><td><button class="edit-desc-btn">Edit</button></td></tr>
           <tr><td>Total Supply*</td><td>${safeSupply}</td><td><button class="edit-supply-btn">Edit</button></td></tr>
-          <tr><td>Second Pass Cull</td><td>${this._escapeHtml(cullSummaryText)}</td><td><button class="cull-btn"${cullButtonAttr}>${cullButtonLabel}</button></td></tr>`;
+          <tr><td>Second Pass Cull</td><td>${this._escapeHtml(cullSummaryText)}</td><td>${cullButtonsHtml.join(' ')}</td></tr>`;
         const genRow=`<tr><td>Generator</td><td>${this.state.generatorDisplay||'(none)'}</td><td><button class="edit-gen-btn">${this.state.generatorDisplay?'Change':'Set'}</button></td></tr>`;
         const paramRows=paramOptions.map(p=>{
             const value = displayParamOverrides[p]||'';
@@ -2382,6 +2395,50 @@ export default class CookMenuModal {
         }
     }
 
+    async requeueCullKeeps(collectionId) {
+        if (!collectionId) return;
+        const confirmed = window.confirm('Start another cull round? Previously kept pieces will be re-added to the queue so you can drop more until you reach your target supply.');
+        if (!confirmed) return;
+        try {
+            this.setState({ loading: true, error: null });
+            const csrf = await this.getCsrfToken();
+            const res = await fetch(`/api/v1/collections/${encodeURIComponent(collectionId)}/cull/requeue`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-csrf-token': csrf
+                },
+                credentials: 'include',
+                body: JSON.stringify({})
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(data.error || 'requeue_failed');
+            }
+            const requeued = typeof data.requeued === 'number' ? data.requeued : null;
+            this.loadCullStats(collectionId, { force: true });
+            if (typeof window !== 'undefined') {
+                try {
+                    window.dispatchEvent(new CustomEvent('collection:cull-updated', {
+                        detail: { collectionId }
+                    }));
+                } catch (_) {
+                    // ignore
+                }
+            }
+            if (requeued && requeued > 0) {
+                alert(`Added ${requeued} kept piece${requeued === 1 ? '' : 's'} back to the cull queue. Open the cull window to continue trimming.`);
+            } else {
+                alert('No previously kept pieces were found to requeue. Try resetting the cull decisions if you need to start from scratch.');
+            }
+        } catch (err) {
+            console.error('[CookMenuModal] requeue cull error:', err);
+            alert('Failed to requeue kept pieces: ' + (err.message || 'unexpected error'));
+        } finally {
+            this.setState({ loading: false });
+        }
+    }
+
     async createCollection() {
         // Switch to create form view
         this.setState({ view: 'create' });
@@ -2831,6 +2888,17 @@ export default class CookMenuModal {
             if(!selectedCollection) return;
             this.hide();
             import('../window/CollectionWindow.js').then(m=>{m.createCollectionCullWindow(selectedCollection);} );
+        };
+        if(modal.querySelector('.repeat-cull-btn')) modal.querySelector('.repeat-cull-btn').onclick=()=>{
+            const { selectedCollection } = this.state;
+            if(!selectedCollection) return;
+            this.requeueCullKeeps(selectedCollection.collectionId);
+        };
+        if(modal.querySelector('.revive-cull-btn')) modal.querySelector('.revive-cull-btn').onclick=()=>{
+            const { selectedCollection } = this.state;
+            if(!selectedCollection) return;
+            this.hide();
+            import('../window/ExcludedWindow.js').then(m => { m.createExcludedWindow(selectedCollection); });
         };
         if(modal.querySelector('.reset-cull-btn')) modal.querySelector('.reset-cull-btn').onclick=()=>{
             const { selectedCollection } = this.state;
