@@ -1,1 +1,5 @@
-export { createCollectionReviewWindow, createCollectionTestWindow } from '../window/CollectionWindow.js';
+export {
+  createCollectionReviewWindow,
+  createCollectionCullWindow,
+  createCollectionTestWindow
+} from '../window/CollectionWindow.js';

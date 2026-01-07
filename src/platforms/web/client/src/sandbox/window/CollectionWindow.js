@@ -4,12 +4,16 @@ import { getToolWindows } from '../state.js';
 import { generationIdToWindowMap, generationCompletionManager } from '../node/websocketHandlers.js';
 import { showTextOverlay } from '../node/overlays/textOverlay.js';
 
-const MAX_REVIEW_BATCH_SIZE = 50;
-const DEFAULT_REVIEW_BATCH_SIZE = 12;
+const MAX_REVIEW_BATCH_SIZE = 100;
+const DEFAULT_REVIEW_BATCH_SIZE = 80;
 const DEFAULT_REVIEW_PREFETCH_THRESHOLD = 3;
-const DEFAULT_REVIEW_FLUSH_THRESHOLD = 6;
+const DEFAULT_REVIEW_FLUSH_THRESHOLD = 12;
 const DEFAULT_REVIEW_FLUSH_INTERVAL_MS = 5000;
 const MAX_REVIEW_SUBMISSION_BATCH_SIZE = 50;
+const CULL_STATS_MIN_INTERVAL_MS = 2500;
+const CULL_REVIEW_FLUSH_THRESHOLD = 10;
+const CULL_REVIEW_FLUSH_INTERVAL_MS = 15000;
+const CULL_REVIEW_IDLE_FLUSH_DELAY_MS = 15000;
 
 /**
  * CollectionWindow – unified window for collection test & review.
@@ -142,13 +146,14 @@ export default class CollectionWindow extends BaseWindow {
    * @param {object} opts.position – { x, y }
    */
   constructor({ mode = 'test', collection, position = { x: 200, y: 120 } }) {
-    const idPrefix = mode === 'test' ? 'col-test' : 'col-review';
+    const idPrefix = mode === 'test' ? 'col-test' : (mode === 'cull' ? 'col-cull' : 'col-review');
     const id = `${idPrefix}-${Math.random().toString(36).slice(2, 10)}`;
-    const title = `${collection.name || 'Collection'} · ${mode === 'test' ? 'Test' : 'Review'}`;
+    const title = `${collection.name || 'Collection'} · ${mode === 'test' ? 'Test' : (mode === 'cull' ? 'Cull' : 'Review')}`;
     super({ id, title, position, classes: ['collection-window'] });
 
     this.mode = mode;
     this.collection = collection;
+    this.isCullMode = mode === 'cull';
     this._reviewQueue = [];
     this._activeReview = null;
     this._reviewFetchPromise = null;
@@ -168,13 +173,27 @@ export default class CollectionWindow extends BaseWindow {
     );
     const flushInterval = Number(collection?.config?.reviewFlushIntervalMs) || DEFAULT_REVIEW_FLUSH_INTERVAL_MS;
     this._reviewFlushIntervalMs = Math.max(flushInterval, 1000);
+    if (this.isCullMode) {
+      this._reviewFlushThreshold = Math.min(Math.max(1, CULL_REVIEW_FLUSH_THRESHOLD), MAX_REVIEW_SUBMISSION_BATCH_SIZE);
+      this._reviewFlushIntervalMs = Math.max(CULL_REVIEW_FLUSH_INTERVAL_MS, 1000);
+    }
     this._reviewSyncBannerState = { text: 'All decisions synced ✅', variant: 'ok' };
-    this._reviewIdleFlushDelayMs = Math.max(this._reviewFlushIntervalMs, 1500);
+    const idleBase = this.isCullMode ? CULL_REVIEW_IDLE_FLUSH_DELAY_MS : 1500;
+    this._reviewIdleFlushDelayMs = Math.max(this._reviewFlushIntervalMs, idleBase);
     this._reviewFlushBackoffMs = 2500;
     this._reviewFlushRetryAttempts = 0;
     this._reviewFlushRetryTimer = null;
     this._lastReviewActionAt = 0;
     this._claimedQueueIds = new Set();
+    this._pendingCullIds = new Set();
+    this._usingLegacyReviewApi = false;
+    this._cullStats = null;
+    this._cullStatsLoading = false;
+    this._cullSummaryEl = null;
+    this._lastCullStatsFetchAt = 0;
+    this._pendingCullStatsTimeout = null;
+    this._cullStatsPromise = null;
+    this._boundCullUpdate = null;
 
     // Store reference to this instance on the DOM element for WebSocket handler access
     this.el._collectionWindowInstance = this;
@@ -190,12 +209,14 @@ export default class CollectionWindow extends BaseWindow {
       this.el.classList.add('collection-test-window');
     }
 
-    if (this.mode === 'review') {
+    if (this.mode === 'review' || this.mode === 'cull') {
       this._beforeUnloadHandler = () => {
         if (this._pendingReviewDecisions?.length) {
           this._flushPendingReviews({ force: true, keepAlive: true }).catch(() => {});
         }
-        this._releaseOutstandingQueueItems().catch(() => {});
+        if (this.mode === 'review') {
+          this._releaseOutstandingQueueItems().catch(() => {});
+        }
       };
       window.addEventListener('beforeunload', this._beforeUnloadHandler);
       const prevOnClose = this.onClose;
@@ -207,11 +228,33 @@ export default class CollectionWindow extends BaseWindow {
         if (this._pendingReviewDecisions?.length) {
           this._flushPendingReviews({ force: true, keepAlive: true }).catch(() => {});
         }
-        this._releaseOutstandingQueueItems().catch(() => {});
+        if (this.mode === 'review') {
+          this._releaseOutstandingQueueItems().catch(() => {});
+        }
+        if (this._boundCullUpdate && typeof window !== 'undefined') {
+          window.removeEventListener('collection:cull-updated', this._boundCullUpdate);
+          this._boundCullUpdate = null;
+        }
+        if (this._pendingCullStatsTimeout) {
+          clearTimeout(this._pendingCullStatsTimeout);
+          this._pendingCullStatsTimeout = null;
+        }
       };
+      if (this.isCullMode && typeof window !== 'undefined') {
+        this._boundCullUpdate = (evt) => {
+          if (!evt?.detail || evt.detail.collectionId !== this.collection?.collectionId) return;
+          if (evt.detail.sourceWindowId === this.id) return;
+          this._fetchCullStatsForWindow().catch(() => {});
+        };
+        window.addEventListener('collection:cull-updated', this._boundCullUpdate);
+      }
     }
 
     this.renderBody();
+  }
+
+  static _sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, Math.max(0, ms || 0)));
   }
 
   serialize() {
@@ -224,7 +267,7 @@ export default class CollectionWindow extends BaseWindow {
   }
 
   renderBody() {
-    if (this.mode === 'review') {
+    if (this.mode === 'review' || this.mode === 'cull') {
       this._renderReview();
     } else {
       this._renderTest();
@@ -235,12 +278,37 @@ export default class CollectionWindow extends BaseWindow {
   _renderReview() {
     const body = this.body;
     body.innerHTML = '';
+    const intro = document.createElement('div');
+    intro.className = 'review-intro';
+    intro.style.cssText = 'padding: 8px 12px; background: rgba(255,255,255,0.05); border-radius: 6px; margin-bottom: 8px; font-size: 13px; line-height: 1.4;';
+    if (this.isCullMode) {
+      intro.innerHTML = `<strong>Second Pass:</strong> Keep or drop each approved piece so the final manifest matches your desired supply. Drop extras until you are comfortable with the kept count.`;
+    } else {
+      intro.textContent = 'Approve or reject each generated piece. Decisions sync automatically as you work.';
+    }
+    body.appendChild(intro);
+
+    if (this.isCullMode) {
+      const summary = document.createElement('div');
+      summary.className = 'cull-summary';
+      summary.style.cssText = 'padding: 8px 12px; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 13px; color: #d0d0d0;';
+      summary.textContent = 'Loading supply stats…';
+      body.appendChild(summary);
+      this._cullSummaryEl = summary;
+      this._updateCullSummary();
+      this._fetchCullStatsForWindow().catch(err => console.warn('[CollectionWindow] cull stats load error', err));
+    } else {
+      this._cullSummaryEl = null;
+    }
+
     const startWrap = document.createElement('div');
     startWrap.style.textAlign = 'center';
     startWrap.style.padding = '8px';
     const startBtn = document.createElement('button');
-    startBtn.className = 'start-review-btn';
-    startBtn.textContent = 'Start Reviewing';
+    const isCull = this.isCullMode;
+    startBtn.className = isCull ? 'start-cull-btn' : 'start-review-btn';
+    const idleLabel = isCull ? 'Start Culling' : 'Start Reviewing';
+    startBtn.textContent = idleLabel;
     startBtn.onclick = () => {
       startBtn.disabled = true;
       startBtn.textContent = 'Loading pieces…';
@@ -248,7 +316,7 @@ export default class CollectionWindow extends BaseWindow {
       this._activeReview = null;
       this._loadNextReview({ showLoading: true }).catch(() => {
         startBtn.disabled = false;
-        startBtn.textContent = 'Start Reviewing';
+        startBtn.textContent = idleLabel;
       });
     };
     startWrap.appendChild(startBtn);
@@ -292,7 +360,7 @@ export default class CollectionWindow extends BaseWindow {
       if (showLoading && !this._activeReview) {
         this.body.textContent = 'Loading…';
       }
-      const limit = this._reviewBatchSize;
+      const limit = this.isCullMode ? Math.min(this._reviewBatchSize * 2, MAX_REVIEW_BATCH_SIZE) : this._reviewBatchSize;
       const csrfToken = await this._getCsrfToken();
       const res = await fetch('/api/v1/review-queue/pop', {
         method: 'POST',
@@ -304,7 +372,8 @@ export default class CollectionWindow extends BaseWindow {
         },
         body: JSON.stringify({
           collectionId: this.collection.collectionId,
-          limit
+          limit,
+          mode: this.isCullMode ? 'cull' : 'review'
         })
       });
       if (!res.ok) {
@@ -312,7 +381,6 @@ export default class CollectionWindow extends BaseWindow {
         throw new Error(`HTTP ${res.status}: ${text}`);
       }
       const json = await res.json();
-      console.log('[CollectionWindow] review queue pop response', json);
       const items = Array.isArray(json.items) ? json.items : [];
       const existingIds = new Set(this._reviewQueue.map(entry => entry?.generationId).filter(Boolean));
       if (this._activeReview?.generationId) existingIds.add(this._activeReview.generationId);
@@ -323,7 +391,15 @@ export default class CollectionWindow extends BaseWindow {
         if (!queueId || !generationId || !generation) return null;
         return { queueId, generationId, generation };
       }).filter(Boolean);
-      const deduped = normalized.filter(entry => !existingIds.has(entry.generationId));
+      const deduped = normalized.filter(entry => {
+        const idStr = String(entry.generationId);
+        const pendingLocal = this._pendingCullIds.has(idStr);
+        const alreadyInQueue = existingIds.has(entry.generationId);
+        if (pendingLocal || alreadyInQueue) {
+          return false;
+        }
+        return true;
+      });
       deduped.forEach(entry => {
         existingIds.add(entry.generationId);
         this._claimedQueueIds.add(entry.queueId);
@@ -331,7 +407,27 @@ export default class CollectionWindow extends BaseWindow {
       if (deduped.length) {
         this._reviewQueue.push(...deduped);
       }
-      return deduped.length;
+      if (deduped.length) {
+        return deduped.length;
+      }
+      if (this.isCullMode) {
+        return 0;
+      }
+      if (!this._usingLegacyReviewApi) {
+        try {
+          const legacyCount = await this._fetchLegacyReviewBatch({ showLoading: false });
+          if (legacyCount > 0) {
+            this._usingLegacyReviewApi = true;
+            return legacyCount;
+          }
+        } catch (legacyErr) {
+          console.warn('[CollectionWindow] Legacy review fallback failed', legacyErr);
+        }
+      } else {
+        const legacyCount = await this._fetchLegacyReviewBatch({ showLoading: false });
+        return legacyCount;
+      }
+      return 0;
     })();
     this._reviewFetchPromise = loadPromise;
     try {
@@ -348,6 +444,39 @@ export default class CollectionWindow extends BaseWindow {
     }
   }
 
+  async _fetchLegacyReviewBatch({ showLoading = false } = {}) {
+    if (showLoading && !this._activeReview) {
+      this.body.textContent = 'Loading…';
+    }
+    const limit = this._reviewBatchSize;
+    const res = await fetch(`/api/v1/collections/${encodeURIComponent(this.collection.collectionId)}/pieces/unreviewed?limit=${limit}`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'Cache-Control': 'no-cache'
+      }
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Legacy review fetch failed: HTTP ${res.status}: ${text}`);
+    }
+    const json = await res.json().catch(() => ({}));
+    const generations = Array.isArray(json.generations) ? json.generations : [];
+    const existingIds = new Set(this._reviewQueue.map(entry => entry?.generationId).filter(Boolean));
+    if (this._activeReview?.generationId) existingIds.add(this._activeReview.generationId);
+    const normalized = generations.map(gen => {
+      const generationId = gen?._id || gen?.id;
+      if (!generationId) return null;
+      return { queueId: null, generationId, generation: gen };
+    }).filter(Boolean);
+    const deduped = normalized.filter(entry => !existingIds.has(entry.generationId));
+    deduped.forEach(entry => existingIds.add(entry.generationId));
+    if (deduped.length) {
+      this._reviewQueue.push(...deduped);
+    }
+    return deduped.length;
+  }
+
   _maybePrefetchReviews() {
     if (!this._reviewQueue) this._reviewQueue = [];
     if (this._reviewQueue.length < this._reviewPrefetchThreshold) {
@@ -355,6 +484,100 @@ export default class CollectionWindow extends BaseWindow {
         console.error('[CollectionWindow] Prefetch review batch failed', err);
       });
     }
+  }
+
+  async _fetchCullStatsForWindow({ force = false } = {}) {
+    if (!this.isCullMode || !this.collection?.collectionId) return;
+    const now = Date.now();
+    const elapsed = now - (this._lastCullStatsFetchAt || 0);
+    if (!force) {
+      if (this._cullStatsPromise) {
+        return this._cullStatsPromise;
+      }
+      if (this._cullStatsLoading) {
+        return;
+      }
+      if (this._lastCullStatsFetchAt && elapsed < CULL_STATS_MIN_INTERVAL_MS) {
+        if (!this._pendingCullStatsTimeout) {
+          const delay = Math.max(250, CULL_STATS_MIN_INTERVAL_MS - elapsed);
+          this._pendingCullStatsTimeout = setTimeout(() => {
+            this._pendingCullStatsTimeout = null;
+            this._fetchCullStatsForWindow({ force: true }).catch(() => {});
+          }, delay);
+        }
+        return;
+      }
+    } else if (this._pendingCullStatsTimeout) {
+      clearTimeout(this._pendingCullStatsTimeout);
+      this._pendingCullStatsTimeout = null;
+    }
+    this._cullStatsLoading = true;
+    this._updateCullSummary();
+    const fetchPromise = (async () => {
+      try {
+        const res = await fetch(`/api/v1/collections/${encodeURIComponent(this.collection.collectionId)}/cull/stats`, {
+          credentials: 'include',
+          cache: 'no-store'
+        });
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+        const data = await res.json().catch(() => ({}));
+        this._cullStats = data?.stats || null;
+        this._lastCullStatsFetchAt = Date.now();
+      } catch (err) {
+        console.warn('[CollectionWindow] Failed to load cull stats', err);
+      } finally {
+        this._cullStatsLoading = false;
+        this._cullStatsPromise = null;
+        this._updateCullSummary();
+      }
+    })();
+    this._cullStatsPromise = fetchPromise;
+    return fetchPromise;
+  }
+
+  _updateCullSummary() {
+    if (!this.isCullMode || !this._cullSummaryEl) return;
+    if (this._cullStats) {
+      this._cullSummaryEl.textContent = this._formatCullSummaryText(this._cullStats);
+    } else if (this._cullStatsLoading) {
+      this._cullSummaryEl.textContent = 'Loading supply stats…';
+    } else {
+      this._cullSummaryEl.textContent = 'No approved pieces available for culling yet.';
+    }
+  }
+
+  _formatCullSummaryText(stats) {
+    if (!stats) return 'Loading supply stats…';
+    const kept = Number(stats.keptCount || 0);
+    const culled = Number(stats.culledCount || 0);
+    const pending = Number(stats.pendingCullCount || 0);
+    const total = Number(stats.totalAccepted || kept + culled + pending || 0);
+    const target = Number(stats.targetSupply || this.collection?.totalSupply || this.collection?.config?.totalSupply || 0);
+    const parts = [];
+    if (total > 0) {
+      parts.push(`Kept ${kept}/${total}`);
+    } else {
+      parts.push('No approved pieces yet');
+    }
+    if (target > 0) {
+      const delta = kept - target;
+      if (delta > 0) {
+        parts.push(`${delta} over target`);
+      } else if (delta === 0 && total > 0) {
+        parts.push('Target met');
+      } else if (delta < 0) {
+        parts.push(`${Math.abs(delta)} short of target`);
+      }
+    }
+    if (pending > 0) {
+      parts.push(`${pending} pending`);
+    }
+    if (culled > 0) {
+      parts.push(`${culled} excluded`);
+    }
+    return parts.join(' • ');
   }
 
   _renderReviewPiece(entry) {
@@ -377,9 +600,14 @@ export default class CollectionWindow extends BaseWindow {
 
     const btnRow = document.createElement('div');
     const acceptBtn = document.createElement('button');
-    acceptBtn.textContent = 'Accept ✅';
     const rejectBtn = document.createElement('button');
-    rejectBtn.textContent = 'Reject ❌';
+    if (this.isCullMode) {
+      acceptBtn.textContent = 'Keep ✅';
+      rejectBtn.textContent = 'Exclude 🚫';
+    } else {
+      acceptBtn.textContent = 'Accept ✅';
+      rejectBtn.textContent = 'Reject ❌';
+    }
     btnRow.append(acceptBtn, rejectBtn);
     body.appendChild(btnRow);
 
@@ -401,8 +629,10 @@ export default class CollectionWindow extends BaseWindow {
       }
       markInFlight = false;
     };
-    acceptBtn.onclick = () => mark('accepted');
-    rejectBtn.onclick = () => mark('rejected');
+    const acceptOutcome = this.isCullMode ? 'keep' : 'accepted';
+    const rejectOutcome = this.isCullMode ? 'exclude' : 'rejected';
+    acceptBtn.onclick = () => mark(acceptOutcome);
+    rejectBtn.onclick = () => mark(rejectOutcome);
   }
 
   _normaliseReviewOutput(gen) {
@@ -434,9 +664,13 @@ export default class CollectionWindow extends BaseWindow {
   }
 
   _bufferReviewDecision(queueId, generationId, outcome) {
-    if (!queueId || !generationId || !outcome) return;
+    if (!generationId || !outcome) return;
     if (!Array.isArray(this._pendingReviewDecisions)) this._pendingReviewDecisions = [];
-    this._pendingReviewDecisions.push({ queueId, generationId, outcome });
+    const mode = this.isCullMode ? 'cull' : 'review';
+    this._pendingReviewDecisions.push({ queueId: queueId || null, generationId, outcome, mode });
+    if (this.isCullMode) {
+      this._pendingCullIds.add(String(generationId));
+    }
     console.log('[CollectionWindow] queued review decision', generationId, outcome, 'pending:', this._pendingReviewDecisions.length);
     this._updateReviewSyncBanner();
     this._lastReviewActionAt = Date.now();
@@ -497,7 +731,7 @@ export default class CollectionWindow extends BaseWindow {
   }
 
   async _flushPendingReviews({ force = false, keepAlive = false } = {}) {
-    if (this.mode !== 'review') return;
+    if (this.mode !== 'review' && this.mode !== 'cull') return;
     if (this._reviewFlushPromise) {
       if (force) {
         try {
@@ -519,22 +753,38 @@ export default class CollectionWindow extends BaseWindow {
     this._setReviewSyncBanner(`Syncing ${pending.length} decision${pending.length === 1 ? '' : 's'}…`, 'pending');
     const csrfToken = await this._getCsrfToken();
 
-    const chunks = [];
-    for (let i = 0; i < pending.length; i += MAX_REVIEW_SUBMISSION_BATCH_SIZE) {
-      chunks.push(pending.slice(i, i + MAX_REVIEW_SUBMISSION_BATCH_SIZE));
-    }
-
+    let processedCull = false;
     const flushPromise = (async () => {
       const failed = [];
-      for (const chunk of chunks) {
-        try {
-          await this._commitReviewDecisions(chunk, { csrfToken, keepAlive });
-          chunk.forEach(decision => {
-            if (decision.queueId) this._claimedQueueIds.delete(decision.queueId);
-          });
-        } catch (err) {
-          console.error('[CollectionWindow] Review commit request failed', err);
-          failed.push(...chunk);
+      const queueDecisions = pending.filter(decision => decision.queueId);
+      const legacyDecisions = pending.filter(decision => !decision.queueId);
+      if (queueDecisions.length) {
+        for (let i = 0; i < queueDecisions.length; i += MAX_REVIEW_SUBMISSION_BATCH_SIZE) {
+          const chunk = queueDecisions.slice(i, i + MAX_REVIEW_SUBMISSION_BATCH_SIZE);
+          try {
+            await this._commitQueueDecisions(chunk, { csrfToken, keepAlive });
+            chunk.forEach(decision => {
+              if (decision.queueId) this._claimedQueueIds.delete(decision.queueId);
+              if (decision.mode === 'cull') {
+                this._pendingCullIds.delete(String(decision.generationId));
+                processedCull = true;
+              }
+            });
+          } catch (err) {
+            console.error('[CollectionWindow] Review commit request failed', err);
+            failed.push(...chunk);
+          }
+        }
+      }
+      if (legacyDecisions.length) {
+        for (let i = 0; i < legacyDecisions.length; i += MAX_REVIEW_SUBMISSION_BATCH_SIZE) {
+          const chunk = legacyDecisions.slice(i, i + MAX_REVIEW_SUBMISSION_BATCH_SIZE);
+          try {
+            await this._commitLegacyDecisions(chunk);
+          } catch (err) {
+            console.error('[CollectionWindow] Legacy review commit failed', err);
+            failed.push(...chunk);
+          }
         }
       }
       if (failed.length) {
@@ -547,6 +797,21 @@ export default class CollectionWindow extends BaseWindow {
     try {
       await flushPromise;
       this._reviewFlushRetryAttempts = 0;
+      if (processedCull) {
+        if (typeof window !== 'undefined') {
+          try {
+            window.dispatchEvent(new CustomEvent('collection:cull-updated', {
+              detail: {
+                collectionId: this.collection?.collectionId,
+                sourceWindowId: this.id
+              }
+            }));
+          } catch (_) {
+            // ignore
+          }
+        }
+        this._fetchCullStatsForWindow({ force: true }).catch(() => {});
+      }
       this._updateReviewSyncBanner();
     } catch (err) {
       this._setReviewSyncBanner('Failed to sync some reviews. Retrying automatically…', 'error');
@@ -557,7 +822,7 @@ export default class CollectionWindow extends BaseWindow {
     }
   }
 
-  async _commitReviewDecisions(decisions, { csrfToken = '', keepAlive = false } = {}) {
+  async _commitQueueDecisions(decisions, { csrfToken = '', keepAlive = false } = {}) {
     if (!Array.isArray(decisions) || decisions.length === 0) return null;
     const submit = async (token, attempt = 1) => {
       const res = await fetch('/api/v1/review-queue/commit', {
@@ -567,6 +832,14 @@ export default class CollectionWindow extends BaseWindow {
         headers: { 'Content-Type': 'application/json', 'x-csrf-token': token || '' },
         body: JSON.stringify({ decisions })
       });
+      if (res.status === 429 && attempt <= 4) {
+        const retryAfter = parseFloat(res.headers.get('retry-after'));
+        const delayMs = Number.isFinite(retryAfter) ? retryAfter * 1000 : Math.min(2000 * attempt, 5000);
+        console.warn('[CollectionWindow] Queue commit hit 429, retrying in', delayMs, 'ms');
+        this._setReviewSyncBanner(`Sync paused (${Math.round(delayMs / 100) / 10}s)…`, 'ratelimit');
+        await CollectionWindow._sleep(delayMs);
+        return submit(token, attempt + 1);
+      }
       if (res.status === 403 && attempt === 1) {
         // Token likely expired – refresh and retry once.
         CollectionWindow._csrfToken = null;
@@ -585,7 +858,29 @@ export default class CollectionWindow extends BaseWindow {
     return submit(tokenToUse, 1);
   }
 
+  async _commitLegacyDecisions(decisions = []) {
+    if (!Array.isArray(decisions) || !decisions.length) return null;
+    const payload = {
+      decisions: decisions.map(decision => ({
+        generationId: decision.generationId,
+        outcome: decision.outcome
+      }))
+    };
+    const res = await fetch(`/api/v1/collections/${encodeURIComponent(this.collection.collectionId)}/pieces/review/bulk`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || 'Legacy review commit failed');
+    }
+    return res.json().catch(() => ({}));
+  }
+
   async _releaseOutstandingQueueItems() {
+    if (this.mode !== 'review') return;
     if (!this._claimedQueueIds || !this._claimedQueueIds.size) return;
     const queueIds = new Set(this._claimedQueueIds);
     if (this._activeReview?.queueId) queueIds.add(this._activeReview.queueId);
@@ -641,6 +936,7 @@ export default class CollectionWindow extends BaseWindow {
       error: '#ff8f8f',
       pending: '#f0d37a',
       ok: '#aee8a1',
+      ratelimit: '#f0d37a'
     };
     this._reviewSyncBanner.style.color = colorMap[variant] || '#bfc3d9';
     this._reviewSyncBanner.textContent = text;
@@ -690,7 +986,8 @@ export default class CollectionWindow extends BaseWindow {
     const wrap = document.createElement('div');
     wrap.style.textAlign = 'center';
     wrap.style.padding = '12px';
-    wrap.innerHTML = '<div>No unreviewed pieces 🎉</div>';
+    const emptyMessage = this.isCullMode ? 'No approved pieces left to cull 🎉' : 'No unreviewed pieces 🎉';
+    wrap.innerHTML = `<div>${emptyMessage}</div>`;
     const refreshBtn = document.createElement('button');
     refreshBtn.textContent = 'Check Again';
     refreshBtn.style.marginTop = '8px';
@@ -703,7 +1000,9 @@ export default class CollectionWindow extends BaseWindow {
     body.appendChild(wrap);
     this._attachReviewSyncBanner();
     this._updateReviewSyncBanner();
-    this._releaseOutstandingQueueItems().catch(() => {});
+    if (this.mode === 'review') {
+      this._releaseOutstandingQueueItems().catch(() => {});
+    }
     if (this._pendingReviewDecisions?.length) {
       this._flushPendingReviews({ force: true }).catch(err => {
         console.error('[CollectionWindow] Failed to flush pending reviews after completion', err);
@@ -1150,6 +1449,12 @@ export default class CollectionWindow extends BaseWindow {
 // Factory helpers for legacy calls
 export function createCollectionReviewWindow(collection, position) {
   const win = new CollectionWindow({ mode: 'review', collection, position });
+  win.mount();
+  return win.el;
+}
+
+export function createCollectionCullWindow(collection, position) {
+  const win = new CollectionWindow({ mode: 'cull', collection, position });
   win.mount();
   return win.el;
 }

@@ -35,7 +35,8 @@ export default class CookMenuModal {
             analyticsError: null,
             analyticsCollectionId: null,
             paramPanelOpen: false,
-            exportJobs: {}
+            exportJobs: {},
+            cullStats: {}
         };
         this.modalElement = null;
         this.handleKeyDown = this.handleKeyDown.bind(this);
@@ -65,6 +66,11 @@ export default class CookMenuModal {
         this._wsCookHandler = null;
         this._wsProgressHandler = null;
         this._wsUpdateHandler = null;
+        this._cullStatsLoading = new Map();
+        this._handleCullUpdate = this._handleCullUpdate.bind(this);
+        if (typeof window !== 'undefined') {
+            window.addEventListener('collection:cull-updated', this._handleCullUpdate);
+        }
     }
 
     setState(newState, options = {}) {
@@ -231,6 +237,9 @@ export default class CookMenuModal {
         document.removeEventListener('keydown', this.handleKeyDown);
         document.body.removeChild(this.modalElement);
         this.modalElement = null;
+        if (typeof window !== 'undefined') {
+            window.removeEventListener('collection:cull-updated', this._handleCullUpdate);
+        }
     }
 
     // ✅ WebSocket subscription management
@@ -431,11 +440,16 @@ export default class CookMenuModal {
             pendingReviewCount = Math.max(0, generationCount - approvedCount - rejectedCount);
         }
 
+        const culledCount = Number.isFinite(cook.culledCount) ? cook.culledCount : 0;
+        const cullPendingCount = Number.isFinite(cook.cullPendingCount) ? cook.cullPendingCount : 0;
+
         return {
             generationCount,
             approvedCount: Math.max(0, approvedCount || 0),
             rejectedCount,
-            pendingReviewCount: Math.max(0, pendingReviewCount || 0)
+            pendingReviewCount: Math.max(0, pendingReviewCount || 0),
+            culledCount: Math.max(0, culledCount),
+            cullPendingCount: Math.max(0, cullPendingCount)
         };
     }
 
@@ -462,7 +476,7 @@ export default class CookMenuModal {
             pauseReason,
         } = cook;
 
-        const { approvedCount, rejectedCount, pendingReviewCount } = this._getReviewStats(cook);
+        const { approvedCount, rejectedCount, pendingReviewCount, culledCount, cullPendingCount } = this._getReviewStats(cook);
         const normalizedStatus = (status || (running > 0 ? 'running' : 'paused')).toLowerCase();
         const piecesRemaining = Number.isFinite(targetSupply) && targetSupply > 0
             ? Math.max(0, targetSupply - approvedCount)
@@ -503,6 +517,12 @@ export default class CookMenuModal {
         }
         if (rejectedCount > 0) {
             parts.push(`${rejectedCount} rejected`);
+        }
+        if (cullPendingCount > 0) {
+            parts.push(`${cullPendingCount} pending cull`);
+        }
+        if (culledCount > 0) {
+            parts.push(`${culledCount} excluded`);
         }
 
         return parts.filter(Boolean).join(' • ') || 'Status unavailable';
@@ -719,6 +739,9 @@ export default class CookMenuModal {
     renderDetailView() {
         const { selectedCollection, detailTab = 'overview' } = this.state;
         if (!selectedCollection) return '<div class="error-message">Collection not found.</div>';
+        if (selectedCollection.collectionId) {
+            this.ensureCullStats(selectedCollection.collectionId);
+        }
         const tabs = ['overview','traitTree','analytics'];
         const tabsHtml = tabs.map(t=>`<button class="tab-btn${t===detailTab?' active':''}" data-tab="${t}">${t}</button>`).join('');
         let body='';
@@ -781,16 +804,38 @@ export default class CookMenuModal {
         // Use pending values if they exist, otherwise use saved values
         const displayDescription = pendingDescription !== null ? pendingDescription : (selectedCollection.description||'');
         const displaySupply = pendingSupply !== null ? pendingSupply : (selectedCollection.totalSupply||'');
+        const numericSupply = Number(selectedCollection.totalSupply || selectedCollection.config?.totalSupply || 0);
         const displayParamOverrides = Object.keys(pendingParamOverrides).length > 0 ? pendingParamOverrides : paramOverrides;
+        const collId = selectedCollection.collectionId;
+        let cullStats = null;
+        if (collId) {
+            this.ensureCullStats(collId);
+            cullStats = this.state.cullStats?.[collId] || null;
+        }
+        const totalAccepted = cullStats?.totalAccepted || 0;
+        const keptCount = cullStats?.keptCount || 0;
+        const pendingCullCount = cullStats?.pendingCullCount || 0;
+        const culledCount = cullStats?.culledCount || 0;
+        const cullSummaryText = this._formatCullSummary(cullStats, numericSupply);
+        const aboveTarget = numericSupply > 0 ? Math.max(0, keptCount - numericSupply) : 0;
+        const cullButtonLabel = pendingCullCount > 0
+            ? 'Continue Culling'
+            : (aboveTarget > 0 ? 'Cull Extras' : 'Start Culling');
+        const cullButtonDisabled = cullStats ? totalAccepted <= 0 : false;
+        const hasCullDecisions = cullStats
+            ? ((culledCount || 0) > 0 || ((keptCount || 0) > (pendingCullCount || 0)))
+            : false;
         
         // Escape HTML for safe display
         const escapeHtml = (str) => String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
         const safeDescription = escapeHtml(displayDescription);
         const safeSupply = escapeHtml(String(displaySupply));
         
+        const cullButtonAttr = cullButtonDisabled ? ' disabled' : '';
         const metaRows=`
           <tr><td>Description</td><td>${safeDescription}</td><td><button class="edit-desc-btn">Edit</button></td></tr>
-          <tr><td>Total Supply*</td><td>${safeSupply}</td><td><button class="edit-supply-btn">Edit</button></td></tr>`;
+          <tr><td>Total Supply*</td><td>${safeSupply}</td><td><button class="edit-supply-btn">Edit</button></td></tr>
+          <tr><td>Second Pass Cull</td><td>${this._escapeHtml(cullSummaryText)}</td><td><button class="cull-btn"${cullButtonAttr}>${cullButtonLabel}</button></td></tr>`;
         const genRow=`<tr><td>Generator</td><td>${this.state.generatorDisplay||'(none)'}</td><td><button class="edit-gen-btn">${this.state.generatorDisplay?'Change':'Set'}</button></td></tr>`;
         const paramRows=paramOptions.map(p=>{
             const value = displayParamOverrides[p]||'';
@@ -819,6 +864,7 @@ export default class CookMenuModal {
             <button class="test-btn">Test</button>
             <button class="review-btn">Review</button>
             <button class="reset-review-btn" title="Mark all pieces as unreviewed" style="margin-left:8px;">Restart Review</button>
+            ${hasCullDecisions ? '<button class="reset-cull-btn" title="Clear all keep/exclude decisions" style="margin-left:8px;">Reset Cull</button>' : ''}
             <button class="start-cook-btn">Start Cook</button>
             <button class="delete-collection-btn" style="float:right;color:#f55">Delete</button>
         </div>`;
@@ -917,6 +963,13 @@ export default class CookMenuModal {
         }
 
         const summary = analyticsData.summary || {};
+        const selectedCollection = this.state.selectedCollection;
+        const currentCollectionId = selectedCollection?.collectionId;
+        if (currentCollectionId) {
+            this.ensureCullStats(currentCollectionId);
+        }
+        const cullStats = currentCollectionId ? (this.state.cullStats?.[currentCollectionId] || null) : null;
+        const cullSummary = this._formatCullSummary(cullStats, summary.totalSupply);
         const formatterCache = this._numberFormatterCache || new Map();
         this._numberFormatterCache = formatterCache;
         const getFormatter = (digits = 0) => {
@@ -1010,6 +1063,11 @@ export default class CookMenuModal {
                 <div class="stat-card">
                     <div class="stat-label">Pending Reviews</div>
                     <div class="stat-value">${formatNumber(summary.pendingCount)}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Cull Progress</div>
+                    <div class="stat-value">${this._escapeHtml(cullSummary)}</div>
+                    <div class="stat-sub">Keep vs. target supply</div>
                 </div>
             </div>
             <div class="analytics-section">
@@ -1909,6 +1967,7 @@ export default class CookMenuModal {
                         analyticsCollectionId: cachedAnalytics ? coll.collectionId : null,
                         exportForm
                     });
+                    this.ensureCullStats(coll.collectionId);
                 }
                 }
         });
@@ -2285,6 +2344,44 @@ export default class CookMenuModal {
         }
     }
 
+    async resetCullDecisions(collectionId) {
+        if (!collectionId) return;
+        const confirmed = window.confirm('Clear all keep/exclude decisions from the culling pass? All approved pieces will re-enter the cull queue.');
+        if (!confirmed) return;
+        try {
+            this.setState({ loading: true, error: null });
+            const csrf = await this.getCsrfToken();
+            const res = await fetch(`/api/v1/collections/${encodeURIComponent(collectionId)}/cull/reset`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-csrf-token': csrf
+                },
+                credentials: 'include',
+                body: JSON.stringify({})
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(data.error || 'reset failed');
+            }
+            const resetCount = typeof data.resetCount === 'number' ? data.resetCount : null;
+            const nextCullStats = { ...(this.state.cullStats || {}) };
+            delete nextCullStats[collectionId];
+            this.setState({ cullStats: nextCullStats });
+            this.loadCullStats(collectionId, { force: true });
+            if (resetCount !== null) {
+                alert(`Cull decisions reset. ${resetCount} piece${resetCount === 1 ? '' : 's'} now need a keep/drop decision.`);
+            } else {
+                alert('Cull decisions reset. Pieces will reappear in the cull queue shortly.');
+            }
+        } catch (err) {
+            console.error('[CookMenuModal] reset cull error:', err);
+            alert('Failed to reset cull decisions: ' + (err.message || 'unexpected error'));
+        } finally {
+            this.setState({ loading: false });
+        }
+    }
+
     async createCollection() {
         // Switch to create form view
         this.setState({ view: 'create' });
@@ -2523,6 +2620,81 @@ export default class CookMenuModal {
             .replace(/'/g, '&#039;');
     }
 
+    _handleCullUpdate(event) {
+        const collectionId = event?.detail?.collectionId;
+        if (!collectionId) return;
+        const selectedId = this.state.selectedCollection?.collectionId;
+        const shouldRefreshSelected = selectedId === collectionId;
+        this.loadCullStats(collectionId, { force: true });
+        if (shouldRefreshSelected) {
+            this.fetchCollections(true);
+            if (this.state.detailTab === 'analytics') {
+                this.loadCollectionAnalytics(collectionId);
+            }
+        }
+    }
+
+    ensureCullStats(collectionId) {
+        if (!collectionId) return;
+        if (this.state.cullStats?.[collectionId]) return;
+        if (this._cullStatsLoading?.has(collectionId)) return;
+        this.loadCullStats(collectionId);
+    }
+
+    async loadCullStats(collectionId, { force = false } = {}) {
+        if (!collectionId) return null;
+        if (!force && this.state.cullStats?.[collectionId]) {
+            return this.state.cullStats[collectionId];
+        }
+        if (!this._cullStatsLoading) this._cullStatsLoading = new Map();
+        if (this._cullStatsLoading.has(collectionId)) {
+            return this._cullStatsLoading.get(collectionId);
+        }
+        const fetchPromise = (async () => {
+            try {
+                const res = await fetch(`/api/v1/collections/${encodeURIComponent(collectionId)}/cull/stats`, {
+                    credentials: 'include',
+                    cache: 'no-store'
+                });
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}`);
+                }
+                const data = await res.json().catch(() => ({}));
+                const stats = data?.stats || data || null;
+                if (stats) {
+                    const next = { ...(this.state.cullStats || {}), [collectionId]: stats };
+                    this.setState({ cullStats: next }, { skipRender: false });
+                }
+                return stats;
+            } catch (err) {
+                console.warn('[CookMenuModal] cull stats load error', err);
+                return null;
+            } finally {
+                this._cullStatsLoading.delete(collectionId);
+            }
+        })();
+        this._cullStatsLoading.set(collectionId, fetchPromise);
+        return fetchPromise;
+    }
+
+    _formatCullSummary(stats, supply) {
+        if (!stats) return 'Loading…';
+        const totalAccepted = Number(stats.totalAccepted || 0);
+        if (!Number.isFinite(totalAccepted) || totalAccepted <= 0) {
+            return 'No approved pieces yet';
+        }
+        const kept = Number(stats.keptCount || 0);
+        const culled = Number(stats.culledCount || 0);
+        const pending = Number(stats.pendingCullCount || 0);
+        const target = Number(supply || 0);
+        const aboveTarget = target > 0 ? Math.max(0, kept - target) : 0;
+        const parts = [`Kept ${kept}/${totalAccepted}`];
+        if (pending > 0) parts.push(`${pending} pending`);
+        if (culled > 0) parts.push(`${culled} excluded`);
+        if (aboveTarget > 0) parts.push(`${aboveTarget} over target`);
+        return parts.join(' • ');
+    }
+
     attachOverviewEvents(){
         const modal=this.modalElement;
         
@@ -2653,6 +2825,17 @@ export default class CookMenuModal {
             const { selectedCollection } = this.state;
             if(!selectedCollection) return;
             this.resetCollectionReviews(selectedCollection.collectionId);
+        };
+        if(modal.querySelector('.cull-btn')) modal.querySelector('.cull-btn').onclick=()=>{
+            const { selectedCollection } = this.state;
+            if(!selectedCollection) return;
+            this.hide();
+            import('../window/CollectionWindow.js').then(m=>{m.createCollectionCullWindow(selectedCollection);} );
+        };
+        if(modal.querySelector('.reset-cull-btn')) modal.querySelector('.reset-cull-btn').onclick=()=>{
+            const { selectedCollection } = this.state;
+            if(!selectedCollection) return;
+            this.resetCullDecisions(selectedCollection.collectionId);
         };
         if(modal.querySelector('.start-cook-btn')) modal.querySelector('.start-cook-btn').onclick=()=>{ this._startCookFromDetail(); };
         if(modal.querySelector('.delete-collection-btn')) modal.querySelector('.delete-collection-btn').onclick=()=>{

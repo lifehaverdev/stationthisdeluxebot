@@ -203,8 +203,11 @@ class StorageService {
     if (alias === 'datasets' && process.env.R2_DATASETS_PUBLIC_URL) {
       return process.env.R2_DATASETS_PUBLIC_URL;
     }
-    if (alias === 'exports' && process.env.R2_EXPORTS_PUBLIC_URL) {
-      return process.env.R2_EXPORTS_PUBLIC_URL;
+    if (alias === 'exports') {
+      if (process.env.R2_EXPORTS_PUBLIC_URL) {
+        return process.env.R2_EXPORTS_PUBLIC_URL;
+      }
+      return 'https://exports.miladystation2.net';
     }
     if (alias === 'gallery') {
       if (process.env.R2_GALLERY_PUBLIC_URL) {

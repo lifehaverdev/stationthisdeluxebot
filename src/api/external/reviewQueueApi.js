@@ -29,6 +29,7 @@ function createReviewQueueApiRouter(deps = {}) {
         collectionId: req.body?.collectionId || req.query?.collectionId,
         limit: req.body?.limit || req.query?.limit,
         lockWindowMs: req.body?.lockWindowMs,
+        mode: req.body?.mode || req.query?.mode,
         reviewerId
       };
       if (!payload.collectionId) {

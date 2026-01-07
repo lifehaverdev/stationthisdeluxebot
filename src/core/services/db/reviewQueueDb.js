@@ -53,14 +53,16 @@ class ReviewQueueDB extends BaseDB {
       $setOnInsert: {
         createdAt: new Date(),
         status: 'pending',
-        retryCount: 0
+        retryCount: 0,
+        mode: entry.mode === 'cull' ? 'cull' : 'review'
       },
       $set: {
         generationId,
         collectionId: entry.collectionId,
         masterAccountId: masterAccountId || null,
         requestTimestamp: entry.requestTimestamp ? new Date(entry.requestTimestamp) : new Date(),
-        metadata: entry.metadata || {}
+        metadata: entry.metadata || {},
+        mode: entry.mode === 'cull' ? 'cull' : (entry.mode || 'review')
       },
       $unset: {
         assignedTo: '',
@@ -69,10 +71,10 @@ class ReviewQueueDB extends BaseDB {
         reviewedAt: ''
       }
     };
-    return this.updateOne({ generationId }, update, { upsert: true });
+    return this.updateOne({ generationId, mode: entry.mode === 'cull' ? 'cull' : 'review' }, update, { upsert: true });
   }
 
-  async claimNextBatch({ collectionId, limit = 10, reviewerId, lockWindowMs = 5 * 60 * 1000 }) {
+  async claimNextBatch({ collectionId, limit = 10, reviewerId, lockWindowMs = 5 * 60 * 1000, mode = 'review' }) {
     if (!collectionId) throw new Error('collectionId is required');
     const claimed = [];
     const reviewerObjectId = reviewerId && ObjectId.isValid(reviewerId) ? new ObjectId(reviewerId) : reviewerId;
@@ -82,6 +84,7 @@ class ReviewQueueDB extends BaseDB {
     const collection = client.db(this.dbName).collection(this.collectionName);
     const query = {
       collectionId,
+      mode: mode === 'cull' ? 'cull' : 'review',
       $or: [
         { status: 'pending' },
         { status: 'in_progress', assignedAt: { $lte: lockExpiration } }

@@ -2,6 +2,7 @@ const express = require('express');
 const { CookOrchestratorService } = require('../../core/services/cook');
 const { CookProjectionUpdater } = require('../../core/services/cook');
 const { createLogger } = require('../../utils/logger');
+const { resetCollectionReviews } = require('../../core/services/review/reviewResetService');
 const { getCachedClient } = require('../../core/services/db/utils/queue');
 const { ObjectId } = require('mongodb');
 
@@ -12,6 +13,64 @@ function createCookApi(deps = {}) {
   const cookDb = deps.db?.collections || deps.db?.cookCollections;
   const cooksDb = deps.db?.cooks;
   const generationOutputsDb = deps.db?.generationOutputs;
+
+  const buildGenerationMatchClauses = (collectionId, userId) => {
+    const ownerMatch = [];
+    if (ObjectId.isValid(userId)) {
+      ownerMatch.push({ masterAccountId: new ObjectId(userId) });
+    }
+    ownerMatch.push({ masterAccountId: userId });
+    return [
+      {
+        $or: [
+          { 'metadata.collectionId': collectionId },
+          { collectionId }
+        ]
+      },
+      { $or: ownerMatch },
+      { status: 'completed' },
+      { deliveryStrategy: { $ne: 'spell_step' } }
+    ];
+  };
+
+  const buildAcceptedFilter = () => ({
+    $or: [
+      { 'metadata.reviewOutcome': { $in: ['accepted', 'approved'] } },
+      { reviewOutcome: { $in: ['accepted', 'approved'] } }
+    ]
+  });
+
+  const buildRejectedFilter = () => ({
+    $or: [
+      { 'metadata.reviewOutcome': { $in: ['rejected'] } },
+      { reviewOutcome: { $in: ['rejected'] } }
+    ]
+  });
+
+  const buildNotExcludedFilter = () => ({
+    $nor: [
+      { 'metadata.exportExcluded': true },
+      { exportExcluded: true }
+    ]
+  });
+
+  const buildCulledFilter = () => ({
+    $or: [
+      { 'metadata.exportExcluded': true },
+      { exportExcluded: true },
+      { 'metadata.cullStatus': 'excluded' },
+      { cullStatus: 'excluded' }
+    ]
+  });
+
+  const buildCullPendingFilter = () => ({
+    $or: [
+      { 'metadata.cullStatus': { $exists: false } },
+      { 'metadata.cullStatus': { $in: ['', null, 'pending'] } },
+      { cullStatus: { $exists: false } },
+      { cullStatus: { $in: ['', null, 'pending'] } }
+    ]
+  });
   
   // ✅ Configure WebSocket service for CookOrchestratorService
   if (deps.webSocketService) {
@@ -164,9 +223,6 @@ function createCookApi(deps = {}) {
         return res.status(400).json({ error: 'collectionId and userId required' });
       }
       if (!cookDb) return res.status(503).json({ error: 'service-unavailable' });
-      if (!generationOutputsDb) {
-        return res.status(503).json({ error: 'generationOutputs-unavailable' });
-      }
 
       const collection = await cookDb.findById(collectionId);
       if (!collection) {
@@ -177,43 +233,237 @@ function createCookApi(deps = {}) {
         return res.status(403).json({ error: 'unauthorized' });
       }
 
-      const masterMatch = [];
-      if (ObjectId.isValid(userId)) {
-        masterMatch.push({ masterAccountId: new ObjectId(userId) });
-      }
-      masterMatch.push({ masterAccountId: userId });
-
-      const filter = {
-        $and: [
-          {
-            $or: [
-              { 'metadata.collectionId': collectionId },
-              { collectionId }
-            ]
-          },
-          { $or: masterMatch },
-          {
-            $or: [
-              { 'metadata.reviewOutcome': { $exists: true } },
-              { reviewOutcome: { $exists: true } }
-            ]
-          }
-        ]
-      };
-
-      const update = {
-        $unset: {
-          'metadata.reviewOutcome': '',
-          reviewOutcome: ''
-        }
-      };
-
-      const result = await generationOutputsDb.updateMany(filter, update);
-      const resetCount = result?.modifiedCount || 0;
-      logger.info(`[CookAPI] Reset review outcomes for collection ${collectionId} by user ${userId} (${resetCount} docs updated)`);
-      return res.json({ resetCount });
+      const result = await resetCollectionReviews({ collectionId, userId });
+      return res.json(result);
     } catch (err) {
       logger.error('[CookAPI] review reset error', err);
+      return res.status(500).json({ error: 'internal-error' });
+    }
+  });
+
+  router.post('/:id/cull/pop', async (req, res) => {
+    try {
+      const collectionId = req.params.id;
+      const userId = req.user?.userId || req.user?.id || req.body?.userId;
+      const limitRaw = Number(req.body?.limit) || 12;
+      const limit = Math.max(1, Math.min(limitRaw, 50));
+      if (!collectionId || !userId) {
+        return res.status(400).json({ error: 'collectionId and userId required' });
+      }
+      if (!cookDb || !generationOutputsDb) {
+        return res.status(503).json({ error: 'service-unavailable' });
+      }
+      const collection = await cookDb.findById(collectionId);
+      if (!collection) {
+        return res.status(404).json({ error: 'collection-not-found' });
+      }
+      if (collection.userId !== userId) {
+        return res.status(403).json({ error: 'unauthorized' });
+      }
+      const baseMatch = buildGenerationMatchClauses(collectionId, userId);
+      const acceptedFilter = buildAcceptedFilter();
+      const notExcludedFilter = buildNotExcludedFilter();
+      const pendingFilter = buildCullPendingFilter();
+      const match = { $and: [...baseMatch, acceptedFilter, notExcludedFilter, pendingFilter] };
+      const docs = await generationOutputsDb.findGenerations(match, {
+        limit,
+        sort: { requestTimestamp: 1 },
+        projection: {
+          responsePayload: 1,
+          artifactUrls: 1,
+          metadata: 1,
+          outputs: 1,
+          requestPayload: 1,
+          costUsd: 1,
+          durationMs: 1,
+          requestTimestamp: 1,
+          createdAt: 1
+        }
+      });
+      const items = Array.isArray(docs)
+        ? docs.map(doc => ({
+            generationId: doc._id,
+            generation: doc
+          }))
+        : [];
+      return res.json({ items });
+    } catch (err) {
+      logger.error('[CookAPI] cull pop error', err);
+      return res.status(500).json({ error: 'internal-error' });
+    }
+  });
+
+  router.post('/:id/cull/commit', async (req, res) => {
+    try {
+      const collectionId = req.params.id;
+      const userId = req.user?.userId || req.user?.id || req.body?.userId;
+      if (!collectionId || !userId) {
+        return res.status(400).json({ error: 'collectionId and userId required' });
+      }
+      const { decisions } = req.body || {};
+      if (!Array.isArray(decisions) || !decisions.length) {
+        return res.status(400).json({ error: 'missing_decisions' });
+      }
+      if (!cookDb || !generationOutputsDb) {
+        return res.status(503).json({ error: 'service-unavailable' });
+      }
+      const collection = await cookDb.findById(collectionId);
+      if (!collection) {
+        return res.status(404).json({ error: 'collection-not-found' });
+      }
+      if (collection.userId !== userId) {
+        return res.status(403).json({ error: 'unauthorized' });
+      }
+      const allowed = new Set(['keep', 'exclude']);
+      const normalized = [];
+      for (const entry of decisions.slice(0, 50)) {
+        if (!entry) continue;
+        const generationId = String(entry.generationId || '').trim();
+        const action = String(entry.action || entry.outcome || '').toLowerCase();
+        if (!generationId || !allowed.has(action)) continue;
+        if (!ObjectId.isValid(generationId)) continue;
+        normalized.push({ generationId: new ObjectId(generationId), action });
+      }
+      if (!normalized.length) {
+        return res.status(400).json({ error: 'no_valid_decisions' });
+      }
+      const baseMatch = buildGenerationMatchClauses(collectionId, userId);
+      const now = new Date();
+      const results = [];
+      for (const decision of normalized) {
+        try {
+          const filter = {
+            $and: [
+              ...baseMatch,
+              { _id: decision.generationId }
+            ]
+          };
+          const update = decision.action === 'exclude'
+            ? {
+                $set: {
+                  'metadata.cullStatus': 'excluded',
+                  'metadata.cullReviewedAt': now,
+                  'metadata.exportExcluded': true,
+                  exportExcluded: true,
+                  cullStatus: 'excluded'
+                }
+              }
+            : {
+                $set: {
+                  'metadata.cullStatus': 'keep',
+                  'metadata.cullReviewedAt': now,
+                  'metadata.exportExcluded': false,
+                  exportExcluded: false,
+                  cullStatus: 'keep'
+                }
+              };
+          const result = await generationOutputsDb.updateOne(filter, update);
+          if (!result?.matchedCount) {
+            results.push({ generationId: decision.generationId.toHexString(), status: 'skipped', reason: 'not-found' });
+            continue;
+          }
+          results.push({ generationId: decision.generationId.toHexString(), status: 'ok', action: decision.action });
+        } catch (err) {
+          logger.warn('[CookAPI] cull commit decision error', err);
+          results.push({
+            generationId: decision.generationId.toHexString(),
+            status: 'error',
+            error: err.message || 'update_failed'
+          });
+        }
+      }
+      const hasErrors = results.some(r => r.status === 'error');
+      return res.status(hasErrors ? 207 : 200).json({ results });
+    } catch (err) {
+      logger.error('[CookAPI] cull commit error', err);
+      return res.status(500).json({ error: 'internal-error' });
+    }
+  });
+
+  router.post('/:id/cull/reset', async (req, res) => {
+    try {
+      const collectionId = req.params.id;
+      const userId = req.user?.userId || req.user?.id || req.body?.userId;
+      if (!collectionId || !userId) {
+        return res.status(400).json({ error: 'collectionId and userId required' });
+      }
+      if (!cookDb || !generationOutputsDb) {
+        return res.status(503).json({ error: 'service-unavailable' });
+      }
+      const collection = await cookDb.findById(collectionId);
+      if (!collection) {
+        return res.status(404).json({ error: 'collection-not-found' });
+      }
+      if (collection.userId !== userId) {
+        return res.status(403).json({ error: 'unauthorized' });
+      }
+      const filter = {
+        $and: [
+          ...buildGenerationMatchClauses(collectionId, userId),
+          buildAcceptedFilter()
+        ]
+      };
+      const update = {
+        $unset: {
+          'metadata.cullStatus': '',
+          'metadata.cullReviewedAt': '',
+          'metadata.exportExcluded': '',
+          exportExcluded: '',
+          cullStatus: ''
+        }
+      };
+      const result = await generationOutputsDb.updateMany(filter, update);
+      return res.json({ resetCount: result?.modifiedCount || 0 });
+    } catch (err) {
+      logger.error('[CookAPI] cull reset error', err);
+      return res.status(500).json({ error: 'internal-error' });
+    }
+  });
+
+  router.get('/:id/cull/stats', async (req, res) => {
+    try {
+      const collectionId = req.params.id;
+      const userId = req.query.userId || req.user?.userId || req.user?.id || req.userId;
+      if (!collectionId || !userId) {
+        return res.status(400).json({ error: 'collectionId and userId required' });
+      }
+      if (!cookDb || !generationOutputsDb) {
+        return res.status(503).json({ error: 'service-unavailable' });
+      }
+      const collection = await cookDb.findById(collectionId);
+      if (!collection) {
+        return res.status(404).json({ error: 'collection-not-found' });
+      }
+      if (collection.userId !== userId) {
+        return res.status(403).json({ error: 'unauthorized' });
+      }
+      const baseMatch = buildGenerationMatchClauses(collectionId, userId);
+      const acceptedFilter = buildAcceptedFilter();
+      const notExcludedFilter = buildNotExcludedFilter();
+      const culledFilter = buildCulledFilter();
+      const cullPendingFilter = buildCullPendingFilter();
+      const keptQuery = { $and: [...baseMatch, acceptedFilter, notExcludedFilter] };
+      const culledQuery = { $and: [...baseMatch, acceptedFilter, culledFilter] };
+      const pendingQuery = { $and: [...baseMatch, acceptedFilter, notExcludedFilter, cullPendingFilter] };
+      const acceptedQuery = { $and: [...baseMatch, acceptedFilter] };
+      const [keptCount, culledCount, pendingCullCount, totalAccepted] = await Promise.all([
+        generationOutputsDb.count(keptQuery),
+        generationOutputsDb.count(culledQuery),
+        generationOutputsDb.count(pendingQuery),
+        generationOutputsDb.count(acceptedQuery)
+      ]);
+      return res.json({
+        stats: {
+          collectionId,
+          keptCount,
+          culledCount,
+          pendingCullCount,
+          totalAccepted,
+          targetSupply: collection.totalSupply || collection.config?.totalSupply || 0
+        }
+      });
+    } catch (err) {
+      logger.error('[CookAPI] cull stats error', err);
       return res.status(500).json({ error: 'internal-error' });
     }
   });
@@ -273,6 +523,8 @@ function createCookApi(deps = {}) {
       let approvedCount = 0;
       let rejectedCount = 0;
       let pendingCount = 0;
+      let culledCount = 0;
+      let cullPendingCount = 0;
 
       const normalizeOutcome = (doc) => (doc.reviewOutcome || doc.metadata?.reviewOutcome || '').toLowerCase();
 
@@ -282,13 +534,31 @@ function createCookApi(deps = {}) {
           totalPointsSpent += pointsVal;
         }
         const reviewOutcome = normalizeOutcome(gen);
+        const metadata = gen.metadata || {};
+        const cullStatusRaw = metadata.cullStatus || gen.cullStatus || null;
+        const cullStatus = typeof cullStatusRaw === 'string' ? cullStatusRaw.toLowerCase() : null;
+        const exportExcluded = metadata.exportExcluded === true || gen.exportExcluded === true || cullStatus === 'excluded';
+        let traitOutcome = reviewOutcome;
         if (reviewOutcome === 'accepted' || reviewOutcome === 'approved') {
-          approvedCount += 1;
+          if (exportExcluded) {
+            culledCount += 1;
+            traitOutcome = 'culled';
+          } else {
+            approvedCount += 1;
+            const pendingCull = !cullStatus || cullStatus === 'pending' || cullStatus === '';
+            if (pendingCull) {
+              cullPendingCount += 1;
+            }
+            traitOutcome = 'accepted';
+          }
         } else if (reviewOutcome === 'rejected') {
           rejectedCount += 1;
+          traitOutcome = 'rejected';
         } else {
           pendingCount += 1;
+          traitOutcome = 'pending';
         }
+        gen._cullOutcome = traitOutcome;
 
         let duration = typeof gen.durationMs === 'number' ? gen.durationMs : null;
         if ((!duration || Number.isNaN(duration)) && gen.requestTimestamp && gen.responseTimestamp) {
@@ -317,6 +587,7 @@ function createCookApi(deps = {}) {
             approved: 0,
             rejected: 0,
             pending: 0,
+            culled: 0,
             total: 0
           });
         }
@@ -324,6 +595,7 @@ function createCookApi(deps = {}) {
         bucket.total += 1;
         if (outcome === 'accepted' || outcome === 'approved') bucket.approved += 1;
         else if (outcome === 'rejected') bucket.rejected += 1;
+        else if (outcome === 'culled') bucket.culled += 1;
         else bucket.pending += 1;
       };
 
@@ -379,7 +651,7 @@ function createCookApi(deps = {}) {
         const entries = extractTraits(gen);
         if (!entries.length) continue;
         const seenKeys = new Set();
-        const outcome = normalizeOutcome(gen);
+        const outcome = gen._cullOutcome || normalizeOutcome(gen);
         entries.forEach(entry => {
           const key = `${entry.category}::${entry.label}`;
           if (seenKeys.has(key)) return;
@@ -394,6 +666,8 @@ function createCookApi(deps = {}) {
         approvedCount,
         rejectedCount,
         pendingCount,
+        culledCount,
+        cullPendingCount,
         approvalRate,
         rejectionRate,
         avgDurationMs,
@@ -797,25 +1071,22 @@ function createCookApi(deps = {}) {
         ];
 
         const countQuery = { $and: baseMatch };
-        const reviewAcceptedFilter = {
-          $or: [
-            { 'metadata.reviewOutcome': { $in: ['accepted', 'approved'] } },
-            { reviewOutcome: { $in: ['accepted', 'approved'] } }
-          ]
-        };
-        const reviewRejectedFilter = {
-          $or: [
-            { 'metadata.reviewOutcome': { $in: ['rejected'] } },
-            { reviewOutcome: { $in: ['rejected'] } }
-          ]
-        };
-        const approvedQuery = { $and: [...baseMatch, reviewAcceptedFilter] };
+        const reviewAcceptedFilter = buildAcceptedFilter();
+        const reviewRejectedFilter = buildRejectedFilter();
+        const notExportExcludedFilter = buildNotExcludedFilter();
+        const cullPendingFilter = buildCullPendingFilter();
+        const culledFilter = buildCulledFilter();
+        const approvedQuery = { $and: [...baseMatch, reviewAcceptedFilter, notExportExcludedFilter] };
         const rejectedQuery = { $and: [...baseMatch, reviewRejectedFilter] };
-        
-        const [generated, approved, rejected] = await Promise.all([
+        const culledQuery = { $and: [...baseMatch, reviewAcceptedFilter, culledFilter] };
+        const cullPendingQuery = { $and: [...baseMatch, reviewAcceptedFilter, notExportExcludedFilter, cullPendingFilter] };
+
+        const [generated, approved, rejected, culled, cullPending] = await Promise.all([
           genOutputsCol.countDocuments(countQuery),
           genOutputsCol.countDocuments(approvedQuery),
           genOutputsCol.countDocuments(rejectedQuery),
+          genOutputsCol.countDocuments(culledQuery),
+          genOutputsCol.countDocuments(cullPendingQuery),
         ]);
         
         // ✅ Diagnostic logging to help diagnose counting issues (INFO level so it shows up)
@@ -857,7 +1128,9 @@ function createCookApi(deps = {}) {
         const generationCount = generated;
         const approvedCount = approved;
         const rejectedCount = rejected;
-        const pendingReviewCount = Math.max(0, generationCount - approvedCount - rejectedCount);
+        const culledCount = culled;
+        const cullPendingCount = cullPending;
+        const pendingReviewCount = Math.max(0, generationCount - approvedCount - rejectedCount - culledCount);
         // ✅ Use running count from orchestrator (in-memory state) - no deprecated job store
         const running = runningFromOrchestrator;
         const queued = 0; // ✅ No queued jobs - orchestrator handles scheduling directly
@@ -897,6 +1170,8 @@ function createCookApi(deps = {}) {
             approvedCount,
             rejectedCount,
             pendingReviewCount,
+            culledCount,
+            cullPendingCount,
             targetSupply,
             queued,
             running, // ✅ Running count from orchestrator only

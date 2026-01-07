@@ -950,6 +950,12 @@ class CollectionExportService {
           { 'metadata.reviewOutcome': { $in: ['accepted', 'approved'] } },
           { reviewOutcome: { $in: ['accepted', 'approved'] } }
         ]
+      },
+      {
+        $nor: [
+          { 'metadata.exportExcluded': true },
+          { exportExcluded: true }
+        ]
       }
     ];
     return { $and: clauses };

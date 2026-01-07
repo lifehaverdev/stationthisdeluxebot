@@ -386,6 +386,57 @@ function createCookApiRouter(deps = {}) {
     }
   });
 
+  router.post('/collections/:id/cull/pop', async (req, res) => {
+    try {
+      const userId = req.user?.userId || req.user?.id || req.body?.userId;
+      const payload = { ...(req.body || {}), userId };
+      const { data } = await internalApiClient.post(`/internal/v1/data/collections/${encodeURIComponent(req.params.id)}/cull/pop`, payload);
+      return res.json(data);
+    } catch (err) {
+      logger.error('cull pop proxy error', err.response?.data || err.message);
+      const status = err.response?.status || 500;
+      return res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+  router.post('/collections/:id/cull/commit', async (req, res) => {
+    try {
+      const userId = req.user?.userId || req.user?.id || req.body?.userId;
+      const payload = { ...(req.body || {}), userId };
+      const { data } = await internalApiClient.post(`/internal/v1/data/collections/${encodeURIComponent(req.params.id)}/cull/commit`, payload);
+      return res.json(data);
+    } catch (err) {
+      logger.error('cull commit proxy error', err.response?.data || err.message);
+      const status = err.response?.status || 500;
+      return res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+  router.post('/collections/:id/cull/reset', async (req, res) => {
+    try {
+      const userId = req.user?.userId || req.user?.id || req.body?.userId;
+      const { data } = await internalApiClient.post(`/internal/v1/data/collections/${encodeURIComponent(req.params.id)}/cull/reset`, { userId });
+      return res.json(data);
+    } catch (err) {
+      logger.error('cull reset proxy error', err.response?.data || err.message);
+      const status = err.response?.status || 500;
+      return res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+  router.get('/collections/:id/cull/stats', async (req, res) => {
+    try {
+      const userId = req.user?.userId || req.user?.id || req.query.userId;
+      const params = { userId };
+      const { data } = await internalApiClient.get(`/internal/v1/data/collections/${encodeURIComponent(req.params.id)}/cull/stats`, { params });
+      return res.json(data);
+    } catch (err) {
+      logger.error('cull stats proxy error', err.response?.data || err.message);
+      const status = err.response?.status || 500;
+      return res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
 
   // Placeholder routes for pause/resume/delete etc.
   // They will proxy to internal cook routes when implemented.

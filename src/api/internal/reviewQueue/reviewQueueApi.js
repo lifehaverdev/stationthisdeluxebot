@@ -2,7 +2,7 @@ const express = require('express');
 const { ObjectId } = require('mongodb');
 const { getCachedClient } = require('../../../core/services/db/utils/queue');
 
-const DEFAULT_POP_LIMIT = 12;
+const DEFAULT_POP_LIMIT = 48;
 const MAX_POP_LIMIT = 100;
 
 function createReviewQueueApi(dependencies = {}) {
@@ -40,30 +40,73 @@ function createReviewQueueApi(dependencies = {}) {
 
   router.post('/pop', async (req, res) => {
     try {
-      const { collectionId, limit, lockWindowMs } = req.body || {};
+      const { collectionId, limit, lockWindowMs, mode } = req.body || {};
       if (!collectionId) {
         return res.status(400).json({ error: 'collectionId_required' });
       }
       const reviewerId = getReviewerId(req);
       const batchLimit = Math.max(1, Math.min(parseInt(limit, 10) || DEFAULT_POP_LIMIT, MAX_POP_LIMIT));
-      let claimed = await reviewQueueDb.claimNextBatch({ collectionId, limit: batchLimit, reviewerId, lockWindowMs });
+      const normalizedMode = mode === 'cull' ? 'cull' : 'review';
+      let claimed = await reviewQueueDb.claimNextBatch({ collectionId, limit: batchLimit, reviewerId, lockWindowMs, mode });
 
       if (claimed.length < batchLimit && generationOutputsDb) {
         const needed = batchLimit - claimed.length;
         const fallbackLimit = Math.min(needed * 3, MAX_POP_LIMIT);
+        const collectionMatch = {
+          $or: [
+            { 'metadata.collectionId': collectionId },
+            { collectionId }
+          ]
+        };
+        const unresolvedMatch = {
+          $and: [
+            {
+              $or: [
+                { 'metadata.reviewOutcome': { $exists: false } },
+                { 'metadata.reviewOutcome': { $nin: ['accepted', 'approved', 'rejected'] } }
+              ]
+            },
+            {
+              $or: [
+                { reviewOutcome: { $exists: false } },
+                { reviewOutcome: { $nin: ['accepted', 'approved', 'rejected'] } }
+              ]
+            }
+          ]
+        };
+        const cullMatch = {
+          $and: [
+        {
+          $or: [
+            { 'metadata.cullStatus': { $exists: false } },
+            { 'metadata.cullStatus': { $in: ['', null, 'pending'] } },
+            { cullStatus: { $exists: false } },
+            { cullStatus: { $in: ['', null, 'pending'] } }
+          ]
+        },
+            {
+              $or: [
+                { 'metadata.reviewOutcome': { $in: ['accepted', 'approved'] } },
+                { reviewOutcome: { $in: ['accepted', 'approved'] } }
+              ]
+            }
+          ]
+        };
         const filter = {
-          'metadata.collectionId': collectionId,
-          status: 'completed',
-          deliveryStrategy: { $ne: 'spell_step' },
-          'metadata.reviewOutcome': { $nin: ['accepted', 'rejected'] }
+          $and: [
+            collectionMatch,
+            { status: 'completed' },
+            { deliveryStrategy: { $ne: 'spell_step' } },
+            (mode === 'cull' ? cullMatch : unresolvedMatch)
+          ]
         };
         try {
-          const fallbackGenerations = await generationOutputsDb.findMany(filter, {
-            sort: { requestTimestamp: 1, _id: 1 },
-            limit: fallbackLimit,
-            projection: {
-              requestTimestamp: 1,
-              outputs: 1,
+        const fallbackGenerations = await generationOutputsDb.findMany(filter, {
+          sort: { requestTimestamp: 1, _id: 1 },
+          limit: fallbackLimit,
+          projection: {
+            requestTimestamp: 1,
+            outputs: 1,
               artifactUrls: 1,
               responsePayload: 1,
               metadata: 1,
@@ -75,6 +118,7 @@ function createReviewQueueApi(dependencies = {}) {
             await reviewQueueDb.enqueueOrUpdate({
               generationId: gen._id,
               collectionId,
+              mode: normalizedMode,
               requestTimestamp: gen.requestTimestamp,
               metadata: {
                 deliveryStrategy: gen.deliveryStrategy,
@@ -87,7 +131,8 @@ function createReviewQueueApi(dependencies = {}) {
               collectionId,
               limit: needed,
               reviewerId,
-              lockWindowMs
+              lockWindowMs,
+              mode
             });
             claimed = claimed.concat(additional);
           }
@@ -95,6 +140,25 @@ function createReviewQueueApi(dependencies = {}) {
           logger.error('[reviewQueueApi] failed to seed review queue', seedErr);
         }
       }
+
+      const logPopResult = (itemsList = []) => {
+        if (typeof logger?.info !== 'function') return;
+        const sample = claimed.slice(0, 5).map(doc => ({
+          queueId: doc._id?.toString(),
+          generationId: doc.generationId?.toString?.() ?? doc.generationId,
+          status: doc.status,
+          mode: doc.mode || normalizedMode
+        }));
+        logger.info('[reviewQueueApi] pop result', {
+          collectionId,
+          mode: normalizedMode,
+          requestedLimit: batchLimit,
+          claimedCount: claimed.length,
+          returnedCount: itemsList.length,
+          reviewerId: reviewerId || null,
+          sample
+        });
+      };
 
       if (claimed.length && generationOutputsDb) {
         const genIds = claimed
@@ -134,6 +198,7 @@ function createReviewQueueApi(dependencies = {}) {
             generation: generationMap.get(generationId) || null
           };
         });
+        logPopResult(items);
         return res.json({ items });
       }
 
@@ -145,6 +210,7 @@ function createReviewQueueApi(dependencies = {}) {
         metadata: item.metadata,
         generation: null
       }));
+      logPopResult(items);
       res.json({ items });
     } catch (err) {
       logger.error('[reviewQueueApi] pop error', err);
@@ -168,7 +234,21 @@ function createReviewQueueApi(dependencies = {}) {
             : null;
           if (!genId) return;
           try {
-            await generationOutputsDb.updateGenerationOutput(genId, { 'metadata.reviewOutcome': decision.outcome });
+            if (decision.mode === 'cull') {
+              const isExclude = decision.outcome === 'exclude';
+              await generationOutputsDb.updateGenerationOutput(genId, {
+                'metadata.cullStatus': isExclude ? 'excluded' : 'keep',
+                cullStatus: isExclude ? 'excluded' : 'keep',
+                'metadata.cullReviewedAt': new Date(),
+                'metadata.exportExcluded': isExclude,
+                exportExcluded: isExclude
+              });
+            } else {
+              await generationOutputsDb.updateGenerationOutput(genId, {
+                'metadata.reviewOutcome': decision.outcome,
+                reviewOutcome: decision.outcome
+              });
+            }
           } catch (err) {
             logger.error('[reviewQueueApi] failed to update generation outcome', {
               generationId: decision.generationId,
