@@ -509,8 +509,12 @@ export default class CookMenuModal {
         if (liveStatus) {
             parts.push(liveStatus);
         }
-        if (piecesRemaining !== null && normalizedStatus !== 'paused') {
-            parts.push(`${piecesRemaining} approvals remaining`);
+        if (piecesRemaining !== null) {
+            if (piecesRemaining > 0) {
+                parts.push(`${piecesRemaining} approvals needed`);
+            } else if (targetSupply > 0) {
+                parts.push('Target met');
+            }
         }
         if (pendingReviewCount > 0) {
             parts.push(`${pendingReviewCount} pending review`);
@@ -620,6 +624,7 @@ export default class CookMenuModal {
         const pausedCooks = [];
         const awaitingReview = [];
         const stoppedCooks = [];
+        const supplyShortfall = [];
         
         activeCooks.forEach(c => {
             const running = c.running || 0;
@@ -630,12 +635,16 @@ export default class CookMenuModal {
             const isComplete = targetSupply > 0 && generationCount >= targetSupply;
             const hasActiveJobs = running > 0 || queued > 0;
             const normalizedStatus = (c.status || (running > 0 ? 'running' : 'paused')).toLowerCase();
+            const approvalsShort = targetSupply > 0 ? Math.max(0, targetSupply - stats.approvedCount) : 0;
+            const supplyMet = targetSupply > 0 ? approvalsShort === 0 : true;
             
             if (normalizedStatus === 'stopped') {
                 stoppedCooks.push(c);
-            } else if (normalizedStatus === 'awaiting_review' || (isComplete && !hasActiveJobs)) {
+            } else if ((normalizedStatus === 'awaiting_review' || (isComplete && !hasActiveJobs)) && supplyMet) {
                 // All pieces generated, awaiting review
                 awaitingReview.push(c);
+            } else if (!hasActiveJobs && approvalsShort > 0) {
+                supplyShortfall.push(c);
             } else if (running > 0 || normalizedStatus === 'running') {
                 // Actively running
                 runningCooks.push(c);
@@ -693,6 +702,23 @@ export default class CookMenuModal {
         }).join('') : '';
         
         // Render awaiting review section
+        const shortfallHtml = supplyShortfall.length ? supplyShortfall.map(c => {
+            const title = this._buildCookTitle(c);
+            const { approvedCount } = this._getReviewStats(c);
+            const targetSupply = Number.isFinite(c.targetSupply) ? c.targetSupply : 0;
+            const shortfall = targetSupply > 0 ? Math.max(0, targetSupply - approvedCount) : 0;
+            return `
+            <div class="cook-status-item" data-id="${c.collectionId}">
+                <div class="cook-title">${title}</div>
+                <div class="cook-status-text">Short ${shortfall} approval${shortfall === 1 ? '' : 's'} • ${this._formatCookStatus(c)}</div>
+                <div class="cook-actions">
+                    <button data-action="start" data-id="${c.collectionId}" title="Run more cooks">▶️ Start</button>
+                    <button data-action="review" data-id="${c.collectionId}" title="Review Pieces" style="margin-left: 8px;">Review</button>
+                </div>
+            </div>
+        `;
+        }).join('') : '';
+
         const reviewHtml = awaitingReview.length ? awaitingReview.map(c => {
             const title = this._buildCookTitle(c);
             return `
@@ -714,6 +740,7 @@ export default class CookMenuModal {
             ${runningCooks.length > 0 ? `<h2>Active Cooks</h2><div class="cook-status-list">${runningHtml}</div>` : ''}
             ${pausedCooks.length > 0 ? `<h2>Paused Cooks</h2><div class="cook-status-list">${pausedHtml}</div>` : ''}
             ${stoppedCooks.length > 0 ? `<h2>Stopped Cooks</h2><div class="cook-status-list">${stoppedHtml}</div>` : ''}
+            ${supplyShortfall.length > 0 ? `<h2>Needs More Supply</h2><div class="cook-status-list">${shortfallHtml}</div>` : ''}
             ${awaitingReview.length > 0 ? `<h2>Awaiting Review</h2><div class="cook-status-list">${reviewHtml}</div>` : ''}
             ${runningCooks.length === 0 && pausedCooks.length === 0 && awaitingReview.length === 0 && stoppedCooks.length === 0 ? '<h2>Active Cooks</h2><div class="empty-message">No active cooks.</div>' : ''}
             <hr>
@@ -2898,7 +2925,7 @@ export default class CookMenuModal {
             const { selectedCollection } = this.state;
             if(!selectedCollection) return;
             this.hide();
-            import('../window/ExcludedWindow.js').then(m => { m.createExcludedWindow(selectedCollection); });
+            import('../window/CollectionWindow.js').then(m => { m.createCollectionReviveWindow(selectedCollection); });
         };
         if(modal.querySelector('.reset-cull-btn')) modal.querySelector('.reset-cull-btn').onclick=()=>{
             const { selectedCollection } = this.state;

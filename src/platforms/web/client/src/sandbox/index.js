@@ -116,6 +116,20 @@ import { initSessionKeepAlive, forceSessionRefresh } from './utils/sessionKeepAl
                 window.openReauthModal();
             }
         }
+
+        if (resp && resp.status === 403) {
+            try {
+                const cloned403 = resp.clone();
+                const data = await cloned403.json().catch(() => null);
+                if (data?.error?.code === 'CSRF_TOKEN_INVALID') {
+                    if (typeof window.openReauthModal === 'function' && !window.__reauthModalOpen__) {
+                        window.openReauthModal();
+                    }
+                }
+            } catch (csrfErr) {
+                console.warn('[Sandbox] Failed to inspect 403 response', csrfErr);
+            }
+        }
         return resp;
     };
 })();

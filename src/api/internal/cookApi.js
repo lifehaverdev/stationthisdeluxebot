@@ -683,6 +683,7 @@ function createCookApi(deps = {}) {
       }
       const limitRaw = Number(req.body?.limit);
       const limit = Math.max(1, Math.min(Number.isFinite(limitRaw) ? limitRaw : 20, 200));
+      const action = req.body?.action === 'keep' ? 'keep' : 'pending';
       const baseMatch = buildGenerationMatchClauses(collectionId, userId);
       const filter = {
         $and: [
@@ -691,30 +692,57 @@ function createCookApi(deps = {}) {
           buildCulledFilter()
         ]
       };
-      const docs = await generationOutputsDb.findGenerations(filter, {
-        limit,
-        sort: { 'metadata.cullReviewedAt': -1, _id: -1 },
-        projection: { _id: 1 }
-      });
+      const requestedIds = Array.isArray(req.body?.generationIds)
+        ? req.body.generationIds
+            .map(id => (ObjectId.isValid(id) ? new ObjectId(id) : null))
+            .filter(Boolean)
+        : [];
+      let docs = [];
+      if (requestedIds.length) {
+        docs = requestedIds.map(id => ({ _id: id }));
+      } else {
+        docs = await generationOutputsDb.findGenerations(filter, {
+          limit,
+          sort: { 'metadata.cullReviewedAt': -1, _id: -1 },
+          projection: { _id: 1 }
+        });
+      }
       const ids = (docs || [])
         .map(doc => (doc?._id ? (ObjectId.isValid(doc._id) ? new ObjectId(doc._id) : null) : null))
         .filter(Boolean);
       if (!ids.length) {
         return res.json({ revived: 0, queueReset: 0 });
       }
+      const now = new Date();
+      const updateFilter = {
+        $and: [
+          ...baseMatch,
+          { _id: { $in: ids } }
+        ]
+      };
       const updateResult = await generationOutputsDb.updateMany(
-        { _id: { $in: ids } },
-        {
-          $set: {
-            'metadata.cullStatus': 'pending',
-            cullStatus: 'pending',
-            'metadata.exportExcluded': false,
-            exportExcluded: false
-          },
-          $unset: {
-            'metadata.cullReviewedAt': ''
-          }
-        }
+        updateFilter,
+        action === 'keep'
+          ? {
+              $set: {
+                'metadata.cullStatus': 'keep',
+                cullStatus: 'keep',
+                'metadata.cullReviewedAt': now,
+                'metadata.exportExcluded': false,
+                exportExcluded: false
+              }
+            }
+          : {
+              $set: {
+                'metadata.cullStatus': 'pending',
+                cullStatus: 'pending',
+                'metadata.exportExcluded': false,
+                exportExcluded: false
+              },
+              $unset: {
+                'metadata.cullReviewedAt': ''
+              }
+            }
       );
       let queueReset = 0;
       if (reviewQueueDb?.updateMany) {
@@ -725,10 +753,15 @@ function createCookApi(deps = {}) {
               mode: 'cull',
               generationId: { $in: ids }
             },
-            {
-              $set: { status: 'pending' },
-              $unset: { assignedTo: '', assignedAt: '', reviewedAt: '' }
-            }
+            action === 'keep'
+              ? {
+                  $set: { status: 'keep', reviewedAt: now },
+                  $unset: { assignedTo: '', assignedAt: '' }
+                }
+              : {
+                  $set: { status: 'pending' },
+                  $unset: { assignedTo: '', assignedAt: '', reviewedAt: '' }
+                }
           );
           queueReset = queueResult?.modifiedCount || 0;
         } catch (queueErr) {

@@ -50,7 +50,7 @@ async function duplicateAndRun(windowId) {
     await executeNodeAndDependencies(dupEl.id);
 }
 
-export function renderResultContent(resultContainer, output) {
+export function renderResultContent(resultContainer, output, options = {}) {
     // --- Auto-normalise common image/text wrappers when type missing ---
     if (!output.type) {
         if (Array.isArray(output.artifactUrls) && output.artifactUrls.length) {
@@ -95,7 +95,7 @@ export function renderResultContent(resultContainer, output) {
             const step = output.steps[idx];
             const stepOutput = step.output || step.outputs || step.data || {};
             // Recurse into renderResultContent to display the step output
-            renderResultContent(contentHolder, stepOutput);
+            renderResultContent(contentHolder, stepOutput, options);
             Array.from(selector.querySelectorAll('button')).forEach((b,i)=>{
                 b.disabled = i===idx;
             });
@@ -245,7 +245,7 @@ export function renderResultContent(resultContainer, output) {
     }
 
     // --- Rating UI ---
-    if (output.generationId) {
+    if (!options.disableFeedback && output.generationId) {
         const ratingContainer = document.createElement('div');
         ratingContainer.className = 'result-rating-container';
         ratingContainer.style.marginTop = '8px';

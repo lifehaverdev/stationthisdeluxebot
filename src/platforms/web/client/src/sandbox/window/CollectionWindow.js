@@ -14,6 +14,7 @@ const CULL_STATS_MIN_INTERVAL_MS = 2500;
 const CULL_REVIEW_FLUSH_THRESHOLD = 10;
 const CULL_REVIEW_FLUSH_INTERVAL_MS = 15000;
 const CULL_REVIEW_IDLE_FLUSH_DELAY_MS = 15000;
+const REVIVE_BATCH_SIZE = 16;
 
 /**
  * CollectionWindow – unified window for collection test & review.
@@ -146,9 +147,19 @@ export default class CollectionWindow extends BaseWindow {
    * @param {object} opts.position – { x, y }
    */
   constructor({ mode = 'test', collection, position = { x: 200, y: 120 } }) {
-    const idPrefix = mode === 'test' ? 'col-test' : (mode === 'cull' ? 'col-cull' : 'col-review');
+    const idPrefix = mode === 'test'
+      ? 'col-test'
+      : (mode === 'cull'
+        ? 'col-cull'
+        : (mode === 'revive' ? 'col-revive' : 'col-review'));
     const id = `${idPrefix}-${Math.random().toString(36).slice(2, 10)}`;
-    const title = `${collection.name || 'Collection'} · ${mode === 'test' ? 'Test' : (mode === 'cull' ? 'Cull' : 'Review')}`;
+    const title = `${collection.name || 'Collection'} · ${
+      mode === 'test'
+        ? 'Test'
+        : (mode === 'cull'
+          ? 'Cull'
+          : (mode === 'revive' ? 'Revive' : 'Review'))
+    }`;
     super({ id, title, position, classes: ['collection-window'] });
 
     this.mode = mode;
@@ -173,13 +184,13 @@ export default class CollectionWindow extends BaseWindow {
     );
     const flushInterval = Number(collection?.config?.reviewFlushIntervalMs) || DEFAULT_REVIEW_FLUSH_INTERVAL_MS;
     this._reviewFlushIntervalMs = Math.max(flushInterval, 1000);
-    if (this.isCullMode) {
-      this._reviewFlushThreshold = Math.min(Math.max(1, CULL_REVIEW_FLUSH_THRESHOLD), MAX_REVIEW_SUBMISSION_BATCH_SIZE);
-      this._reviewFlushIntervalMs = Math.max(CULL_REVIEW_FLUSH_INTERVAL_MS, 1000);
-    }
+    this._baseReviewFlushThreshold = this._reviewFlushThreshold;
+    this._baseReviewFlushInterval = this._reviewFlushIntervalMs;
     this._reviewSyncBannerState = { text: 'All decisions synced ✅', variant: 'ok' };
-    const idleBase = this.isCullMode ? CULL_REVIEW_IDLE_FLUSH_DELAY_MS : 1500;
+    const idleBase = 1500;
     this._reviewIdleFlushDelayMs = Math.max(this._reviewFlushIntervalMs, idleBase);
+    this._baseReviewIdleDelay = this._reviewIdleFlushDelayMs;
+    this._applyFlushSettingsForMode(this.mode);
     this._reviewFlushBackoffMs = 2500;
     this._reviewFlushRetryAttempts = 0;
     this._reviewFlushRetryTimer = null;
@@ -195,6 +206,16 @@ export default class CollectionWindow extends BaseWindow {
     this._pendingCullStatsTimeout = null;
     this._cullStatsPromise = null;
     this._boundCullUpdate = null;
+    this._reviveItems = [];
+    this._reviveCursor = null;
+    this._reviveFetchPromise = null;
+    this._reviveCompleted = false;
+    this._reviveCounterEl = null;
+    this._reviveResultEl = null;
+    this._reviveEmptyEl = null;
+    this._reviveKeepBtn = null;
+    this._reviveSkipBtn = null;
+    this._reviveLoading = false;
 
     // Store reference to this instance on the DOM element for WebSocket handler access
     this.el._collectionWindowInstance = this;
@@ -210,12 +231,12 @@ export default class CollectionWindow extends BaseWindow {
       this.el.classList.add('collection-test-window');
     }
 
-    if (this.mode === 'review' || this.mode === 'cull') {
+    if (this.mode === 'review' || this.mode === 'cull' || this.mode === 'revive') {
       this._beforeUnloadHandler = () => {
         if (this._pendingReviewDecisions?.length) {
           this._flushPendingReviews({ force: true, keepAlive: true }).catch(() => {});
         }
-        if (this.mode === 'review') {
+        if (this._claimedQueueIds?.size) {
           this._releaseOutstandingQueueItems().catch(() => {});
         }
       };
@@ -229,7 +250,7 @@ export default class CollectionWindow extends BaseWindow {
         if (this._pendingReviewDecisions?.length) {
           this._flushPendingReviews({ force: true, keepAlive: true }).catch(() => {});
         }
-        if (this.mode === 'review') {
+        if (this._claimedQueueIds?.size) {
           this._releaseOutstandingQueueItems().catch(() => {});
         }
         if (this._boundCullUpdate && typeof window !== 'undefined') {
@@ -241,17 +262,65 @@ export default class CollectionWindow extends BaseWindow {
           this._pendingCullStatsTimeout = null;
         }
       };
-      if (this.isCullMode && typeof window !== 'undefined') {
-        this._boundCullUpdate = (evt) => {
-          if (!evt?.detail || evt.detail.collectionId !== this.collection?.collectionId) return;
-          if (evt.detail.sourceWindowId === this.id) return;
-          this._fetchCullStatsForWindow().catch(() => {});
-        };
-        window.addEventListener('collection:cull-updated', this._boundCullUpdate);
+      if ((this.mode === 'cull' || this.mode === 'revive')) {
+        this._ensureCullUpdateListener();
       }
     }
 
     this.renderBody();
+  }
+
+  _applyFlushSettingsForMode(mode) {
+    if (mode === 'cull') {
+      this._reviewFlushThreshold = Math.min(Math.max(1, CULL_REVIEW_FLUSH_THRESHOLD), MAX_REVIEW_SUBMISSION_BATCH_SIZE);
+      this._reviewFlushIntervalMs = Math.max(CULL_REVIEW_FLUSH_INTERVAL_MS, 1000);
+      this._reviewIdleFlushDelayMs = Math.max(this._reviewFlushIntervalMs, CULL_REVIEW_IDLE_FLUSH_DELAY_MS);
+    } else {
+      this._reviewFlushThreshold = this._baseReviewFlushThreshold;
+      this._reviewFlushIntervalMs = this._baseReviewFlushInterval;
+      this._reviewIdleFlushDelayMs = this._baseReviewIdleDelay;
+    }
+  }
+
+  _ensureCullUpdateListener() {
+    if (typeof window === 'undefined' || this._boundCullUpdate) return;
+    this._boundCullUpdate = (evt) => {
+      if (!evt?.detail || evt.detail.collectionId !== this.collection?.collectionId) return;
+      if (evt.detail.sourceWindowId === this.id) return;
+      this._fetchCullStatsForWindow({ force: true }).catch(() => {});
+      if (this.mode === 'revive') {
+        this._refreshRevivePreview();
+      }
+    };
+    window.addEventListener('collection:cull-updated', this._boundCullUpdate);
+  }
+
+  _setActiveMode(nextMode) {
+    if (!nextMode || this.mode === nextMode) return;
+    this.mode = nextMode;
+    this.isCullMode = nextMode === 'cull';
+    this._applyFlushSettingsForMode(nextMode);
+    if (nextMode === 'cull' || nextMode === 'revive') {
+      this._ensureCullUpdateListener();
+      this._fetchCullStatsForWindow({ force: true }).catch(() => {});
+    }
+    this.renderBody();
+  }
+
+  _resetReviewContentRoot() {
+    if (this._reviewContentRoot) {
+      this._reviewContentRoot.remove();
+    }
+    const root = document.createElement('div');
+    root.className = 'collection-review-content';
+    this.body.appendChild(root);
+    this._reviewContentRoot = root;
+    return root;
+  }
+
+  _getReviewContentTarget() {
+    if (this._reviewContentRoot) return this._reviewContentRoot;
+    return this.body;
   }
 
   static _sleep(ms) {
@@ -268,17 +337,78 @@ export default class CollectionWindow extends BaseWindow {
   }
 
   renderBody() {
-    if (this.mode === 'review' || this.mode === 'cull') {
-      this._renderReview();
-    } else {
+    if (this.mode === 'test') {
       this._renderTest();
+      return;
+    }
+    if (this.mode === 'review' || this.mode === 'cull' || this.mode === 'revive') {
+      this._renderInteractiveReview();
+      return;
+    }
+    this._renderTest();
+  }
+
+  _renderInteractiveReview() {
+    this.body.innerHTML = '';
+    this._renderModeSwitcher();
+    if (this.mode === 'cull' || this.mode === 'revive') {
+      this._renderCullSummaryBlocks();
+      this._fetchCullStatsForWindow().catch(() => {});
+    } else {
+      this._clearCullSummaryRefs();
+    }
+    const contentRoot = this._resetReviewContentRoot();
+    if (this.mode === 'revive') {
+      this._renderReviveView(contentRoot);
+    } else {
+      this._renderReview(contentRoot);
     }
   }
 
+  _renderModeSwitcher() {
+    const wrap = document.createElement('div');
+    wrap.className = 'review-mode-switcher';
+    wrap.style.cssText = 'display:flex; gap:8px; margin-bottom:10px;';
+    const modes = [
+      { key: 'review', label: 'Review' },
+      { key: 'cull', label: 'Cull' },
+      { key: 'revive', label: 'Revive' }
+    ];
+    modes.forEach(mode => {
+      const btn = document.createElement('button');
+      btn.textContent = mode.label;
+      btn.className = this.mode === mode.key ? 'mode-btn active' : 'mode-btn';
+      btn.disabled = this.mode === mode.key;
+      btn.onclick = () => this._setActiveMode(mode.key);
+      wrap.appendChild(btn);
+    });
+    this.body.appendChild(wrap);
+  }
+
+  _renderCullSummaryBlocks() {
+    const summary = document.createElement('div');
+    summary.className = 'cull-summary';
+    summary.style.cssText = 'padding: 8px 12px; margin-bottom: 8px; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 13px; color: #d0d0d0;';
+    summary.textContent = 'Loading supply stats…';
+    this.body.appendChild(summary);
+    const deltaBanner = document.createElement('div');
+    deltaBanner.className = 'cull-target-delta';
+    deltaBanner.style.cssText = 'padding: 6px 10px; margin-bottom: 12px; background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 13px; color: #fff;';
+    deltaBanner.textContent = 'Calculating target gap…';
+    this.body.appendChild(deltaBanner);
+    this._cullSummaryEl = summary;
+    this._cullDeltaEl = deltaBanner;
+    this._updateCullSummary();
+  }
+
+  _clearCullSummaryRefs() {
+    this._cullSummaryEl = null;
+    this._cullDeltaEl = null;
+  }
+
   /* ---------------- Review Mode ---------------- */
-  _renderReview() {
-    const body = this.body;
-    body.innerHTML = '';
+  _renderReview(container) {
+    const body = container || this._resetReviewContentRoot();
     const intro = document.createElement('div');
     intro.className = 'review-intro';
     intro.style.cssText = 'padding: 8px 12px; background: rgba(255,255,255,0.05); border-radius: 6px; margin-bottom: 8px; font-size: 13px; line-height: 1.4;';
@@ -288,26 +418,6 @@ export default class CollectionWindow extends BaseWindow {
       intro.textContent = 'Approve or reject each generated piece. Decisions sync automatically as you work.';
     }
     body.appendChild(intro);
-
-    if (this.isCullMode) {
-      const summary = document.createElement('div');
-      summary.className = 'cull-summary';
-      summary.style.cssText = 'padding: 8px 12px; margin-bottom: 8px; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 13px; color: #d0d0d0;';
-      summary.textContent = 'Loading supply stats…';
-      body.appendChild(summary);
-      const deltaBanner = document.createElement('div');
-      deltaBanner.className = 'cull-target-delta';
-      deltaBanner.style.cssText = 'padding: 6px 10px; margin-bottom: 12px; background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 13px; color: #fff;';
-      deltaBanner.textContent = 'Calculating target gap…';
-      body.appendChild(deltaBanner);
-      this._cullSummaryEl = summary;
-      this._cullDeltaEl = deltaBanner;
-      this._updateCullSummary();
-      this._fetchCullStatsForWindow().catch(err => console.warn('[CollectionWindow] cull stats load error', err));
-    } else {
-      this._cullSummaryEl = null;
-      this._cullDeltaEl = null;
-    }
 
     const startWrap = document.createElement('div');
     startWrap.style.textAlign = 'center';
@@ -332,7 +442,7 @@ export default class CollectionWindow extends BaseWindow {
   }
 
   async _loadNextReview({ showLoading = false } = {}) {
-    const body = this.body;
+    const body = this._getReviewContentTarget();
     if (showLoading) {
       body.textContent = 'Loading…';
     }
@@ -366,7 +476,7 @@ export default class CollectionWindow extends BaseWindow {
     }
     const loadPromise = (async () => {
       if (showLoading && !this._activeReview) {
-        this.body.textContent = 'Loading…';
+        this._getReviewContentTarget().textContent = 'Loading…';
       }
       const limit = this.isCullMode ? Math.min(this._reviewBatchSize * 2, MAX_REVIEW_BATCH_SIZE) : this._reviewBatchSize;
       const csrfToken = await this._getCsrfToken();
@@ -495,7 +605,8 @@ export default class CollectionWindow extends BaseWindow {
   }
 
   async _fetchCullStatsForWindow({ force = false } = {}) {
-    if (!this.isCullMode || !this.collection?.collectionId) return;
+    if (!this.collection?.collectionId) return;
+    if (this.mode !== 'cull' && this.mode !== 'revive') return;
     const now = Date.now();
     const elapsed = now - (this._lastCullStatsFetchAt || 0);
     if (!force) {
@@ -546,7 +657,7 @@ export default class CollectionWindow extends BaseWindow {
   }
 
   _updateCullSummary() {
-    if (!this.isCullMode) return;
+    if (this.mode !== 'cull' && this.mode !== 'revive') return;
     if (this._cullSummaryEl) {
       if (this._cullStats) {
         this._cullSummaryEl.textContent = this._formatCullSummaryText(this._cullStats);
@@ -620,10 +731,10 @@ export default class CollectionWindow extends BaseWindow {
     if (!entry) return;
     const gen = entry.generation || entry;
     if (!gen) {
-      this.body.textContent = 'Unable to load piece';
+      this._getReviewContentTarget().textContent = 'Unable to load piece';
       return;
     }
-    const body = this.body;
+    const body = this._getReviewContentTarget();
     this._activeReview = entry;
     body.innerHTML = '';
     const resultDiv = document.createElement('div');
@@ -632,7 +743,7 @@ export default class CollectionWindow extends BaseWindow {
 
     const outputData = this._normaliseReviewOutput(gen);
     console.log('[CollectionWindow] rendering review generation', gen, outputData);
-    renderResultContent(resultDiv, outputData);
+    renderResultContent(resultDiv, outputData, { disableFeedback: true });
 
     const btnRow = document.createElement('div');
     const acceptBtn = document.createElement('button');
@@ -669,6 +780,192 @@ export default class CollectionWindow extends BaseWindow {
     const rejectOutcome = this.isCullMode ? 'exclude' : 'rejected';
     acceptBtn.onclick = () => mark(acceptOutcome);
     rejectBtn.onclick = () => mark(rejectOutcome);
+  }
+
+  _renderReviveView(container) {
+    const body = container || this._resetReviewContentRoot();
+    if (!Array.isArray(this._reviveItems)) this._reviveItems = [];
+    const intro = document.createElement('div');
+    intro.className = 'revive-intro';
+    intro.style.cssText = 'padding: 8px 12px; background: rgba(255,255,255,0.05); border-radius: 6px; margin-bottom: 8px; font-size: 13px; line-height: 1.4;';
+    intro.innerHTML = '<strong>Revive excluded pieces.</strong> Browse dropped items and mark specific ones as keep to bring them back.';
+    body.appendChild(intro);
+    const counter = document.createElement('div');
+    counter.style.cssText = 'margin-bottom: 8px; font-size: 13px; color: #d0d0d0;';
+    counter.textContent = this._reviveCompleted ? 'All excluded pieces reviewed.' : 'Loading excluded pieces…';
+    body.appendChild(counter);
+    this._reviveCounterEl = counter;
+    const resultContainer = document.createElement('div');
+    resultContainer.className = 'result-container';
+    resultContainer.style.minHeight = '320px';
+    body.appendChild(resultContainer);
+    this._reviveResultEl = resultContainer;
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'margin-top: 12px; display:flex; gap:8px;';
+    const keepBtn = document.createElement('button');
+    keepBtn.textContent = 'Keep ✅';
+    keepBtn.onclick = () => this._markReviveKeep();
+    const skipBtn = document.createElement('button');
+    skipBtn.textContent = 'Skip ↷';
+    skipBtn.onclick = () => this._skipRevive();
+    btnRow.append(keepBtn, skipBtn);
+    body.appendChild(btnRow);
+    this._reviveKeepBtn = keepBtn;
+    this._reviveSkipBtn = skipBtn;
+    const emptyMessage = document.createElement('div');
+    emptyMessage.style.cssText = 'margin-top: 10px; font-size: 14px; color: #9ac899;';
+    body.appendChild(emptyMessage);
+    this._reviveEmptyEl = emptyMessage;
+    this._loadNextRevive();
+  }
+
+  async _loadNextRevive() {
+    if (this.mode !== 'revive') return;
+    if (!this._reviveItems.length && !this._reviveCompleted) {
+      await this._fetchReviveBatch();
+    }
+    if (!this._reviveItems.length) {
+      this._renderReviveEmpty();
+      return;
+    }
+    const entry = this._reviveItems[0];
+    this._renderReviveEntry(entry);
+    this._updateReviveCounter();
+  }
+
+  async _fetchReviveBatch() {
+    if (this._reviveFetchPromise) return this._reviveFetchPromise;
+    this._reviveLoading = true;
+    const promise = (async () => {
+      try {
+        const params = new URLSearchParams({ limit: REVIVE_BATCH_SIZE });
+        if (this._reviveCursor) params.set('cursor', this._reviveCursor);
+        const res = await fetch(`/api/v1/collections/${encodeURIComponent(this.collection.collectionId)}/cull/excluded?${params.toString()}`, {
+          credentials: 'include',
+          cache: 'no-store'
+        });
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+        const data = await res.json().catch(() => ({}));
+        const items = Array.isArray(data.items) ? data.items : [];
+        if (items.length) {
+          this._reviveItems.push(...items);
+          this._reviveCursor = data.nextCursor || null;
+        } else {
+          this._reviveCompleted = true;
+        }
+      } catch (err) {
+        console.error('[CollectionWindow] failed to load excluded pieces', err);
+        if (this._reviveEmptyEl) {
+          this._reviveEmptyEl.textContent = 'Failed to load excluded pieces. Close and reopen to retry.';
+        }
+      } finally {
+        this._reviveLoading = false;
+        this._reviveFetchPromise = null;
+      }
+    })();
+    this._reviveFetchPromise = promise;
+    await promise;
+  }
+
+  _renderReviveEntry(entry) {
+    if (!entry || !this._reviveResultEl) return;
+    const gen = entry.generation || entry;
+    if (!gen) {
+      this._reviveResultEl.textContent = 'Unable to load piece.';
+      return;
+    }
+    this._reviveResultEl.innerHTML = '';
+    const normalized = this._normaliseReviewOutput(gen);
+    renderResultContent(this._reviveResultEl, normalized, { disableFeedback: true });
+    if (this._reviveEmptyEl) this._reviveEmptyEl.textContent = '';
+  }
+
+  async _markReviveKeep() {
+    if (!this._reviveItems.length) {
+      await this._loadNextRevive();
+      return;
+    }
+    const entry = this._reviveItems.shift();
+    this._updateReviveCounter();
+    if (this._reviveKeepBtn) this._reviveKeepBtn.disabled = true;
+    if (this._reviveSkipBtn) this._reviveSkipBtn.disabled = true;
+    try {
+      const csrf = await this._getCsrfToken();
+      await fetch(`/api/v1/collections/${encodeURIComponent(this.collection.collectionId)}/cull/revive`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-csrf-token': csrf || ''
+        },
+        body: JSON.stringify({
+          generationIds: [entry.generationId || entry.generation?._id],
+          action: 'keep'
+        })
+      }).then(async res => {
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || 'keep_failed');
+        }
+      });
+      this._fetchCullStatsForWindow({ force: true }).catch(() => {});
+      if (typeof window !== 'undefined') {
+        try {
+          window.dispatchEvent(new CustomEvent('collection:cull-updated', {
+            detail: { collectionId: this.collection?.collectionId }
+          }));
+        } catch (_) {
+          // ignore
+        }
+      }
+    } catch (err) {
+      console.error('[CollectionWindow] failed to revive piece', err);
+      alert('Failed to keep piece: ' + (err.message || 'unknown error'));
+    } finally {
+      if (this._reviveKeepBtn) this._reviveKeepBtn.disabled = false;
+      if (this._reviveSkipBtn) this._reviveSkipBtn.disabled = false;
+      this._loadNextRevive();
+    }
+  }
+
+  _skipRevive() {
+    if (!this._reviveItems.length) {
+      this._loadNextRevive();
+      return;
+    }
+    const entry = this._reviveItems.shift();
+    this._reviveItems.push(entry);
+    this._loadNextRevive();
+  }
+
+  _renderReviveEmpty() {
+    if (this._reviveResultEl) {
+      this._reviveResultEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #9ac899;">No excluded pieces left to review.</div>';
+    }
+    if (this._reviveEmptyEl) {
+      this._reviveEmptyEl.textContent = '';
+    }
+    this._reviveCompleted = true;
+  }
+
+  _updateReviveCounter() {
+    if (!this._reviveCounterEl) return;
+    if (this._reviveCompleted && !this._reviveItems.length) {
+      this._reviveCounterEl.textContent = 'All excluded pieces reviewed.';
+      return;
+    }
+    const remaining = this._reviveItems.length + (this._reviveLoading ? 1 : 0);
+    this._reviveCounterEl.textContent = `${remaining} piece${remaining === 1 ? '' : 's'} in queue`;
+  }
+
+  _refreshRevivePreview() {
+    if (this.mode !== 'revive') return;
+    this._reviveItems = [];
+    this._reviveCursor = null;
+    this._reviveCompleted = false;
+    this._loadNextRevive();
   }
 
   _normaliseReviewOutput(gen) {
@@ -902,17 +1199,31 @@ export default class CollectionWindow extends BaseWindow {
         outcome: decision.outcome
       }))
     };
-    const res = await fetch(`/api/v1/collections/${encodeURIComponent(this.collection.collectionId)}/pieces/review/bulk`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(text || 'Legacy review commit failed');
-    }
-    return res.json().catch(() => ({}));
+    const submit = async (token, attempt = 1) => {
+      const res = await fetch(`/api/v1/collections/${encodeURIComponent(this.collection.collectionId)}/pieces/review/bulk`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-csrf-token': token || ''
+        },
+        body: JSON.stringify(payload)
+      });
+      if (res.status === 403 && attempt === 1) {
+        CollectionWindow._csrfToken = null;
+        const refreshed = await this._getCsrfToken({ forceRefresh: true });
+        if (refreshed) {
+          return submit(refreshed, attempt + 1);
+        }
+      }
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || 'Legacy review commit failed');
+      }
+      return res.json().catch(() => ({}));
+    };
+    const tokenToUse = await this._getCsrfToken();
+    return submit(tokenToUse, 1);
   }
 
   async _releaseOutstandingQueueItems() {
@@ -1017,7 +1328,7 @@ export default class CollectionWindow extends BaseWindow {
   }
 
   _renderNoPiecesMessage() {
-    const body = this.body;
+    const body = this._getReviewContentTarget();
     body.innerHTML = '';
     const wrap = document.createElement('div');
     wrap.style.textAlign = 'center';
@@ -1036,7 +1347,7 @@ export default class CollectionWindow extends BaseWindow {
     body.appendChild(wrap);
     this._attachReviewSyncBanner();
     this._updateReviewSyncBanner();
-    if (this.mode === 'review') {
+    if (this._claimedQueueIds?.size) {
       this._releaseOutstandingQueueItems().catch(() => {});
     }
     if (this._pendingReviewDecisions?.length) {
@@ -1491,6 +1802,12 @@ export function createCollectionReviewWindow(collection, position) {
 
 export function createCollectionCullWindow(collection, position) {
   const win = new CollectionWindow({ mode: 'cull', collection, position });
+  win.mount();
+  return win.el;
+}
+
+export function createCollectionReviveWindow(collection, position) {
+  const win = new CollectionWindow({ mode: 'revive', collection, position });
   win.mount();
   return win.el;
 }
