@@ -394,7 +394,13 @@ class CookOrchestratorService {
         },
         { masterAccountId: new ObjectId(userId) },
         { status: 'completed' }, // Only count completed generations
-        { deliveryStrategy: { $ne: 'spell_step' } }
+        { deliveryStrategy: { $ne: 'spell_step' } },
+        {
+          $nor: [
+            { 'metadata.reviewOutcome': { $in: ['rejected'] } },
+            { reviewOutcome: { $in: ['rejected'] } }
+          ]
+        }
       ],
     });
   }
