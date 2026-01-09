@@ -62,7 +62,6 @@ class ReviewQueueDB extends BaseDB {
         masterAccountId: masterAccountId || null,
         requestTimestamp: entry.requestTimestamp ? new Date(entry.requestTimestamp) : new Date(),
         metadata: entry.metadata || {},
-        mode: entry.mode === 'cull' ? 'cull' : (entry.mode || 'review')
       },
       $unset: {
         assignedTo: '',

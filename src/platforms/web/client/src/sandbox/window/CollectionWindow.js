@@ -470,7 +470,7 @@ export default class CollectionWindow extends BaseWindow {
     return this._reviewQueue.shift() || null;
   }
 
-  async _fetchReviewBatch({ showLoading = false } = {}) {
+  async _fetchReviewBatch({ showLoading = false, skipPendingFlush = false } = {}) {
     if (this._reviewFetchPromise) {
       return this._reviewFetchPromise;
     }
@@ -500,8 +500,22 @@ export default class CollectionWindow extends BaseWindow {
       }
       const json = await res.json();
       const items = Array.isArray(json.items) ? json.items : [];
-      const existingIds = new Set(this._reviewQueue.map(entry => entry?.generationId).filter(Boolean));
-      if (this._activeReview?.generationId) existingIds.add(this._activeReview.generationId);
+      const existingIds = new Set(
+        this._reviewQueue
+          .map(entry => entry?.generationId)
+          .filter(Boolean)
+          .map(id => String(id))
+      );
+      if (this._activeReview?.generationId) {
+        existingIds.add(String(this._activeReview.generationId));
+      }
+      if (Array.isArray(this._pendingReviewDecisions)) {
+        this._pendingReviewDecisions.forEach(decision => {
+          if (decision?.generationId) {
+            existingIds.add(String(decision.generationId));
+          }
+        });
+      }
       const normalized = items.map(item => {
         const queueId = item.queueId || item._id;
         const generation = item.generation || item;
@@ -512,7 +526,7 @@ export default class CollectionWindow extends BaseWindow {
       const deduped = normalized.filter(entry => {
         const idStr = String(entry.generationId);
         const pendingLocal = this._pendingCullIds.has(idStr);
-        const alreadyInQueue = existingIds.has(entry.generationId);
+        const alreadyInQueue = existingIds.has(idStr);
         if (pendingLocal || alreadyInQueue) {
           return false;
         }
@@ -528,12 +542,20 @@ export default class CollectionWindow extends BaseWindow {
       if (deduped.length) {
         return deduped.length;
       }
+      if (!this.isCullMode && !skipPendingFlush && this._pendingReviewDecisions?.length) {
+        try {
+          await this._flushPendingReviews({ force: true, keepAlive: true });
+        } catch (flushErr) {
+          console.error('[CollectionWindow] Failed to flush pending reviews before fetching more pieces', flushErr);
+        }
+        return this._fetchReviewBatch({ showLoading, skipPendingFlush: true });
+      }
       if (this.isCullMode) {
         return 0;
       }
       if (!this._usingLegacyReviewApi) {
         try {
-          const legacyCount = await this._fetchLegacyReviewBatch({ showLoading: false });
+          const legacyCount = await this._fetchLegacyReviewBatch({ showLoading: false, skipPendingFlush: skipPendingFlush });
           if (legacyCount > 0) {
             this._usingLegacyReviewApi = true;
             return legacyCount;
@@ -562,7 +584,7 @@ export default class CollectionWindow extends BaseWindow {
     }
   }
 
-  async _fetchLegacyReviewBatch({ showLoading = false } = {}) {
+  async _fetchLegacyReviewBatch({ showLoading = false, skipPendingFlush = false } = {}) {
     if (showLoading && !this._activeReview) {
       this.body.textContent = 'Loading…';
     }
@@ -580,19 +602,45 @@ export default class CollectionWindow extends BaseWindow {
     }
     const json = await res.json().catch(() => ({}));
     const generations = Array.isArray(json.generations) ? json.generations : [];
-    const existingIds = new Set(this._reviewQueue.map(entry => entry?.generationId).filter(Boolean));
-    if (this._activeReview?.generationId) existingIds.add(this._activeReview.generationId);
+    const existingIds = new Set(
+      this._reviewQueue
+        .map(entry => entry?.generationId)
+        .filter(Boolean)
+        .map(id => String(id))
+    );
+    if (this._activeReview?.generationId) {
+      existingIds.add(String(this._activeReview.generationId));
+    }
+    if (Array.isArray(this._pendingReviewDecisions)) {
+      this._pendingReviewDecisions.forEach(decision => {
+        if (decision?.generationId) {
+          existingIds.add(String(decision.generationId));
+        }
+      });
+    }
     const normalized = generations.map(gen => {
       const generationId = gen?._id || gen?.id;
       if (!generationId) return null;
       return { queueId: null, generationId, generation: gen };
     }).filter(Boolean);
-    const deduped = normalized.filter(entry => !existingIds.has(entry.generationId));
-    deduped.forEach(entry => existingIds.add(entry.generationId));
+    const deduped = normalized.filter(entry => {
+      const idStr = String(entry.generationId);
+      return !existingIds.has(idStr);
+    });
+    deduped.forEach(entry => existingIds.add(String(entry.generationId)));
     if (deduped.length) {
       this._reviewQueue.push(...deduped);
+      return deduped.length;
     }
-    return deduped.length;
+    if (!this.isCullMode && !skipPendingFlush && this._pendingReviewDecisions?.length) {
+      try {
+        await this._flushPendingReviews({ force: true, keepAlive: true });
+      } catch (flushErr) {
+        console.error('[CollectionWindow] Failed to flush pending reviews before fetching legacy pieces', flushErr);
+      }
+      return this._fetchLegacyReviewBatch({ showLoading, skipPendingFlush: true });
+    }
+    return 0;
   }
 
   _maybePrefetchReviews() {
