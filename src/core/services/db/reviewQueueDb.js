@@ -17,11 +17,21 @@ class ReviewQueueDB extends BaseDB {
     try {
       const client = await getCachedClient();
       const collection = client.db(this.dbName).collection(this.collectionName);
+      // Drop old single-field index if it exists (one-time migration)
+      try {
+        await collection.dropIndex('generation_unique');
+        this.logger.info('[ReviewQueueDB] Dropped old generation_unique index');
+      } catch (dropErr) {
+        // Index may not exist, that's fine
+        if (dropErr.code !== 27) { // 27 = IndexNotFound
+          this.logger.debug('[ReviewQueueDB] generation_unique index not found or already removed');
+        }
+      }
       await collection.createIndexes([
         {
-          key: { generationId: 1 },
+          key: { generationId: 1, mode: 1 },
           unique: true,
-          name: 'generation_unique'
+          name: 'generation_mode_unique'
         },
         {
           key: { collectionId: 1, status: 1, requestTimestamp: 1 },

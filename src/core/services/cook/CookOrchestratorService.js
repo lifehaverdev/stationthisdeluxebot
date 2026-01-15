@@ -407,47 +407,56 @@ class CookOrchestratorService {
 
   /**
    * Start cook with immediate submission of the first piece and orchestration-managed scheduling.
+   * ✅ MODIFIED: Now accepts batchSize (explicit number to generate) instead of totalSupply (auto-calculate from target)
    */
-  async startCook({ collectionId, userId, cookId, spellId, toolId, traitTypes = [], paramsTemplate = {}, traitTree = [], paramOverrides = {}, totalSupply = 1 }) {
-    this.logger.info(`[CookOrchestrator] startCook called for collection ${collectionId}, userId: ${userId}, cookId: ${cookId}, spellId: ${spellId}, toolId: ${toolId}, totalSupply: ${totalSupply}`);
+  async startCook({ collectionId, userId, cookId, spellId, toolId, traitTypes = [], paramsTemplate = {}, traitTree = [], paramOverrides = {}, batchSize = 1 }) {
+    this.logger.info(`[CookOrchestrator] startCook called for collection ${collectionId}, userId: ${userId}, cookId: ${cookId}, spellId: ${spellId}, toolId: ${toolId}, batchSize: ${batchSize}`);
     try {
       this.logger.info(`[CookOrchestrator] Calling _init()...`);
     await this._init();
       this.logger.info(`[CookOrchestrator] _init completed`);
-      
+
       if (!spellId && !toolId) {
         this.logger.error(`[CookOrchestrator] startCook failed: spellId or toolId required. spellId: ${spellId}, toolId: ${toolId}`);
         throw new Error('spellId or toolId required');
       }
 
-    const supply = Number.isFinite(totalSupply) && totalSupply > 0 ? Math.floor(totalSupply) : 1;
+    // ✅ NEW: batchSize is the exact number of pieces to generate (no auto-calculation)
+    const batch = Number.isFinite(batchSize) && batchSize > 0 ? Math.floor(batchSize) : 1;
     const key = this._getKey(collectionId, userId);
       this.logger.info(`[CookOrchestrator] Acquiring lock for key: ${key}`);
-      
+
       // Acquire lock to prevent race conditions
       const releaseLock = await this._acquireLock(key);
       this.logger.info(`[CookOrchestrator] Lock acquired, getting produced count...`);
-      
+
       try {
     const producedSoFar = await this._getProducedCount(collectionId, userId);
-    this.logger.info(`[Cook DEBUG] collection ${collectionId} supply=${supply} producedSoFar=${producedSoFar}`);
-        
+    this.logger.info(`[Cook DEBUG] collection ${collectionId} batchSize=${batch} producedSoFar=${producedSoFar}`);
+
         // Check if state exists, create or update atomically
         const existingState = this.runningByCollection.get(key);
         const shouldResetState = !existingState || (existingState.running && existingState.running.size === 0);
+
+        // ✅ NEW: batchTarget tracks how many pieces this batch should generate
+        // startIndex tracks where this batch started (for completion check)
+        const startIndex = producedSoFar;
+        const batchTarget = batch;
+
         if (shouldResetState) {
-          this.runningByCollection.set(key, { 
-            running: new Set(), 
-            nextIndex: producedSoFar, 
-            generatedCount: producedSoFar, 
-            total: supply, 
-            maxConcurrent: 3, 
-            toolId: toolId || null, 
-            cookId, 
-            spellId: spellId || null, 
-            traitTree, 
-            paramOverrides, 
-            traitTypes, 
+          this.runningByCollection.set(key, {
+            running: new Set(),
+            nextIndex: producedSoFar,
+            generatedCount: 0, // ✅ Track pieces generated THIS BATCH, not total
+            batchTarget, // ✅ NEW: How many to generate this batch
+            batchStartIndex: startIndex, // ✅ NEW: Where this batch started
+            maxConcurrent: 3,
+            toolId: toolId || null,
+            cookId,
+            spellId: spellId || null,
+            traitTree,
+            paramOverrides,
+            traitTypes,
             paramsTemplate,
             paused: false,
             pauseReason: null,
@@ -455,11 +464,9 @@ class CookOrchestratorService {
             stopped: false,
           });
         } else {
-          existingState.total = supply;
-          existingState.generatedCount = producedSoFar;
-          if (producedSoFar < existingState.nextIndex) {
-            existingState.nextIndex = producedSoFar;
-          }
+          existingState.batchTarget = batchTarget;
+          existingState.batchStartIndex = startIndex;
+          existingState.generatedCount = 0; // Reset for new batch
           existingState.paused = false;
           existingState.pauseReason = null;
           existingState.stopped = false;
@@ -468,25 +475,18 @@ class CookOrchestratorService {
           }
           existingState.previousMaxConcurrent = null;
         }
-        
+
     const state = this.runningByCollection.get(key);
-    this.logger.info(`[Cook DEBUG] State on start`, { nextIndex: state.nextIndex, runningSize: state.running.size, total: state.total });
+    this.logger.info(`[Cook DEBUG] State on start`, { nextIndex: state.nextIndex, runningSize: state.running.size, batchTarget: state.batchTarget });
     state.nextIndex = Math.max(state.nextIndex, producedSoFar);
-    state.total = supply; // update if changed
 
-        await this.appendEvent('CookStarted', { collectionId, userId, cookId: state.cookId, totalSupply: supply });
+        await this.appendEvent('CookStarted', { collectionId, userId, cookId: state.cookId, batchSize: batch });
 
-    if (producedSoFar >= state.total) {
-      this.logger.info(`[CookOrchestrator] Supply already met for collection ${collectionId}. Nothing to do.`);
-          await this.appendEvent('CookCompleted', { collectionId, userId, cookId: state.cookId });
-      this.runningByCollection.delete(key);
-      return { queued: 0 };
-    }
+    // ✅ REMOVED: No more auto-completion based on totalSupply
+    // We always start the batch - completion happens when batchTarget pieces are generated
 
-    // Submit first piece immediately if within supply
-        // Use _getProducedCount() for accurate count instead of state.generatedCount
-        const currentProduced = await this._getProducedCount(collectionId, userId);
-        if (state.nextIndex < state.total && (currentProduced + state.running.size) < state.total) {
+    // Submit first piece immediately
+        if (state.generatedCount < state.batchTarget) {
         const enq = await this._enqueuePiece({ collectionId, userId, cookId, index: state.nextIndex, toolId, spellId, traitTree, paramOverrides, traitTypes, paramsTemplate });
       const enqueuedJobId = enq.jobId;
 
@@ -497,7 +497,7 @@ class CookOrchestratorService {
           if (ENABLE_VERBOSE_SUBMIT_LOGS) this.logger.info(`[CookOrchestrator] Immediate submit for job ${enqueuedJobId} (tool ${submission.toolId})`);
           const resp = await submitPiece({ spellId: spellId, submission });
           this.logger.info(`[Cook] Submitted piece. job=${enqueuedJobId} resp=${resp?.status || 'ok'}`);
-              
+
               state.running.add(String(enqueuedJobId));
               state.nextIndex += 1;
         } catch (e) {
@@ -511,7 +511,7 @@ class CookOrchestratorService {
 
           await this.appendEvent('PieceQueued', { collectionId, userId, cookId, jobId: enqueuedJobId, pieceIndex: state.nextIndex - 1 });
 
-      return { queued: 1 }; 
+      return { queued: 1 };
     }
 
     return { queued: 0 };
@@ -842,10 +842,16 @@ class CookOrchestratorService {
       }
     }
 
-    // If done with supply and nothing running, emit completed
-    const producedAfter = await this._getProducedCount(collectionId, userId);
-    if (!state.stopped && producedAfter >= state.total && state.running.size === 0) {
-      await this.appendEvent('CookCompleted', { collectionId, userId, cookId: state.cookId });
+    // ✅ NEW: Increment batch counter for successful generations
+    if (success) {
+      state.generatedCount = (state.generatedCount || 0) + 1;
+      this.logger.info(`[CookOrchestrator] Batch progress: ${state.generatedCount}/${state.batchTarget} pieces generated`);
+    }
+
+    // ✅ MODIFIED: Check batch completion using batchTarget instead of total supply
+    if (!state.stopped && state.generatedCount >= state.batchTarget && state.running.size === 0) {
+      this.logger.info(`[CookOrchestrator] Batch complete: ${state.generatedCount}/${state.batchTarget} pieces generated`);
+      await this.appendEvent('CookCompleted', { collectionId, userId, cookId: state.cookId, batchSize: state.batchTarget });
       // Final update to cook document
       if (state.cookId) {
           try {
@@ -857,25 +863,25 @@ class CookOrchestratorService {
       this.runningByCollection.delete(key);
       return;
     } else if (state.stopped && state.running.size === 0) {
-      this.logger.info(`[CookOrchestrator] Cook ${key} fully stopped with ${producedAfter}/${state.total} pieces generated`);
+      this.logger.info(`[CookOrchestrator] Cook ${key} fully stopped with ${state.generatedCount}/${state.batchTarget} pieces generated`);
       this.runningByCollection.delete(key);
       return;
     }
 
-    // Fill available slots up to maxConcurrent, without exceeding supply
+    // Fill available slots up to maxConcurrent, without exceeding batch target
     if (state.paused) {
       this.logger.info(`[CookOrchestrator] Cook ${key} is paused – skipping queueing new pieces`);
       return { queued: 0 };
     }
 
-    // Fetch produced count once before loop (not inside loop) for consistency
-    const producedNow = await this._getProducedCount(collectionId, userId);
+    // ✅ MODIFIED: Use batchTarget for loop condition instead of total supply
     let queued = 0;
-    
+    const piecesNeeded = state.batchTarget - state.generatedCount;
+
     while (
       state.running.size < state.maxConcurrent &&
-      state.nextIndex < state.total &&
-      (producedNow + state.running.size) < state.total
+      (state.generatedCount + state.running.size) < state.batchTarget &&
+      piecesNeeded > 0
     ) {
       const idx = state.nextIndex;
       const enq = await this._enqueuePiece({
@@ -890,14 +896,14 @@ class CookOrchestratorService {
         traitTypes: state.traitTypes,
         paramsTemplate: state.paramsTemplate,
       });
-        
+
       await this.appendEvent('PieceQueued', { collectionId, userId, cookId: state.cookId, jobId: enq.jobId, pieceIndex: idx });
 
       // Immediate submit for newly queued pieces
       try {
         const resp = await submitPiece({ spellId: state.spellId, submission: enq.submission });
         this.logger.info(`[Cook] Submitted piece. job=${enq.jobId} resp=${resp?.status || 'ok'}`);
-          
+
           // ✅ FIX: Only add to running set AFTER successful submit
           state.running.add(String(enq.jobId));
           state.nextIndex = idx + 1; // Atomic update
@@ -910,7 +916,7 @@ class CookOrchestratorService {
           break;
         }
     }
-    
+
     return { queued };
     } finally {
       releaseLock(); // Always release lock, even on error

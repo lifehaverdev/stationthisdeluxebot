@@ -1516,3 +1516,255 @@
         width: 100%;
     }
 }
+
+/* =====================================================
+   NEW: Batch Size Prompt Modal
+   ===================================================== */
+.batch-size-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.75);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1003;
+    backdrop-filter: blur(8px);
+    animation: modalOverlayFadeIn 0.2s ease-out;
+}
+
+.batch-size-modal {
+    background: linear-gradient(135deg, #1e1e1e 0%, #252525 100%);
+    color: #e0e0e0;
+    padding: 28px 32px;
+    border-radius: 16px;
+    width: 90%;
+    max-width: 380px;
+    box-shadow:
+        0 20px 50px rgba(0, 0, 0, 0.5),
+        0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    animation: modalSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.batch-size-modal h3 {
+    margin: 0 0 8px 0;
+    font-size: 20px;
+    font-weight: 600;
+    color: #fff;
+}
+
+.batch-size-modal p {
+    margin: 0 0 20px 0;
+    color: #aaa;
+    font-size: 14px;
+}
+
+.batch-size-input {
+    width: 100%;
+    padding: 14px 16px;
+    font-size: 18px;
+    background: #2a2a2a;
+    border: 2px solid rgba(255, 255, 255, 0.15);
+    border-radius: 10px;
+    color: #fff;
+    text-align: center;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+}
+
+.batch-size-input:focus {
+    outline: none;
+    border-color: #4a90e2;
+    background: #2d2d2d;
+    box-shadow: 0 0 0 4px rgba(74, 144, 226, 0.15);
+}
+
+.batch-size-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 20px;
+}
+
+.batch-size-actions button {
+    flex: 1;
+    padding: 12px 20px;
+    font-size: 15px;
+    font-weight: 600;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.batch-cook-btn {
+    background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
+    color: #fff;
+    border: none;
+}
+
+.batch-cook-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(74, 144, 226, 0.35);
+}
+
+.batch-cancel-btn {
+    background: rgba(255, 255, 255, 0.08);
+    color: #aaa;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.batch-cancel-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+}
+
+/* =====================================================
+   NEW: Workspace Card Styles
+   ===================================================== */
+.workspace-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.workspace-card {
+    background: linear-gradient(135deg, #252525 0%, #1f1f1f 100%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 16px 20px;
+    transition: all 0.2s ease;
+}
+
+.workspace-card:hover {
+    border-color: rgba(255, 255, 255, 0.2);
+    background: linear-gradient(135deg, #2a2a2a 0%, #222222 100%);
+}
+
+.cook-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.cook-advisory {
+    display: block;
+    font-size: 12px;
+    color: #888;
+    margin-top: 6px;
+    font-style: italic;
+}
+
+.start-cook-btn-card {
+    background: linear-gradient(135deg, #27ae60 0%, #219a52 100%);
+    color: #fff;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.start-cook-btn-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(39, 174, 96, 0.35);
+}
+
+.review-btn-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.review-btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(118, 75, 162, 0.35);
+}
+
+/* Collection badges */
+.coll-badge {
+    display: inline-block;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-left: 6px;
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+.coll-badge.finalized {
+    background: rgba(39, 174, 96, 0.2);
+    color: #27ae60;
+    border: 1px solid rgba(39, 174, 96, 0.3);
+}
+
+.coll-badge.archived {
+    background: rgba(149, 165, 166, 0.2);
+    color: #95a5a6;
+    border: 1px solid rgba(149, 165, 166, 0.3);
+}
+
+/* =====================================================
+   NEW: Collection Lifecycle Actions (Archive/Finalize)
+   ===================================================== */
+.collection-lifecycle-actions {
+    margin-top: 16px;
+    padding-top: 16px;
+}
+
+.archive-btn,
+.unarchive-btn {
+    background: rgba(149, 165, 166, 0.2);
+    color: #95a5a6;
+    border: 1px solid rgba(149, 165, 166, 0.3);
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.archive-btn:hover,
+.unarchive-btn:hover {
+    background: rgba(149, 165, 166, 0.3);
+    color: #bdc3c7;
+    border-color: rgba(149, 165, 166, 0.5);
+}
+
+.finalize-btn {
+    background: linear-gradient(135deg, #27ae60 0%, #219a52 100%);
+    color: #fff;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.finalize-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(39, 174, 96, 0.35);
+}
+
+.finalize-btn:disabled {
+    background: rgba(39, 174, 96, 0.3);
+    color: rgba(255, 255, 255, 0.5);
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.finalized-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}

@@ -86,6 +86,7 @@ function createCookApi(deps = {}) {
   }
 
   // POST /internal/v1/data/collections/:id/resume - resume a paused/stopped cook
+  // ✅ MODIFIED: Now accepts batchSize instead of totalSupply
   // Note: This must be defined BEFORE the catch-all /:id routes
   router.post('/:id/resume', async (req, res) => {
     try {
@@ -105,18 +106,19 @@ function createCookApi(deps = {}) {
         return res.status(403).json({ error: 'unauthorized' });
       }
 
-      const { spellId, toolId, traitTree = [], paramOverrides = {}, totalSupply } = req.body;
-      
+      // ✅ NEW: Accept batchSize instead of totalSupply
+      const { spellId, toolId, traitTree = [], paramOverrides = {}, batchSize } = req.body;
+
       // ✅ Get current collection config
       const collToolId = collection.toolId || collection.config?.toolId;
       const collSpellId = collection.spellId || collection.config?.spellId;
-      
+
       // ✅ Determine final toolId and spellId - prioritize toolId over spellId
       // Rule: If toolId exists (in request or collection), use it and ignore spellId
       // This handles cases where collection was migrated from spell to tool but still has stale spellId
       let finalToolId = toolId || collToolId;
       let finalSpellId = null;
-      
+
       if (finalToolId) {
         // ✅ toolId exists - use it and clear spellId
         finalSpellId = null;
@@ -127,20 +129,20 @@ function createCookApi(deps = {}) {
           return res.status(400).json({ error: 'spellId or toolId required' });
         }
       }
-      
+
       const finalTraitTree = traitTree.length ? traitTree : (collection.config?.traitTree || []);
       const finalParamOverrides = Object.keys(paramOverrides).length ? paramOverrides : (collection.config?.paramOverrides || {});
-      const finalTotalSupply = Number.isFinite(totalSupply) ? totalSupply : (collection.totalSupply || collection.config?.totalSupply || 1);
+      // ✅ NEW: Use batchSize directly, default to 1 if not provided
+      const finalBatchSize = Number.isFinite(batchSize) && Number(batchSize) > 0 ? Number(batchSize) : 1;
 
       if(!cooksDb) return res.status(503).json({ error: 'cooksDb-unavailable' });
-      // Create a new cook record for the resume
-      const cook = await cooksDb.createCook({ collectionId, initiatorAccountId: userId, targetSupply: finalTotalSupply });
+      // Create a new cook record for the resume with batchSize as target
+      const cook = await cooksDb.createCook({ collectionId, initiatorAccountId: userId, targetSupply: finalBatchSize });
       const cookId = cook._id;
 
       // Return immediately and process startCook in the background to avoid timeout
-      // startCook handles resuming automatically by checking producedSoFar
-      logger.info(`[CookAPI] Starting resume cook for collection ${collectionId}, userId: ${userId}, cookId: ${cookId}, spellId: ${finalSpellId}, toolId: ${finalToolId}, totalSupply: ${finalTotalSupply}`);
-      
+      logger.info(`[CookAPI] Starting resume cook for collection ${collectionId}, userId: ${userId}, cookId: ${cookId}, spellId: ${finalSpellId}, toolId: ${finalToolId}, batchSize: ${finalBatchSize}`);
+
       CookOrchestratorService.startCook({
         collectionId,
         userId,
@@ -151,16 +153,16 @@ function createCookApi(deps = {}) {
         paramsTemplate: {},
         traitTree: finalTraitTree,
         paramOverrides: finalParamOverrides,
-        totalSupply: finalTotalSupply,
+        batchSize: finalBatchSize, // ✅ NEW: Pass batchSize instead of totalSupply
       }).then(result => {
-        logger.info(`[CookAPI] Resumed cook successfully. Queued ${result.queued} pieces for collection ${collectionId} by user ${userId}`);
+        logger.info(`[CookAPI] Resumed cook successfully. Queued ${result.queued} pieces for collection ${collectionId} by user ${userId}, batchSize: ${finalBatchSize}`);
       }).catch(err => {
         logger.error(`[CookAPI] Resume cook error for collection ${collectionId}:`, err);
         logger.error(`[CookAPI] Resume cook error stack:`, err.stack);
       });
 
       // Return immediately to avoid timeout
-      return res.json({ queued: 0, status: 'resuming' });
+      return res.json({ queued: 0, status: 'resuming', batchSize: finalBatchSize });
     } catch (err) {
       logger.error('[CookAPI] resume error', err);
       return res.status(500).json({ error: 'internal-error' });
@@ -1261,6 +1263,7 @@ function createCookApi(deps = {}) {
   });
 
   // POST /internal/cook/start
+  // ✅ MODIFIED: Now accepts batchSize (explicit number to generate) instead of totalSupply
   router.post('/start', async (req, res) => {
     try {
       const { collectionId, userId, spellId, toolId } = req.body || {};
@@ -1278,7 +1281,8 @@ function createCookApi(deps = {}) {
         return res.status(403).json({ error: 'unauthorized' });
       }
 
-      const { traitTypes = [], paramsTemplate = {}, traitTree = [], paramOverrides = {}, totalSupply } = req.body || {};
+      // ✅ NEW: Accept batchSize instead of totalSupply
+      const { traitTypes = [], paramsTemplate = {}, traitTree = [], paramOverrides = {}, batchSize } = req.body || {};
 
       const collToolId = collection.toolId || collection.config?.toolId;
       const collSpellId = collection.spellId || collection.config?.spellId;
@@ -1299,12 +1303,15 @@ function createCookApi(deps = {}) {
       const finalParamOverrides = (paramOverrides && Object.keys(paramOverrides).length)
         ? paramOverrides
         : (collection.config?.paramOverrides || {});
-      const finalTotalSupply = Number.isFinite(totalSupply) && Number(totalSupply) > 0
-        ? Number(totalSupply)
-        : (collection.totalSupply || collection.config?.totalSupply || 1);
+
+      // ✅ NEW: Use batchSize directly (user-specified), default to 1 if not provided
+      const finalBatchSize = Number.isFinite(batchSize) && Number(batchSize) > 0
+        ? Number(batchSize)
+        : 1;
 
       if(!cooksDb) return res.status(503).json({ error: 'cooksDb-unavailable' });
-      const cook = await cooksDb.createCook({ collectionId, initiatorAccountId: userId, targetSupply: finalTotalSupply });
+      // ✅ Create cook record with batchSize as the target for this cook session
+      const cook = await cooksDb.createCook({ collectionId, initiatorAccountId: userId, targetSupply: finalBatchSize });
       const cookId = cook._id;
 
       const result = await CookOrchestratorService.startCook({
@@ -1317,11 +1324,11 @@ function createCookApi(deps = {}) {
         paramsTemplate,
         traitTree: finalTraitTree,
         paramOverrides: finalParamOverrides,
-        totalSupply: Number.isFinite(finalTotalSupply) && finalTotalSupply > 0 ? finalTotalSupply : 1,
+        batchSize: finalBatchSize, // ✅ NEW: Pass batchSize instead of totalSupply
       });
 
-      logger.info(`[CookAPI] Started cook. Queued ${result.queued} for collection ${collectionId} by user ${userId}`);
-      return res.json({ queued: result.queued, status: 'queued' });
+      logger.info(`[CookAPI] Started cook. Queued ${result.queued} for collection ${collectionId} by user ${userId}, batchSize: ${finalBatchSize}`);
+      return res.json({ queued: result.queued, status: 'queued', batchSize: finalBatchSize });
     } catch (err) {
       logger.error('[CookAPI] start error', err);
       const spellMissing = err?.response?.data?.error?.code === 'SPELL_CAST_FAILED'

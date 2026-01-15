@@ -49,6 +49,9 @@ function createReviewQueueApi(dependencies = {}) {
       const normalizedMode = mode === 'cull' ? 'cull' : 'review';
       let claimed = await reviewQueueDb.claimNextBatch({ collectionId, limit: batchLimit, reviewerId, lockWindowMs, mode });
 
+      if (claimed.length < batchLimit && !generationOutputsDb) {
+        logger.warn('[reviewQueueApi] generationOutputsDb not available - fallback query skipped', { collectionId, mode: normalizedMode, claimed: claimed.length });
+      }
       if (claimed.length < batchLimit && generationOutputsDb) {
         const needed = batchLimit - claimed.length;
         const fallbackLimit = Math.min(needed * 3, MAX_POP_LIMIT);
@@ -100,6 +103,30 @@ function createReviewQueueApi(dependencies = {}) {
             (mode === 'cull' ? cullMatch : unresolvedMatch)
           ]
         };
+        // Diagnostic logging for cull mode
+        if (mode === 'cull') {
+          try {
+            const baseCount = await generationOutputsDb.count({ $and: [collectionMatch, { status: 'completed' }, { deliveryStrategy: { $ne: 'spell_step' } }] });
+            const approvedCount = await generationOutputsDb.count({
+              $and: [
+                collectionMatch,
+                { status: 'completed' },
+                { deliveryStrategy: { $ne: 'spell_step' } },
+                { $or: [{ 'metadata.reviewOutcome': { $in: ['accepted', 'approved'] } }, { reviewOutcome: { $in: ['accepted', 'approved'] } }] }
+              ]
+            });
+            const cullableCount = await generationOutputsDb.count(filter);
+            logger.info('[reviewQueueApi] Cull fallback diagnostic', {
+              collectionId,
+              baseCount, // pieces with status:completed, no spell_step
+              approvedCount, // pieces that passed review
+              cullableCount, // pieces available for cull
+              filter: JSON.stringify(filter)
+            });
+          } catch (diagErr) {
+            logger.warn('[reviewQueueApi] Cull diagnostic query failed', diagErr.message);
+          }
+        }
         try {
         const fallbackGenerations = await generationOutputsDb.findMany(filter, {
           sort: { requestTimestamp: 1, _id: 1 },

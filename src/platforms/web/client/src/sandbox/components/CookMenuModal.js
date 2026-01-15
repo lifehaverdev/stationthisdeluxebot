@@ -605,10 +605,10 @@ export default class CookMenuModal {
         if (view === 'detail') this.attachDetailEvents();
     }
 
-    // Home view markup
+    // Home view markup - NEW: 2-section model (Workspace + My Collections)
     renderHomeView() {
         const { activeCooks, collections, initialLoadComplete } = this.state;
-        
+
         // Show loading spinner if initial data hasn't loaded yet
         if (!initialLoadComplete) {
             return `
@@ -618,134 +618,97 @@ export default class CookMenuModal {
                 </div>
             `;
         }
-        
-        // ✅ Separate cooks into running, paused, stopped, and awaiting review
-        const runningCooks = [];
-        const pausedCooks = [];
-        const awaitingReview = [];
-        const stoppedCooks = [];
-        const supplyShortfall = [];
-        
-        activeCooks.forEach(c => {
-            const running = c.running || 0;
-            const queued = c.queued || 0;
-            const stats = this._getReviewStats(c);
-            const generationCount = stats.generationCount || 0;
-            const targetSupply = c.targetSupply || 0;
-            const isComplete = targetSupply > 0 && generationCount >= targetSupply;
-            const hasActiveJobs = running > 0 || queued > 0;
-            const normalizedStatus = (c.status || (running > 0 ? 'running' : 'paused')).toLowerCase();
-            const approvalsShort = targetSupply > 0 ? Math.max(0, targetSupply - stats.approvedCount) : 0;
-            const supplyMet = targetSupply > 0 ? approvalsShort === 0 : true;
-            
-            if (normalizedStatus === 'stopped') {
-                stoppedCooks.push(c);
-            } else if ((normalizedStatus === 'awaiting_review' || (isComplete && !hasActiveJobs)) && supplyMet) {
-                // All pieces generated, awaiting review
-                awaitingReview.push(c);
-            } else if (!hasActiveJobs && approvalsShort > 0) {
-                supplyShortfall.push(c);
-            } else if (running > 0 || normalizedStatus === 'running') {
-                // Actively running
-                runningCooks.push(c);
+
+        // ✅ NEW: Build Workspace items - non-finalized, non-archived collections
+        // Merge collection data with active cook status
+        const workspaceCollections = collections
+            .filter(c => !c.finalized && !c.archived)
+            .map(c => {
+                const cook = activeCooks.find(ac => ac.collectionId === c.collectionId);
+                return { ...c, cook };
+            })
+            // Sort: actively cooking first, then by updatedAt
+            .sort((a, b) => {
+                const aRunning = a.cook?.running > 0 ? 1 : 0;
+                const bRunning = b.cook?.running > 0 ? 1 : 0;
+                if (aRunning !== bRunning) return bRunning - aRunning;
+                return new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0);
+            });
+
+        // Render workspace cards with simplified status
+        const workspaceHtml = workspaceCollections.length ? workspaceCollections.map(c => {
+            const cook = c.cook;
+            const isRunning = cook && cook.running > 0;
+            const stats = cook ? this._getReviewStats(cook) : { generationCount: 0, approvedCount: 0, pendingReviewCount: 0 };
+            const targetSupply = c.totalSupply || c.config?.totalSupply || 0;
+
+            // Status text per plan: Active shows batch progress, Idle shows counts
+            let statusText;
+            if (isRunning) {
+                // Active: show batch progress "2/10" style
+                const batchProgress = cook.running || 0;
+                statusText = `${batchProgress} running`;
             } else {
-                // Paused but not complete
-                pausedCooks.push(c);
+                // Idle: "24 generated • 18 approved • 3 unreviewed"
+                const parts = [];
+                if (stats.generationCount > 0) parts.push(`${stats.generationCount} generated`);
+                if (stats.approvedCount > 0) parts.push(`${stats.approvedCount} approved`);
+                if (stats.pendingReviewCount > 0) parts.push(`${stats.pendingReviewCount} unreviewed`);
+                statusText = parts.length ? parts.join(' • ') : 'No pieces yet';
             }
-        });
-        
-        // Render actively running cooks with fire icon (using HTML entity to avoid encoding issues)
-        const runningHtml = runningCooks.length ? runningCooks.map(c => {
-            const title = this._buildCookTitle(c);
-            return `
-            <div class="cook-status-item" data-id="${c.collectionId}">
-                <div class="cook-title">${title}</div>
-                <div class="cook-status-text">${this._formatCookStatus(c)}</div>
-                <div class="cook-actions">
-                    <span class="cook-status-icon" title="Cooking in progress">&#128293;</span>
-                    <button data-action="pause" data-id="${c.collectionId}" title="Pause Cook" style="margin-left: 8px;">⏸</button>
-                    <button data-action="stop" data-id="${c.collectionId}" title="Stop Cook" style="margin-left: 8px;">⏹</button>
-                    <button data-action="review" data-id="${c.collectionId}" title="Review Pieces" style="margin-left: 8px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: none; border-radius: 4px; padding: 4px 10px;">Review</button>
-                </div>
-            </div>
-        `;
-        }).join('') : '';
-        
-        // Render paused cooks with ▶️ icon
-        const pausedHtml = pausedCooks.length ? pausedCooks.map(c => {
-            const title = this._buildCookTitle(c);
-            return `
-            <div class="cook-status-item" data-id="${c.collectionId}">
-                <div class="cook-title">${title}</div>
-                <div class="cook-status-text">${this._formatCookStatus(c)}</div>
-                <div class="cook-actions">
-                    <button data-action="resume" data-id="${c.collectionId}" title="Resume Cook">▶️</button>
-                    <button data-action="stop" data-id="${c.collectionId}" title="Stop Cook" style="margin-left: 8px;">⏹</button>
-                    <button data-action="review" data-id="${c.collectionId}" title="Review Pieces" style="margin-left: 8px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: none; border-radius: 4px; padding: 4px 10px;">Review</button>
-                </div>
-            </div>
-        `;
-        }).join('') : '';
-        
-        const stoppedHtml = stoppedCooks.length ? stoppedCooks.map(c => {
-            const title = this._buildCookTitle(c);
-            return `
-            <div class="cook-status-item" data-id="${c.collectionId}">
-                <div class="cook-title">${title}</div>
-                <div class="cook-status-text">${this._formatCookStatus(c)}</div>
-                <div class="cook-actions">
-                    <button data-action="start" data-id="${c.collectionId}" title="Start Cook">▶️ Start</button>
-                    <button data-action="review" data-id="${c.collectionId}" title="Review Pieces" style="margin-left: 8px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: none; border-radius: 4px; padding: 4px 10px;">Review</button>
-                </div>
-            </div>
-        `;
-        }).join('') : '';
-        
-        // Render awaiting review section
-        const shortfallHtml = supplyShortfall.length ? supplyShortfall.map(c => {
-            const title = this._buildCookTitle(c);
-            const { approvedCount } = this._getReviewStats(c);
-            const targetSupply = Number.isFinite(c.targetSupply) ? c.targetSupply : 0;
-            const shortfall = targetSupply > 0 ? Math.max(0, targetSupply - approvedCount) : 0;
-            return `
-            <div class="cook-status-item" data-id="${c.collectionId}">
-                <div class="cook-title">${title}</div>
-                <div class="cook-status-text">Short ${shortfall} approval${shortfall === 1 ? '' : 's'} • ${this._formatCookStatus(c)}</div>
-                <div class="cook-actions">
-                    <button data-action="start" data-id="${c.collectionId}" title="Run more cooks">▶️ Start</button>
-                    <button data-action="review" data-id="${c.collectionId}" title="Review Pieces" style="margin-left: 8px;">Review</button>
-                </div>
-            </div>
-        `;
-        }).join('') : '';
 
-        const reviewHtml = awaitingReview.length ? awaitingReview.map(c => {
-            const title = this._buildCookTitle(c);
+            // Optional advisory when approaching target
+            let advisory = '';
+            if (targetSupply > 0 && stats.approvedCount > 0) {
+                advisory = `<span class="cook-advisory">${stats.approvedCount}/${targetSupply} toward target</span>`;
+            }
+
+            // Buttons: Start Cook, Review (or Pause, Stop if cooking)
+            let buttonsHtml;
+            if (isRunning) {
+                buttonsHtml = `
+                    <button data-action="pause" data-id="${c.collectionId}" title="Pause Cook">⏸ Pause</button>
+                    <button data-action="stop" data-id="${c.collectionId}" title="Stop Cook">⏹ Stop</button>
+                    <button data-action="review" data-id="${c.collectionId}" class="review-btn-primary">Review</button>
+                `;
+            } else {
+                buttonsHtml = `
+                    <button data-action="start" data-id="${c.collectionId}" class="start-cook-btn-card">Start Cook</button>
+                    <button data-action="review" data-id="${c.collectionId}" class="review-btn-primary">Review</button>
+                `;
+            }
+
             return `
-            <div class="cook-status-item" data-id="${c.collectionId}">
-                <div class="cook-title">${title}</div>
-                <div class="cook-status-text">${this._formatCookStatus(c)}</div>
-                <div class="cook-actions">
-                    <button data-action="review" data-id="${c.collectionId}" title="Review Pieces" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">Review</button>
+            <div class="cook-status-item workspace-card" data-id="${c.collectionId}">
+                <div class="cook-card-header">
+                    <div class="cook-title">${c.name || 'Untitled'}</div>
+                    ${isRunning ? '<span class="cook-status-icon" title="Cooking in progress">&#128293;</span>' : ''}
                 </div>
+                <div class="cook-status-text">${statusText}</div>
+                ${advisory}
+                <div class="cook-actions">${buttonsHtml}</div>
             </div>
         `;
-        }).join('') : '<div class="empty-message">No cooks awaiting review.</div>';
+        }).join('') : '<div class="empty-message">No collections in workspace. Create one below!</div>';
 
-        const collHtml = collections.length ? collections.map(c => `
-            <div class="collection-card" data-id="${c.collectionId}">${c.name || 'Untitled'}</div>
-        `).join('') : '<div class="empty-message">No collections yet.</div>';
+        // ✅ NEW: My Collections - ALL collections (simple grid, names only, for navigation)
+        const allCollHtml = collections.length ? collections.map(c => {
+            const badges = [];
+            if (c.finalized) badges.push('<span class="coll-badge finalized">Finalized</span>');
+            if (c.archived) badges.push('<span class="coll-badge archived">Archived</span>');
+            return `
+            <div class="collection-card" data-id="${c.collectionId}">
+                ${c.name || 'Untitled'}
+                ${badges.join('')}
+            </div>`;
+        }).join('') : '<div class="empty-message">No collections yet.</div>';
 
         return `
-            ${runningCooks.length > 0 ? `<h2>Active Cooks</h2><div class="cook-status-list">${runningHtml}</div>` : ''}
-            ${pausedCooks.length > 0 ? `<h2>Paused Cooks</h2><div class="cook-status-list">${pausedHtml}</div>` : ''}
-            ${stoppedCooks.length > 0 ? `<h2>Stopped Cooks</h2><div class="cook-status-list">${stoppedHtml}</div>` : ''}
-            ${supplyShortfall.length > 0 ? `<h2>Needs More Supply</h2><div class="cook-status-list">${shortfallHtml}</div>` : ''}
-            ${awaitingReview.length > 0 ? `<h2>Awaiting Review</h2><div class="cook-status-list">${reviewHtml}</div>` : ''}
-            ${runningCooks.length === 0 && pausedCooks.length === 0 && awaitingReview.length === 0 && stoppedCooks.length === 0 ? '<h2>Active Cooks</h2><div class="empty-message">No active cooks.</div>' : ''}
+            <h2>Workspace</h2>
+            <div class="cook-status-list workspace-list">${workspaceHtml}</div>
             <hr>
             <h2>My Collections</h2>
-            <div class="collection-grid">${collHtml}<div class="collection-card new" data-action="new">＋</div></div>
+            <div class="collection-grid">${allCollHtml}<div class="collection-card new" data-action="new">＋</div></div>
             <div class="footer"><button class="help-btn">?</button></div>
         `;
     }
@@ -897,6 +860,14 @@ export default class CookMenuModal {
         
         const unsavedWarning = overviewDirty ? '<div class="unsaved-changes">You have unsaved changes</div>' : '';
         
+        // ✅ NEW: Archive/Finalize buttons per plan
+        const isArchived = selectedCollection.archived === true;
+        const isFinalized = selectedCollection.finalized === true;
+        const archiveButtonLabel = isArchived ? 'Unarchive' : 'Archive';
+        const archiveButtonClass = isArchived ? 'unarchive-btn' : 'archive-btn';
+        const finalizeButtonDisabled = isFinalized ? ' disabled' : '';
+        const finalizeButtonLabel = isFinalized ? 'Finalized' : 'Finalize';
+
         return `<table class="meta-table">${metaRows}${genRow}${paramSection}</table>
         ${unsavedWarning}
         <div style="margin-top:12px">
@@ -907,6 +878,13 @@ export default class CookMenuModal {
             ${hasCullDecisions ? '<button class="reset-cull-btn" title="Clear all keep/exclude decisions" style="margin-left:8px;">Reset Cull</button>' : ''}
             <button class="start-cook-btn">Start Cook</button>
             <button class="delete-collection-btn" style="float:right;color:#f55">Delete</button>
+        </div>
+        <hr style="margin: 20px 0; border: none; border-top: 1px solid rgba(255,255,255,0.1);">
+        <div class="collection-lifecycle-actions">
+            <h4 style="margin: 0 0 12px 0; font-size: 14px; color: #888;">Collection Lifecycle</h4>
+            <button class="${archiveButtonClass}" title="${isArchived ? 'Remove from archive and show in Workspace' : 'Hide from Workspace but keep in My Collections'}">${archiveButtonLabel}</button>
+            <button class="finalize-btn"${finalizeButtonDisabled} title="${isFinalized ? 'This collection has been finalized' : 'Permanently mark as complete (cannot be undone)'}" style="margin-left:8px;">${finalizeButtonLabel}</button>
+            ${isFinalized ? '<span class="finalized-badge" style="margin-left:8px; color:#27ae60; font-size:12px;">✓ Collection finalized</span>' : ''}
         </div>`;
     }
 
@@ -2060,6 +2038,7 @@ export default class CookMenuModal {
         return { toolId: null, spellId: null };
     }
 
+    // ✅ MODIFIED: Show batch size prompt instead of direct start
     async _startCookFromDetail() {
         let coll = this.state.selectedCollection;
         if (!coll) return;
@@ -2083,44 +2062,71 @@ export default class CookMenuModal {
                 return;
             }
 
-            const supply = this.state.pendingSupply !== null
-                ? this.state.pendingSupply
-                : Number(coll.totalSupply || coll.config?.totalSupply || 0);
-            if (!Number.isFinite(supply) || supply <= 0) {
-                alert('Please set a valid Total Supply (>0).');
-                return;
-            }
-
-            const paramOverrides = Object.keys(this.state.pendingParamOverrides).length > 0
-                ? { ...this.state.paramOverrides, ...this.state.pendingParamOverrides }
-                : (coll.config?.paramOverrides || this.state.paramOverrides || {});
-            const traitTree = coll.config?.traitTree || [];
-
-            this.setState({ loading: true });
-            const data = await this._startCookRequest({
-                collectionId: coll.collectionId,
-                toolId,
-                spellId,
-                traitTree,
-                paramOverrides,
-                totalSupply: supply
-            });
-            alert(`Cook started${typeof data.queued === 'number' ? ` (queued ${data.queued})` : ''}`);
-            await this.fetchActiveCooks(true);
+            // ✅ NEW: Show batch size prompt instead of using totalSupply
+            this.showBatchSizePrompt(coll.collectionId);
         } catch (err) {
             alert('Failed to start cook: ' + (err.message || 'error'));
-        } finally {
-            this.setState({ loading: false });
         }
     }
 
-    async startCookFromList(id) {
-        if (!id) return;
+    // ✅ NEW: Show batch size prompt modal before starting cook
+    showBatchSizePrompt(collectionId) {
+        if (!collectionId) return;
+
+        // Create inline modal for batch size input
+        const overlay = document.createElement('div');
+        overlay.className = 'batch-size-overlay';
+        overlay.innerHTML = `
+            <div class="batch-size-modal">
+                <h3>Start Cook</h3>
+                <p>How many pieces to generate?</p>
+                <input type="number" class="batch-size-input" min="1" max="1000" value="10" autofocus>
+                <div class="batch-size-actions">
+                    <button class="batch-cook-btn">Cook</button>
+                    <button class="batch-cancel-btn">Cancel</button>
+                </div>
+            </div>
+        `;
+
+        const input = overlay.querySelector('.batch-size-input');
+        const cookBtn = overlay.querySelector('.batch-cook-btn');
+        const cancelBtn = overlay.querySelector('.batch-cancel-btn');
+
+        const cleanup = () => {
+            overlay.remove();
+        };
+
+        const handleCook = async () => {
+            const batchSize = parseInt(input.value, 10);
+            if (!Number.isFinite(batchSize) || batchSize <= 0) {
+                alert('Please enter a valid number greater than 0.');
+                return;
+            }
+            cleanup();
+            await this._executeBatchCook(collectionId, batchSize);
+        };
+
+        cookBtn.onclick = handleCook;
+        cancelBtn.onclick = cleanup;
+        overlay.onclick = (e) => { if (e.target === overlay) cleanup(); };
+        input.onkeydown = (e) => {
+            if (e.key === 'Enter') handleCook();
+            if (e.key === 'Escape') cleanup();
+        };
+
+        document.body.appendChild(overlay);
+        input.focus();
+        input.select();
+    }
+
+    // Execute batch cook with explicit batchSize
+    async _executeBatchCook(collectionId, batchSize) {
+        if (!collectionId || !batchSize) return;
         try {
             this.setState({ loading: true });
-            let coll = this.state.collections.find(c => c.collectionId === id);
+            let coll = this.state.collections.find(c => c.collectionId === collectionId);
             if (!coll) {
-                const res = await fetch(`/api/v1/collections/${encodeURIComponent(id)}`, { credentials: 'include', cache: 'no-store' });
+                const res = await fetch(`/api/v1/collections/${encodeURIComponent(collectionId)}`, { credentials: 'include', cache: 'no-store' });
                 if (!res.ok) throw new Error('Collection not found');
                 coll = await res.json();
             }
@@ -2130,22 +2136,17 @@ export default class CookMenuModal {
                 throw new Error('Please select a generator (tool or spell) before starting.');
             }
 
-            const supply = Number(coll.totalSupply || coll.config?.totalSupply || 0);
-            if (!Number.isFinite(supply) || supply <= 0) {
-                throw new Error('Please set a valid Total Supply (>0) before starting.');
-            }
-
             const traitTree = coll.config?.traitTree || [];
             const paramOverrides = coll.config?.paramOverrides || {};
             const data = await this._startCookRequest({
-                collectionId: id,
+                collectionId,
                 toolId,
                 spellId,
                 traitTree,
                 paramOverrides,
-                totalSupply: supply
+                batchSize // ✅ NEW: Pass batchSize instead of totalSupply
             });
-            alert(`Cook started${typeof data.queued === 'number' ? ` (queued ${data.queued})` : ''}`);
+            alert(`Cook started: generating ${batchSize} piece${batchSize === 1 ? '' : 's'}`);
             await this.fetchActiveCooks(true);
         } catch (err) {
             alert('Failed to start cook: ' + (err.message || 'error'));
@@ -2154,15 +2155,41 @@ export default class CookMenuModal {
         }
     }
 
-    async _startCookRequest({ collectionId, toolId, spellId, traitTree = [], paramOverrides = {}, totalSupply }) {
-        const normalizedSupply = Number(totalSupply);
-        if (!Number.isFinite(normalizedSupply) || normalizedSupply <= 0) {
-            throw new Error('Please set a valid Total Supply (>0).');
+    // ✅ MODIFIED: Show batch size prompt instead of direct start
+    async startCookFromList(id) {
+        if (!id) return;
+        // Validate collection has generator before showing prompt
+        try {
+            let coll = this.state.collections.find(c => c.collectionId === id);
+            if (!coll) {
+                const res = await fetch(`/api/v1/collections/${encodeURIComponent(id)}`, { credentials: 'include', cache: 'no-store' });
+                if (!res.ok) throw new Error('Collection not found');
+                coll = await res.json();
+            }
+
+            const { toolId, spellId } = this._resolveCollectionGenerator(coll);
+            if (!toolId && !spellId) {
+                alert('Please select a generator (tool or spell) in collection settings before starting.');
+                return;
+            }
+
+            // Show batch size prompt
+            this.showBatchSizePrompt(id);
+        } catch (err) {
+            alert('Failed to start cook: ' + (err.message || 'error'));
+        }
+    }
+
+    // ✅ MODIFIED: Accept batchSize instead of totalSupply
+    async _startCookRequest({ collectionId, toolId, spellId, traitTree = [], paramOverrides = {}, batchSize }) {
+        const normalizedBatchSize = Number(batchSize);
+        if (!Number.isFinite(normalizedBatchSize) || normalizedBatchSize <= 0) {
+            throw new Error('Please enter a valid batch size (>0).');
         }
         const payload = {
             traitTree: Array.isArray(traitTree) ? traitTree : [],
             paramOverrides: (paramOverrides && typeof paramOverrides === 'object') ? paramOverrides : {},
-            totalSupply: normalizedSupply
+            batchSize: normalizedBatchSize // ✅ NEW: Send batchSize instead of totalSupply
         };
         if (toolId) {
             payload.toolId = toolId;
@@ -2939,6 +2966,19 @@ export default class CookMenuModal {
             this.deleteCook(selectedCollection.collectionId);
             this.setState({ view:'home', selectedCollection:null });
         };
+
+        // ✅ NEW: Archive button handler
+        if(modal.querySelector('.archive-btn')) modal.querySelector('.archive-btn').onclick=()=>{
+            this._archiveCollection();
+        };
+        if(modal.querySelector('.unarchive-btn')) modal.querySelector('.unarchive-btn').onclick=()=>{
+            this._unarchiveCollection();
+        };
+
+        // ✅ NEW: Finalize button handler
+        if(modal.querySelector('.finalize-btn')) modal.querySelector('.finalize-btn').onclick=()=>{
+            this._finalizeCollection();
+        };
     }
 
     async updateCollection(fields){
@@ -2955,6 +2995,72 @@ export default class CookMenuModal {
                 pendingSupply: null,
                 pendingParamOverrides: {}
             });
+            // Also refresh collections list to reflect changes in home view
+            await this.fetchCollections(true);
+        }
+    }
+
+    // ✅ NEW: Archive collection - soft hide from Workspace
+    async _archiveCollection() {
+        const { selectedCollection } = this.state;
+        if (!selectedCollection) return;
+        try {
+            this.setState({ loading: true });
+            await this.updateCollection({ archived: true });
+            alert('Collection archived. It will no longer appear in Workspace but remains in My Collections.');
+        } catch (err) {
+            alert('Failed to archive collection: ' + (err.message || 'error'));
+        } finally {
+            this.setState({ loading: false });
+            this.render();
+        }
+    }
+
+    // ✅ NEW: Unarchive collection - restore to Workspace
+    async _unarchiveCollection() {
+        const { selectedCollection } = this.state;
+        if (!selectedCollection) return;
+        try {
+            this.setState({ loading: true });
+            await this.updateCollection({ archived: false });
+            alert('Collection restored to Workspace.');
+        } catch (err) {
+            alert('Failed to unarchive collection: ' + (err.message || 'error'));
+        } finally {
+            this.setState({ loading: false });
+            this.render();
+        }
+    }
+
+    // ✅ NEW: Finalize collection - permanent completion
+    async _finalizeCollection() {
+        const { selectedCollection } = this.state;
+        if (!selectedCollection) return;
+        if (selectedCollection.finalized) {
+            alert('This collection is already finalized.');
+            return;
+        }
+
+        // Require confirmation since this is permanent
+        const confirmed = confirm(
+            'Are you sure you want to finalize this collection?\n\n' +
+            'This marks the collection as permanently complete and cannot be easily undone.\n\n' +
+            'Finalized collections remain visible in My Collections but are removed from Workspace.'
+        );
+        if (!confirmed) return;
+
+        try {
+            this.setState({ loading: true });
+            await this.updateCollection({
+                finalized: true,
+                finalizedAt: new Date().toISOString()
+            });
+            alert('Collection finalized successfully.');
+        } catch (err) {
+            alert('Failed to finalize collection: ' + (err.message || 'error'));
+        } finally {
+            this.setState({ loading: false });
+            this.render();
         }
     }
     
