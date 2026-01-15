@@ -954,7 +954,9 @@ class CollectionExportService {
       {
         $nor: [
           { 'metadata.exportExcluded': true },
-          { exportExcluded: true }
+          { exportExcluded: true },
+          { 'metadata.cullStatus': 'excluded' },
+          { cullStatus: 'excluded' }
         ]
       }
     ];
