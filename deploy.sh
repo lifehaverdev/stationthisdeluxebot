@@ -16,6 +16,11 @@ NETWORK_NAME="hyperbot_network"
 CONTAINER_ALIAS="hyperbot"
 WORKER_CONTAINER="hyperbotworker"
 WORKER_ALIAS="hyperbot-worker"
+TRAINING_WORKER_CONTAINER="hyperbottraining"
+TRAINING_WORKER_ALIAS="hyperbot-training"
+SWEEPER_CONTAINER="hyperbotsweeper"
+SWEEPER_ALIAS="hyperbot-sweeper"
+SWEEPER_INTERVAL="${SWEEPER_INTERVAL_SECONDS:-900}"  # 15 minutes default
 
 # Reverse proxy (Caddy)
 CADDY_CONTAINER="caddy_proxy"
@@ -233,6 +238,68 @@ ensure_worker_running() {
   start_worker_container
 }
 
+start_training_worker_container() {
+  run_logged "Starting VastAI training worker container..." docker run -d \
+    --env-file .env \
+    --network "${NETWORK_NAME}" \
+    --network-alias "${TRAINING_WORKER_ALIAS}" \
+    --name "${TRAINING_WORKER_CONTAINER}" \
+    --cap-drop ALL \
+    --security-opt no-new-privileges \
+    --restart unless-stopped \
+    "${IMAGE_NAME}" \
+    node scripts/workers/vastaiTrainingWorker.js
+}
+
+ensure_training_worker_running() {
+  # Only run training worker if VASTAI_API_KEY is configured
+  local vastai_key
+  vastai_key="$(load_env_var VASTAI_API_KEY)"
+  if [[ -z "${vastai_key}" ]]; then
+    log "VASTAI_API_KEY not set; skipping training worker."
+    return
+  fi
+
+  if docker ps --format '{{.Names}}' | grep -q "^${TRAINING_WORKER_CONTAINER}$"; then
+    log "Training worker container already running."
+    return
+  fi
+  log "Training worker container not running; starting..."
+  start_training_worker_container
+}
+
+start_sweeper_container() {
+  # Sweeper runs as a safety net even if training worker crashes
+  # Uses a shell loop to run the sweeper script every SWEEPER_INTERVAL seconds
+  run_logged "Starting instance sweeper container..." docker run -d \
+    --env-file .env \
+    --network "${NETWORK_NAME}" \
+    --network-alias "${SWEEPER_ALIAS}" \
+    --name "${SWEEPER_CONTAINER}" \
+    --cap-drop ALL \
+    --security-opt no-new-privileges \
+    --restart unless-stopped \
+    "${IMAGE_NAME}" \
+    /bin/sh -c "while true; do sleep ${SWEEPER_INTERVAL}; node scripts/workers/instanceSweeper.js || true; done"
+}
+
+ensure_sweeper_running() {
+  # Only run sweeper if VASTAI_API_KEY is configured
+  local vastai_key
+  vastai_key="$(load_env_var VASTAI_API_KEY)"
+  if [[ -z "${vastai_key}" ]]; then
+    log "VASTAI_API_KEY not set; skipping instance sweeper."
+    return
+  fi
+
+  if docker ps --format '{{.Names}}' | grep -q "^${SWEEPER_CONTAINER}$"; then
+    log "Instance sweeper container already running."
+    return
+  fi
+  log "Instance sweeper container not running; starting..."
+  start_sweeper_container
+}
+
 ensure_network() {
   if ! docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1; then
     run_logged "Creating docker network ${NETWORK_NAME}..." docker network create "${NETWORK_NAME}"
@@ -288,6 +355,8 @@ touch .docker-build-trigger
 echo "${GIT_COMMIT}" > .docker-build-trigger
 
 DEPLOY_WORKER_FLAG="${DEPLOY_WORKER:-0}"
+DEPLOY_TRAINING_WORKER_FLAG="${DEPLOY_TRAINING_WORKER:-0}"
+
 if [[ "${DEPLOY_WORKER_FLAG}" == "1" ]]; then
   pause_worker
   wait_for_worker_idle
@@ -300,8 +369,14 @@ enable_maintenance
 log "Stopping application container prior to build..."
 stop_container_if_exists "${APP_CONTAINER}"
 if [[ "${DEPLOY_WORKER_FLAG}" == "1" ]]; then
-  log "Stopping worker container prior to build..."
+  log "Stopping export worker container prior to build..."
   stop_container_if_exists "${WORKER_CONTAINER}"
+fi
+if [[ "${DEPLOY_TRAINING_WORKER_FLAG}" == "1" ]]; then
+  log "Stopping training worker container prior to build..."
+  stop_container_if_exists "${TRAINING_WORKER_CONTAINER}"
+  log "Stopping instance sweeper container prior to build..."
+  stop_container_if_exists "${SWEEPER_CONTAINER}"
 fi
 
 log "Cleaning up docker cache..."
@@ -368,6 +443,8 @@ unset PRIVATE_KEY
 
 disable_maintenance
 ensure_worker_running
+ensure_training_worker_running
+ensure_sweeper_running
 if [[ "${DEPLOY_WORKER_FLAG}" == "1" ]]; then
   resume_worker
 fi
