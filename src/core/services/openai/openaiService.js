@@ -1,9 +1,32 @@
 const OpenAI = require("openai");
 
 /**
+ * Delay helper for exponential backoff
+ */
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Check if an error is retryable (rate limit or server error)
+ */
+function isRetryableError(error) {
+  const status = error.status || error.response?.status;
+  // 429 = rate limit, 5xx = server errors
+  return status === 429 || (status >= 500 && status < 600);
+}
+
+/**
  * Service to interact with the OpenAI API.
+ *
+ * Includes automatic retry with exponential backoff for rate limits (429)
+ * and transient server errors (5xx).
  */
 class OpenAIService {
+  // Retry configuration
+  static MAX_RETRIES = 3;
+  static BASE_DELAY_MS = 1000;  // Start with 1 second
+  static MAX_DELAY_MS = 30000;  // Cap at 30 seconds
   /**
    * @param {object} options - Service configuration.
    * @param {object} options.logger - A logger instance.
@@ -19,6 +42,47 @@ class OpenAIService {
       this.openai = new OpenAI({ apiKey });
       this.logger.info('OpenAIService initialized successfully.');
     }
+  }
+
+  /**
+   * Execute an async function with exponential backoff retry on rate limits.
+   *
+   * @param {Function} fn - Async function to execute
+   * @param {string} operationName - Name for logging
+   * @returns {Promise<any>} Result of the function
+   */
+  async _withRetry(fn, operationName = 'OpenAI request') {
+    let lastError;
+
+    for (let attempt = 0; attempt <= OpenAIService.MAX_RETRIES; attempt++) {
+      try {
+        return await fn();
+      } catch (error) {
+        lastError = error;
+
+        if (!isRetryableError(error) || attempt === OpenAIService.MAX_RETRIES) {
+          throw error;
+        }
+
+        // Calculate delay with exponential backoff + jitter
+        const baseDelay = OpenAIService.BASE_DELAY_MS * Math.pow(2, attempt);
+        const jitter = Math.random() * 1000; // Add up to 1s of jitter
+        const delayMs = Math.min(baseDelay + jitter, OpenAIService.MAX_DELAY_MS);
+
+        // Check for Retry-After header (OpenAI sometimes sends this)
+        const retryAfter = error.headers?.['retry-after'];
+        const actualDelay = retryAfter ? Math.max(parseInt(retryAfter) * 1000, delayMs) : delayMs;
+
+        this.logger.warn(
+          `[OpenAI] ${operationName} rate limited (attempt ${attempt + 1}/${OpenAIService.MAX_RETRIES + 1}), ` +
+          `retrying in ${Math.round(actualDelay / 1000)}s...`
+        );
+
+        await delay(actualDelay);
+      }
+    }
+
+    throw lastError;
   }
 
   /**
@@ -57,11 +121,14 @@ class OpenAIService {
 
     this.logger.info(`Sending completion request to OpenAI with model ${model}...`);
     try {
-      const completion = await this.openai.chat.completions.create({
-        messages: messages,
-        model: model,
-        temperature: parseFloat(temperature),
-      });
+      const completion = await this._withRetry(
+        () => this.openai.chat.completions.create({
+          messages: messages,
+          model: model,
+          temperature: parseFloat(temperature),
+        }),
+        `chat completion (${model})`
+      );
 
       const responseContent = completion.choices[0]?.message?.content;
       if (responseContent) {
@@ -112,14 +179,17 @@ class OpenAIService {
 
     this.logger.info(`Requesting image generation with model ${model}...`);
     try {
-      const response = await this.openai.images.generate({
-        model,
-        prompt,
-        n: 1,
-        size,
-        response_format: responseFormat,
-        ...(quality ? { quality } : {})
-      });
+      const response = await this._withRetry(
+        () => this.openai.images.generate({
+          model,
+          prompt,
+          n: 1,
+          size,
+          response_format: responseFormat,
+          ...(quality ? { quality } : {})
+        }),
+        `image generation (${model})`
+      );
 
       const resultObj = response.data?.[0];
       if (resultObj) {

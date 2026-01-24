@@ -422,7 +422,9 @@
 }
 
 .status-queued { background: #ffa726; color: #000; }
+.status-provisioning { background: #ab47bc; color: #fff; }
 .status-running { background: #42a5f5; color: #fff; }
+.status-finalizing { background: #26a69a; color: #fff; }
 .status-completed { background: #66bb6a; color: #fff; }
 .status-failed { background: #ef5350; color: #fff; }
 .status-draft { background: #666; color: #fff; }
@@ -494,6 +496,28 @@
 .btn-danger:hover { background: #f56565; }
 .btn-primary:hover { background: #5aa1f2; }
 .btn-success:hover { background: #7cb342; }
+
+/* HuggingFace link */
+.hf-link {
+  color: #ffca28;
+  text-decoration: none;
+  font-size: 12px;
+  transition: color 0.2s ease;
+}
+
+.hf-link:hover {
+  color: #ffd54f;
+  text-decoration: underline;
+}
+
+/* Trigger word display */
+.trigger-word {
+  font-family: monospace;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+}
 
 /* Image Preview */
 .image-preview {

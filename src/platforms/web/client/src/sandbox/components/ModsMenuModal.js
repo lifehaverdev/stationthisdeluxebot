@@ -104,13 +104,37 @@ export default class ModsMenuModal {
     }
   }
 
+  // Poll for training updates when there are active trainings
+  startTrainingPolling() {
+    if (this._trainingPollInterval) return; // Already polling
+    const ACTIVE_STATUSES = ['QUEUED', 'PROVISIONING', 'RUNNING', 'FINALIZING'];
+    this._trainingPollInterval = setInterval(() => {
+      // Only poll if we have active trainings and the modal is open on the train tab
+      const hasActiveTrainings = this.state.trainings.some(
+        t => ACTIVE_STATUSES.includes(t.status)
+      );
+      if (hasActiveTrainings && this.modalElement && this.state.rootTab === 'train') {
+        this.fetchTrainings();
+      } else if (!hasActiveTrainings && this._trainingPollInterval) {
+        this.stopTrainingPolling();
+      }
+    }, 10000); // Poll every 10 seconds
+  }
+
+  stopTrainingPolling() {
+    if (this._trainingPollInterval) {
+      clearInterval(this._trainingPollInterval);
+      this._trainingPollInterval = null;
+    }
+  }
+
   setupWebSocketListeners() {
     if (this.ws) {
       this.ws.on('trainingUpdate', (data) => {
         this.updateTrainingStatus(data.trainingId, data.status, data.progress);
         this.render();
       });
-      
+
       this.ws.on('trainingError', (data) => {
         this.showTrainingError(data.trainingId, data.error);
       });
@@ -367,11 +391,15 @@ export default class ModsMenuModal {
     this.render();
     this.attachCloseEvents();
     this.fetchStats();
-    if(this.state.rootTab==='train') { this.fetchDatasets(); this.fetchTrainings(); }
+    if(this.state.rootTab==='train') {
+      this.fetchDatasets();
+      this.fetchTrainings().then(() => this.startTrainingPolling());
+    }
   }
 
   hide() {
     if (!this.modalElement) return;
+    this.stopTrainingPolling();
     document.removeEventListener('keydown', this.handleKeyDown);
     document.body.removeChild(this.modalElement);
     this.modalElement = null;
@@ -617,6 +645,14 @@ export default class ModsMenuModal {
                 </div>
               </div>
 
+              <div class="form-section">
+                <h3>Model Card</h3>
+                <label>Description (optional):<br>
+                  <textarea name="description" placeholder="Describe what this LoRA does, its visual style, and best use cases. Leave blank to auto-generate.">${formValues.description||''}</textarea>
+                </label>
+                <p class="hint">If left blank, a description will be generated from your training captions. If that fails, a default description will be used.</p>
+              </div>
+
               <div class="form-section advanced-params">
                 <h3>Advanced Parameters</h3>
                 <div class="advanced-toggle">
@@ -676,49 +712,10 @@ export default class ModsMenuModal {
                 </div>
               </div>
 
-              <div class="form-section marketplace-section">
-                <h3>Marketplace Settings</h3>
-                <div class="marketplace-options">
-                  <label><input type="checkbox" name="enableMarketplace" ${formValues.enableMarketplace?'checked':''} /> Enable marketplace listing</label>
-                  <div class="marketplace-details" id="marketplace-details" style="display:none;">
-                    <div class="param-row">
-                      <label>Price (USD):<br><input type="number" name="priceUSD" value="${formValues.priceUSD||0}" min="0" step="0.01" /></label>
-                      <label>License Type:<br>
-                        <select name="licenseType">
-                          <option value="commercial">Commercial Use</option>
-                          <option value="personal">Personal Use Only</option>
-                          <option value="creative-commons">Creative Commons</option>
-                        </select>
-                      </label>
-                    </div>
-                    <div class="param-row">
-                      <label>License Terms:<br><textarea name="licenseTerms" placeholder="Describe usage terms...">${formValues.licenseTerms||''}</textarea></label>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="form-section marketplace-section">
-                <h3>Model Marketplace</h3>
-                <div class="marketplace-options">
-                  <label><input type="checkbox" name="publishModel" ${formValues.publishModel?'checked':''} /> Publish trained model to marketplace</label>
-                  <div class="publish-details" id="publish-details" style="display:none;">
-                    <div class="param-row">
-                      <label>Model Price (USD):<br><input type="number" name="modelPriceUSD" value="${formValues.modelPriceUSD||0}" min="0" step="0.01" /></label>
-                      <label>Rental Option:<br><input type="checkbox" name="enableRental" ${formValues.enableRental?'checked':''} /> Enable hourly rental</label>
-                    </div>
-                    <div class="param-row">
-                      <label>Rental Price (USD/hour):<br><input type="number" name="rentalPriceUSD" value="${formValues.rentalPriceUSD||0}" min="0" step="0.01" disabled /></label>
-                      <label>Rental Duration (hours):<br><input type="number" name="rentalDuration" value="${formValues.rentalDuration||24}" min="1" max="168" disabled /></label>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <label>Offering ID:<br><input name="offeringId" value="${formValues.offeringId||''}" /></label><br>
             `}
             ${imageGallery}
             ${addImagesSection}
-            <button type="submit" ${submitting||uploading?'disabled':''}>${submitting?'Saving…':uploading?'Uploading…':'Save'}</button>
+            <button type="submit" ${submitting||uploading?'disabled':''}>${submitting ? (formMode === 'new-training' ? 'Starting…' : 'Saving…') : uploading ? 'Uploading…' : (formMode === 'new-training' ? 'Start Training' : 'Save')}</button>
             <button type="button" class="cancel-btn">Cancel</button>
           </form>`;
       } else {
@@ -775,8 +772,15 @@ export default class ModsMenuModal {
         );
         const captionProgressHtml = this.renderCaptionProgressPanel();
         const trList = loadingTrain ? '' : trainError ? '' : (
-          trainings.length ? 
-          '<div class="trainings-grid">'+trainings.map(tr=>`
+          trainings.length ?
+          '<div class="trainings-grid">'+trainings.map(tr=>{
+            const progressText = tr.currentStep && tr.totalSteps
+              ? `${tr.currentStep}/${tr.totalSteps} (${tr.progress||0}%)`
+              : `${tr.progress||0}%`;
+            const hfLink = tr.modelRepoUrl
+              ? `<a href="${tr.modelRepoUrl}" target="_blank" class="hf-link">View on HuggingFace</a>`
+              : '';
+            return `
             <div class="training-card" data-id="${tr._id}">
               <div class="training-header">
                 <h4>${tr.name||'Unnamed Training'}</h4>
@@ -792,21 +796,22 @@ export default class ModsMenuModal {
                   <div class="progress-bar">
                     <div class="progress-fill" style="width: ${tr.progress||0}%"></div>
                   </div>
-                  <span class="progress-text">${tr.progress||0}%</span>
+                  <span class="progress-text">${progressText}</span>
                 </div>
                 <div class="detail-item">
-                  <span class="label">Cost:</span>
-                  <span class="value">${tr.costPoints||0} points</span>
+                  <span class="label">Trigger:</span>
+                  <span class="value trigger-word">${tr.triggerWord||tr.triggerWords?.[0]||'—'}</span>
                 </div>
+                ${tr.status === 'COMPLETED' && hfLink ? `<div class="detail-item">${hfLink}</div>` : ''}
               </div>
               <div class="training-actions">
                 <button class="btn-secondary view-details" data-id="${tr._id}">View Details</button>
-                ${tr.status === 'QUEUED' ? '<button class="btn-danger cancel-training" data-id="${tr._id}">Cancel</button>' : ''}
-                ${tr.status === 'FAILED' ? '<button class="btn-primary retry-training" data-id="${tr._id}">Retry</button>' : ''}
-                ${tr.status === 'COMPLETED' ? '<button class="btn-success download-model" data-id="${tr._id}">Download</button>' : ''}
+                ${tr.status === 'QUEUED' ? `<button class="btn-danger cancel-training" data-id="${tr._id}">Cancel</button>` : ''}
+                ${tr.status === 'FAILED' ? `<button class="btn-primary retry-training" data-id="${tr._id}">Retry</button><button class="btn-danger delete-training" data-id="${tr._id}">Delete</button>` : ''}
+                ${tr.status === 'COMPLETED' ? `<button class="btn-danger delete-training" data-id="${tr._id}">Delete</button>` : ''}
               </div>
-            </div>
-          `).join('')+'</div>' : 
+            </div>`;
+          }).join('')+'</div>' :
           '<div class="empty-message">No trainings yet. Create your first training to get started!</div>'
         );
         mainContent = `
@@ -922,7 +927,12 @@ export default class ModsMenuModal {
         if(tab!==this.state.rootTab){
           const newView = tab==='train' ? 'trainDash' : 'intro';
           this.setState({ rootTab: tab, view: newView });
-          if(tab==='train') { this.fetchDatasets(); this.fetchTrainings(); }
+          if(tab==='train') {
+            this.fetchDatasets();
+            this.fetchTrainings().then(() => this.startTrainingPolling());
+          } else {
+            this.stopTrainingPolling();
+          }
         }
       };
     });
@@ -1099,6 +1109,15 @@ export default class ModsMenuModal {
           this.downloadModel(trainingId);
         };
       }
+
+      // Delete training
+      const deleteBtn = card.querySelector('.delete-training');
+      if (deleteBtn) {
+        deleteBtn.onclick = (e) => {
+          e.stopPropagation();
+          this.deleteTraining(trainingId);
+        };
+      }
     });
 
     // Caption card actions
@@ -1168,22 +1187,24 @@ export default class ModsMenuModal {
     if(tr){ this.setState({formMode:'edit-training',formValues:{...tr}}); }
     else { 
       const firstDs=this.state.datasets[0]; 
+      // Default to FLUX with values from flux-lora-ai-toolkit.yml config
       this.setState({
         formMode:'new-training',
         formValues:{
           name:'',
           datasetId:firstDs?firstDs._id:'',
-          modelType:'SDXL',
-          baseModel:'SDXL',
+          modelType:'FLUX',
+          baseModel:'FLUX',
           offeringId:'',
-          steps:1000,
-          learningRate:0.0004,
+          steps:4000,
+          learningRate:0.0001,
           batchSize:1,
           resolution:'1024,1024',
-          loraRank:16,
+          loraRank:32,
           loraAlpha:32,
-          loraDropout:0.1,
-          triggerWords:''
+          loraDropout:0.05,
+          triggerWords:'',
+          description:''
         }
       });
     } 
@@ -1413,7 +1434,7 @@ export default class ModsMenuModal {
     try {
       const csrfRes = await fetch('/api/v1/csrf-token');
       const { csrfToken } = await csrfRes.json();
-      
+
       await fetch(`/api/v1/trainings/${trainingId}/retry`, {
         method: 'POST',
         credentials: 'include',
@@ -1422,11 +1443,40 @@ export default class ModsMenuModal {
           'x-csrf-token': csrfToken
         }
       });
-      
+
       this.fetchTrainings(); // Refresh the list
     } catch (error) {
       console.error('Failed to retry training:', error);
       this.setState({ formError: 'Failed to retry training' });
+    }
+  }
+
+  async deleteTraining(trainingId) {
+    const training = this.state.trainings.find(t => t._id === trainingId);
+    const confirmed = confirm(`Delete training "${training?.name || trainingId}"? This cannot be undone.`);
+    if (!confirmed) return;
+
+    try {
+      const csrfRes = await fetch('/api/v1/csrf-token');
+      const { csrfToken } = await csrfRes.json();
+
+      const response = await fetch(`/api/v1/trainings/${trainingId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-csrf-token': csrfToken
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Delete failed: ${response.status}`);
+      }
+
+      this.fetchTrainings(); // Refresh the list
+    } catch (error) {
+      console.error('Failed to delete training:', error);
+      this.setState({ formError: 'Failed to delete training' });
     }
   }
 
@@ -1480,11 +1530,11 @@ export default class ModsMenuModal {
         };
       case 'FLUX':
         return {
-          steps: 2000,
-          learningRate: 0.0002,
+          steps: 4000,
+          learningRate: 0.0001,
           loraRank: 32,
-          loraAlpha: 64,
-          loraDropout: 0.1
+          loraAlpha: 32,
+          loraDropout: 0.05
         };
       case 'WAN':
         return {
@@ -2142,16 +2192,27 @@ export default class ModsMenuModal {
   // Calculate training cost based on parameters
   async calculateTrainingCost(formValues) {
     try {
-      const response = await fetch('/api/v1/training/calculate-cost', {
+      const csrfRes = await fetch('/api/v1/csrf-token');
+      const { csrfToken } = await csrfRes.json();
+
+      const response = await fetch('/api/v1/trainings/calculate-cost', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-csrf-token': csrfToken
+        },
         body: JSON.stringify(formValues)
       });
-      
+
+      if (!response.ok) {
+        throw new Error(`Cost calculation failed: ${response.status}`);
+      }
+
       const costData = await response.json();
-      this.setState({ 
+      this.setState({
         estimatedCost: costData.totalCost,
-        costBreakdown: costData.breakdown 
+        costBreakdown: costData.breakdown
       });
       return costData.totalCost;
     } catch (error) {
@@ -2159,16 +2220,16 @@ export default class ModsMenuModal {
       // Fallback to local calculation
       const modelType = formValues.modelType || 'SDXL';
       const steps = parseInt(formValues.steps) || 1000;
-      
+
       const baseCosts = {
         'SDXL': 100,
         'FLUX': 200,
         'WAN': 150
       };
-      
+
       const baseCost = baseCosts[modelType] || 100;
       const stepMultiplier = Math.max(1, steps / 1000);
-      
+
       return Math.round(baseCost * stepMultiplier);
     }
   }
@@ -2243,17 +2304,23 @@ export default class ModsMenuModal {
     }
     
     // Calculate and confirm cost for training
+    let trainingCost = 0;
     if (formMode === 'new-training' || formMode === 'edit-training') {
-      const cost = await this.calculateTrainingCost(formValues);
-      const confirmed = confirm(`Training will cost ${cost} points. Continue?`);
+      trainingCost = await this.calculateTrainingCost(formValues);
+      const confirmed = confirm(`Training will cost ${trainingCost} points. Continue?`);
       if (!confirmed) {
         this.setState({ submitting: false });
         return;
       }
     }
-    
+
     try{
-      let url='',method='POST',payload=formValues;
+      let url='',method='POST',payload={...formValues};
+
+      // Add cost to training payload
+      if (formMode === 'new-training' || formMode === 'edit-training') {
+        payload.costPoints = trainingCost;
+      }
       if(formMode==='new-dataset') url='/api/v1/datasets';
       else if(formMode==='edit-dataset'){ url=`/api/v1/datasets/${encodeURIComponent(formValues._id)}`; method='PUT'; }
       else if(formMode==='new-training') url='/api/v1/trainings';

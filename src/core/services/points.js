@@ -302,6 +302,102 @@ class PointsService {
     // Guests get a fraction of regular starter points
     return Math.floor((this.options.noCoinerStarter || 199800) / 5);
   }
+
+  /**
+   * Deduct points for a training job
+   * Uses credit ledger (wallet-based) system exclusively
+   *
+   * @param {Object} options - Deduction options
+   * @param {string} options.walletAddress - User's wallet address (required)
+   * @param {number} options.pointsToDeduct - Points to deduct
+   * @param {Object} [options.metadata] - Additional metadata for the transaction
+   * @param {string} [options.metadata.trainingId] - Training job ID
+   * @param {string} [options.metadata.modelName] - Name of the trained model
+   * @param {number} [options.metadata.trainingCostUsd] - Cost in USD
+   * @returns {Promise<Object>} Deduction result
+   */
+  async deductPointsForTraining(options) {
+    const { walletAddress, pointsToDeduct, metadata = {} } = options;
+
+    if (!walletAddress) {
+      throw new Error('walletAddress is required for training deduction');
+    }
+
+    if (!this.creditLedgerDb) {
+      throw new Error('creditLedgerDb is required for training deduction');
+    }
+
+    if (!pointsToDeduct || pointsToDeduct <= 0) {
+      throw new Error('pointsToDeduct must be a positive number');
+    }
+
+    const result = await this._deductFromCreditLedger(walletAddress, pointsToDeduct, metadata);
+    return {
+      success: true,
+      source: 'credit_ledger',
+      walletAddress,
+      pointsDeducted: pointsToDeduct,
+      ...result,
+      metadata
+    };
+  }
+
+  /**
+   * Deduct points from credit ledger (across multiple deposits if needed)
+   * @param {string} walletAddress - User's wallet address
+   * @param {number} pointsToDeduct - Points to deduct
+   * @param {Object} metadata - Transaction metadata
+   * @returns {Promise<Object>} Deduction details
+   * @private
+   */
+  async _deductFromCreditLedger(walletAddress, pointsToDeduct, metadata) {
+    // Get total available
+    const totalAvailable = await this.creditLedgerDb.sumPointsRemainingForWalletAddress(walletAddress);
+
+    if (totalAvailable < pointsToDeduct) {
+      throw new Error(
+        `Insufficient points. Available: ${totalAvailable}, Required: ${pointsToDeduct}`
+      );
+    }
+
+    // Get active deposits sorted by funding rate (lowest first)
+    const deposits = await this.creditLedgerDb.findActiveDepositsForWalletAddress(walletAddress);
+
+    let remainingToDeduct = pointsToDeduct;
+    const deductions = [];
+
+    for (const deposit of deposits) {
+      if (remainingToDeduct <= 0) break;
+
+      const availableInDeposit = deposit.points_remaining || 0;
+      const toDeductFromThis = Math.min(availableInDeposit, remainingToDeduct);
+
+      if (toDeductFromThis > 0) {
+        await this.creditLedgerDb.deductPointsFromDeposit(deposit._id, toDeductFromThis);
+        deductions.push({
+          depositId: deposit._id,
+          deducted: toDeductFromThis,
+          fundingRate: deposit.funding_rate_applied
+        });
+        remainingToDeduct -= toDeductFromThis;
+      }
+    }
+
+    if (remainingToDeduct > 0) {
+      // Should not happen if totalAvailable check passed, but defensive
+      throw new Error(`Failed to deduct all points. Remaining: ${remainingToDeduct}`);
+    }
+
+    const newBalance = await this.creditLedgerDb.sumPointsRemainingForWalletAddress(walletAddress);
+
+    return {
+      depositsUsed: deductions.length,
+      deductions,
+      previousBalance: totalAvailable,
+      newBalance
+    };
+  }
+
 }
 
 module.exports = PointsService; 

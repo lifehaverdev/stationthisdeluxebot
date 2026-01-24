@@ -187,6 +187,159 @@ class LoRAModelsDB extends BaseDB {
     return result.insertedId ? { _id: result.insertedId, ...dataToInsert } : null;
   }
 
+  /**
+   * Creates a LoRA model record from a completed training job.
+   * @param {Object} trainingResult - Output from launch-training.js
+   * @param {string} trainingResult.modelName - Name of the trained model
+   * @param {string} trainingResult.triggerWord - Trigger word for the model
+   * @param {number} trainingResult.steps - Total training steps
+   * @param {string} [trainingResult.hfRepoId] - HuggingFace repo (e.g., "ms2stationthis/modelname")
+   * @param {string} [trainingResult.r2ModelUrl] - Cloudflare R2 URL for the model file
+   * @param {string[]} [trainingResult.sampleImageUrls] - URLs to sample images
+   * @param {string} [trainingResult.description] - Model description (from captions/OpenAI)
+   * @param {string} trainingResult.baseModel - Base model used (e.g., "black-forest-labs/FLUX.1-dev")
+   * @param {string} [trainingResult.trainingId] - ID of the training session record
+   * @param {string} [trainingResult.datasetId] - ID of the dataset used
+   * @param {number} [trainingResult.trainingDuration] - Duration in seconds
+   * @param {number} [trainingResult.finalLoss] - Final loss value
+   * @param {string} masterAccountId - The ID of the user who initiated the training.
+   * @returns {Promise<Object|null>} The created LoRA model document or null on error.
+   */
+  async createTrainedLoRAModel(trainingResult, masterAccountId) {
+    const now = new Date();
+
+    const {
+      modelName,
+      triggerWord,
+      steps,
+      hfRepoId,
+      r2ModelUrl,
+      sampleImageUrls = [],
+      description,
+      baseModel,
+      trainingId,
+      datasetId,
+      trainingDuration,
+      finalLoss
+    } = trainingResult;
+
+    if (!modelName || !triggerWord) {
+      this.logger.error('[LoRAModelDb] createTrainedLoRAModel requires modelName and triggerWord');
+      return null;
+    }
+
+    if (!hfRepoId && !r2ModelUrl) {
+      this.logger.error('[LoRAModelDb] createTrainedLoRAModel requires either hfRepoId or r2ModelUrl');
+      return null;
+    }
+
+    // Generate slug from model name
+    let slugBase = modelName
+      .toString()
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .trim()
+      .replace(/\s+/g, '-');
+
+    if (!slugBase) {
+      slugBase = 'trained-lora';
+    }
+
+    const uniqueSlug = `${slugBase}-${new ObjectId().toHexString().substring(0, 6)}`;
+
+    // Map base model to checkpoint enum
+    let checkpoint = 'FLUX'; // Default for our training
+    if (baseModel) {
+      const lowerBase = baseModel.toLowerCase();
+      if (lowerBase.includes('flux')) checkpoint = 'FLUX';
+      else if (lowerBase.includes('sdxl')) checkpoint = 'SDXL';
+      else if (lowerBase.includes('sd1.5') || lowerBase.includes('sd 1.5')) checkpoint = 'SD1.5';
+      else if (lowerBase.includes('sd3') || lowerBase.includes('sd 3')) checkpoint = 'SD3';
+    }
+
+    // Build preview images from samples
+    let previewImages = [];
+    if (sampleImageUrls && sampleImageUrls.length > 0) {
+      previewImages = sampleImageUrls;
+    } else if (hfRepoId) {
+      // Default HuggingFace sample URLs if not provided
+      previewImages = [
+        `https://huggingface.co/${hfRepoId}/resolve/main/samples/sample_000.jpg`,
+        `https://huggingface.co/${hfRepoId}/resolve/main/samples/sample_001.jpg`,
+        `https://huggingface.co/${hfRepoId}/resolve/main/samples/sample_002.jpg`,
+        `https://huggingface.co/${hfRepoId}/resolve/main/samples/sample_003.jpg`
+      ];
+    }
+
+    // Build publishedTo based on upload destination
+    const publishedTo = {};
+    if (hfRepoId) {
+      publishedTo.huggingfaceRepo = hfRepoId;
+      publishedTo.huggingfaceUrl = `https://huggingface.co/${hfRepoId}`;
+      publishedTo.modelFileUrl = `https://huggingface.co/${hfRepoId}/resolve/main/${modelName}.safetensors`;
+    }
+    if (r2ModelUrl) {
+      publishedTo.cloudflareUrl = r2ModelUrl;
+      publishedTo.modelFileUrl = r2ModelUrl;
+    }
+    publishedTo.uploadedAt = now;
+
+    const dataToInsert = {
+      name: modelName,
+      description: description || `Trained LoRA model with trigger word: ${triggerWord}`,
+      triggerWords: [triggerWord],
+      checkpoint,
+      tags: [
+        { tag: 'trained', source: 'training' },
+        { tag: checkpoint.toLowerCase(), source: 'training' }
+      ],
+      previewImages,
+      defaultWeight: 1.0,
+      slug: uniqueSlug,
+      permissionType: 'public',
+      visibility: 'public', // Auto-visible since it's our own training
+      usageCount: 0,
+      createdBy: new ObjectId(masterAccountId),
+      ownedBy: new ObjectId(masterAccountId),
+
+      // Training provenance
+      trainedFrom: {
+        trainingId: trainingId ? new ObjectId(trainingId) : null,
+        datasetId: datasetId ? new ObjectId(datasetId) : null,
+        tool: 'ai-toolkit',
+        steps: steps || 0,
+        baseModel: baseModel || 'black-forest-labs/FLUX.1-dev',
+        duration: trainingDuration || null,
+        finalLoss: finalLoss || null,
+        trainedAt: now
+      },
+
+      // Where the model file lives
+      publishedTo,
+
+      // Auto-approved moderation (trusted source - our own training)
+      moderation: {
+        status: 'approved',
+        flagged: false,
+        requestedBy: new ObjectId(masterAccountId),
+        requestedAt: now,
+        reviewedBy: 'AUTO_APPROVED_TRAINING',
+        reviewedAt: now,
+        issues: []
+      },
+
+      cognates: [],
+      createdAt: now,
+      updatedAt: now
+    };
+
+    this.logger.info(`[LoRAModelDb] Creating trained LoRA: ${dataToInsert.name} (Slug: ${dataToInsert.slug}) by MAID ${masterAccountId}`);
+    this.logger.info(`[LoRAModelDb] Published to: ${hfRepoId ? `HuggingFace ${hfRepoId}` : `R2 ${r2ModelUrl}`}`);
+
+    const result = await this.insertOne(dataToInsert);
+    return result.insertedId ? { _id: result.insertedId, ...dataToInsert } : null;
+  }
+
   async findById(modelId) {
     return this.findOne({ _id: new ObjectId(modelId) });
   }

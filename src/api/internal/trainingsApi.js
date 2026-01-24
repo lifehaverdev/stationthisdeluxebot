@@ -3,6 +3,7 @@
  */
 const express = require('express');
 const { ObjectId } = require('../../core/services/db/BaseDB');
+const internalApiClient = require('../../utils/internalApiClient');
 
 // Assume trainingDb.js provides functions like:
 // const trainingDb = require('../../core/services/db/trainingDb'); // Adjust path as needed
@@ -53,12 +54,14 @@ function createTrainingsApi(dependencies) {
 
   // POST /internal/v1/data/trainings - Create a new training
   router.post('/', async (req, res, next) => {
-    const { 
-      masterAccountId, 
-      name, 
-      notes, 
-      allowPublishing, 
+    const {
+      masterAccountId,
+      name,
+      notes,
+      allowPublishing,
       tags,
+      description,
+      costPoints,
       // New training parameters
       datasetId,
       modelType,
@@ -73,26 +76,73 @@ function createTrainingsApi(dependencies) {
       loraDropout,
       triggerWords
     } = req.body;
-    
+
     logger.info(`[TrainingsAPI] POST / - Creating new training with name "${name}" for MAID ${masterAccountId}`);
     if (!masterAccountId || !name) {
       return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'masterAccountId and name are required.' } });
     }
-    
+
     // Validate required training fields
     if (!datasetId || !modelType || !triggerWords) {
       return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'datasetId, modelType, and triggerWords are required for training.' } });
     }
-    
+
     try {
+      // Fetch user via internal API to get their primary wallet address (required for billing)
+      let walletAddress = null;
+      try {
+        const userResponse = await internalApiClient.get(`/internal/v1/data/users/${masterAccountId}`);
+        const user = userResponse.data;
+        if (user && user.wallets && user.wallets.length > 0) {
+          // Find primary wallet, or use first wallet
+          const primaryWallet = user.wallets.find(w => w.isPrimary) || user.wallets[0];
+          walletAddress = primaryWallet.address;
+          logger.info(`[TrainingsAPI] Found wallet ${walletAddress?.slice(0, 10)}... for user ${masterAccountId}`);
+        }
+      } catch (userErr) {
+        logger.error(`[TrainingsAPI] Failed to fetch user ${masterAccountId}: ${userErr.message}`);
+        return res.status(500).json({ error: { code: 'USER_FETCH_FAILED', message: 'Failed to fetch user information.' } });
+      }
+
+      // Wallet is required for billing - fail early if not found
+      if (!walletAddress) {
+        logger.error(`[TrainingsAPI] No wallet found for user ${masterAccountId} - cannot proceed with training`);
+        return res.status(400).json({ error: { code: 'WALLET_REQUIRED', message: 'A connected wallet is required to start training. Please connect a wallet first.' } });
+      }
+
+      // Fetch dataset via internal API to get image count
+      let datasetImageCount = 20; // default
+      try {
+        const datasetResponse = await internalApiClient.get(`/internal/v1/data/datasets/${datasetId}`);
+        const dataset = datasetResponse.data?.data || datasetResponse.data;
+        if (dataset && dataset.images) {
+          datasetImageCount = dataset.images.length;
+          logger.info(`[TrainingsAPI] Dataset ${datasetId} has ${datasetImageCount} images`);
+        }
+      } catch (datasetErr) {
+        logger.warn(`[TrainingsAPI] Failed to fetch dataset ${datasetId}: ${datasetErr.message}`);
+      }
+
+      // Normalize triggerWords to array and extract first for worker
+      const triggerWordsArray = Array.isArray(triggerWords)
+        ? triggerWords
+        : (triggerWords ? triggerWords.split(',').map(w => w.trim()) : []);
+      const triggerWord = triggerWordsArray[0] || '';
+
       const newTrainingData = {
         userId: masterAccountId, // trainingDb expects userId
+        ownerAccountId: masterAccountId, // for worker billing lookup
         name,
+        modelName: name, // worker expects modelName
         notes: notes || '',
+        description: description || '',  // User-provided description for model card
         allowPublishing: allowPublishing || false,
         tags: tags || [],
+        // Wallet for billing (credit ledger)
+        walletAddress,
         // Training-specific fields
         datasetId,
+        datasetImageCount,
         modelType,
         baseModel: baseModel || modelType,
         offeringId: offeringId || '',
@@ -103,18 +153,26 @@ function createTrainingsApi(dependencies) {
         loraRank: parseInt(loraRank) || 16,
         loraAlpha: parseInt(loraAlpha) || 32,
         loraDropout: parseFloat(loraDropout) || 0.1,
-        triggerWords: Array.isArray(triggerWords) ? triggerWords : (triggerWords ? triggerWords.split(',').map(w => w.trim()) : []),
+        // Worker expects triggerWord (singular), but keep array for backwards compat
+        triggerWord,
+        triggerWords: triggerWordsArray,
+        // Estimated cost in points (for display and analytics)
+        costPoints: parseInt(costPoints) || 0,
         // status: 'draft', // createTrainingSession in trainingDb.js sets this default
         // ownedBy: masterAccountId, // createTrainingSession in trainingDb.js sets this default
       };
-      
+
       logger.info(`[TrainingsAPI] Training data prepared:`, {
         name: newTrainingData.name,
+        modelName: newTrainingData.modelName,
         modelType: newTrainingData.modelType,
         steps: newTrainingData.steps,
-        datasetId: newTrainingData.datasetId
+        datasetId: newTrainingData.datasetId,
+        datasetImageCount: newTrainingData.datasetImageCount,
+        triggerWord: newTrainingData.triggerWord,
+        hasWallet: !!newTrainingData.walletAddress
       });
-      
+
       // Access db.loraTrainings directly
       const createdTraining = await db.loraTrainings.createTrainingSession(newTrainingData);
       if (!createdTraining) {
@@ -245,11 +303,13 @@ function createTrainingsApi(dependencies) {
       if (!existingTraining) {
         return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Training not found.' } });
       }
-      
-      if (existingTraining.userId !== masterAccountId) {
+
+      // Check ownership - handle both string and ObjectId formats
+      const ownerId = String(existingTraining.userId || existingTraining.ownerAccountId || '');
+      if (ownerId !== masterAccountId) {
         return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'You can only delete your own trainings.' } });
       }
-      
+
       const result = await db.loraTrainings.deleteTraining(trainingId);
       if (!result) {
         return res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'Failed to delete training.' }});
@@ -258,6 +318,52 @@ function createTrainingsApi(dependencies) {
       res.json({ success: true, message: 'Training deleted successfully.' });
     } catch (error) {
       logger.error(`[TrainingsAPI] Error deleting training ${trainingId}:`, error);
+      next(error);
+    }
+  });
+
+  // POST /:trainingId/retry - Retry a failed training
+  router.post('/:trainingId/retry', async (req, res, next) => {
+    const { trainingId } = req.params;
+    const { masterAccountId } = req.body;
+
+    logger.info(`[TrainingsAPI] POST /${trainingId}/retry - Retrying training`);
+
+    if (!masterAccountId) {
+      return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'masterAccountId is required.' } });
+    }
+
+    try {
+      // Check if training exists and user owns it
+      const existingTraining = await db.loraTrainings.findTrainingById(trainingId);
+      if (!existingTraining) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Training not found.' } });
+      }
+
+      // Check ownership
+      const ownerId = String(existingTraining.userId || existingTraining.ownerAccountId || '');
+      if (ownerId !== masterAccountId) {
+        return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'You can only retry your own trainings.' } });
+      }
+
+      // Only allow retrying failed trainings
+      if (existingTraining.status !== 'FAILED') {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Only failed trainings can be retried.' } });
+      }
+
+      // Reset status to QUEUED and clear error fields
+      await db.loraTrainings.setStatus(trainingId, 'QUEUED', {
+        error: null,
+        errorMessage: null,
+        retryCount: (existingTraining.retryCount || 0) + 1,
+        progress: 0,
+        currentStep: 0
+      });
+
+      const updatedTraining = await db.loraTrainings.findTrainingById(trainingId);
+      res.json({ success: true, training: updatedTraining });
+    } catch (error) {
+      logger.error(`[TrainingsAPI] Error retrying training ${trainingId}:`, error);
       next(error);
     }
   });

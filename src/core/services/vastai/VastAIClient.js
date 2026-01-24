@@ -114,6 +114,15 @@ class VastAIClient {
   async listInstances(params = {}) {
     return this.request({ method: 'GET', url: '/instances/', params });
   }
+
+  async attachSshKey(instanceId, sshKey) {
+    return this.request({
+      method: 'POST',
+      url: `/instances/${instanceId}/ssh/`,
+      data: { ssh_key: sshKey },
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
 }
 
 module.exports = VastAIClient;

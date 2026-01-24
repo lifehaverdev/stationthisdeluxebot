@@ -9,6 +9,12 @@ const DockerService = require('./DockerService');
 const CloudflareService = require('./CloudflareService');
 const MongoService = require('./MongoService');
 const TrainingRecipeService = require('./TrainingRecipeService');
+const DatasetPacker = require('./DatasetPacker');
+const DatasetValidator = require('./DatasetValidator');
+const DatasetDownloader = require('./DatasetDownloader');
+const TrainingFinalizationService = require('./TrainingFinalizationService');
+const TrainingCostEstimator = require('./TrainingCostEstimator');
+const TrainingJobProcessor = require('./TrainingJobProcessor');
 
 /**
  * Initialize all training services
@@ -71,5 +77,11 @@ module.exports = {
   DockerService,
   CloudflareService,
   MongoService,
-  TrainingRecipeService
+  TrainingRecipeService,
+  DatasetPacker,
+  DatasetValidator,
+  DatasetDownloader,
+  TrainingFinalizationService,
+  TrainingCostEstimator,
+  TrainingJobProcessor
 };
