@@ -8,6 +8,31 @@ const ERC721A_ABI = [
   'function ownerOf(uint256 tokenId) view returns (address)'
 ];
 
+// Cache for NFT ownership verification (wallet -> { owner, expiresAt })
+const adminOwnershipCache = new Map();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+function getCachedOwner(walletAddress) {
+  const normalized = walletAddress.toLowerCase();
+  const cached = adminOwnershipCache.get(normalized);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.owner;
+  }
+  // Clean up expired entry
+  if (cached) {
+    adminOwnershipCache.delete(normalized);
+  }
+  return null;
+}
+
+function setCachedOwner(walletAddress, owner) {
+  const normalized = walletAddress.toLowerCase();
+  adminOwnershipCache.set(normalized, {
+    owner: owner.toLowerCase(),
+    expiresAt: Date.now() + CACHE_TTL_MS
+  });
+}
+
 /**
  * Middleware to verify that the requesting wallet owns miladystation NFT #598.
  * Expects wallet address in req.query.wallet or req.body.wallet
@@ -94,21 +119,31 @@ function createAdminVerificationMiddleware(dependencies) {
         });
       }
 
-      // Check on-chain if the wallet owns NFT #598
-      const owner = await ethereumService.read(
-        MILADY_STATION_NFT_ADDRESS,
-        ERC721A_ABI,
-        'ownerOf',
-        ADMIN_TOKEN_ID
-      );
+      // Check cache first to avoid repeated RPC calls
+      let owner = getCachedOwner(walletAddress);
+
+      if (!owner) {
+        // Check on-chain if the wallet owns NFT #598
+        owner = await ethereumService.read(
+          MILADY_STATION_NFT_ADDRESS,
+          ERC721A_ABI,
+          'ownerOf',
+          ADMIN_TOKEN_ID
+        );
+        // Cache the result
+        setCachedOwner(walletAddress, owner);
+        logger.debug(`[AdminMiddleware] Cached NFT owner: ${owner}`);
+      } else {
+        logger.debug(`[AdminMiddleware] Using cached NFT owner for ${walletAddress}`);
+      }
 
       if (owner.toLowerCase() !== walletAddress.toLowerCase()) {
         logger.warn(`[AdminMiddleware] Wallet ${walletAddress} is not the admin (owner is ${owner})`);
-        return res.status(403).json({ 
-          error: { 
-            code: 'FORBIDDEN', 
-            message: 'Wallet does not own the admin NFT.' 
-          } 
+        return res.status(403).json({
+          error: {
+            code: 'FORBIDDEN',
+            message: 'Wallet does not own the admin NFT.'
+          }
         });
       }
 

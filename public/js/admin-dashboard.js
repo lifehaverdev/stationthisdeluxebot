@@ -288,64 +288,91 @@ onAdminStatusChange(async (isAdmin) => {
 });
 
 async function setupActivityFeed() {
-  // First, create a JWT token for WebSocket authentication
   if (!currentAccount) {
     console.warn('[AdminDashboard] No wallet connected, cannot setup WebSocket');
     return;
   }
 
-  try {
-    // Get nonce
-    const nonceResponse = await fetch('/api/v1/auth/web3/nonce', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address: currentAccount })
-    });
-    
-    if (!nonceResponse.ok) {
-      console.warn('[AdminDashboard] Failed to get nonce for WebSocket auth');
-      return;
-    }
-
-    const { nonce } = await nonceResponse.json();
-    
-    // Sign nonce
-    if (!signer) {
-      console.warn('[AdminDashboard] No signer available for WebSocket auth');
-      return;
-    }
-    
-    const signature = await signer.signMessage(nonce);
-    
-    // Verify and get JWT
-    const verifyResponse = await fetch('/api/v1/auth/web3/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address: currentAccount, signature })
-    });
-    
-    if (!verifyResponse.ok) {
-      console.warn('[AdminDashboard] Failed to verify signature for WebSocket auth');
-      return;
-    }
-
-    // JWT is set as httpOnly cookie automatically by the server
-    console.log('[AdminDashboard] JWT token obtained for WebSocket authentication');
-  } catch (error) {
-    console.error('[AdminDashboard] Error setting up WebSocket authentication:', error);
-    return;
-  }
-
   // Use imported websocketClient or fallback to window.websocketClient
   const wsClient = (typeof websocketClient !== 'undefined' && websocketClient) || (typeof window !== 'undefined' && window.websocketClient);
-  
+
   if (!wsClient) {
     console.warn('[AdminDashboard] WebSocket client not available');
     return;
   }
 
-  // Connect WebSocket now that we have JWT
-  wsClient.connect();
+  // Try to connect with existing JWT first (from httpOnly cookie)
+  // Only request new signature if connection fails
+  let needsAuth = false;
+
+  try {
+    // Attempt connection - if JWT cookie exists and is valid, this will work
+    wsClient.connect();
+
+    // Wait a bit to see if connection succeeds
+    await new Promise((resolve) => {
+      const checkConnection = () => {
+        if (wsClient.isConnected && wsClient.isConnected()) {
+          resolve();
+        } else if (wsClient.connectionFailed) {
+          needsAuth = true;
+          resolve();
+        } else {
+          setTimeout(checkConnection, 100);
+        }
+      };
+      // Timeout after 2 seconds
+      setTimeout(() => {
+        if (!wsClient.isConnected || !wsClient.isConnected()) {
+          needsAuth = true;
+        }
+        resolve();
+      }, 2000);
+      checkConnection();
+    });
+  } catch (e) {
+    needsAuth = true;
+  }
+
+  // If we need fresh auth, sign and verify
+  if (needsAuth && signer) {
+    try {
+      console.log('[AdminDashboard] WebSocket needs auth, requesting signature...');
+
+      // Get nonce
+      const nonceResponse = await fetch('/api/v1/auth/web3/nonce', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address: currentAccount })
+      });
+
+      if (!nonceResponse.ok) {
+        console.warn('[AdminDashboard] Failed to get nonce for WebSocket auth');
+        return;
+      }
+
+      const { nonce } = await nonceResponse.json();
+      const signature = await signer.signMessage(nonce);
+
+      // Verify and get JWT
+      const verifyResponse = await fetch('/api/v1/auth/web3/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address: currentAccount, signature })
+      });
+
+      if (!verifyResponse.ok) {
+        console.warn('[AdminDashboard] Failed to verify signature for WebSocket auth');
+        return;
+      }
+
+      console.log('[AdminDashboard] JWT token obtained, reconnecting WebSocket...');
+      wsClient.connect();
+    } catch (error) {
+      console.error('[AdminDashboard] Error setting up WebSocket authentication:', error);
+      return;
+    }
+  }
 
   // Listen for admin activity events
   wsClient.on('adminActivity', (payload) => {
@@ -987,6 +1014,7 @@ function render() {
     html += '<th style="padding: 0.75rem; text-align: right; color: #90caf9;">On-Chain Escrow</th>';
     html += '<th style="padding: 0.75rem; text-align: right; color: #90caf9;">Protocol Owned</th>';
     html += '<th style="padding: 0.75rem; text-align: center; color: #90caf9;">Deposits</th>';
+    html += '<th style="padding: 0.75rem; text-align: center; color: #90caf9;">Actions</th>';
     html += '</tr>';
     html += '</thead>';
     html += '<tbody>';
@@ -1022,6 +1050,13 @@ function render() {
       html += `<td style="padding: 0.75rem; text-align: right; color: #e0e0e0;">${onChainEscrow}</td>`;
       html += `<td style="padding: 0.75rem; text-align: right; color: #ff9800;">${protocolOwned}</td>`;
       html += `<td style="padding: 0.75rem; text-align: center; color: #e0e0e0;">${account.depositCount}</td>`;
+      html += '<td style="padding: 0.75rem; text-align: center;">';
+      if (account.masterAccountId) {
+        html += `<button class="adjust-points-btn" data-master-account-id="${account.masterAccountId}" data-address="${account.depositorAddress}" style="padding: 0.4rem 0.75rem; background: #4caf50; border: none; border-radius: 4px; color: #fff; cursor: pointer; font-size: 0.85em;">Add Points</button>`;
+      } else {
+        html += '<span style="color: #666; font-size: 0.85em;">No account</span>';
+      }
+      html += '</td>';
       html += '</tr>';
     });
     
@@ -1922,6 +1957,11 @@ function render() {
     exportQueueBtn.addEventListener('click', handleExportDepositQueue);
   }
 
+  // Account adjust points buttons
+  document.querySelectorAll('.adjust-points-btn').forEach(btn => {
+    btn.addEventListener('click', handleOpenAdjustPointsModal);
+  });
+
   document.querySelectorAll('.deposit-status-checkbox').forEach(cb => {
     cb.addEventListener('change', handleDepositStatusFilterChange);
   });
@@ -2820,15 +2860,23 @@ async function handleDepositDiagnostics(event) {
   }
   try {
     btn.disabled = true;
+    btn.textContent = 'Checking...';
     const custodyKey = getCustodyKey(userAddress, tokenAddress);
     const packedAmount = await foundationContract.custody(custodyKey);
     const { userOwned, escrow } = splitCustodyAmount(packedAmount);
     state.depositDiagnostics[txHash] = {
       userOwned: userOwned.toString(),
       escrow: escrow.toString(),
+      custodyKey,
       checkedAt: new Date().toISOString()
     };
-    showNotification('On-chain custody balance refreshed', 'success');
+    const tokenMeta = getTokenMetadata(tokenAddress);
+    const hasBalance = userOwned > 0n || escrow > 0n;
+    if (hasBalance) {
+      showNotification(`Found ${formatTokenAmountDisplay(userOwned.toString(), tokenAddress)} unconfirmed on-chain`, 'success');
+    } else {
+      showNotification('No unconfirmed balance found on-chain (may already be confirmed or withdrawn)', 'info');
+    }
   } catch (error) {
     console.error('[AdminDashboard] Deposit diagnostics failed', error);
     state.depositDiagnostics[txHash] = {
@@ -2849,13 +2897,7 @@ function handleQueueDeposit(event) {
   const context = btn.dataset.context || 'user';
   const deposit = getDepositFromContext(context, index);
   if (!deposit) {
-    showNotification('Unable to queue deposit (missing metadata)', 'error');
-    return;
-  }
-  const fallbackMasterAccountId = context === 'user' ? getSelectedMasterAccountId() : null;
-  const masterAccountId = deposit.master_account_id || fallbackMasterAccountId;
-  if (!masterAccountId) {
-    showNotification('Unable to queue deposit (missing metadata)', 'error');
+    showNotification('Unable to queue deposit (deposit not found)', 'error');
     return;
   }
   const txHash = deposit.deposit_tx_hash || deposit.confirmation_tx_hash;
@@ -2863,6 +2905,9 @@ function handleQueueDeposit(event) {
     showNotification('Deposit missing transaction hash', 'error');
     return;
   }
+  // masterAccountId is optional for pending deposits (will be linked during confirmation)
+  const fallbackMasterAccountId = context === 'user' ? getSelectedMasterAccountId() : null;
+  const masterAccountId = deposit.master_account_id || fallbackMasterAccountId || null;
   const existing = state.depositFollowUpQueue?.find(entry => entry.txHash === txHash);
   if (existing) {
     showNotification('Deposit already queued', 'info');
@@ -3089,6 +3134,103 @@ async function handleSaveUserNotes(e) {
     console.error('Error saving notes:', error);
     showNotification(`Failed to save notes: ${error.message}`, 'error');
   }
+}
+
+// Adjust Points Modal for Accounts Table
+function handleOpenAdjustPointsModal(e) {
+  const masterAccountId = e.target.dataset.masterAccountId;
+  const address = e.target.dataset.address;
+
+  if (!masterAccountId) {
+    showNotification('No account ID available for this address', 'error');
+    return;
+  }
+
+  // Create modal if it doesn't exist
+  let modal = document.getElementById('adjust-points-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'adjust-points-modal';
+    modal.innerHTML = `
+      <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+        <div style="background: #2a2f3a; padding: 2rem; border-radius: 8px; max-width: 400px; width: 90%;">
+          <h3 style="margin-top: 0; color: #90caf9;">Adjust Points</h3>
+          <p id="modal-address" style="color: #888; font-family: monospace; margin-bottom: 1rem;"></p>
+          <form id="modal-adjust-points-form">
+            <input type="hidden" id="modal-master-account-id">
+            <div style="margin-bottom: 1rem;">
+              <label style="color: #e0e0e0; display: block; margin-bottom: 0.25rem;">Points to Add (negative to subtract)</label>
+              <input type="number" id="modal-points" step="1" required placeholder="1000" style="width: 100%; padding: 0.5rem; background: #1a1a1a; border: 1px solid #444; border-radius: 4px; color: #e0e0e0; box-sizing: border-box;">
+            </div>
+            <div style="margin-bottom: 1rem;">
+              <label style="color: #e0e0e0; display: block; margin-bottom: 0.25rem;">Description *</label>
+              <input type="text" id="modal-description" required placeholder="Reason for adjustment" style="width: 100%; padding: 0.5rem; background: #1a1a1a; border: 1px solid #444; border-radius: 4px; color: #e0e0e0; box-sizing: border-box;">
+            </div>
+            <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+              <button type="button" id="modal-cancel" style="padding: 0.5rem 1rem; background: #444; border: none; border-radius: 4px; color: #e0e0e0; cursor: pointer;">Cancel</button>
+              <button type="submit" style="padding: 0.5rem 1rem; background: #4caf50; border: none; border-radius: 4px; color: #fff; cursor: pointer;">Apply</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    // Cancel button
+    document.getElementById('modal-cancel').addEventListener('click', () => {
+      modal.style.display = 'none';
+    });
+
+    // Form submit
+    document.getElementById('modal-adjust-points-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const masterAccountId = document.getElementById('modal-master-account-id').value;
+      const points = parseInt(document.getElementById('modal-points').value, 10);
+      const description = document.getElementById('modal-description').value.trim();
+
+      if (!description) {
+        showNotification('Description is required', 'warning');
+        return;
+      }
+
+      if (isNaN(points) || points === 0) {
+        showNotification('Please enter a valid point value', 'warning');
+        return;
+      }
+
+      try {
+        const wallet = currentAccount;
+        const response = await fetch(`/api/v1/admin/vaults/users/${masterAccountId}/adjust-points?wallet=${wallet}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ points, description })
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error?.message || 'Failed to adjust points');
+        }
+
+        const data = await response.json();
+        showNotification(data.message || 'Points adjusted successfully', 'success');
+        modal.style.display = 'none';
+
+        // Reload data
+        await loadBalances();
+        render();
+      } catch (error) {
+        console.error('Error adjusting points:', error);
+        showNotification(`Failed to adjust points: ${error.message}`, 'error');
+      }
+    });
+  }
+
+  // Populate and show modal
+  document.getElementById('modal-master-account-id').value = masterAccountId;
+  document.getElementById('modal-address').textContent = address;
+  document.getElementById('modal-points').value = '';
+  document.getElementById('modal-description').value = '';
+  modal.style.display = 'block';
 }
 
 // Initial render

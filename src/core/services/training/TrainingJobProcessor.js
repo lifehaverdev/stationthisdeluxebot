@@ -87,6 +87,7 @@ class TrainingJobProcessor {
 
     let instanceId = null;
     let result = { success: false, jobId };
+    let chargedPoints = 0; // Track for refund on unexpected errors
 
     try {
       // Step 1: Estimate and charge upfront
@@ -96,6 +97,7 @@ class TrainingJobProcessor {
         this.alertUser(job.ownerAccountId, 'error', `Training failed: ${chargeResult.error}`);
         return { success: false, jobId, error: chargeResult.error };
       }
+      chargedPoints = chargeResult.estimatedPoints; // Track for refund on unexpected errors
 
       // Step 2: Execute training (provisions, uploads, trains, uploads to HF/R2)
       this.alertUser(job.ownerAccountId, 'info', `Training started: ${job.modelName}`);
@@ -185,6 +187,31 @@ class TrainingJobProcessor {
       // Attempt cleanup
       if (instanceId) {
         await this._terminateInstance(instanceId, jobId);
+      }
+
+      // Full refund on unexpected errors (no GPU time should be charged)
+      if (chargedPoints > 0) {
+        try {
+          await this.pointsService.addPoints(
+            job.ownerAccountId,
+            chargedPoints,
+            'training_refund',
+            {
+              trainingId: jobId,
+              modelName: job.modelName,
+              reason: `Unexpected error: ${err.message}`,
+            }
+          );
+          this.logger.info(`[JobProcessor] Emergency refund of ${chargedPoints} points to ${job.ownerAccountId}`);
+        } catch (refundErr) {
+          this.logger.error(`[JobProcessor] Emergency refund failed:`, refundErr);
+          this.alertOps('CRITICAL: Emergency refund FAILED', {
+            jobId,
+            ownerAccountId: job.ownerAccountId,
+            amount: chargedPoints,
+            error: refundErr.message,
+          });
+        }
       }
 
       result = { success: false, jobId, error: err.message };
@@ -498,15 +525,34 @@ class TrainingJobProcessor {
 
       if (reconciliation.action === 'refund' && reconciliation.amount > 0) {
         this.logger.info(`[JobProcessor] Refunding ${reconciliation.amount} points for job ${jobId}`);
-        // TODO: Implement refund via pointsService.refundPoints()
-        // For now, log it for manual processing
-        this.alertOps('Refund needed', {
-          jobId,
-          walletAddress: job.walletAddress,
-          amount: reconciliation.amount,
-          estimated: estimatedPoints,
-          actual: actualCost.actualPoints,
-        });
+
+        try {
+          await this.pointsService.addPoints(
+            job.ownerAccountId,
+            reconciliation.amount,
+            'training_refund',
+            {
+              trainingId: jobId,
+              modelName: job.modelName,
+              estimated: estimatedPoints,
+              actual: actualCost.actualPoints,
+              reason: 'Job failed or completed early',
+            }
+          );
+          this.logger.info(`[JobProcessor] Refunded ${reconciliation.amount} points to ${job.ownerAccountId}`);
+        } catch (refundErr) {
+          this.logger.error(`[JobProcessor] Refund failed for ${jobId}:`, refundErr);
+          // Alert ops for manual processing if auto-refund fails
+          this.alertOps('Refund FAILED - manual action needed', {
+            jobId,
+            ownerAccountId: job.ownerAccountId,
+            walletAddress: job.walletAddress,
+            amount: reconciliation.amount,
+            estimated: estimatedPoints,
+            actual: actualCost.actualPoints,
+            error: refundErr.message,
+          });
+        }
       } else if (reconciliation.action === 'overage') {
         this.logger.warn(`[JobProcessor] Overage of ${reconciliation.amount} points for job ${jobId}`);
         this.alertOps('Training overage (do not auto-charge)', {

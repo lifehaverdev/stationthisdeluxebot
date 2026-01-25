@@ -9,6 +9,9 @@
 # Default container name (matches deploy.sh)
 DEFAULT_CONTAINER="hyperbotcontained"
 CADDY_CONTAINER="caddy_proxy"
+WORKER_CONTAINER="hyperbotworker"
+TRAINING_CONTAINER="hyperbottraining"
+SWEEPER_CONTAINER="hyperbotsweeper"
 
 # Log file paths (matches deploy.sh)
 LOG_DIR="/var/log/hyperbot"
@@ -29,24 +32,28 @@ show_usage() {
   echo ""
   echo "Options:"
   echo "  [container_name]    Container name to monitor (default: ${DEFAULT_CONTAINER})"
-  echo "  --caddy             Monitor Caddy proxy logs instead"
+  echo "  --caddy             Monitor Caddy proxy logs"
+  echo "  --worker            Monitor export worker logs"
+  echo "  --training          Monitor VastAI training worker logs"
+  echo "  --sweeper           Monitor instance sweeper logs"
   echo "  --lines N           Show last N lines before following (default: ${DEFAULT_LINES})"
   echo "  --no-follow         Show logs without following (exit after showing)"
   echo "  --file              Read from log file instead of container logs"
   echo "  --help              Show this help message"
   echo ""
   echo "Examples:"
-  echo "  $0                          # Monitor default container logs"
+  echo "  $0                          # Monitor main app logs"
+  echo "  $0 --training               # Monitor VastAI training worker"
+  echo "  $0 --sweeper                # Monitor instance sweeper"
+  echo "  $0 --worker                 # Monitor export worker"
   echo "  $0 --caddy                  # Monitor Caddy logs"
   echo "  $0 --lines 100              # Show last 100 lines then follow"
-  echo "  $0 --file                   # Read from log file"
-  echo "  $0 hyperbotcontained_new    # Monitor specific container"
+  echo "  $0 --training --lines 200   # Training logs, last 200 lines"
 }
 
 # --- Parse arguments ---------------------------------------------------------
 
 CONTAINER_NAME="${DEFAULT_CONTAINER}"
-SHOW_CADDY=false
 LINES="${DEFAULT_LINES}"
 FOLLOW=true
 USE_FILE=false
@@ -54,7 +61,19 @@ USE_FILE=false
 while [[ $# -gt 0 ]]; do
   case $1 in
     --caddy)
-      SHOW_CADDY=true
+      CONTAINER_NAME="${CADDY_CONTAINER}"
+      shift
+      ;;
+    --worker)
+      CONTAINER_NAME="${WORKER_CONTAINER}"
+      shift
+      ;;
+    --training)
+      CONTAINER_NAME="${TRAINING_CONTAINER}"
+      shift
+      ;;
+    --sweeper)
+      CONTAINER_NAME="${SWEEPER_CONTAINER}"
       shift
       ;;
     --lines)
@@ -87,12 +106,7 @@ done
 
 # --- Determine what to monitor -----------------------------------------------
 
-if [ "$SHOW_CADDY" = true ]; then
-  CONTAINER_NAME="${CADDY_CONTAINER}"
-  TARGET_FILE="${CADDY_LOG_FILE}"
-else
-  TARGET_FILE="${LOG_FILE}"
-fi
+TARGET_FILE="${LOG_FILE}"
 
 # --- Monitor logs ------------------------------------------------------------
 

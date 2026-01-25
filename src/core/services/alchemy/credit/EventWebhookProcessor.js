@@ -130,12 +130,19 @@ class EventWebhookProcessor {
     // This delegates to DepositConfirmationService
     // We need to get pending deposits and process them
     const creditLedgerDb = this.depositConfirmationService.creditLedgerDb;
+
+    // Small delay to ensure MongoDB write is visible (mitigates read-after-write race condition)
+    await new Promise(resolve => setTimeout(resolve, 100));
+
     const pendingDepositsAll = await creditLedgerDb.findProcessableEntries();
     const pendingDeposits = pendingDepositsAll.filter(d => d.deposit_type !== 'TOKEN_DONATION');
 
     if (pendingDeposits.length === 0) {
+      this.logger.info('[EventWebhookProcessor] No pending deposits found after webhook processing.');
       return;
     }
+
+    this.logger.info(`[EventWebhookProcessor] Found ${pendingDeposits.length} pending deposits to confirm.`);
 
     // Group deposits by user and token
     const groupedDeposits = new Map();
@@ -149,6 +156,7 @@ class EventWebhookProcessor {
 
     // Process each group
     for (const [groupKey, deposits] of groupedDeposits.entries()) {
+      this.logger.info(`[EventWebhookProcessor] Processing deposit group: ${groupKey} (${deposits.length} deposits)`);
       await this.depositConfirmationService.confirmDepositGroup(deposits);
     }
   }

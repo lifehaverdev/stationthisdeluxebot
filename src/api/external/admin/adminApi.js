@@ -31,12 +31,13 @@ function createAdminApi(dependencies) {
   const router = express.Router();
   const adminMiddleware = createAdminVerificationMiddleware(dependencies);
 
-  // Rate limiting for admin endpoints: 10 requests per minute per wallet
+  // Rate limiting for admin endpoints: 60 requests per minute per wallet
   // Admin endpoints are already protected by NFT ownership, but we add rate limiting
   // to prevent abuse even from legitimate admins
+  // Note: Dashboard makes 12+ calls on initial load, so we need a higher limit
   const adminRateLimiter = createWalletRateLimitMiddleware({
     windowMs: 60 * 1000, // 1 minute
-    max: 10,
+    max: 60,
     message: 'Too many admin requests. Please try again later.'
   }, logger);
 
@@ -87,11 +88,16 @@ function createAdminApi(dependencies) {
           accountMap.set(key, {
             depositorAddress: deposit.depositor_address,
             tokenAddress: deposit.token_address,
+            masterAccountId: deposit.master_account_id?.toString() || null,
             deposits: [],
             totalDeposited: 0n,
             totalPointsCredited: 0n,
             totalPointsRemaining: 0n
           });
+        }
+        // Update masterAccountId if we find one (some deposits may have it, others may not)
+        if (deposit.master_account_id && !accountMap.get(key).masterAccountId) {
+          accountMap.get(key).masterAccountId = deposit.master_account_id.toString();
         }
         
         const account = accountMap.get(key);
@@ -181,6 +187,7 @@ function createAdminApi(dependencies) {
           return {
             depositorAddress: account.depositorAddress,
             tokenAddress: account.tokenAddress,
+            masterAccountId: account.masterAccountId,
             symbol,
             decimals,
             name,
