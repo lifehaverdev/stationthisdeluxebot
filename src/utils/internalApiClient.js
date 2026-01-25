@@ -4,6 +4,54 @@ const axios = require('axios');
 const { createLogger } = require('./logger'); // Adjusted path for new location
 const logger = createLogger('internal-api-client'); // More generic logger name
 
+// Retry configuration for transient failures (503, 502, 504, network errors)
+const RETRY_CONFIG = {
+  maxRetries: 3,
+  baseDelayMs: 500,
+  retryableStatuses: [502, 503, 504],
+  isRetryableError: (error) => {
+    // Retry on network errors (no response)
+    if (!error.response) return true;
+    // Retry on transient HTTP status codes
+    return RETRY_CONFIG.retryableStatuses.includes(error.response.status);
+  }
+};
+
+/**
+ * Creates a retry interceptor for axios
+ * @param {object} client - The axios instance
+ */
+function addRetryInterceptor(client) {
+  client.interceptors.response.use(null, async (error) => {
+    const config = error.config;
+
+    // Initialize retry count
+    config.__retryCount = config.__retryCount || 0;
+
+    // Check if we should retry
+    if (config.__retryCount < RETRY_CONFIG.maxRetries && RETRY_CONFIG.isRetryableError(error)) {
+      config.__retryCount += 1;
+
+      // Calculate delay with exponential backoff
+      const delay = RETRY_CONFIG.baseDelayMs * Math.pow(2, config.__retryCount - 1);
+
+      logger.warn(`[InternalApiClient] Retrying request (attempt ${config.__retryCount}/${RETRY_CONFIG.maxRetries}) after ${delay}ms: ${config.method?.toUpperCase()} ${config.url}`, {
+        status: error.response?.status,
+        message: error.message
+      });
+
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, delay));
+
+      // Retry the request
+      return client.request(config);
+    }
+
+    // Max retries exceeded or non-retryable error
+    return Promise.reject(error);
+  });
+}
+
 const internalApiClient = axios.create({
   baseURL: process.env.INTERNAL_API_BASE_URL || 'http://localhost:4000', // The base URL of the web/API server. Services will add the full path.
   timeout: 15000, // 15 second timeout
@@ -23,6 +71,10 @@ const longRunningApiClient = axios.create({
     'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_GENERAL || process.env.INTERNAL_API_KEY_TELEGRAM 
   }
 });
+
+// Add retry interceptors for transient failures (must be added before error logging interceptor)
+addRetryInterceptor(internalApiClient);
+addRetryInterceptor(longRunningApiClient);
 
 // Optional: Add interceptors for logging or centralized error handling
 internalApiClient.interceptors.request.use(request => {

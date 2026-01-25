@@ -239,19 +239,60 @@ class CreditService {
   /**
    * Starts the service.
    * Runs the startup reconciliation for missed events and processes the pending queue.
+   * Each stage runs independently so failures in one don't block the others.
    */
   async start() {
     this.logger.info('[CreditService] Starting service...');
+
+    // Skip startup processing when webhook actions are disabled (e.g., local dev)
+    // This prevents the dev server from accidentally processing real deposits
+    if (this.disableWebhookActions) {
+      this.logger.warn('[CreditService] Webhook actions disabled - skipping startup processing (Stage 1, 2, 3). Use production server to process deposits.');
+      return;
+    }
+
+    let stagesCompleted = 0;
+    let stagesFailed = 0;
+
+    // Stage 1: Acknowledge new deposit events (may fail if internal API not ready)
     try {
       this.logger.info('[CreditService] Stage 1: Acknowledging new deposit events...');
       await this.acknowledgeNewEvents();
+      this.logger.info('[CreditService] Stage 1 complete.');
+      stagesCompleted++;
+    } catch (error) {
+      stagesFailed++;
+      this.logger.error('[CreditService] Stage 1 failed (acknowledging events):', error.message);
+      // Continue to Stage 2 anyway
+    }
+
+    // Stage 2: Process pending confirmations (critical for confirming deposits)
+    try {
       this.logger.info('[CreditService] Stage 2: Processing pending confirmations...');
       await this.processPendingConfirmations();
+      this.logger.info('[CreditService] Stage 2 complete.');
+      stagesCompleted++;
+    } catch (error) {
+      stagesFailed++;
+      this.logger.error('[CreditService] Stage 2 failed (processing confirmations):', error.message);
+      // Continue to Stage 3 anyway
+    }
+
+    // Stage 3: Check for stale vault deployments
+    try {
       this.logger.info('[CreditService] Stage 3: Checking for stale vault deployments...');
       await this.checkStaleVaultDeployments();
-      this.logger.info('[CreditService] Startup processing complete.');
+      this.logger.info('[CreditService] Stage 3 complete.');
+      stagesCompleted++;
     } catch (error) {
-      this.logger.error('[CreditService] CRITICAL: Reconciliation or processing failed during startup.', error);
+      stagesFailed++;
+      this.logger.error('[CreditService] Stage 3 failed (stale vault check):', error.message);
+    }
+
+    if (stagesFailed > 0) {
+      this.logger.warn(`[CreditService] Startup completed with ${stagesFailed} failed stage(s) and ${stagesCompleted} successful stage(s).`);
+    } else {
+      this.logger.info('[CreditService] Startup processing complete. All stages succeeded.');
     }
   }
 

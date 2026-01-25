@@ -24,9 +24,11 @@ const {
 // geniusoverhaul: Added ToolRegistry import and changed to .js
 const { ToolRegistry } = require('../../tools/ToolRegistry.js');
 
-// Import ComfyUIService needed temporarily for detail fetching
-// We might refactor this later to avoid circular dependencies or pass methods directly
-let ComfyUIService; // Lazy load to potentially help with circular deps
+// Import resourceFetcher directly to avoid creating new ComfyUIService instances per workflow
+const resourceFetcher = require('./resourceFetcher');
+
+// Batch size for parallel workflow fetching (prevents overwhelming the API)
+const WORKFLOW_FETCH_BATCH_SIZE = 5;
 
 const { keccak256, toUtf8Bytes } = require('ethers'); // For deterministic toolId generation using Solidity-compatible keccak256 hash
 const GenerationOutputsDB = require('../db/generationOutputsDb');
@@ -176,7 +178,46 @@ class WorkflowCacheManager {
     // Initialization state - will be managed here later
     this.isInitialized = false;
     this.isLoading = false;
-    this._hasInitializedOnce = false; 
+    this._hasInitializedOnce = false;
+  }
+
+  /**
+   * Creates instanceData object for resourceFetcher functions.
+   * This avoids creating new ComfyUIService instances for each API call.
+   * @returns {Object} instanceData with logger, API_ENDPOINTS, and _makeApiRequest
+   * @private
+   */
+  _getInstanceData() {
+    const self = this;
+    return {
+      apiKey: this.apiKey,
+      logger: this.logger,
+      API_ENDPOINTS,
+      /**
+       * Makes an authenticated API request to ComfyDeploy
+       * @param {string} endpoint - API endpoint path
+       * @param {Object} options - fetch options
+       * @returns {Promise<Response>}
+       */
+      _makeApiRequest: async (endpoint, options = {}) => {
+        const url = `${self.apiUrl}${endpoint}`;
+        const headers = {
+          'Authorization': `Bearer ${self.apiKey}`,
+          'Content-Type': 'application/json',
+          ...options.headers
+        };
+
+        if (DEBUG_LOGGING_ENABLED) {
+          self.logger.debug(`[WorkflowCacheManager:_makeApiRequest] ${options.method || 'GET'} ${url}`);
+        }
+
+        return fetch(url, {
+          ...options,
+          headers,
+          timeout: self.timeout
+        });
+      }
+    };
   }
 
   /**
@@ -378,19 +419,87 @@ class WorkflowCacheManager {
          await this._fetchMachines(); // Ensure machines are loaded for costing
       }
 
-    for (const workflowSummary of workflowsList) {
-        // workflowSummary here is an item from the /workflows API endpoint.
-        // It might contain { id, name, deployment_id, workflow_json (sometimes), inputs }
-        // We need to ensure it has enough data, or fetch more.
-        // The `_fetchAndProcessWorkflowDetails` will now create and register the ToolDefinition.
-        const processedWorkflowOrToolDef = await this._fetchAndProcessWorkflowDetails(workflowSummary);
-        if (processedWorkflowOrToolDef) {
-          // If `_fetchAndProcessWorkflowDetails` now returns the ToolDefinition,
-          // we might store that or a derivative in `this.cache.workflows`.
-          // For now, let's assume we just add it.
-          processedWorkflows.push(processedWorkflowOrToolDef); 
+      // OPTIMIZATION: Filter to only workflows with active deployments
+      // A deployment is "active" if it has a machine_id pointing to a ready machine
+      const readyMachineIds = new Set(
+        this.cache.machines
+          .filter(m => m.status === 'ready' || !m.status) // Include machines without status field (assume ready)
+          .map(m => m.id)
+      );
+
+      // Build set of workflow IDs that have active deployments
+      const activeWorkflowIds = new Set();
+      for (const deployment of this.cache.deployments) {
+        if (deployment.machine_id && readyMachineIds.has(deployment.machine_id)) {
+          // This deployment is active - add its workflow ID
+          if (deployment.workflow_id) {
+            activeWorkflowIds.add(deployment.workflow_id);
+          }
+          // Also check workflow_version.workflow.id
+          if (deployment.workflow_version?.workflow?.id) {
+            activeWorkflowIds.add(deployment.workflow_version.workflow.id);
+          }
+          // Also check versions array
+          if (deployment.versions) {
+            for (const version of deployment.versions) {
+              if (version.workflow_id) {
+                activeWorkflowIds.add(version.workflow_id);
+              }
+            }
+          }
         }
       }
+
+      // Filter workflows to only those with active deployments
+      const originalCount = workflowsList.length;
+      const filteredWorkflowsList = workflowsList.filter(wf => {
+        // Include if workflow has direct deployment_id or its id is in activeWorkflowIds
+        if (wf.deployment_id) {
+          const deployment = this.cache.deployments.find(d => d.id === wf.deployment_id);
+          if (deployment && deployment.machine_id && readyMachineIds.has(deployment.machine_id)) {
+            return true;
+          }
+        }
+        return activeWorkflowIds.has(wf.id);
+      });
+
+      const skippedCount = originalCount - filteredWorkflowsList.length;
+      if (skippedCount > 0) {
+        this.logger.info(`[WorkflowCacheManager] Filtered out ${skippedCount} workflows without active deployments (${filteredWorkflowsList.length} remaining)`);
+      }
+
+      // Process workflows in parallel batches to speed up initialization
+      // WORKFLOW_FETCH_BATCH_SIZE controls concurrency to avoid overwhelming the API
+      this.logger.info(`[WorkflowCacheManager] Processing ${filteredWorkflowsList.length} active workflows in batches of ${WORKFLOW_FETCH_BATCH_SIZE}...`);
+
+      for (let i = 0; i < filteredWorkflowsList.length; i += WORKFLOW_FETCH_BATCH_SIZE) {
+        const batch = filteredWorkflowsList.slice(i, i + WORKFLOW_FETCH_BATCH_SIZE);
+        const batchNumber = Math.floor(i / WORKFLOW_FETCH_BATCH_SIZE) + 1;
+        const totalBatches = Math.ceil(filteredWorkflowsList.length / WORKFLOW_FETCH_BATCH_SIZE);
+
+        if (DEBUG_LOGGING_ENABLED) {
+          this.logger.info(`[WorkflowCacheManager] Processing batch ${batchNumber}/${totalBatches} (${batch.length} workflows)`);
+        }
+
+        // Process batch in parallel
+        const batchResults = await Promise.all(
+          batch.map(workflowSummary =>
+            this._fetchAndProcessWorkflowDetails(workflowSummary).catch(err => {
+              this.logger.warn(`[WorkflowCacheManager] Failed to process workflow ${workflowSummary.name || workflowSummary.id}: ${err.message}`);
+              return null;
+            })
+          )
+        );
+
+        // Collect successful results
+        for (const result of batchResults) {
+          if (result) {
+            processedWorkflows.push(result);
+          }
+        }
+      }
+
+      this.logger.info(`[WorkflowCacheManager] Finished processing workflows. ${processedWorkflows.length}/${filteredWorkflowsList.length} active workflows succeeded (${skippedCount} inactive skipped).`);
     }
     
     if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager] Processed ${processedWorkflows.length} workflows.`);
@@ -532,8 +641,8 @@ class WorkflowCacheManager {
 
   /**
    * PRIVATE: Attempts to retrieve the workflow JSON structure using various methods.
-   * Instantiates a temporary ComfyUIService for API calls.
-   * 
+   * Uses resourceFetcher directly to avoid creating new ComfyUIService instances.
+   *
    * @param {string} workflowId - The ID of the workflow.
    * @returns {Promise<Object|null>} - The workflow JSON structure if found, otherwise null.
    * @private
@@ -541,53 +650,43 @@ class WorkflowCacheManager {
   async _getWorkflowJsonStructure(workflowId) {
     if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_getWorkflowJsonStructure] Attempting to find JSON for workflow ID: ${workflowId}`);
     let workflowJson = null;
-    let workflowDetails = null; 
+    let workflowDetails = null;
 
-    // Lazy load ComfyUIService if not already loaded
-    if (!ComfyUIService) {
-        ComfyUIService = require('./comfyui');
-    }
+    // Use shared instanceData instead of creating new ComfyUIService instances
+    const instanceData = this._getInstanceData();
 
     try {
-      // Use temporary ComfyUIService instance - pass necessary config
-      const comfyui = new ComfyUIService({ 
-          logger: this.logger,
-          apiKey: this.apiKey, // Pass API key
-          apiUrl: this.apiUrl // Pass API URL
-      }); 
-
-      // 1. Try comfyui.getWorkflowDetails
-      if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_getWorkflowJsonStructure] Attempting comfyui.getWorkflowDetails for ID: ${workflowId}`);
+      // 1. Try resourceFetcher.getWorkflowDetails
+      if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_getWorkflowJsonStructure] Attempting getWorkflowDetails for ID: ${workflowId}`);
       try {
-          workflowDetails = await comfyui.getWorkflowDetails(workflowId);
+          workflowDetails = await resourceFetcher.getWorkflowDetails(instanceData, workflowId);
           if (workflowDetails && workflowDetails.workflow_json && workflowDetails.workflow_json.nodes) {
               if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_getWorkflowJsonStructure] Found workflow_json in getWorkflowDetails response for ${workflowId}.`);
               workflowJson = workflowDetails.workflow_json;
           }
       } catch (detailsError) {
-           this.logger.warn(`[WorkflowCacheManager:_getWorkflowJsonStructure] Error during comfyui.getWorkflowDetails for ID ${workflowId}: ${detailsError.message}`);
+           this.logger.warn(`[WorkflowCacheManager:_getWorkflowJsonStructure] Error during getWorkflowDetails for ID ${workflowId}: ${detailsError.message}`);
       }
 
-      // 2. If no JSON yet, try comfyui.getWorkflowContent
+      // 2. If no JSON yet, try resourceFetcher.getWorkflowContent
       if (!workflowJson || !workflowJson.nodes) {
-          if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_getWorkflowJsonStructure] No workflow_json yet, attempting comfyui.getWorkflowContent for ID: ${workflowId}`);
+          if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_getWorkflowJsonStructure] No workflow_json yet, attempting getWorkflowContent for ID: ${workflowId}`);
           try {
-               const workflowContent = await comfyui.getWorkflowContent(workflowId);
+               const workflowContent = await resourceFetcher.getWorkflowContent(instanceData, workflowId);
                if (workflowContent && workflowContent.nodes) {
                   if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_getWorkflowJsonStructure] Found workflow_json via getWorkflowContent for ${workflowId}.`);
                   workflowJson = workflowContent;
                }
           } catch (contentError) {
-               this.logger.warn(`[WorkflowCacheManager:_getWorkflowJsonStructure] Error during comfyui.getWorkflowContent for ID ${workflowId}: ${contentError.message}`);
+               this.logger.warn(`[WorkflowCacheManager:_getWorkflowJsonStructure] Error during getWorkflowContent for ID ${workflowId}: ${contentError.message}`);
           }
       }
-      
+
       // 3. If still no JSON, try getting it from deployments (using ID directly)
       if (!workflowJson || !workflowJson.nodes) {
           if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_getWorkflowJsonStructure] Still no workflow_json, attempting _getWorkflowJsonFromDeployments for ID: ${workflowId}`);
           try {
-               // Use the method within this class
-               const workflowJsonFromDeployments = await this._getWorkflowJsonFromDeployments(workflowId); 
+               const workflowJsonFromDeployments = await this._getWorkflowJsonFromDeployments(workflowId);
                if (workflowJsonFromDeployments && workflowJsonFromDeployments.nodes) {
                   if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_getWorkflowJsonStructure] Found workflow_json via _getWorkflowJsonFromDeployments for ${workflowId}.`);
                   workflowJson = workflowJsonFromDeployments;
@@ -619,29 +718,27 @@ class WorkflowCacheManager {
    */
   async _getWorkflowJsonFromDeployments(workflowId) {
     if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_getWorkflowJsonFromDeployments] Attempting for workflow ID: ${workflowId}`);
-    
-    // Lazy load ComfyUIService if not already loaded
-    if (!ComfyUIService) {
-        ComfyUIService = require('./comfyui');
-    }
+
+    // Use shared instanceData instead of creating new ComfyUIService instances
+    const instanceData = this._getInstanceData();
 
     try {
        // Use deployments cached within this manager instance
-       const deployments = this.cache.deployments; 
-       
-       const matchingDeployments = deployments.filter(deployment => 
-         deployment.workflow_version && 
-         deployment.workflow_version.workflow && 
+       const deployments = this.cache.deployments;
+
+       const matchingDeployments = deployments.filter(deployment =>
+         deployment.workflow_version &&
+         deployment.workflow_version.workflow &&
          deployment.workflow_version.workflow.id === workflowId
        );
-       
+
        if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_getWorkflowJsonFromDeployments] Found ${matchingDeployments.length} deployments linked to workflow ID: ${workflowId}`);
-       
+
        if (matchingDeployments.length > 0) {
-         const sortedDeployments = matchingDeployments.sort((a, b) => 
+         const sortedDeployments = matchingDeployments.sort((a, b) =>
            new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at)
          );
-         
+
          for (const deployment of sortedDeployments) {
            if (deployment.workflow_version?.workflow_json?.nodes) {
              if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_getWorkflowJsonFromDeployments] Found workflow_json in deployment ${deployment.id}`);
@@ -653,14 +750,9 @@ class WorkflowCacheManager {
            }
            if (deployment.workflow_version?.version_id) {
              if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_getWorkflowJsonFromDeployments] Trying to get version details for version ID: ${deployment.workflow_version.version_id}`);
-             // Use temporary ComfyUIService instance
-             const comfyui = new ComfyUIService({ 
-                 logger: this.logger, 
-                 apiKey: this.apiKey, 
-                 apiUrl: this.apiUrl 
-             });
+             // Use resourceFetcher directly instead of creating new ComfyUIService
              try {
-               const versionDetails = await comfyui.getWorkflowVersion(deployment.workflow_version.version_id);
+               const versionDetails = await resourceFetcher.getWorkflowVersion(instanceData, deployment.workflow_version.version_id);
                if (versionDetails?.workflow_json?.nodes) {
                  if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_getWorkflowJsonFromDeployments] Found workflow_json in fetched version: ${deployment.workflow_version.version_id}`);
                  return versionDetails.workflow_json;
@@ -674,7 +766,7 @@ class WorkflowCacheManager {
     } catch (error) {
       this.logger.error(`[WorkflowCacheManager:_getWorkflowJsonFromDeployments] Error during process for workflow ID ${workflowId}: ${error.message}`);
     }
-    
+
     this.logger.warn(`[WorkflowCacheManager:_getWorkflowJsonFromDeployments] Could not find workflow JSON for ${workflowId} via deployments.`);
     return null;
   }
