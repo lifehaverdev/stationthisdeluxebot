@@ -100,8 +100,9 @@ const DEFAULT_TEMPLATE = path.resolve(__dirname, '../../src/core/services/vastai
 // Note: Docker image is "ostris/aitoolkit" (no hyphen), GitHub repo is "ai-toolkit" (hyphen)
 const DEFAULT_IMAGE = 'ostris/aitoolkit';
 
-// Local staging area for job artifacts
-const LOCAL_JOBS_BASE = path.resolve(process.cwd(), '.stationthis', 'jobs');
+// Local staging area for job artifacts (use /tmp in production, .stationthis in dev)
+const LOCAL_JOBS_BASE = process.env.TRAINING_JOBS_DIR
+  || path.resolve(os.tmpdir(), 'training', 'jobs');
 
 const args = minimist(process.argv.slice(2), {
   string: [
