@@ -193,10 +193,21 @@ class TrainingRunner {
 
     this.logger.info(`[TrainingRunner] Executing background command`);
 
-    await this.ssh.exec(trainCmd);
+    // SSH may not return even with nohup/disown due to inherited file descriptors.
+    // Use a timeout as a safety net - if SSH doesn't return in 15s, the script
+    // has started (cat/chmod takes <1s) and we can proceed to poll.
+    try {
+      await this.ssh.exec(trainCmd, { timeout: 15000 });
+    } catch (err) {
+      if (err.message && err.message.includes('timed out')) {
+        this.logger.info('[TrainingRunner] SSH channel held open (expected for background tasks), proceeding...');
+      } else {
+        throw err;
+      }
+    }
 
     // Give it a moment to start and write the PID
-    await this._sleep(2000);
+    await this._sleep(3000);
 
     // Read the PID
     let pid = null;
@@ -409,13 +420,14 @@ echo "{\\"completed\\": true, \\"exitCode\\": $EXIT_CODE, \\"timestamp\\": \\"$(
 exit $EXIT_CODE
 `;
 
-    // Write the script and execute it fully detached from SSH session
-    // Close stdin (< /dev/null) + redirect stdout/stderr + background + disown
-    // This ensures the SSH channel closes immediately
+    // Write the script and execute it fully detached from SSH session.
+    // setsid creates a new session (new SID + process group + no controlling terminal),
+    // which fully detaches from the SSH channel so SSH can close immediately.
+    // nohup/disown is NOT sufficient because child processes inherit SSH pipe FDs.
     return `mkdir -p ${jobRoot}/scripts && cat > ${wrapperScript} << 'TRAINSCRIPT'
 ${script}
 TRAINSCRIPT
-chmod +x ${wrapperScript} && nohup ${wrapperScript} < /dev/null > /dev/null 2>&1 & disown`;
+chmod +x ${wrapperScript} && setsid ${wrapperScript} </dev/null >/dev/null 2>&1 &`;
   }
 
   _logSummary(result) {

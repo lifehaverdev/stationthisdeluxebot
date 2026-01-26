@@ -1070,19 +1070,27 @@ async function main() {
     }
 
     // Poll for progress until training completes (skip if already done)
-    const POLL_INTERVAL_MS = 10000; // 10 seconds
+    const POLL_INTERVAL_MS = 300000; // 5 minutes
     const startTime = Date.now();
     let lastStep = 0;
+    let pollCount = 0;
 
     while (!earlyComplete) {
       await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+      pollCount++;
 
-      const status = await runner.getTrainingStatus({
-        logFile: bgInfo.logFile,
-        pidFile: bgInfo.pidFile,
-        statusFile: bgInfo.statusFile,
-        tailLines: 50
-      });
+      let status;
+      try {
+        status = await runner.getTrainingStatus({
+          logFile: bgInfo.logFile,
+          pidFile: bgInfo.pidFile,
+          statusFile: bgInfo.statusFile,
+          tailLines: 50
+        });
+      } catch (pollErr) {
+        log(`Poll #${pollCount} failed (${pollErr.message}), will retry...`);
+        continue;
+      }
 
       // Output progress in a format TrainingJobProcessor can parse
       if (status.parsed.lastStep && status.parsed.lastStep !== lastStep) {
@@ -1099,6 +1107,10 @@ async function main() {
         console.log(`${modelName}: ${progress}%|${'█'.repeat(Math.floor(progress/5))}${'░'.repeat(20-Math.floor(progress/5))}| ${status.parsed.lastStep}/${status.parsed.totalSteps || '?'} [ETA: ${eta}, loss: ${loss}]`);
 
         lastStep = status.parsed.lastStep;
+      } else {
+        // Heartbeat so we know polling is alive during startup/model download
+        const elapsed = formatDuration(Date.now() - startTime);
+        log(`Poll #${pollCount} (${elapsed}) - ${status.isRunning ? 'training running, no new steps yet' : 'process not detected'}`);
       }
 
       // Check if training completed
