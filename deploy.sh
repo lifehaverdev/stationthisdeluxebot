@@ -252,10 +252,12 @@ start_training_worker_container() {
     log "WARNING: VASTAI_SSH_KEY_PATH not set, training worker may fail SSH operations"
   fi
 
-  # Fix SSH key ownership so container's node user (uid 1000) can read them
+  # Fix SSH key permissions so container's node user (uid 1000) can read them
+  # Directory needs to be traversable; files need correct ownership
   if [[ -n "${ssh_key_path}" && -f "${ssh_key_path}" ]]; then
-    log "Setting SSH key ownership for container node user (uid 1000)..."
-    chown 1000:1000 "${ssh_key_path}" "${ssh_key_path}.pub" 2>/dev/null || true
+    log "Setting SSH key permissions for container node user (uid 1000)..."
+    chmod 755 "${ssh_key_dir}"
+    chown 1000:1000 "${ssh_key_path}" "${ssh_key_path}.pub"
     chmod 600 "${ssh_key_path}"
     chmod 644 "${ssh_key_path}.pub"
   fi
