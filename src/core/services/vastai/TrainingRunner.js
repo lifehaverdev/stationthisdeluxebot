@@ -409,11 +409,13 @@ echo "{\\"completed\\": true, \\"exitCode\\": $EXIT_CODE, \\"timestamp\\": \\"$(
 exit $EXIT_CODE
 `;
 
-    // Write the script and execute it with nohup
+    // Write the script and execute it fully detached from SSH session
+    // Close stdin (< /dev/null) + redirect stdout/stderr + background + disown
+    // This ensures the SSH channel closes immediately
     return `mkdir -p ${jobRoot}/scripts && cat > ${wrapperScript} << 'TRAINSCRIPT'
 ${script}
 TRAINSCRIPT
-chmod +x ${wrapperScript} && nohup ${wrapperScript} > /dev/null 2>&1 &`;
+chmod +x ${wrapperScript} && nohup ${wrapperScript} < /dev/null > /dev/null 2>&1 & disown`;
   }
 
   _logSummary(result) {

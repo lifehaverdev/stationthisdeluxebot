@@ -107,7 +107,10 @@ class SshTransport {
   exec(command, options = {}) {
     return new Promise((resolve, reject) => {
       const args = [...this.commonSshArgs, this.sshTarget, command];
-      this.logger.info(`[SSH] ${command}`);
+      // Redact secrets from log output (HF tokens, API keys, etc.)
+      const redacted = command.replace(/\b(hf_[A-Za-z0-9]{10,})\b/g, 'hf_***REDACTED***')
+        .replace(/((?:TOKEN|KEY|SECRET|PASSWORD)=")[^"]*"/gi, '$1***REDACTED***"');
+      this.logger.info(`[SSH] ${redacted}`);
 
       // Default to 'pipe' to capture output for programmatic use
       const stdio = options.stdio || 'pipe';

@@ -1036,19 +1036,45 @@ async function main() {
       extraEnv
     });
 
+    // Result and polling state - declared here so early-completion can set it
+    let result = { success: false, parsed: {}, duration: 0 };
+    let earlyComplete = false;
+
     if (!bgInfo.isRunning) {
-      throw new Error('Training failed to start in background mode');
+      // Training might have already completed (e.g. if SSH was slow to return)
+      // Check the status file before declaring failure
+      const earlyStatus = await runner.getTrainingStatus({
+        logFile: bgInfo.logFile,
+        pidFile: bgInfo.pidFile,
+        statusFile: bgInfo.statusFile,
+        tailLines: 50
+      });
+
+      if (earlyStatus.statusData?.completed && earlyStatus.statusData.exitCode === 0) {
+        log('Training already completed (SSH returned late). Proceeding to upload.');
+        const duration = earlyStatus.statusData.durationSeconds || 0;
+        result = {
+          success: true,
+          exitCode: 0,
+          duration: duration * 1000,
+          durationFormatted: formatDuration(duration * 1000),
+          parsed: earlyStatus.parsed,
+          logFile: bgInfo.logFile,
+        };
+        earlyComplete = true;
+      } else {
+        throw new Error('Training failed to start in background mode');
+      }
+    } else {
+      log(`Training started (PID: ${bgInfo.pid})`);
     }
 
-    log(`Training started (PID: ${bgInfo.pid})`);
-
-    // Poll for progress until training completes
+    // Poll for progress until training completes (skip if already done)
     const POLL_INTERVAL_MS = 10000; // 10 seconds
     const startTime = Date.now();
     let lastStep = 0;
-    let result = { success: false, parsed: {}, duration: 0 };
 
-    while (true) {
+    while (!earlyComplete) {
       await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
 
       const status = await runner.getTrainingStatus({
