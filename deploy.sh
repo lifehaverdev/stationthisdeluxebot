@@ -239,14 +239,37 @@ ensure_worker_running() {
 }
 
 start_training_worker_container() {
+  # Resolve SSH key path for volume mount
+  local ssh_key_path
+  ssh_key_path="$(load_env_var VASTAI_SSH_KEY_PATH)"
+  local ssh_key_dir
+  ssh_key_dir="$(dirname "${ssh_key_path}")"
+  local ssh_key_name
+  ssh_key_name="$(basename "${ssh_key_path}")"
+  local container_ssh_dir="/home/node/.ssh/vastai"
+
+  if [[ -z "${ssh_key_path}" ]]; then
+    log "WARNING: VASTAI_SSH_KEY_PATH not set, training worker may fail SSH operations"
+  fi
+
+  # Fix SSH key ownership so container's node user (uid 1000) can read them
+  if [[ -n "${ssh_key_path}" && -f "${ssh_key_path}" ]]; then
+    log "Setting SSH key ownership for container node user (uid 1000)..."
+    chown 1000:1000 "${ssh_key_path}" "${ssh_key_path}.pub" 2>/dev/null || true
+    chmod 600 "${ssh_key_path}"
+    chmod 644 "${ssh_key_path}.pub"
+  fi
+
   run_logged "Starting VastAI training worker container..." docker run -d \
     --env-file .env \
+    --env "VASTAI_SSH_KEY_PATH=${container_ssh_dir}/${ssh_key_name}" \
     --network "${NETWORK_NAME}" \
     --network-alias "${TRAINING_WORKER_ALIAS}" \
     --name "${TRAINING_WORKER_CONTAINER}" \
     --cap-drop ALL \
     --security-opt no-new-privileges \
     --restart unless-stopped \
+    -v "${ssh_key_dir}:${container_ssh_dir}:ro" \
     "${IMAGE_NAME}" \
     node scripts/workers/vastaiTrainingWorker.js
 }
