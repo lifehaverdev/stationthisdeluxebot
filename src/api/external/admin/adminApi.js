@@ -2267,14 +2267,15 @@ function createAdminApi(dependencies) {
   });
 
   /**
-   * POST /users/:masterAccountId/adjust-points - Manually adjust user points/credits
+   * POST /users/:masterAccountId/adjust-points - Add points via ADMIN_GIFT credit ledger entry
    */
   router.post('/users/:masterAccountId/adjust-points', adminMiddleware, async (req, res) => {
     const requestId = require('uuid').v4();
     const { masterAccountId } = req.params;
-    const { amountUsd, points, description, reason } = req.body;
+    const { amountUsd, points, description, reason, walletAddress } = req.body;
     const adminWallet = req.adminWallet;
-    
+    const chainId = req.query.chainId || '1';
+
     logger.info(`[AdminApi] POST /users/${masterAccountId}/adjust-points by ${adminWallet}, requestId=${requestId}`, req.body);
 
     try {
@@ -2309,32 +2310,84 @@ function createAdminApi(dependencies) {
         });
       }
 
-      // Convert points to USD if points provided
-      let finalAmountUsd = amountUsd;
+      // Calculate final points from either points or USD input
+      let finalPoints;
       if (points !== undefined) {
-        finalAmountUsd = points * USD_PER_POINT;
+        finalPoints = Math.round(points);
+      } else {
+        finalPoints = Math.round(amountUsd / USD_PER_POINT);
       }
 
-      // Use internal API to credit/debit
-      const transactionType = finalAmountUsd >= 0 ? 'ADMIN_CREDIT' : 'ADMIN_DEBIT';
-      const adminDescription = `Admin adjustment by ${adminWallet}: ${description}${reason ? ` (Reason: ${reason})` : ''}`;
+      if (!finalPoints || finalPoints <= 0) {
+        return res.status(400).json({
+          error: {
+            code: 'INVALID_INPUT',
+            message: 'Points must be a positive number',
+            requestId
+          }
+        });
+      }
 
-      const adjustResponse = await internalApiClient.post(`/internal/v1/data/users/${masterAccountId}/economy/${finalAmountUsd >= 0 ? 'credit' : 'debit'}`, {
-        amountUsd: Math.abs(finalAmountUsd),
-        description: adminDescription,
-        transactionType,
+      // Resolve the user's wallet address (required for credit ledger balance lookups)
+      let depositorAddress = walletAddress;
+      if (!depositorAddress) {
+        try {
+          const userResponse = await internalApiClient.get(`/internal/v1/data/users/${masterAccountId}`);
+          const userData = userResponse.data;
+          if (userData && userData.wallets && userData.wallets.length > 0) {
+            depositorAddress = userData.wallets[0].address;
+          }
+        } catch (err) {
+          logger.warn(`[AdminApi] Could not look up wallet for ${masterAccountId}: ${err.message}`);
+        }
+      }
+
+      if (!depositorAddress) {
+        return res.status(400).json({
+          error: {
+            code: 'INVALID_INPUT',
+            message: 'Could not resolve wallet address for user. Provide walletAddress in request body.',
+            requestId
+          }
+        });
+      }
+
+      // Get creditLedgerDb from creditService
+      const { creditService } = getChainServices(chainId);
+      if (!creditService || !creditService.creditLedgerDb) {
+        return res.status(503).json({
+          error: {
+            code: 'SERVICE_UNAVAILABLE',
+            message: 'Credit service not available',
+            requestId
+          }
+        });
+      }
+
+      const creditLedgerDb = creditService.creditLedgerDb;
+      const fullDescription = `Admin gift by ${adminWallet}: ${description}${reason ? ` (Reason: ${reason})` : ''}`;
+
+      // Create ADMIN_GIFT credit ledger entry with depositor_address so it appears in wallet-based balance queries
+      const result = await creditLedgerDb.createRewardCreditEntry({
+        masterAccountId,
+        points: finalPoints,
+        rewardType: 'ADMIN_GIFT',
+        description: fullDescription,
+        depositorAddress,
         relatedItems: {
           adminWallet,
           reason: reason || 'Manual adjustment',
-          points: points || null,
-          originalAmountUsd: amountUsd || null
+          originalAmountUsd: amountUsd || null,
+          requestId
         }
       });
 
+      logger.info(`[AdminApi] Created ADMIN_GIFT ledger entry for ${masterAccountId}: ${finalPoints} points, requestId=${requestId}`);
+
       res.json({
         success: true,
-        transaction: adjustResponse.data,
-        message: `Successfully ${finalAmountUsd >= 0 ? 'credited' : 'debited'} ${Math.abs(finalAmountUsd).toFixed(4)} USD (${points ? `${points} points` : ''})`,
+        entry: result,
+        message: `Successfully added ${finalPoints.toLocaleString()} points`,
         requestId
       });
     } catch (error) {

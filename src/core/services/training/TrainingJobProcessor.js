@@ -192,17 +192,19 @@ class TrainingJobProcessor {
       // Full refund on unexpected errors (no GPU time should be charged)
       if (chargedPoints > 0) {
         try {
-          await this.pointsService.addPoints(
-            job.ownerAccountId,
-            chargedPoints,
-            'training_refund',
-            {
+          await this.pointsService.addPoints({
+            walletAddress: job.walletAddress,
+            masterAccountId: job.ownerAccountId,
+            points: chargedPoints,
+            rewardType: 'TRAINING_REFUND',
+            description: `Training refund: unexpected error (${job.modelName})`,
+            relatedItems: {
               trainingId: jobId,
               modelName: job.modelName,
               reason: `Unexpected error: ${err.message}`,
-            }
-          );
-          this.logger.info(`[JobProcessor] Emergency refund of ${chargedPoints} points to ${job.ownerAccountId}`);
+            },
+          });
+          this.logger.info(`[JobProcessor] Emergency refund of ${chargedPoints} points to ${job.walletAddress}`);
         } catch (refundErr) {
           this.logger.error(`[JobProcessor] Emergency refund failed:`, refundErr);
           this.alertOps('CRITICAL: Emergency refund FAILED', {
@@ -527,19 +529,21 @@ class TrainingJobProcessor {
         this.logger.info(`[JobProcessor] Refunding ${reconciliation.amount} points for job ${jobId}`);
 
         try {
-          await this.pointsService.addPoints(
-            job.ownerAccountId,
-            reconciliation.amount,
-            'training_refund',
-            {
+          await this.pointsService.addPoints({
+            walletAddress: job.walletAddress,
+            masterAccountId: job.ownerAccountId,
+            points: reconciliation.amount,
+            rewardType: 'TRAINING_REFUND',
+            description: `Training refund: job ${reconciliation.action} (${job.modelName})`,
+            relatedItems: {
               trainingId: jobId,
               modelName: job.modelName,
               estimated: estimatedPoints,
               actual: actualCost.actualPoints,
               reason: 'Job failed or completed early',
-            }
-          );
-          this.logger.info(`[JobProcessor] Refunded ${reconciliation.amount} points to ${job.ownerAccountId}`);
+            },
+          });
+          this.logger.info(`[JobProcessor] Refunded ${reconciliation.amount} points to ${job.walletAddress}`);
         } catch (refundErr) {
           this.logger.error(`[JobProcessor] Refund failed for ${jobId}:`, refundErr);
           // Alert ops for manual processing if auto-refund fails

@@ -480,7 +480,7 @@ class CreditLedgerDB extends BaseDB {
    * @returns {Promise<Object>} The result of the insertion.
    */
   async createRewardCreditEntry(rewardDetails) {
-    const { masterAccountId, points, rewardType, description, relatedItems } = rewardDetails;
+    const { masterAccountId, points, rewardType, description, relatedItems, depositorAddress } = rewardDetails;
     const now = new Date();
 
     const dataToInsert = {
@@ -493,8 +493,13 @@ class CreditLedgerDB extends BaseDB {
       related_items: relatedItems || {},
       createdAt: now,
       updatedAt: now,
-      // Note: Fields from on-chain deposits like tx_hashes, addresses, and USD values are intentionally null.
     };
+
+    // Include depositor_address so the entry appears in wallet-based balance queries
+    if (depositorAddress) {
+      dataToInsert.depositor_address = depositorAddress.toLowerCase();
+    }
+
     return this.insertOne(dataToInsert);
   }
 

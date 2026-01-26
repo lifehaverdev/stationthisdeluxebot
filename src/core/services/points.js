@@ -304,6 +304,42 @@ class PointsService {
   }
 
   /**
+   * Add points back to a wallet via a confirmed credit ledger entry.
+   * Mirrors the ADMIN_GIFT flow used by the admin dashboard.
+   *
+   * @param {Object} options
+   * @param {string} options.walletAddress - Wallet to credit (depositor_address)
+   * @param {string|ObjectId} [options.masterAccountId] - User's master account ID
+   * @param {number} options.points - Points to add
+   * @param {string} options.rewardType - Ledger entry type (e.g. 'TRAINING_REFUND')
+   * @param {string} options.description - Human-readable reason
+   * @param {Object} [options.relatedItems={}] - Contextual metadata stored on the entry
+   * @returns {Promise<Object>} The created credit ledger entry
+   */
+  async addPoints(options) {
+    const { walletAddress, masterAccountId, points, rewardType, description, relatedItems = {} } = options;
+
+    if (!this.creditLedgerDb) {
+      throw new Error('creditLedgerDb is required for addPoints');
+    }
+    if (!walletAddress) {
+      throw new Error('walletAddress is required for addPoints');
+    }
+    if (!points || points <= 0) {
+      throw new Error('points must be a positive number');
+    }
+
+    return this.creditLedgerDb.createRewardCreditEntry({
+      masterAccountId: masterAccountId || null,
+      points,
+      rewardType: rewardType || 'TRAINING_REFUND',
+      description: description || `Refund of ${points} points`,
+      relatedItems,
+      depositorAddress: walletAddress,
+    });
+  }
+
+  /**
    * Deduct points for a training job
    * Uses credit ledger (wallet-based) system exclusively
    *
@@ -360,8 +396,18 @@ class PointsService {
       );
     }
 
-    // Get active deposits sorted by funding rate (lowest first)
+    // Get active entries sorted by funding rate (lowest first)
     const deposits = await this.creditLedgerDb.findActiveDepositsForWalletAddress(walletAddress);
+
+    // Consume refund/reward entries first (no funding_rate_applied),
+    // then regular deposits by lowest funding rate.
+    deposits.sort((a, b) => {
+      const aHasRate = a.funding_rate_applied != null;
+      const bHasRate = b.funding_rate_applied != null;
+      if (!aHasRate && bHasRate) return -1;
+      if (aHasRate && !bHasRate) return 1;
+      return (a.funding_rate_applied || 0) - (b.funding_rate_applied || 0);
+    });
 
     let remainingToDeduct = pointsToDeduct;
     const deductions = [];

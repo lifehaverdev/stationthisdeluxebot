@@ -2430,8 +2430,11 @@ function renderUserDetails(userData) {
 
   const wallet = user.wallets && user.wallets.length > 0 ? user.wallets[0].address : 'N/A';
   const accountAge = user.userCreationTimestamp ? Math.floor((Date.now() - new Date(user.userCreationTimestamp).getTime()) / (1000 * 60 * 60 * 24)) : 'N/A';
-  const balanceUsd = economy.usdCredit ? parseFloat(economy.usdCredit.toString()) : 0;
-  const balancePoints = Math.floor(balanceUsd / USD_PER_POINT);
+  // Calculate real balance from credit ledger (source of truth), not economy.usdCredit
+  const balancePoints = deposits
+    .filter(d => d.status === 'CONFIRMED' && d.points_remaining > 0)
+    .reduce((sum, d) => sum + (d.points_remaining || 0), 0);
+  const balanceUsd = balancePoints * USD_PER_POINT;
 
   let html = '<div style="margin-top: 2rem; padding: 1.5rem; background: #1a1a1a; border-radius: 4px; border: 2px solid #3f51b5;">';
   html += '<div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1.5rem;">';
@@ -2494,7 +2497,7 @@ function renderUserDetails(userData) {
   // Point Adjustment
   html += '<div style="margin-bottom: 1.5rem; padding: 1rem; background: #2a2f3a; border-radius: 4px;">';
   html += '<h4 style="color: #c0c0c0; margin-top: 0;">Adjust Points/Credits</h4>';
-  html += '<form id="adjust-points-form" data-user-id="' + user._id + '" style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">';
+  html += '<form id="adjust-points-form" data-user-id="' + user._id + '" data-wallet="' + wallet + '" style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">';
   html += '<div>';
   html += '<label style="color: #e0e0e0; display: block; margin-bottom: 0.25rem;">Amount (USD)</label>';
   html += '<input type="number" id="adjust-amount-usd" step="0.0001" placeholder="0.0000" style="width: 100%; padding: 0.5rem; background: #1a1a1a; border: 1px solid #444; border-radius: 4px; color: #e0e0e0;">';
@@ -3066,6 +3069,7 @@ async function handleAdjustPoints(e) {
   e.preventDefault();
   const form = e.target;
   const masterAccountId = form.dataset.userId;
+  const walletAddress = form.dataset.wallet;
   const amountUsd = parseFloat(document.getElementById('adjust-amount-usd')?.value || '0');
   const points = parseFloat(document.getElementById('adjust-points')?.value || '0');
   const description = document.getElementById('adjust-description')?.value.trim();
@@ -3086,7 +3090,7 @@ async function handleAdjustPoints(e) {
     const response = await fetch(`/api/v1/admin/vaults/users/${masterAccountId}/adjust-points?wallet=${wallet}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amountUsd: amountUsd || undefined, points: points || undefined, description, reason })
+      body: JSON.stringify({ amountUsd: amountUsd || undefined, points: points || undefined, description, reason, walletAddress })
     });
 
     if (!response.ok) {
@@ -3158,6 +3162,7 @@ function handleOpenAdjustPointsModal(e) {
           <p id="modal-address" style="color: #888; font-family: monospace; margin-bottom: 1rem;"></p>
           <form id="modal-adjust-points-form">
             <input type="hidden" id="modal-master-account-id">
+            <input type="hidden" id="modal-wallet-address">
             <div style="margin-bottom: 1rem;">
               <label style="color: #e0e0e0; display: block; margin-bottom: 0.25rem;">Points to Add (negative to subtract)</label>
               <input type="number" id="modal-points" step="1" required placeholder="1000" style="width: 100%; padding: 0.5rem; background: #1a1a1a; border: 1px solid #444; border-radius: 4px; color: #e0e0e0; box-sizing: border-box;">
@@ -3185,6 +3190,7 @@ function handleOpenAdjustPointsModal(e) {
     document.getElementById('modal-adjust-points-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const masterAccountId = document.getElementById('modal-master-account-id').value;
+      const walletAddress = document.getElementById('modal-wallet-address').value;
       const points = parseInt(document.getElementById('modal-points').value, 10);
       const description = document.getElementById('modal-description').value.trim();
 
@@ -3203,7 +3209,7 @@ function handleOpenAdjustPointsModal(e) {
         const response = await fetch(`/api/v1/admin/vaults/users/${masterAccountId}/adjust-points?wallet=${wallet}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ points, description })
+          body: JSON.stringify({ points, description, walletAddress })
         });
 
         if (!response.ok) {
@@ -3216,8 +3222,7 @@ function handleOpenAdjustPointsModal(e) {
         modal.style.display = 'none';
 
         // Reload data
-        await loadBalances();
-        render();
+        await loadDashboard();
       } catch (error) {
         console.error('Error adjusting points:', error);
         showNotification(`Failed to adjust points: ${error.message}`, 'error');
@@ -3227,6 +3232,7 @@ function handleOpenAdjustPointsModal(e) {
 
   // Populate and show modal
   document.getElementById('modal-master-account-id').value = masterAccountId;
+  document.getElementById('modal-wallet-address').value = address;
   document.getElementById('modal-address').textContent = address;
   document.getElementById('modal-points').value = '';
   document.getElementById('modal-description').value = '';
