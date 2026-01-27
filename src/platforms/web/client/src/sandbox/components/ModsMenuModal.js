@@ -29,7 +29,7 @@ export default class ModsMenuModal {
       datasets: [],  // NEW
       loadingTrain:false,
       trainError:null,
-      formMode:null, // 'new-dataset'|'edit-dataset'|'new-training'|'edit-training'
+      formMode:null, // 'new-dataset'|'edit-dataset'|'view-dataset'|'new-training'|'edit-training'
       formValues:{},
       formError:null,
       submitting:false,
@@ -560,8 +560,12 @@ export default class ModsMenuModal {
             </div>
           </div>`;
       }
-      // Priority 2: Dataset form (unchanged)
-      else if (formMode && formMode.includes('dataset')) {
+      // Priority 2: Dataset detail view
+      else if (formMode === 'view-dataset') {
+        mainContent = this.renderDatasetDetailView();
+      }
+      // Priority 3: Dataset form (edit/new)
+      else if (formMode === 'new-dataset' || formMode === 'edit-dataset') {
         const legend = formMode === 'new-dataset' ? 'New Dataset' : 'Edit Dataset';
         const imageGallery = formMode === 'edit-dataset' ? `<div class="image-gallery">${(formValues.previewImages||[]).map(url=>`<img src="${url}" class="thumb" />`).join('')}</div>` : '';
         const addImagesSection = formMode === 'edit-dataset' ? `
@@ -1025,6 +1029,7 @@ export default class ModsMenuModal {
     this.bindWizardEvents();
     // Dashboard event bindings
     this.bindDashboardEvents();
+    this.bindDatasetDetailEvents();
   }
 
   bindWizardEvents() {
@@ -1123,6 +1128,14 @@ export default class ModsMenuModal {
     this.modalElement.querySelectorAll('.compact-dataset-card').forEach(card => {
       const dsId = card.getAttribute('data-id');
 
+      const viewBtn = card.querySelector('.view-dataset');
+      if (viewBtn) {
+        viewBtn.onclick = (e) => {
+          e.stopPropagation();
+          this.openDatasetDetail(dsId);
+        };
+      }
+
       const editBtn = card.querySelector('.edit-dataset');
       if (editBtn) {
         editBtn.onclick = (e) => {
@@ -1180,6 +1193,37 @@ export default class ModsMenuModal {
     });
   }
 
+  bindDatasetDetailEvents() {
+    if (!this.modalElement || this.state.formMode !== 'view-dataset') return;
+
+    const backBtn = this.modalElement.querySelector('.detail-back-btn');
+    if (backBtn) {
+      backBtn.onclick = () => this.resetForm();
+    }
+
+    const editBtn = this.modalElement.querySelector('.detail-edit-btn');
+    if (editBtn) {
+      editBtn.onclick = () => {
+        const dataset = this.getDatasetById(this.state.selectedDatasetId);
+        if (dataset) this.openDatasetForm(dataset);
+      };
+    }
+
+    const trainBtn = this.modalElement.querySelector('.detail-train-btn');
+    if (trainBtn) {
+      trainBtn.onclick = () => {
+        this.openWizard(this.state.selectedDatasetId);
+      };
+    }
+
+    const generateBtn = this.modalElement.querySelector('.detail-generate-captions-btn');
+    if (generateBtn) {
+      generateBtn.onclick = () => {
+        this.generateCaptionSet(this.state.selectedDatasetId);
+      };
+    }
+  }
+
   attachCloseEvents() {
     if (!this.modalElement) return;
     this.modalElement.addEventListener('click', (e) => {
@@ -1202,6 +1246,17 @@ export default class ModsMenuModal {
   openDatasetForm(ds=null){
     if(ds){ this.setState({formMode:'edit-dataset',formValues:{...ds},originalFormValues:JSON.parse(JSON.stringify(ds))}); }
     else { this.setState({formMode:'new-dataset',formValues:{name:'',description:'',images:[]},originalFormValues:null});} }
+
+  openDatasetDetail(datasetId) {
+    this.setState({
+      formMode: 'view-dataset',
+      selectedDatasetId: datasetId,
+      captionSets: [],
+      loadingCaptions: true,
+      captionError: null,
+    });
+    this.fetchCaptionSets(datasetId);
+  }
 
   openTrainingForm(tr=null){
     if(!tr){
@@ -1597,6 +1652,7 @@ export default class ModsMenuModal {
               <span class="wizard-card-meta">${imgCount} img${captionBadge ? ` &middot; ${captionBadge} cap sets` : ''}</span>
             </div>
             <div class="dataset-actions">
+              <button class="btn-secondary view-dataset" data-id="${dsId}">View</button>
               <button class="btn-secondary edit-dataset" data-id="${dsId}">Edit</button>
               <button class="btn-primary use-dataset" data-id="${dsId}">Train</button>
             </div>
@@ -1646,6 +1702,91 @@ export default class ModsMenuModal {
           <div class="train-section-header"><h3>History</h3><span class="section-count">${historyTrainings.length}</span></div>
           ${historyHtml}
         </div>
+      </div>`;
+  }
+
+  renderDatasetDetailView() {
+    const { selectedDatasetId, captionSets, loadingCaptions, captionError } = this.state;
+    const dataset = this.getDatasetById(selectedDatasetId);
+    if (!dataset) return '<div class="error-message">Dataset not found.</div>';
+
+    const images = dataset.images || [];
+    const tags = (dataset.tags || '').split(',').map(t => t.trim()).filter(Boolean);
+
+    // Header
+    const header = `
+      <div class="detail-header">
+        <div class="detail-header-left">
+          <button class="btn-secondary detail-back-btn">&larr; Back</button>
+          <h3>${this.escapeHtml(dataset.name || 'Unnamed Dataset')}</h3>
+        </div>
+        <div>
+          <button class="btn-secondary detail-edit-btn" data-id="${selectedDatasetId}">Edit</button>
+          <button class="btn-primary detail-train-btn" data-id="${selectedDatasetId}">Train</button>
+        </div>
+      </div>`;
+
+    // Description & tags
+    const descHtml = dataset.description
+      ? `<p class="detail-description">${this.escapeHtml(dataset.description)}</p>` : '';
+    const tagsHtml = tags.length
+      ? `<div class="detail-tags">${tags.map(t => `<span class="detail-tag">${this.escapeHtml(t)}</span>`).join('')}</div>` : '';
+
+    // Images gallery
+    const galleryHtml = images.length
+      ? `<div class="detail-section">
+          <h3>Images <span class="section-count">${images.length}</span></h3>
+          <div class="detail-image-gallery">
+            ${images.map(url => `<img src="${url}" class="detail-gallery-thumb" />`).join('')}
+          </div>
+        </div>`
+      : `<div class="detail-section"><h3>Images</h3><div class="empty-message">No images in this dataset.</div></div>`;
+
+    // Caption sets
+    let captionHtml = '';
+    if (loadingCaptions) {
+      captionHtml = '<div class="loading-spinner">Loading captions...</div>';
+    } else if (captionError) {
+      captionHtml = `<div class="error-message">${captionError}</div>`;
+    } else if (captionSets.length) {
+      captionHtml = `<div class="detail-caption-list">
+        ${captionSets.map(cs => {
+          const csId = this.normalizeId(cs._id);
+          const isDefault = cs.isDefault;
+          return `<div class="detail-caption-card" data-id="${csId}">
+            <div>
+              <span class="detail-caption-method">${this.escapeHtml(cs.method || cs.spellSlug || 'Unknown')}</span>
+              ${isDefault ? '<span class="default-badge">Default</span>' : ''}
+              <div class="detail-caption-meta">${cs.captions ? cs.captions.length : 0} captions &middot; ${cs.createdAt ? new Date(cs.createdAt).toLocaleDateString() : ''}</div>
+            </div>
+            <div class="detail-caption-actions">
+              <button class="btn-secondary view-caption" data-id="${csId}">Inspect</button>
+              <button class="btn-secondary download-caption" data-id="${csId}">Download</button>
+              ${!isDefault ? `<button class="btn-secondary set-default" data-id="${csId}">Set Default</button>` : ''}
+              <button class="btn-danger delete-caption" data-id="${csId}">Delete</button>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`;
+    } else {
+      captionHtml = '<div class="empty-message">No caption sets yet.</div>';
+    }
+
+    // Progress panel (reuse existing)
+    const progressHtml = this.renderCaptionProgressPanel();
+
+    return `
+      ${header}
+      ${descHtml}
+      ${tagsHtml}
+      ${galleryHtml}
+      <div class="detail-section">
+        <div class="train-section-header">
+          <h3>Caption Sets <span class="section-count">${captionSets.length}</span></h3>
+          <button class="btn-primary detail-generate-captions-btn">Generate Captions</button>
+        </div>
+        ${progressHtml}
+        ${captionHtml}
       </div>`;
   }
 
