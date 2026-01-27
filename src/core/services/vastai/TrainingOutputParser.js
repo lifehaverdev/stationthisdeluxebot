@@ -183,6 +183,22 @@ const SPEED_PATTERNS = [
   { pattern: /([0-9.]+)\s*steps?\/s/gi, isSecondsPerIter: false }
 ];
 
+// Non-training line patterns (model loading, downloading, etc.)
+// Lines matching these are filtered out before step regex matching
+// to prevent model-loading tqdm bars from being misidentified as training progress.
+const NON_TRAINING_LINE_PATTERNS = [
+  /loading\s+checkpoint\s+shards/i,
+  /downloading/i,
+  /fetching\s+\d+\s+files/i,
+  /loading\s+safetensors/i,
+  /loading\s+(?:T5|CLIP|VAE|UNet|text\s+encoder|transformer)/i,
+  /quantizing/i,
+  /making\s+pip/i,
+  /tokenizer/i,
+  /resolving\s+data\s+files/i,
+  /^map:/i,
+];
+
 // Sample generation patterns
 const SAMPLE_PATTERNS = [
   /generating\s+sample/gi,
@@ -285,7 +301,18 @@ class TrainingOutputParser {
     };
   }
 
+  _filterTrainingLines(output) {
+    return output
+      .split('\n')
+      .filter(line => !NON_TRAINING_LINE_PATTERNS.some(pat => pat.test(line)))
+      .join('\n');
+  }
+
   _parseSteps(output, result) {
+    // Filter out non-training lines (model loading tqdm bars, downloads, etc.)
+    // to prevent misidentifying them as training step progress.
+    const filtered = this._filterTrainingLines(output);
+
     let maxStep = null;
     let totalSteps = null;
 
@@ -294,7 +321,7 @@ class TrainingOutputParser {
       pattern.lastIndex = 0;
       let match;
 
-      while ((match = pattern.exec(output)) !== null) {
+      while ((match = pattern.exec(filtered)) !== null) {
         const currentStep = parseInt(match[1], 10);
         const total = match[2] ? parseInt(match[2], 10) : null;
 

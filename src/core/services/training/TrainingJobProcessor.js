@@ -378,12 +378,16 @@ class TrainingJobProcessor {
         // Extract instance ID when provisioned (multiple patterns)
         // Pattern 1: "Successfully rented offer X, instance Y"
         // Pattern 2: "Instance Y status=running"
-        if (!instanceId) {
+        // Always check — provision retries may produce a new instance ID.
+        {
           const rentedMatch = chunk.match(/Successfully rented offer \d+, instance (\d+)/);
           const statusMatch = chunk.match(/Instance (\d+) status=/);
           const foundId = rentedMatch?.[1] || statusMatch?.[1];
 
-          if (foundId) {
+          if (foundId && foundId !== instanceId) {
+            if (instanceId) {
+              this.logger.info(`[JobProcessor] Instance ID changed: ${instanceId} -> ${foundId} (provision retry)`);
+            }
             instanceId = foundId;
             this.logger.info(`[JobProcessor] Detected instance ID: ${instanceId}`);
 
@@ -416,7 +420,11 @@ class TrainingJobProcessor {
         // Parse training progress (wrapped in try-catch to prevent crashes)
         try {
           const parsed = parser.parse(chunk);
-          if (parsed.lastStep && parsed.totalSteps) {
+          // Only accept progress if totalSteps is plausibly the configured training steps.
+          // During model loading, tqdm bars have tiny totals (2, 21, etc.)
+          // Training steps are typically 500+, so require totalSteps >= 50% of job.steps
+          const minExpectedSteps = Math.floor(job.steps * 0.5);
+          if (parsed.lastStep && parsed.totalSteps && parsed.totalSteps >= minExpectedSteps) {
             const progress = Math.round((parsed.lastStep / parsed.totalSteps) * 100);
 
             // Update DB
