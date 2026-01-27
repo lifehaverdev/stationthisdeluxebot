@@ -68,11 +68,13 @@ export function renderResultContent(resultContainer, output, options = {}) {
         } else if (output.video || output.videoUrl || (Array.isArray(output.videos) && output.videos.length)) {
             const firstVid = Array.isArray(output.videos) ? output.videos[0] : (output.video || output.videoUrl);
             output = { type: 'video', url: (typeof firstVid === 'string' ? firstVid : firstVid.url), ...output };
-        } else if (output.data?.files) {
-            const filesArr = Array.isArray(output.data.files) ? output.data.files : Object.values(output.data.files);
+        } else if (output.files || output.data?.files) {
+            const filesArr = output.files || (Array.isArray(output.data.files) ? output.data.files : Object.values(output.data.files));
             const vidFile = filesArr.find(f => /\.mp4$|\.webm$/i.test(f.url));
-            if (vidFile) {
+            if (vidFile && filesArr.length === 1) {
                 output = { type: 'video', url: vidFile.url, ...output };
+            } else {
+                output = { type: 'file', files: filesArr, ...output };
             }
         }
     }
@@ -133,15 +135,23 @@ export function renderResultContent(resultContainer, output, options = {}) {
             if (Array.isArray(output.url)) return output.url;
             if (Array.isArray(output.videos)) return output.videos.map(v => v.url || v);
             return [output.url];
+        } else if (output.type === 'file') {
+            const files = output.files || [];
+            const imageRe = /\.(png|jpg|jpeg|gif|webp)(\?|\/|$)/i;
+            return files.filter(f => imageRe.test(f.url || '') || imageRe.test(f.filename || '')).map(f => f.url);
         }
         return [];
     })();
 
+    // Sub-container for rendered content — keeps pager nav intact on re-render
+    const contentArea = document.createElement('div');
+    contentArea.className = 'result-content-area';
+
     const renderSingle = (idx) => {
-        resultContainer.innerHTML = '';
+        contentArea.innerHTML = '';
         const value = normalised[idx];
 
-        if (output.type === 'image') {
+        if (output.type === 'image' || output.type === 'file') {
             const img = document.createElement('img');
             img.src = value;
             img.className = 'result-image';
@@ -149,8 +159,8 @@ export function renderResultContent(resultContainer, output, options = {}) {
             img.style.maxHeight = '300px';
             img.style.display = 'block';
             img.style.cursor = 'pointer';
-            img.addEventListener('click', () => showImageOverlay(value));
-            resultContainer.appendChild(img);
+            img.addEventListener('click', () => showImageOverlay(normalised, idx));
+            contentArea.appendChild(img);
         } else if (output.type === 'text') {
             const text = document.createElement('div');
             text.className = 'result-text-output';
@@ -193,7 +203,7 @@ export function renderResultContent(resultContainer, output, options = {}) {
                     window.prompt('Copy to clipboard: Ctrl+C, Enter', value);
                 }
             });
-            resultContainer.appendChild(text);
+            contentArea.appendChild(text);
         } else if (output.type === 'video') {
             const video = document.createElement('video');
             video.src = value;
@@ -204,8 +214,8 @@ export function renderResultContent(resultContainer, output, options = {}) {
             video.style.maxHeight = '300px';
             video.style.display = 'block';
             video.style.cursor = 'pointer';
-            video.addEventListener('click', () => showVideoOverlay(value)); // Assuming showImageOverlay can handle video
-            resultContainer.appendChild(video);
+            video.addEventListener('click', () => showVideoOverlay(value));
+            contentArea.appendChild(video);
         }
     };
 
@@ -227,12 +237,41 @@ export function renderResultContent(resultContainer, output, options = {}) {
 
         nav.append(prev, counter, next);
         resultContainer.appendChild(nav);
+        resultContainer.appendChild(contentArea);
         update();
     } else {
+        resultContainer.appendChild(contentArea);
         if (normalised.length) {
             renderSingle(0);
         } else {
             resultContainer.textContent = 'Output available.';
+        }
+    }
+
+    // Download links for non-image files (PPTX, ZIP, etc.)
+    if (output.type === 'file' && output.files) {
+        const imageRe = /\.(png|jpg|jpeg|gif|webp)(\?|\/|$)/i;
+        const downloadFiles = output.files.filter(f => !imageRe.test(f.url || '') && !imageRe.test(f.filename || ''));
+        if (downloadFiles.length > 0) {
+            const dlContainer = document.createElement('div');
+            dlContainer.className = 'result-download-links';
+            dlContainer.style.marginTop = '8px';
+            downloadFiles.forEach(f => {
+                const link = document.createElement('a');
+                link.href = f.url;
+                link.textContent = f.filename || 'Download';
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.style.display = 'inline-block';
+                link.style.marginRight = '12px';
+                link.style.padding = '4px 8px';
+                link.style.border = '1px solid rgba(255,255,255,0.2)';
+                link.style.borderRadius = '4px';
+                link.style.textDecoration = 'none';
+                link.style.fontSize = '12px';
+                dlContainer.appendChild(link);
+            });
+            resultContainer.appendChild(dlContainer);
         }
     }
 

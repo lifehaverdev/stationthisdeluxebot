@@ -13,6 +13,9 @@ export function injectImageOverlay() {
           <img class="image-overlay-img" src="" alt="Full Size" />
         </div>
         <button class="image-overlay-close">&times;</button>
+        <button class="image-overlay-prev" style="display:none">&#9664;</button>
+        <button class="image-overlay-next" style="display:none">&#9654;</button>
+        <span class="image-overlay-counter" style="display:none"></span>
       </div>
     `;
     const sandboxMain = document.querySelector('.sandbox-main');
@@ -28,20 +31,68 @@ export function injectImageOverlay() {
     });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') hideImageOverlay();
+      if (e.key === 'ArrowLeft') navigateOverlay(-1);
+      if (e.key === 'ArrowRight') navigateOverlay(1);
     });
 }
 
 import { debugLog } from '../../config/debugConfig.js';
 
-export function showImageOverlay(url) {
-    debugLog('IMAGE_OVERLAY_SHOW', '[DEBUG] showImageOverlay called with url:', url);
+// Gallery state
+let _galleryUrls = [];
+let _galleryIndex = 0;
+
+function navigateOverlay(direction) {
+    if (_galleryUrls.length < 2) return;
+    _galleryIndex = (_galleryIndex + direction + _galleryUrls.length) % _galleryUrls.length;
     const overlay = document.getElementById('image-overlay');
+    if (!overlay || overlay.style.display === 'none') return;
+    const img = overlay.querySelector('.image-overlay-img');
+    img.src = _galleryUrls[_galleryIndex];
+    const counter = overlay.querySelector('.image-overlay-counter');
+    if (counter) counter.textContent = `${_galleryIndex + 1} / ${_galleryUrls.length}`;
+}
+
+/**
+ * Show the image overlay. Supports both single image and gallery modes.
+ * @param {string|string[]} urlOrUrls - Single URL or array of URLs
+ * @param {number} [startIndex=0] - Starting index when an array is provided
+ */
+export function showImageOverlay(urlOrUrls, startIndex = 0) {
+    const urls = Array.isArray(urlOrUrls) ? urlOrUrls : [urlOrUrls];
+    const idx = Math.max(0, Math.min(startIndex, urls.length - 1));
+
+    _galleryUrls = urls;
+    _galleryIndex = idx;
+
+    debugLog('IMAGE_OVERLAY_SHOW', '[DEBUG] showImageOverlay called with', urls.length, 'image(s), startIndex:', idx);
+    let overlay = document.getElementById('image-overlay');
     if (!overlay) {
         injectImageOverlay();
+        overlay = document.getElementById('image-overlay');
     }
     const img = overlay.querySelector('.image-overlay-img');
-    img.src = url;
+    img.src = urls[idx];
     overlay.style.display = 'flex';
+
+    // Show/hide gallery nav
+    const prevBtn = overlay.querySelector('.image-overlay-prev');
+    const nextBtn = overlay.querySelector('.image-overlay-next');
+    const counter = overlay.querySelector('.image-overlay-counter');
+    const hasGallery = urls.length > 1;
+
+    if (prevBtn) {
+        prevBtn.style.display = hasGallery ? 'flex' : 'none';
+        prevBtn.onclick = () => navigateOverlay(-1);
+    }
+    if (nextBtn) {
+        nextBtn.style.display = hasGallery ? 'flex' : 'none';
+        nextBtn.onclick = () => navigateOverlay(1);
+    }
+    if (counter) {
+        counter.style.display = hasGallery ? 'block' : 'none';
+        counter.textContent = `${idx + 1} / ${urls.length}`;
+    }
 
     // Hide permanent connection lines while overlay is active
     document.querySelectorAll('.connection-line.permanent').forEach(el => {
@@ -72,10 +123,12 @@ export function hideImageOverlay() {
     if (!overlay) return;
     overlay.style.display = 'none';
     overlay.querySelector('.image-overlay-img').src = '';
+    _galleryUrls = [];
+    _galleryIndex = 0;
 
     // Restore connection-line visibility
     document.querySelectorAll('.connection-line.permanent').forEach(el => {
         el.style.visibility = el._prevVisibility || '';
         delete el._prevVisibility;
     });
-} 
+}

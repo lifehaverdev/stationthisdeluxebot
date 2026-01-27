@@ -290,11 +290,30 @@ export function handleGenerationUpdate(payload) {
                 outputData = { type: 'image', url: outputs.artifactUrls[0], generationId };
             }
 
-            // --- 2c. Files array with video (.mp4, .webm) ---
+            // --- 2c. Typed video entry from async adapter: [{ type: 'video', data: { videoUrl } }] ---
+            else if (Array.isArray(outputs) && outputs[0]?.type === 'video' && outputs[0]?.data?.videoUrl) {
+                outputData = { type: 'video', url: outputs[0].data.videoUrl, generationId };
+            }
+
+            // --- 2d. Files array with video (.mp4, .webm) or mixed content ---
             else if (Array.isArray(outputs) && outputs[0]?.data?.files?.[0]?.url) {
-                const file = outputs[0].data.files[0];
+                const files = outputs[0].data.files;
+                const file = files[0];
                 if(/\.mp4$|\.webm$/i.test(file.url)){
                     outputData = { type: 'video', url: file.url, generationId };
+                } else {
+                    outputData = { type: 'file', files, generationId };
+                }
+            }
+
+            // --- 2e. Files array at top level (from toWebFormat) ---
+            else if (Array.isArray(outputs.files) && outputs.files.length) {
+                const files = outputs.files;
+                const vidFile = files.find(f => /\.mp4$|\.webm$/i.test(f.url || ''));
+                if (vidFile && files.length === 1) {
+                    outputData = { type: 'video', url: vidFile.url, generationId };
+                } else {
+                    outputData = { type: 'file', files, generationId };
                 }
             }
             // --- 3d. Flat videoUrl field ---

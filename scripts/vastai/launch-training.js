@@ -849,6 +849,11 @@ async function main() {
       logger: args.verbose ? console : null
     });
 
+    // Extract actual training config values from the YAML template
+    const configTemplatePath = path.resolve(expandHome(args.template || DEFAULT_TEMPLATE));
+    const trainingConfig = ModelCardGenerator.extractTrainingConfig(configTemplatePath);
+    log(`Extracted training config: rank=${trainingConfig.loraRank || '?'}, alpha=${trainingConfig.loraAlpha || '?'}, optimizer=${trainingConfig.optimizer || '?'}, lr=${trainingConfig.learningRate || '?'}`);
+
     // Generate model card
     const cardGenerator = new ModelCardGenerator({
       openaiService,
@@ -862,7 +867,8 @@ async function main() {
         trainingSteps: steps,
         captions,
         description: args.description,  // User-provided description (optional)
-        hfOrg
+        hfOrg,
+        trainingConfig,
       });
 
       samplePrompts = cardResult.samplePrompts;
@@ -1242,6 +1248,9 @@ async function main() {
           const uploadCmd = `export HF_TOKEN="${extraEnv.HF_TOKEN}" && huggingface-cli upload ${hfRepoId} "${remoteSafetensors}" "${modelName}.safetensors" --commit-message "Upload trained model"`;
           await ssh.exec(uploadCmd, { timeout: 300000 }); // 5 min timeout for upload
 
+          // Model uploaded - set URL immediately so nothing downstream can block it
+          hfModelUrl = `https://huggingface.co/${hfRepoId}`;
+
           // Upload samples if they exist (ai-toolkit creates samples/step_N/*.png)
           log('Looking for sample images...');
           // Debug: show output directory structure
@@ -1287,32 +1296,6 @@ async function main() {
             log('No sample images found (sampling may be disabled in config)');
           }
 
-          // Update README with sample grid now that samples are uploaded
-          if (uploadedSampleCount > 0 && cardGenerator && captions) {
-            log('Updating README.md with sample images...');
-            try {
-              // Regenerate model card - samples are now uploaded
-              const updatedCardResult = await cardGenerator.generate({
-                modelName,
-                triggerWord,
-                trainingSteps: steps,
-                captions,
-                description: args.description,
-                hfOrg
-              });
-
-              // Upload updated README via huggingface-cli
-              // Use a here-doc that handles special characters
-              const readmeBase64 = Buffer.from(updatedCardResult.readme).toString('base64');
-              const updateReadmeCmd = `export HF_TOKEN="${extraEnv.HF_TOKEN}" && echo "${readmeBase64}" | base64 -d > /tmp/README.md && huggingface-cli upload ${hfRepoId} /tmp/README.md README.md --commit-message "Update model card with sample images"`;
-              await ssh.exec(updateReadmeCmd, { timeout: 60000 });
-              log('README.md updated with sample images');
-            } catch (readmeErr) {
-              log(`WARNING: Failed to update README: ${readmeErr.message}`);
-            }
-          }
-
-          hfModelUrl = `https://huggingface.co/${hfRepoId}`;
           const uploaded = [modelName + '.safetensors'];
           if (uploadedSampleCount > 0) uploaded.push(`${uploadedSampleCount} samples`);
 

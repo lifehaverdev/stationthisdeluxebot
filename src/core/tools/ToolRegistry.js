@@ -182,7 +182,7 @@ class ToolRegistry {
           }
         }
       }
-      if (tool.category && !['text-to-image', 'img2img', 'image-to-image', 'upscale', 'inpaint', 'video', 'interrogate', 'text-to-text'].includes(tool.category)) {
+      if (tool.category && !['text-to-image', 'img2img', 'image-to-image', 'image-to-text', 'upscale', 'inpaint', 'video', 'interrogate', 'text-to-text'].includes(tool.category)) {
           errors.push({ toolId, message: `Invalid category: ${tool.category}` });
       }
       if (tool.visibility && !['public', 'internal', 'hidden'].includes(tool.visibility)) {
@@ -196,8 +196,8 @@ class ToolRegistry {
           if (!tool.webhookStrategy.successValue) errors.push({ toolId, message: 'WebhookConfig missing successValue'});
           if (typeof tool.webhookStrategy.durationTracking !== 'boolean') errors.push({ toolId, message: 'WebhookConfig durationTracking must be boolean'});
       }
-      if (!tool.deliveryMode || !['immediate', 'webhook'].includes(tool.deliveryMode)) {
-          errors.push({ toolId, message: `deliveryMode '${tool.deliveryMode}' is invalid or missing. Must be 'immediate' or 'webhook'.` });
+      if (!tool.deliveryMode || !['immediate', 'webhook', 'async'].includes(tool.deliveryMode)) {
+          errors.push({ toolId, message: `deliveryMode '${tool.deliveryMode}' is invalid or missing. Must be 'immediate', 'webhook', or 'async'.` });
       }
       if (tool.platformHints) {
           const allowedPrimaryInputs = ['text', 'image', 'video', 'audio', 'file'];

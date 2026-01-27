@@ -338,7 +338,18 @@ class ResponsePayloadNormalizer {
     
     for (const item of normalizedPayload) {
       if (!item.data) continue;
-      
+
+      // Extract direct video URL (HuggingFace async adapter format: { type: 'video', data: { videoUrl } })
+      if (item.data.videoUrl || item.data.video) {
+        const videoUrl = item.data.videoUrl || item.data.video;
+        console.log(`[ResponsePayloadNormalizer] extractMedia: Found direct videoUrl in item.data, extracting as video: ${videoUrl.substring(0, 80)}...`);
+        media.push({
+          url: videoUrl,
+          type: 'video',
+          format: 'video/mp4'
+        });
+      }
+
       // Extract images
       if (item.data.images && Array.isArray(item.data.images)) {
         console.log(`[ResponsePayloadNormalizer] extractMedia: Found ${item.data.images.length} image(s) in item.data.images (item.type=${item.type})`);
@@ -474,10 +485,15 @@ class ResponsePayloadNormalizer {
       if (item.type === 'video' && item.data && item.data.files) {
         const files = item.data.files;
         if (files.length > 0) {
-          return { 
-            files: files 
+          return {
+            files: files
           };
         }
+      }
+
+      // File output (mixed images + downloads from Qwen layered, etc.)
+      if (item.type === 'file' && item.data) {
+        return item.data;
       }
     }
 

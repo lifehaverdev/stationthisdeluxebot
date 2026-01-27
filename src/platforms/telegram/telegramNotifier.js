@@ -1,11 +1,12 @@
 // src/platforms/telegram/telegramNotifier.js
 
-const { 
-    sendEscapedMessage, 
-    sendPhotoWithEscapedCaption, 
-    sendAnimationWithEscapedCaption, 
+const {
+    sendEscapedMessage,
+    sendPhotoWithEscapedCaption,
+    sendAnimationWithEscapedCaption,
     sendVideoWithEscapedCaption,
-    sendDocumentWithEscapedCaption
+    sendDocumentWithEscapedCaption,
+    sendPhotoMediaGroup
 } = require('./utils/messaging');
 const ResponsePayloadNormalizer = require('../../core/services/notifications/ResponsePayloadNormalizer');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
@@ -73,7 +74,8 @@ class TelegramNotifier {
       // --- Multi-Output Handling Logic (using centralized normalizer) ---
       const mediaToSend = [];
       const deliveryHints = generationRecord.metadata?.deliveryHints?.telegram || {};
-      const sendAsDocument = deliveryHints['send-as'] === 'document';
+      const sendAsDocument = deliveryHints['send-as'] === 'document'
+        || generationRecord.metadata?.telegramSendAsDocument === true;
       const suggestedFilename = deliveryHints.filename || 'output.png';
       const isGroupChat = chatId < 0; // Telegram group/supergroup IDs are negative
       const targetChatForDocument = (sendAsDocument && isGroupChat && notificationContext.userId) ? notificationContext.userId : chatId;
@@ -98,11 +100,11 @@ class TelegramNotifier {
         if (media.type === 'photo') {
           const finalType = sendAsDocument ? 'document' : 'photo';
           this.logger.debug(`[TelegramNotifier] Processing photo media: ${finalType} (sendAsDocument=${sendAsDocument})`);
-          mediaToSend.push({ 
-            type: finalType, 
-            url: media.url, 
-            caption: '', 
-            filename: suggestedFilename 
+          mediaToSend.push({
+            type: finalType,
+            url: media.url,
+            caption: '',
+            filename: media.filename || suggestedFilename
                 });
         } else if (media.type === 'video') {
           mediaToSend.push({ 
@@ -167,63 +169,84 @@ class TelegramNotifier {
 
       // Send all collected media items.
       this.logger.info(`[TelegramNotifier] Collected ${mediaToSend.length} media items to send: ${JSON.stringify(mediaToSend.map(m => ({ type: m.type, url: m.url })))}`);
-      
-      try {
-          for (let i = 0; i < mediaToSend.length; i++) {
-              const media = mediaToSend[i];
-              // Only attach the inline keyboard to the *last* media item to avoid clutter.
-              const currentOptions = (i === mediaToSend.length - 1) ? options : { reply_to_message_id: replyToMessageId };
 
-              // Override chat for document in group
+      try {
+          // Separate photos from non-photo items for potential media group batching
+          const photoItems = mediaToSend.filter(m => m.type === 'photo');
+          const nonPhotoItems = mediaToSend.filter(m => m.type !== 'photo');
+          let keyboardAttached = false;
+
+          // --- Photos: batch as media group if 2+, otherwise send individually ---
+          if (photoItems.length >= 2) {
+              try {
+                  await sendPhotoMediaGroup(this.bot, chatId, photoItems, { reply_to_message_id: replyToMessageId });
+                  this.logger.info(`[TelegramNotifier] Sent ${photoItems.length} photos as media group`);
+                  // Note: sendMediaGroup doesn't support reply_markup; keyboard goes on a later message
+              } catch (groupErr) {
+                  this.logger.warn(`[TelegramNotifier] sendMediaGroup failed (${groupErr.message}), falling back to individual photo sends`);
+                  for (const media of photoItems) {
+                      const response = await fetch(media.url);
+                      if (!response.ok) throw new Error(`Failed to fetch media from URL. Status: ${response.status}`);
+                      const mediaBuffer = Buffer.from(await response.arrayBuffer());
+                      await sendPhotoWithEscapedCaption(this.bot, chatId, mediaBuffer, { reply_to_message_id: replyToMessageId }, media.caption);
+                  }
+              }
+          } else if (photoItems.length === 1) {
+              const media = photoItems[0];
+              const photoOptions = (nonPhotoItems.length === 0 && textOutputs.length === 0) ? options : { reply_to_message_id: replyToMessageId };
+              const response = await fetch(media.url);
+              if (!response.ok) throw new Error(`Failed to fetch media from URL. Status: ${response.status}`);
+              const mediaBuffer = Buffer.from(await response.arrayBuffer());
+              await sendPhotoWithEscapedCaption(this.bot, chatId, mediaBuffer, photoOptions, media.caption);
+              if (nonPhotoItems.length === 0 && textOutputs.length === 0) keyboardAttached = true;
+          }
+
+          // --- Non-photo items: send individually ---
+          for (let i = 0; i < nonPhotoItems.length; i++) {
+              const media = nonPhotoItems[i];
+              const isLast = (i === nonPhotoItems.length - 1) && textOutputs.length === 0;
+              const currentOptions = isLast && !keyboardAttached ? options : { reply_to_message_id: replyToMessageId };
+
               let destChatId = chatId;
               if (media.type === 'document') {
                 destChatId = targetChatForDocument;
-                // If sending privately, do not set reply options
                 if (destChatId !== chatId) {
                   delete currentOptions.reply_to_message_id;
                   delete currentOptions.reply_markup;
                 }
               }
               this.logger.info(`[TelegramNotifier] Sending ${media.type} to ${destChatId}. Attempting to fetch from URL: ${media.url}`);
-              
-              try {
-                  const response = await fetch(media.url);
-                  if (!response.ok) {
-                      const errorBody = await response.text();
-                      this.logger.error(`[TelegramNotifier] Failed to fetch media from URL ${media.url}. Status: ${response.status}. Body: ${errorBody.substring(0, 500)}`);
-                      throw new Error(`Failed to fetch media from URL. Status: ${response.status}`);
-                  }
-                  
-                  const arrayBuffer = await response.arrayBuffer();
-                  const mediaBuffer = Buffer.from(arrayBuffer);
-                  
-                  this.logger.info(`[TelegramNotifier] Successfully fetched ${mediaBuffer.length} bytes for ${media.type} from ${media.url}. Sending to Telegram.`);
 
-                  switch (media.type) {
-                      case 'photo':
-                          await sendPhotoWithEscapedCaption(this.bot, chatId, mediaBuffer, currentOptions, media.caption);
-                          break;
-                      case 'document':
-                          await sendDocumentWithEscapedCaption(this.bot, destChatId, mediaBuffer, media.filename || 'file', currentOptions, media.caption);
-                          break;
-                      case 'animation':
-                          await sendAnimationWithEscapedCaption(this.bot, chatId, mediaBuffer, currentOptions, media.caption);
-                          break;
-                      case 'video':
-                          await sendVideoWithEscapedCaption(this.bot, chatId, mediaBuffer, currentOptions, media.caption);
-                          break;
-                  }
-              } catch (fetchError) {
-                  this.logger.error(`[TelegramNotifier] Could not process media from URL ${media.url}. Error: ${fetchError.message} ${fetchError.stack}` );
-                  // Propagate the error to the outer catch block to trigger the main fallback logic.
-                  throw fetchError;
+              const response = await fetch(media.url);
+              if (!response.ok) {
+                  const errorBody = await response.text();
+                  this.logger.error(`[TelegramNotifier] Failed to fetch media from URL ${media.url}. Status: ${response.status}. Body: ${errorBody.substring(0, 500)}`);
+                  throw new Error(`Failed to fetch media from URL. Status: ${response.status}`);
               }
+              const mediaBuffer = Buffer.from(await response.arrayBuffer());
+              this.logger.info(`[TelegramNotifier] Successfully fetched ${mediaBuffer.length} bytes for ${media.type}. Sending to Telegram.`);
+
+              switch (media.type) {
+                  case 'document':
+                      await sendDocumentWithEscapedCaption(this.bot, destChatId, mediaBuffer, media.filename || 'file', currentOptions, media.caption);
+                      break;
+                  case 'animation':
+                      await sendAnimationWithEscapedCaption(this.bot, chatId, mediaBuffer, currentOptions, media.caption);
+                      break;
+                  case 'video':
+                      await sendVideoWithEscapedCaption(this.bot, chatId, mediaBuffer, currentOptions, media.caption);
+                      break;
+              }
+              if (isLast && !keyboardAttached) keyboardAttached = true;
           }
+
           // After all media is sent, send a separate message with all the text joined together.
           let textSent = false;
           if (textOutputs.length > 0) {
-              await sendEscapedMessage(this.bot, chatId, textOutputs.join('\\n\\n'), { reply_to_message_id: replyToMessageId });
+              const textOptions = !keyboardAttached ? options : { reply_to_message_id: replyToMessageId };
+              await sendEscapedMessage(this.bot, chatId, textOutputs.join('\\n\\n'), textOptions);
               textSent = true;
+              keyboardAttached = true;
           }
 
           // If we redirected document to user's private chat, notify in group
@@ -246,12 +269,11 @@ class TelegramNotifier {
         this.logger.error(`[TelegramNotifier] Failed to send COMPLETED notification to chatId: ${chatId}. Error: ${error.message}`, error.stack);
         try {
           this.logger.warn(`[TelegramNotifier] Attempting to send fallback text message to ${chatId} after media send failure.`);
-          // Send the original generic success message as fallback if media sending fails
           await sendEscapedMessage(this.bot, chatId, messageContent, options);
         } catch (fallbackError) {
           this.logger.error(`[TelegramNotifier] Fallback text message also failed for ${chatId}: ${fallbackError.message}`);
         }
-        throw error; 
+        throw error;
       }
     } else {
       // For FAILED messages or other types (non-completed jobs)

@@ -107,7 +107,11 @@ const joycaptionTool = {
     model: 'joy-caption-beta-one',
     // This tool produces plain text descriptions, so mark as text for UI anchor compatibility
     outputType: 'text',
-    inputType: 'image'
+    inputType: 'image',
+    defaultAdapterParams: {
+      toolId: 'joycaption',
+      spaceUrl: 'https://fancyfeast-joy-caption-beta-one.hf.space'
+    }
   }
 };
 

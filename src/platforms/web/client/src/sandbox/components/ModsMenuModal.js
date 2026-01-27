@@ -45,6 +45,14 @@ export default class ModsMenuModal {
       captionError: null,
       captionerSpells: [],
       captionTasks: {},
+      // Wizard state (separate namespace to avoid breaking formMode flows)
+      wizardStep: 0,               // 0=dashboard, 1-4=wizard steps
+      wizardDatasetId: null,        // selected dataset in step 1
+      wizardModelType: null,        // 'SDXL'|'FLUX'|'WAN' from step 2
+      wizardCaptionSetId: null,     // selected caption set from step 3
+      wizardFormValues: {},         // name, triggerWords, description, advanced params
+      wizardCaptionSets: [],        // caption sets for selected dataset
+      wizardLoadingCaptions: false,
     };
     this.modalElement = null;
     this.handleKeyDown = this.handleKeyDown.bind(this);
@@ -144,6 +152,12 @@ export default class ModsMenuModal {
         const { captionSetId, status, datasetId } = data;
         const normalizedDatasetId = this.normalizeId(datasetId);
         this.handleCaptionTaskEvent(data);
+
+        // Wizard awareness: refresh wizard caption sets when on step 3
+        if (this.state.wizardStep === 3 && normalizedDatasetId === this.normalizeId(this.state.wizardDatasetId)) {
+          this.fetchWizardCaptionSets(this.state.wizardDatasetId);
+        }
+
         if (normalizedDatasetId !== this.normalizeId(this.state.selectedDatasetId)) return;
         if(captionSetId){
           const normalizedId=this.normalizeId(captionSetId);
@@ -520,332 +534,174 @@ export default class ModsMenuModal {
     // Decide mainContent
     let mainContent = '';
     if (rootTab === 'train') {
-      const { formMode, formValues, formError, submitting, uploading } = this.state;
-      if(formMode){
-        const isDataset=formMode.includes('dataset');
-        const legend=isDataset? (formMode==='new-dataset'?'New Dataset':'Edit Dataset') : (formMode==='new-training'?'New Training':'Edit Training');
-        const dsOptions=this.state.datasets.map(d=>`<option value="${d._id}" ${formValues.datasetId===d._id?'selected':''}>${d.name}</option>`).join('');
-        const imageGallery=isDataset && formMode==='edit-dataset' ? `<div class="image-gallery">${(formValues.previewImages||[]).map(url=>`<img src="${url}" class="thumb" />`).join('')}</div>` : '';
-        const addImagesSection=isDataset && formMode==='edit-dataset' ? `
+      const { formMode, formValues, formError, submitting, uploading, wizardStep } = this.state;
+
+      // Priority 1: Wizard is active
+      if (wizardStep > 0) {
+        const stepBar = this.renderWizardStepBar();
+        let stepContent = '';
+        if (wizardStep === 1) stepContent = this.renderWizardStep1();
+        else if (wizardStep === 2) stepContent = this.renderWizardStep2();
+        else if (wizardStep === 3) stepContent = this.renderWizardStep3();
+        else if (wizardStep === 4) stepContent = this.renderWizardStep4();
+        const isFirst = wizardStep === 1;
+        const isLast = wizardStep === 4;
+        mainContent = `
+          <h2>New Training</h2>
+          ${stepBar}
+          ${stepContent}
+          <div class="wizard-footer">
+            <button class="btn-secondary wizard-cancel-btn">Cancel</button>
+            <div>
+              ${!isFirst ? '<button class="btn-secondary wizard-back-btn">Back</button>' : ''}
+              ${isLast
+                ? `<button class="btn-primary wizard-submit-btn" ${submitting ? 'disabled' : ''}>${submitting ? 'Starting...' : 'Start Training'}</button>`
+                : '<button class="btn-primary wizard-next-btn">Next</button>'}
+            </div>
+          </div>`;
+      }
+      // Priority 2: Dataset form (unchanged)
+      else if (formMode && formMode.includes('dataset')) {
+        const legend = formMode === 'new-dataset' ? 'New Dataset' : 'Edit Dataset';
+        const imageGallery = formMode === 'edit-dataset' ? `<div class="image-gallery">${(formValues.previewImages||[]).map(url=>`<img src="${url}" class="thumb" />`).join('')}</div>` : '';
+        const addImagesSection = formMode === 'edit-dataset' ? `
           <label>Add Images (URLs comma or space separated):<br><textarea name="_imgInput"></textarea></label>
           <button type="button" class="add-img-btn">Add Images</button>
           <div class="new-img-preview">${this.state.newImageUrls.map(u=>`<img src="${u}" class="thumb" />`).join('')}</div>` : '';
-        mainContent=`<h2>${legend}</h2>
-          ${formError?`<div class="error-message">${formError}</div>`:''}
+        mainContent = `<h2>${legend}</h2>
+          ${formError ? `<div class="error-message">${formError}</div>` : ''}
           <form class="train-form">
-            ${isDataset ? `
-              <div class="form-section">
-                <h3>Basic Information</h3>
-                <label>Dataset Name:<br><input type="text" name="name" value="${formValues.name||''}" required /></label><br>
-                <label>Description:<br><textarea name="description">${formValues.description||''}</textarea></label><br>
-                <label>Tags:<br><input type="text" name="tags" value="${formValues.tags||''}" placeholder="comma,separated,tags" /></label><br>
+            <div class="form-section">
+              <h3>Basic Information</h3>
+              <label>Dataset Name:<br><input type="text" name="name" value="${formValues.name||''}" required /></label><br>
+              <label>Description:<br><textarea name="description">${formValues.description||''}</textarea></label><br>
+              <label>Tags:<br><input type="text" name="tags" value="${formValues.tags||''}" placeholder="comma,separated,tags" /></label><br>
+            </div>
+            <div class="form-section">
+              <h3>Images</h3>
+              <div class="upload-methods">
+                <button type="button" class="upload-tab-btn active" data-method="upload">Upload Files</button>
+                <button type="button" class="upload-tab-btn" data-method="urls">Image URLs</button>
+                <button type="button" class="upload-tab-btn" data-method="paste">Paste Images</button>
               </div>
-
-              <div class="form-section">
-                <h3>Images</h3>
-                
-                <!-- Upload Methods Tabs -->
-                <div class="upload-methods">
-                  <button type="button" class="upload-tab-btn active" data-method="upload">Upload Files</button>
-                  <button type="button" class="upload-tab-btn" data-method="urls">Image URLs</button>
-                  <button type="button" class="upload-tab-btn" data-method="paste">Paste Images</button>
-                </div>
-
-                <!-- File Upload Area -->
-                <div class="upload-method-content" id="upload-method">
-                  <div class="file-upload-area" id="file-upload-area">
-                    <div class="upload-prompt">
-                      <div class="upload-icon">📁</div>
-                      <p>Drag and drop images here, or <button type="button" class="file-select-btn">click to browse</button></p>
-                      <p class="upload-hint">Supports JPG, PNG, WebP, GIF (max 10MB each)</p>
-                    </div>
-                    <input type="file" id="file-input" multiple accept="image/*" style="display: none;" />
+              <div class="upload-method-content" id="upload-method">
+                <div class="file-upload-area" id="file-upload-area">
+                  <div class="upload-prompt">
+                    <div class="upload-icon">📁</div>
+                    <p>Drag and drop images here, or <button type="button" class="file-select-btn">click to browse</button></p>
+                    <p class="upload-hint">Supports JPG, PNG, WebP, GIF (max 10MB each)</p>
                   </div>
-                  
-                  <!-- Upload Progress -->
-                  <div class="upload-progress" id="upload-progress" style="display: ${uploading?'block':'none'};">
-                    <div class="progress-bar">
-                      <div class="progress-fill" id="progress-fill" style="width: 0%;"></div>
-                    </div>
-                    <div class="progress-text" id="progress-text">Uploading...</div>
+                  <input type="file" id="file-input" multiple accept="image/*" style="display: none;" />
+                </div>
+                <div class="upload-progress" id="upload-progress" style="display: ${uploading?'block':'none'};">
+                  <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill" style="width: 0%;"></div>
                   </div>
-                </div>
-
-                <!-- URL Input (existing functionality) -->
-                <div class="upload-method-content" id="urls-method" style="display: none;">
-                  <label>Add Images (URLs):<br>
-                    <textarea name="imageUrls" placeholder="Enter image URLs, one per line or comma-separated"></textarea>
-                  </label>
-                  <button type="button" class="add-images-btn">Add Images</button>
-                </div>
-
-                <!-- Paste Area -->
-                <div class="upload-method-content" id="paste-method" style="display: none;">
-                  <div class="paste-area" id="paste-area">
-                    <div class="paste-prompt">
-                      <div class="paste-icon">📋</div>
-                      <p>Paste images from clipboard (Ctrl+V or Cmd+V)</p>
-                      <p class="paste-hint">Copy images from any application and paste them here</p>
-                    </div>
-                  </div>
-                </div>
-                
-                <div class="image-preview" id="image-preview">
-                  ${(formValues.images||[]).map(url => `
-                    <div class="image-item">
-                      <img src="${url}" class="thumb" />
-                      <button type="button" class="remove-image" data-url="${url}">×</button>
-                    </div>
-                  `).join('')}
+                  <div class="progress-text" id="progress-text">Uploading...</div>
                 </div>
               </div>
-
-              <div class="form-section">
-                <h3>Visibility</h3>
-                <label>Visibility:<br>
-                  <select name="visibility">
-                    <option value="private" ${formValues.visibility==='private'?'selected':''}>Private</option>
-                    <option value="unlisted" ${formValues.visibility==='unlisted'?'selected':''}>Unlisted</option>
-                    <option value="public" ${formValues.visibility==='public'?'selected':''}>Public</option>
-                  </select>
-                </label><br>
-              </div>
-            ` : `
-              <label>Name:<br><input type="text" name="name" value="${formValues.name||''}" /></label><br>
-              <label>Dataset:<br><select name="datasetId" required>${dsOptions}</select></label><br>
-              <label>Model Type:<br>
-                <select name="modelType" required onchange="updateBaseModel(this.value)">
-                  <option value="">Select Model Type</option>
-                  <option value="SDXL" ${formValues.modelType==='SDXL'?'selected':''}>SDXL</option>
-                  <option value="FLUX" ${formValues.modelType==='FLUX'?'selected':''}>FLUX</option>
-                  <option value="WAN" ${formValues.modelType==='WAN'?'selected':''}>WAN</option>
-                </select>
-              </label><br>
-              <input type="hidden" name="baseModel" value="${formValues.baseModel||''}" />
-              <div class="form-section">
-                <h3>Training Parameters</h3>
-                <div class="param-row">
-                  <label>Steps:<br><input type="number" name="steps" value="${formValues.steps||''}" min="100" max="5000" /></label>
-                  <label>Learning Rate:<br><input type="number" name="learningRate" value="${formValues.learningRate||''}" step="0.0001" min="0.0001" max="0.01" /></label>
-                </div>
-                <div class="param-row">
-                  <label>Batch Size:<br><input type="number" name="batchSize" value="${formValues.batchSize||1}" min="1" max="8" /></label>
-                  <label>Resolution:<br><input type="text" name="resolution" value="${formValues.resolution||'1024,1024'}" placeholder="width,height" /></label>
-                </div>
-              </div>
-              <div class="form-section">
-                <h3>LoRA Configuration</h3>
-                <div class="param-row">
-                  <label>LoRA Rank:<br><input type="number" name="loraRank" value="${formValues.loraRank||16}" min="4" max="128" /></label>
-                  <label>LoRA Alpha:<br><input type="number" name="loraAlpha" value="${formValues.loraAlpha||32}" min="4" max="256" /></label>
-                </div>
-                <div class="param-row">
-                  <label>LoRA Dropout:<br><input type="number" name="loraDropout" value="${formValues.loraDropout||0.1}" step="0.01" min="0" max="0.5" /></label>
-                  <label>Trigger Words:<br><input type="text" name="triggerWords" value="${formValues.triggerWords||''}" placeholder="comma,separated,words" required /></label>
-                </div>
-              </div>
-
-              <div class="form-section">
-                <h3>Model Card</h3>
-                <label>Description (optional):<br>
-                  <textarea name="description" placeholder="Describe what this LoRA does, its visual style, and best use cases. Leave blank to auto-generate.">${formValues.description||''}</textarea>
+              <div class="upload-method-content" id="urls-method" style="display: none;">
+                <label>Add Images (URLs):<br>
+                  <textarea name="imageUrls" placeholder="Enter image URLs, one per line or comma-separated"></textarea>
                 </label>
-                <p class="hint">If left blank, a description will be generated from your training captions. If that fails, a default description will be used.</p>
+                <button type="button" class="add-images-btn">Add Images</button>
               </div>
-
-              <div class="form-section advanced-params">
-                <h3>Advanced Parameters</h3>
-                <div class="advanced-toggle">
-                  <label><input type="checkbox" id="show-advanced" /> Show Advanced Parameters</label>
-                </div>
-                
-                <div class="advanced-content" id="advanced-content" style="display:none;">
-                  <div class="param-group">
-                    <h4>Validation Settings</h4>
-                    <div class="param-row">
-                      <label>Validation Steps:<br><input type="number" name="validationSteps" value="${formValues.validationSteps||100}" min="50" max="1000" /></label>
-                      <label>Validation Images:<br><input type="number" name="validationImages" value="${formValues.validationImages||4}" min="1" max="20" /></label>
-                    </div>
-                  </div>
-                  
-                  <div class="param-group">
-                    <h4>Optimization</h4>
-                    <div class="param-row">
-                      <label>Optimizer:<br>
-                        <select name="optimizer">
-                          <option value="AdamW8bit" ${formValues.optimizer==='AdamW8bit'?'selected':''}>AdamW8bit</option>
-                          <option value="AdamW" ${formValues.optimizer==='AdamW'?'selected':''}>AdamW</option>
-                          <option value="SGD" ${formValues.optimizer==='SGD'?'selected':''}>SGD</option>
-                        </select>
-                      </label>
-                      <label>Scheduler:<br>
-                        <select name="scheduler">
-                          <option value="cosine" ${formValues.scheduler==='cosine'?'selected':''}>Cosine</option>
-                          <option value="linear" ${formValues.scheduler==='linear'?'selected':''}>Linear</option>
-                          <option value="constant" ${formValues.scheduler==='constant'?'selected':''}>Constant</option>
-                        </select>
-                      </label>
-                    </div>
-                    <div class="param-row">
-                      <label>Warmup Steps:<br><input type="number" name="warmupSteps" value="${formValues.warmupSteps||100}" min="0" max="1000" /></label>
-                      <label>Save Steps:<br><input type="number" name="saveSteps" value="${formValues.saveSteps||500}" min="100" max="5000" /></label>
-                    </div>
-                  </div>
-                  
-                  <div class="param-group">
-                    <h4>Output Configuration</h4>
-                    <div class="param-row">
-                      <label>Save Last N Steps:<br><input type="number" name="saveLastNSteps" value="${formValues.saveLastNSteps||3}" min="1" max="10" /></label>
-                      <label>Model Name Suffix:<br><input type="text" name="modelSuffix" value="${formValues.modelSuffix||''}" placeholder="optional" /></label>
-                    </div>
+              <div class="upload-method-content" id="paste-method" style="display: none;">
+                <div class="paste-area" id="paste-area">
+                  <div class="paste-prompt">
+                    <div class="paste-icon">📋</div>
+                    <p>Paste images from clipboard (Ctrl+V or Cmd+V)</p>
+                    <p class="paste-hint">Copy images from any application and paste them here</p>
                   </div>
                 </div>
               </div>
-              <div class="form-section cost-section">
-                <h3>Cost Estimation</h3>
-                <div class="cost-display">
-                  <div class="cost-item">
-                    <span>Estimated Cost:</span>
-                    <span class="cost-value" id="estimated-cost">Click Calculate</span>
+              <div class="image-preview" id="image-preview">
+                ${(formValues.images||[]).map(url => `
+                  <div class="image-item">
+                    <img src="${url}" class="thumb" />
+                    <button type="button" class="remove-image" data-url="${url}">×</button>
                   </div>
-                  <button type="button" id="calculate-cost-btn">Calculate Cost</button>
-                </div>
-              </div>
-
-            `}
-            ${imageGallery}
-            ${addImagesSection}
-            <button type="submit" ${submitting||uploading?'disabled':''}>${submitting ? (formMode === 'new-training' ? 'Starting…' : 'Saving…') : uploading ? 'Uploading…' : (formMode === 'new-training' ? 'Start Training' : 'Save')}</button>
-            <button type="button" class="cancel-btn">Cancel</button>
-          </form>`;
-      } else {
-        const { datasets, trainings, loadingTrain, trainError } = this.state;
-        const dsList = loadingTrain ? '<div class="loading-spinner">Loading…</div>' : trainError ? `<div class="error-message">${trainError}</div>` : (
-          datasets.length ? `
-            <div class="datasets-header">
-              <div class="search-filter">
-                <input type="text" id="dataset-search" placeholder="Search datasets..." />
-                <select id="dataset-filter">
-                  <option value="all">All Datasets</option>
-                  <option value="private">Private</option>
-                  <option value="public">Public</option>
-                  <option value="unlisted">Unlisted</option>
-                </select>
+                `).join('')}
               </div>
             </div>
-            <div class="datasets-grid">${datasets.map(ds=>{
-              const dsId = this.normalizeId(ds._id);
-              const isSelected=this.normalizeId(this.state.selectedDatasetId)===dsId;
-              return `
-              <div class="dataset-card${isSelected?' selected':''}" data-id="${dsId}">
-                <div class="dataset-header">
-                  <h4>${ds.name||'Unnamed Dataset'}</h4>
-                  ${isSelected?'<span class="selected-indicator">Selected</span>':''}
-                  <span class="visibility-badge visibility-${ds.visibility||'private'}">${ds.visibility||'private'}</span>
-                </div>
-                <div class="dataset-preview">
-                  ${(ds.images||[]).slice(0,4).map(img=>`<img src="${img}" class="preview-thumb" />`).join('')}
-                  ${(ds.images||[]).length > 4 ? `<div class="more-count">+${(ds.images||[]).length - 4}</div>` : ''}
-                </div>
-                <div class="dataset-stats">
-                  <div class="stat-item">
-                    <span class="label">Images:</span>
-                    <span class="value">${(ds.images||[]).length}</span>
-                  </div>
-                  <div class="stat-item">
-                    <span class="label">Used:</span>
-                    <span class="value">${ds.usageCount||0} times</span>
-                  </div>
-                  <div class="stat-item">
-                    <span class="label">Size:</span>
-                    <span class="value">${this.formatBytes(ds.sizeBytes||0)}</span>
-                  </div>
-                </div>
-                <div class="dataset-actions">
-                  <button class="btn-secondary edit-dataset" data-id="${dsId}">Edit</button>
-                  <button class="btn-primary use-dataset" data-id="${dsId}">Use for Training</button>
-                  <button class="btn-danger delete-dataset" data-id="${dsId}">Delete</button>
-                </div>
-              </div>`;
-            }).join('')}</div>
-          ` : '<div class="empty-message">No datasets yet. Create your first dataset to get started!</div>'
-        );
-        const captionProgressHtml = this.renderCaptionProgressPanel();
-        const trList = loadingTrain ? '' : trainError ? '' : (
-          trainings.length ?
-          '<div class="trainings-grid">'+trainings.map(tr=>{
-            const progressText = tr.currentStep && tr.totalSteps
-              ? `${tr.currentStep}/${tr.totalSteps} (${tr.progress||0}%)`
-              : `${tr.progress||0}%`;
-            const hfLink = tr.modelRepoUrl
-              ? `<a href="${tr.modelRepoUrl}" target="_blank" class="hf-link">View on HuggingFace</a>`
-              : '';
-            return `
-            <div class="training-card" data-id="${tr._id}">
-              <div class="training-header">
-                <h4>${tr.name||'Unnamed Training'}</h4>
-                <span class="status-badge status-${tr.status||'draft'}">${tr.status||'draft'}</span>
+            <div class="form-section">
+              <h3>Visibility</h3>
+              <label>Visibility:<br>
+                <select name="visibility">
+                  <option value="private" ${formValues.visibility==='private'?'selected':''}>Private</option>
+                  <option value="unlisted" ${formValues.visibility==='unlisted'?'selected':''}>Unlisted</option>
+                  <option value="public" ${formValues.visibility==='public'?'selected':''}>Public</option>
+                </select>
+              </label><br>
+            </div>
+            ${imageGallery}
+            ${addImagesSection}
+            <button type="submit" ${submitting||uploading?'disabled':''}>${submitting ? 'Saving…' : uploading ? 'Uploading…' : 'Save'}</button>
+            <button type="button" class="cancel-btn">Cancel</button>
+          </form>`;
+      }
+      // Priority 3: Edit training form (unchanged)
+      else if (formMode === 'edit-training') {
+        const dsOptions = this.state.datasets.map(d=>`<option value="${d._id}" ${formValues.datasetId===d._id?'selected':''}>${d.name}</option>`).join('');
+        mainContent = `<h2>Edit Training</h2>
+          ${formError ? `<div class="error-message">${formError}</div>` : ''}
+          <form class="train-form">
+            <label>Name:<br><input type="text" name="name" value="${formValues.name||''}" /></label><br>
+            <label>Dataset:<br><select name="datasetId" required>${dsOptions}</select></label><br>
+            <label>Model Type:<br>
+              <select name="modelType" required>
+                <option value="">Select Model Type</option>
+                <option value="SDXL" ${formValues.modelType==='SDXL'?'selected':''}>SDXL</option>
+                <option value="FLUX" ${formValues.modelType==='FLUX'?'selected':''}>FLUX</option>
+                <option value="WAN" ${formValues.modelType==='WAN'?'selected':''}>WAN</option>
+              </select>
+            </label><br>
+            <input type="hidden" name="baseModel" value="${formValues.baseModel||''}" />
+            <div class="form-section">
+              <h3>Training Parameters</h3>
+              <div class="param-row">
+                <label>Steps:<br><input type="number" name="steps" value="${formValues.steps||''}" min="100" max="5000" /></label>
+                <label>Learning Rate:<br><input type="number" name="learningRate" value="${formValues.learningRate||''}" step="0.0001" min="0.0001" max="0.01" /></label>
               </div>
-              <div class="training-details">
-                <div class="detail-item">
-                  <span class="label">Model:</span>
-                  <span class="value">${tr.baseModel||'Unknown'}</span>
-                </div>
-                <div class="detail-item">
-                  <span class="label">Progress:</span>
-                  <div class="progress-bar">
-                    <div class="progress-fill" style="width: ${tr.progress||0}%"></div>
-                  </div>
-                  <span class="progress-text">${progressText}</span>
-                </div>
-                <div class="detail-item">
-                  <span class="label">Trigger:</span>
-                  <span class="value trigger-word">${tr.triggerWord||tr.triggerWords?.[0]||'—'}</span>
-                </div>
-                ${tr.status === 'COMPLETED' && hfLink ? `<div class="detail-item">${hfLink}</div>` : ''}
+              <div class="param-row">
+                <label>Batch Size:<br><input type="number" name="batchSize" value="${formValues.batchSize||1}" min="1" max="8" /></label>
+                <label>Resolution:<br><input type="text" name="resolution" value="${formValues.resolution||'1024,1024'}" placeholder="width,height" /></label>
               </div>
-              <div class="training-actions">
-                <button class="btn-secondary view-details" data-id="${tr._id}">View Details</button>
-                ${tr.status === 'QUEUED' ? `<button class="btn-danger cancel-training" data-id="${tr._id}">Cancel</button>` : ''}
-                ${tr.status === 'FAILED' ? `<button class="btn-primary retry-training" data-id="${tr._id}">Retry</button><button class="btn-danger delete-training" data-id="${tr._id}">Delete</button>` : ''}
-                ${tr.status === 'COMPLETED' ? `<button class="btn-danger delete-training" data-id="${tr._id}">Delete</button>` : ''}
+            </div>
+            <div class="form-section">
+              <h3>LoRA Configuration</h3>
+              <div class="param-row">
+                <label>LoRA Rank:<br><input type="number" name="loraRank" value="${formValues.loraRank||16}" min="4" max="128" /></label>
+                <label>LoRA Alpha:<br><input type="number" name="loraAlpha" value="${formValues.loraAlpha||32}" min="4" max="256" /></label>
               </div>
-            </div>`;
-          }).join('')+'</div>' :
-          '<div class="empty-message">No trainings yet. Create your first training to get started!</div>'
-        );
-        mainContent = `
-          <h2>Train Dashboard</h2>
-          <div class="train-section">
-            <div class="train-section-header"><h3>Datasets</h3><button class="add-dataset-btn">＋</button></div>
-            ${dsList}
-          </div>
-          <div class="train-section">
-            <div class="train-section-header"><h3>Captions</h3><button class="add-caption-btn" ${!this.state.selectedDatasetId?'disabled':''}>＋</button></div>
-            ${captionProgressHtml}
-            ${this.state.loadingCaptions?
-              '<div class="loading-spinner">Loading…</div>':
-              this.state.captionError?`<div class="error-message">${this.state.captionError}</div>`:
-              (!this.state.selectedDatasetId?'<div class="empty-message">Select a dataset above to view caption sets.</div>':
-                (this.state.captionSets.length? `<div class="captions-grid">${this.state.captionSets.map(cs=>{
-                  const capId = this.normalizeId(cs._id);
-                  return `
-                  <div class="caption-card" data-id="${capId}">
-                    <div class="caption-header"><h4>${cs.method}</h4><span class="caption-count">${cs.captions?.length||0} captions</span></div>
-                    <div class="caption-meta"><span>${new Date(cs.createdAt||cs.created||Date.now()).toLocaleString()}</span>${cs.isDefault?'<span class="badge">Default</span>':''}</div>
-                    <div class="caption-actions">
-                      <button class="btn-secondary view-caption" data-id="${capId}">View</button>
-                      <button class="btn-primary download-caption" data-id="${capId}">Download</button>
-                      <button class="btn-danger delete-caption" data-id="${capId}">Delete</button>
-                      ${cs.isDefault?'':`<button class="btn-primary set-default" data-id="${capId}">Set Default</button>`}
-                    </div>
-                  </div>`;
-                }).join('')}</div>`:'<div class="empty-message">No caption sets found.</div>'))}
-          </div>
-          <div class="train-section">
-            <div class="train-section-header"><h3>Trainings</h3><button class="add-training-btn">＋</button></div>
-            ${trList}
-          </div>`;
+              <div class="param-row">
+                <label>LoRA Dropout:<br><input type="number" name="loraDropout" value="${formValues.loraDropout||0.1}" step="0.01" min="0" max="0.5" /></label>
+                <label>Trigger Words:<br><input type="text" name="triggerWords" value="${formValues.triggerWords||''}" placeholder="comma,separated,words" required /></label>
+              </div>
+            </div>
+            <div class="form-section">
+              <h3>Model Card</h3>
+              <label>Description (optional):<br>
+                <textarea name="description" placeholder="Describe what this LoRA does...">${formValues.description||''}</textarea>
+              </label>
+            </div>
+            <div class="form-section cost-section">
+              <h3>Cost Estimation</h3>
+              <div class="cost-display">
+                <div class="cost-item">
+                  <span>Estimated Cost:</span>
+                  <span class="cost-value" id="estimated-cost">Click Calculate</span>
+                </div>
+                <button type="button" id="calculate-cost-btn">Calculate Cost</button>
+              </div>
+            </div>
+            <button type="submit" ${submitting?'disabled':''}>${submitting ? 'Saving…' : 'Save'}</button>
+            <button type="button" class="cancel-btn">Cancel</button>
+          </form>`;
+      }
+      // Priority 4: Dashboard (default)
+      else {
+        mainContent = this.renderTrainDashboard();
       }
     }
 
@@ -944,7 +800,7 @@ export default class ModsMenuModal {
     }
     const addTrBtn = this.modalElement.querySelector('.add-training-btn');
     if(addTrBtn){
-      addTrBtn.onclick = ()=> this.openTrainingForm();
+      addTrBtn.onclick = ()=> this.openWizard();
     }
     // Add Caption button
     const addCapBtn = this.modalElement.querySelector('.add-caption-btn');
@@ -1164,6 +1020,164 @@ export default class ModsMenuModal {
     if (impBtn) {
       impBtn.onclick = () => this.openImportDialog(currentCategory);
     }
+
+    // Wizard event bindings
+    this.bindWizardEvents();
+    // Dashboard event bindings
+    this.bindDashboardEvents();
+  }
+
+  bindWizardEvents() {
+    if (!this.modalElement || this.state.wizardStep === 0) return;
+
+    // Navigation buttons
+    const nextBtn = this.modalElement.querySelector('.wizard-next-btn');
+    if (nextBtn) nextBtn.onclick = () => this.wizardNext();
+
+    const backBtn = this.modalElement.querySelector('.wizard-back-btn');
+    if (backBtn) backBtn.onclick = () => this.wizardBack();
+
+    const cancelBtn = this.modalElement.querySelector('.wizard-cancel-btn');
+    if (cancelBtn) cancelBtn.onclick = () => this.wizardCancel();
+
+    const submitBtn = this.modalElement.querySelector('.wizard-submit-btn');
+    if (submitBtn) submitBtn.onclick = () => this.submitWizard();
+
+    // Step 1: Dataset card selection
+    this.modalElement.querySelectorAll('.wizard-dataset-card').forEach(card => {
+      card.onclick = () => {
+        const id = card.getAttribute('data-id');
+        this.wizardSelectDataset(id);
+      };
+    });
+
+    // Step 1: New Dataset card
+    const newDsCard = this.modalElement.querySelector('.wizard-new-dataset-card');
+    if (newDsCard) {
+      newDsCard.onclick = () => {
+        this.wizardCancel();
+        this.openDatasetForm();
+      };
+    }
+
+    // Step 2: Model card selection
+    this.modalElement.querySelectorAll('.wizard-model-card').forEach(card => {
+      card.onclick = () => {
+        const type = card.getAttribute('data-type');
+        this.wizardSelectModel(type);
+      };
+    });
+
+    // Step 3: Caption set selection
+    this.modalElement.querySelectorAll('.wizard-caption-card').forEach(card => {
+      card.onclick = () => {
+        const id = card.getAttribute('data-id');
+        this.wizardSelectCaptionSet(id);
+      };
+    });
+
+    // Step 3: Generate Captions button
+    const genCapBtn = this.modalElement.querySelector('.wizard-generate-captions-btn');
+    if (genCapBtn) {
+      genCapBtn.onclick = () => {
+        const dsId = genCapBtn.getAttribute('data-dataset-id');
+        this.generateCaptionSet(dsId);
+      };
+    }
+
+    // Step 4: Advanced toggle
+    const advToggle = this.modalElement.querySelector('#wizard-show-advanced');
+    const advContent = this.modalElement.querySelector('#wizard-advanced-content');
+    if (advToggle && advContent) {
+      advToggle.onchange = () => {
+        advContent.style.display = advToggle.checked ? 'block' : 'none';
+      };
+    }
+
+    // Step 4: Form input bindings (update wizardFormValues without re-render)
+    this.modalElement.querySelectorAll('.wizard-input').forEach(input => {
+      input.oninput = (e) => {
+        const nameMap = {
+          wizardName: 'name',
+          wizardDescription: 'description',
+          wizardSteps: 'steps',
+          wizardLearningRate: 'learningRate',
+          wizardBatchSize: 'batchSize',
+          wizardResolution: 'resolution',
+          wizardLoraRank: 'loraRank',
+          wizardLoraAlpha: 'loraAlpha',
+          wizardLoraDropout: 'loraDropout',
+        };
+        const key = nameMap[e.target.name];
+        if (key) {
+          this.state.wizardFormValues[key] = e.target.value;
+        }
+      };
+    });
+  }
+
+  bindDashboardEvents() {
+    if (!this.modalElement || this.state.wizardStep > 0 || this.state.formMode) return;
+
+    // Dashboard dataset card events
+    this.modalElement.querySelectorAll('.compact-dataset-card').forEach(card => {
+      const dsId = card.getAttribute('data-id');
+
+      const editBtn = card.querySelector('.edit-dataset');
+      if (editBtn) {
+        editBtn.onclick = (e) => {
+          e.stopPropagation();
+          const dataset = this.getDatasetById(dsId);
+          if (dataset) this.openDatasetForm(dataset);
+        };
+      }
+
+      const useBtn = card.querySelector('.use-dataset');
+      if (useBtn) {
+        useBtn.onclick = (e) => {
+          e.stopPropagation();
+          this.openWizard(dsId);
+        };
+      }
+    });
+
+    // Dashboard training card actions (active + history)
+    this.modalElement.querySelectorAll('.active-training-card, .history-item').forEach(card => {
+      const trainingId = card.getAttribute('data-id');
+      const training = this.state.trainings.find(t => t._id === trainingId);
+
+      const viewBtn = card.querySelector('.view-details');
+      if (viewBtn) {
+        viewBtn.onclick = (e) => {
+          e.stopPropagation();
+          if (training) this.openTrainingForm(training);
+        };
+      }
+
+      const cancelBtn = card.querySelector('.cancel-training');
+      if (cancelBtn) {
+        cancelBtn.onclick = (e) => {
+          e.stopPropagation();
+          this.cancelTraining(trainingId);
+        };
+      }
+
+      const retryBtn = card.querySelector('.retry-training');
+      if (retryBtn) {
+        retryBtn.onclick = (e) => {
+          e.stopPropagation();
+          this.retryTraining(trainingId);
+        };
+      }
+
+      const deleteBtn = card.querySelector('.delete-training');
+      if (deleteBtn) {
+        deleteBtn.onclick = (e) => {
+          e.stopPropagation();
+          this.deleteTraining(trainingId);
+        };
+      }
+    });
   }
 
   attachCloseEvents() {
@@ -1177,37 +1191,462 @@ export default class ModsMenuModal {
     document.addEventListener('keydown', this.handleKeyDown);
   }
 
-  resetForm(){ this.setState({formMode:null,formValues:{},originalFormValues:null,formError:null,submitting:false,newImageUrls:[]}); }
+  resetForm(){
+    this.setState({
+      formMode:null,formValues:{},originalFormValues:null,formError:null,submitting:false,newImageUrls:[],
+      // Wizard cleanup
+      wizardStep:0,wizardDatasetId:null,wizardModelType:null,wizardCaptionSetId:null,wizardFormValues:{},wizardCaptionSets:[],wizardLoadingCaptions:false,
+    });
+  }
 
   openDatasetForm(ds=null){
     if(ds){ this.setState({formMode:'edit-dataset',formValues:{...ds},originalFormValues:JSON.parse(JSON.stringify(ds))}); }
     else { this.setState({formMode:'new-dataset',formValues:{name:'',description:'',images:[]},originalFormValues:null});} }
 
   openTrainingForm(tr=null){
-    if(tr){ this.setState({formMode:'edit-training',formValues:{...tr}}); }
-    else { 
-      const firstDs=this.state.datasets[0]; 
-      // Default to FLUX with values from flux-lora-ai-toolkit.yml config
+    if(!tr){
+      // New training → open wizard
+      this.openWizard();
+      return;
+    }
+    if(tr && tr.datasetId && !tr._id){
+      // Only has datasetId → open wizard with pre-selected dataset
+      this.openWizard(tr.datasetId);
+      return;
+    }
+    // Full training object → edit form
+    this.setState({formMode:'edit-training',formValues:{...tr}});
+  }
+
+  /* ====================== WIZARD LIFECYCLE ====================== */
+
+  openWizard(preselectedDatasetId = null) {
+    this.setState({
+      wizardStep: 1,
+      wizardDatasetId: preselectedDatasetId,
+      wizardModelType: null,
+      wizardCaptionSetId: null,
+      wizardFormValues: {},
+      wizardCaptionSets: [],
+      wizardLoadingCaptions: false,
+      formMode: null, // clear any existing form
+    });
+  }
+
+  wizardNext() {
+    const { wizardStep, wizardDatasetId, wizardModelType, wizardCaptionSetId } = this.state;
+    if (wizardStep === 1) {
+      if (!wizardDatasetId) { alert('Please select a dataset.'); return; }
+      this.fetchWizardCaptionSets(wizardDatasetId);
+      this.setState({ wizardStep: 2 });
+    } else if (wizardStep === 2) {
+      if (!wizardModelType) { alert('Please select a model type.'); return; }
+      const defaults = this.getModelDefaults(wizardModelType);
       this.setState({
-        formMode:'new-training',
-        formValues:{
-          name:'',
-          datasetId:firstDs?firstDs._id:'',
-          modelType:'FLUX',
-          baseModel:'FLUX',
-          offeringId:'',
-          steps:4000,
-          learningRate:0.0001,
-          batchSize:1,
-          resolution:'1024,1024',
-          loraRank:32,
-          loraAlpha:32,
-          loraDropout:0.05,
-          triggerWords:'',
-          description:''
-        }
+        wizardStep: 3,
+        wizardFormValues: {
+          ...this.state.wizardFormValues,
+          modelType: wizardModelType,
+          baseModel: wizardModelType,
+          ...defaults,
+        },
       });
-    } 
+    } else if (wizardStep === 3) {
+      if (!wizardCaptionSetId) { alert('Please select a caption set.'); return; }
+      // Auto-calculate cost for review step
+      this.setState({ wizardStep: 4 });
+      this.calculateWizardCost();
+    }
+  }
+
+  wizardBack() {
+    const { wizardStep } = this.state;
+    if (wizardStep > 1) {
+      this.setState({ wizardStep: wizardStep - 1 });
+    }
+  }
+
+  wizardCancel() {
+    this.setState({
+      wizardStep: 0,
+      wizardDatasetId: null,
+      wizardModelType: null,
+      wizardCaptionSetId: null,
+      wizardFormValues: {},
+      wizardCaptionSets: [],
+      wizardLoadingCaptions: false,
+    });
+  }
+
+  wizardSelectDataset(id) {
+    this.setState({ wizardDatasetId: id });
+  }
+
+  wizardSelectModel(type) {
+    const defaults = this.getModelDefaults(type);
+    this.setState({
+      wizardModelType: type,
+      wizardFormValues: {
+        ...this.state.wizardFormValues,
+        modelType: type,
+        baseModel: type,
+        ...defaults,
+      },
+    });
+  }
+
+  wizardSelectCaptionSet(id) {
+    this.setState({ wizardCaptionSetId: id });
+  }
+
+  async fetchWizardCaptionSets(datasetId) {
+    if (!datasetId) return;
+    this.setState({ wizardLoadingCaptions: true, wizardCaptionSets: [] });
+    try {
+      const res = await fetch(`/api/v1/datasets/${encodeURIComponent(datasetId)}/captions`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed');
+      const payload = await res.json();
+      const list = Array.isArray(payload?.data)
+        ? payload.data
+        : (payload?.data?.captionSets || payload?.captionSets || []);
+      this.setState({ wizardCaptionSets: Array.isArray(list) ? list : [], wizardLoadingCaptions: false });
+    } catch (err) {
+      console.warn('[ModsMenuModal] fetchWizardCaptionSets error', err);
+      this.setState({ wizardLoadingCaptions: false, wizardCaptionSets: [] });
+    }
+  }
+
+  async calculateWizardCost() {
+    const fv = this.state.wizardFormValues;
+    try {
+      const cost = await this.calculateTrainingCost(fv);
+      this.setState({ estimatedCost: cost });
+    } catch (e) {
+      console.warn('[ModsMenuModal] wizard cost error', e);
+    }
+  }
+
+  /* ====================== WIZARD RENDER METHODS ====================== */
+
+  renderWizardStepBar() {
+    const { wizardStep } = this.state;
+    const steps = ['Dataset', 'Model', 'Captions', 'Review'];
+    return `<div class="wizard-step-bar">
+      ${steps.map((label, i) => {
+        const stepNum = i + 1;
+        const cls = stepNum === wizardStep ? 'active' : stepNum < wizardStep ? 'completed' : '';
+        const connector = i < steps.length - 1 ? `<div class="wizard-step-connector ${stepNum < wizardStep ? 'completed' : ''}"></div>` : '';
+        return `<div class="wizard-step-indicator ${cls}">
+          <span class="wizard-step-num">${stepNum < wizardStep ? '&#10003;' : stepNum}</span>
+          <span class="wizard-step-label">${label}</span>
+        </div>${connector}`;
+      }).join('')}
+    </div>`;
+  }
+
+  renderWizardStep1() {
+    const { datasets, wizardDatasetId } = this.state;
+    return `<div class="wizard-body">
+      <h3>Select a Dataset</h3>
+      <p style="color:#aaa;margin-bottom:16px;">Choose the dataset of images you want to train on.</p>
+      <div class="wizard-dataset-grid">
+        ${datasets.map(ds => {
+          const dsId = this.normalizeId(ds._id);
+          const sel = this.normalizeId(wizardDatasetId) === dsId ? ' selected' : '';
+          const imgCount = (ds.images || []).length;
+          return `<div class="wizard-dataset-card${sel}" data-id="${dsId}">
+            <div class="dataset-preview">
+              ${(ds.images || []).slice(0, 4).map(img => `<img src="${img}" class="preview-thumb" />`).join('')}
+              ${imgCount > 4 ? `<div class="more-count">+${imgCount - 4}</div>` : ''}
+            </div>
+            <h4>${ds.name || 'Unnamed Dataset'}</h4>
+            <span class="wizard-card-meta">${imgCount} image${imgCount !== 1 ? 's' : ''}</span>
+          </div>`;
+        }).join('')}
+        <div class="wizard-new-dataset-card" data-action="new-dataset">
+          <div class="wizard-new-icon">+</div>
+          <h4>New Dataset</h4>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  renderWizardStep2() {
+    const { wizardModelType } = this.state;
+    const models = [
+      { type: 'SDXL', name: 'SDXL', desc: 'Stable Diffusion XL — fast training, great for stylized art and characters.', defaults: '1000 steps, LR 0.0004, rank 16' },
+      { type: 'FLUX', name: 'FLUX', desc: 'FLUX — high-fidelity realism, best for photorealistic and detailed subjects.', defaults: '4000 steps, LR 0.0001, rank 32' },
+      { type: 'WAN', name: 'WAN', desc: 'WAN Video — video model training for motion and animation LoRAs.', defaults: '1500 steps, LR 0.0003, rank 24' },
+    ];
+    return `<div class="wizard-body">
+      <h3>Choose Model Type</h3>
+      <p style="color:#aaa;margin-bottom:16px;">Select the base model architecture for your LoRA.</p>
+      <div class="wizard-model-grid">
+        ${models.map(m => {
+          const sel = wizardModelType === m.type ? ' selected' : '';
+          return `<div class="wizard-model-card${sel}" data-type="${m.type}">
+            <div class="model-name">${m.name}</div>
+            <div class="model-desc">${m.desc}</div>
+            <div class="model-defaults">${m.defaults}</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }
+
+  renderWizardStep3() {
+    const { wizardCaptionSets, wizardCaptionSetId, wizardLoadingCaptions, wizardModelType, wizardDatasetId } = this.state;
+    const recommendation = wizardModelType === 'FLUX' ? 'FLUX models work best with detailed, natural language captions.'
+      : wizardModelType === 'WAN' ? 'WAN models benefit from motion-descriptive captions.'
+      : 'SDXL models work well with tag-style and short captions.';
+
+    if (wizardLoadingCaptions) {
+      return `<div class="wizard-body"><div class="loading-spinner">Loading caption sets...</div></div>`;
+    }
+    return `<div class="wizard-body">
+      <h3>Select Caption Set</h3>
+      <p class="wizard-caption-recommendation">${recommendation}</p>
+      ${wizardCaptionSets.length ? `<div class="wizard-caption-grid">
+        ${wizardCaptionSets.map(cs => {
+          const capId = this.normalizeId(cs._id);
+          const sel = this.normalizeId(wizardCaptionSetId) === capId ? ' selected' : '';
+          const count = cs.captions?.length || 0;
+          const date = new Date(cs.createdAt || cs.created || Date.now()).toLocaleDateString();
+          return `<div class="wizard-caption-card${sel}" data-id="${capId}">
+            <div class="wizard-caption-method">${cs.method || 'Unknown method'}</div>
+            <div class="wizard-caption-meta">${count} caption${count !== 1 ? 's' : ''} &middot; ${date}${cs.isDefault ? ' &middot; <strong>Default</strong>' : ''}</div>
+          </div>`;
+        }).join('')}
+      </div>` : `<div class="empty-message">No caption sets found for this dataset.</div>`}
+      <button class="btn-primary wizard-generate-captions-btn" data-dataset-id="${this.normalizeId(wizardDatasetId)}">Generate Captions</button>
+    </div>`;
+  }
+
+  renderWizardStep4() {
+    const { wizardFormValues, wizardDatasetId, wizardModelType, wizardCaptionSetId, estimatedCost } = this.state;
+    const dataset = this.getDatasetById(wizardDatasetId);
+    const captionSet = this.state.wizardCaptionSets.find(cs => this.normalizeId(cs._id) === this.normalizeId(wizardCaptionSetId));
+    const fv = wizardFormValues;
+    return `<div class="wizard-body">
+      <h3>Review &amp; Start Training</h3>
+      <div class="wizard-summary-card">
+        <div class="wizard-summary-row"><span class="label">Dataset:</span> <span class="value">${dataset?.name || 'Unknown'} (${(dataset?.images || []).length} images)</span></div>
+        <div class="wizard-summary-row"><span class="label">Model Type:</span> <span class="value">${wizardModelType}</span></div>
+        <div class="wizard-summary-row"><span class="label">Captions:</span> <span class="value">${captionSet?.method || 'Unknown'} (${captionSet?.captions?.length || 0})</span></div>
+        <div class="wizard-summary-row"><span class="label">Steps:</span> <span class="value">${fv.steps || '—'}</span></div>
+        <div class="wizard-summary-row"><span class="label">Learning Rate:</span> <span class="value">${fv.learningRate || '—'}</span></div>
+        <div class="wizard-summary-row"><span class="label">LoRA Rank:</span> <span class="value">${fv.loraRank || '—'}</span></div>
+      </div>
+      <div class="form-section" style="margin-top:16px;">
+        <label>Training Name (becomes trigger word):<br>
+          <input type="text" class="wizard-input" name="wizardName" value="${fv.name || ''}" placeholder="e.g. mystyle" required />
+        </label>
+        <label style="margin-top:12px;display:block;">Description (optional, AI-generated if blank):<br>
+          <textarea class="wizard-input" name="wizardDescription" placeholder="Describe what this LoRA does...">${fv.description || ''}</textarea>
+        </label>
+      </div>
+      <div class="form-section advanced-params" style="margin-top:12px;">
+        <div class="advanced-toggle">
+          <label><input type="checkbox" id="wizard-show-advanced" /> Show Advanced Parameters</label>
+        </div>
+        <div class="advanced-content" id="wizard-advanced-content" style="display:none;">
+          <div class="param-row">
+            <label>Steps:<br><input type="number" class="wizard-input" name="wizardSteps" value="${fv.steps || ''}" min="100" max="5000" /></label>
+            <label>Learning Rate:<br><input type="number" class="wizard-input" name="wizardLearningRate" value="${fv.learningRate || ''}" step="0.0001" min="0.0001" max="0.01" /></label>
+          </div>
+          <div class="param-row">
+            <label>Batch Size:<br><input type="number" class="wizard-input" name="wizardBatchSize" value="${fv.batchSize || 1}" min="1" max="8" /></label>
+            <label>Resolution:<br><input type="text" class="wizard-input" name="wizardResolution" value="${fv.resolution || '1024,1024'}" /></label>
+          </div>
+          <div class="param-row">
+            <label>LoRA Rank:<br><input type="number" class="wizard-input" name="wizardLoraRank" value="${fv.loraRank || 16}" min="4" max="128" /></label>
+            <label>LoRA Alpha:<br><input type="number" class="wizard-input" name="wizardLoraAlpha" value="${fv.loraAlpha || 32}" min="4" max="256" /></label>
+          </div>
+          <div class="param-row">
+            <label>LoRA Dropout:<br><input type="number" class="wizard-input" name="wizardLoraDropout" value="${fv.loraDropout || 0.1}" step="0.01" min="0" max="0.5" /></label>
+          </div>
+        </div>
+      </div>
+      <div class="form-section cost-section" style="margin-top:12px;">
+        <h3>Cost Estimation</h3>
+        <div class="cost-display">
+          <div class="cost-item">
+            <span>Estimated Cost:</span>
+            <span class="cost-value">${estimatedCost ? estimatedCost + ' points' : 'Calculating...'}</span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  /* ====================== WIZARD SUBMISSION ====================== */
+
+  async submitWizard() {
+    const { wizardDatasetId, wizardModelType, wizardCaptionSetId, wizardFormValues } = this.state;
+    // Read latest input values from DOM before submitting
+    const nameInput = this.modalElement.querySelector('[name="wizardName"]');
+    const descInput = this.modalElement.querySelector('[name="wizardDescription"]');
+    const name = nameInput?.value?.trim() || wizardFormValues.name || '';
+    const description = descInput?.value?.trim() || wizardFormValues.description || '';
+
+    if (!name) { alert('Please enter a training name.'); return; }
+
+    const payload = {
+      name,
+      description,
+      datasetId: wizardDatasetId,
+      modelType: wizardModelType,
+      baseModel: wizardModelType,
+      captionSetId: wizardCaptionSetId,
+      triggerWords: name, // name becomes trigger word
+      steps: wizardFormValues.steps,
+      learningRate: wizardFormValues.learningRate,
+      batchSize: wizardFormValues.batchSize || 1,
+      resolution: wizardFormValues.resolution || '1024,1024',
+      loraRank: wizardFormValues.loraRank,
+      loraAlpha: wizardFormValues.loraAlpha,
+      loraDropout: wizardFormValues.loraDropout,
+    };
+
+    // Read advanced overrides from DOM if present
+    const advFields = { wizardSteps: 'steps', wizardLearningRate: 'learningRate', wizardBatchSize: 'batchSize', wizardResolution: 'resolution', wizardLoraRank: 'loraRank', wizardLoraAlpha: 'loraAlpha', wizardLoraDropout: 'loraDropout' };
+    for (const [domName, key] of Object.entries(advFields)) {
+      const el = this.modalElement.querySelector(`[name="${domName}"]`);
+      if (el && el.value !== '') payload[key] = el.value;
+    }
+
+    // Calculate cost
+    const cost = await this.calculateTrainingCost(payload);
+    payload.costPoints = cost;
+    const confirmed = confirm(`Training will cost ${cost} points. Continue?`);
+    if (!confirmed) return;
+
+    this.setState({ submitting: true });
+    try {
+      const csrfRes = await fetch('/api/v1/csrf-token');
+      const { csrfToken } = await csrfRes.json();
+      const res = await fetch('/api/v1/trainings', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrfToken },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(`Training failed: ${res.status}`);
+      this.wizardCancel();
+      this.setState({ submitting: false });
+      this.fetchTrainings();
+    } catch (err) {
+      console.error('[ModsMenuModal] submitWizard error', err);
+      this.setState({ submitting: false });
+      alert('Failed to start training. Please try again.');
+    }
+  }
+
+  /* ====================== TRAIN DASHBOARD ====================== */
+
+  renderTrainDashboard() {
+    const { datasets, trainings, loadingTrain, trainError } = this.state;
+    const ACTIVE_STATUSES = ['QUEUED', 'PROVISIONING', 'RUNNING', 'FINALIZING'];
+    const activeTrainings = trainings.filter(t => ACTIVE_STATUSES.includes(t.status));
+    const historyTrainings = trainings.filter(t => !ACTIVE_STATUSES.includes(t.status));
+
+    // Active Trainings section
+    const activeSection = activeTrainings.length ? `
+      <div class="active-trainings-section">
+        ${activeTrainings.map(tr => {
+          const progressText = tr.currentStep && tr.totalSteps
+            ? `${tr.currentStep}/${tr.totalSteps} (${tr.progress || 0}%)`
+            : `${tr.progress || 0}%`;
+          const statusLower = (tr.status || 'draft').toLowerCase();
+          return `<div class="active-training-card status-border-${statusLower}" data-id="${tr._id}">
+            <div class="training-header">
+              <h4>${tr.name || 'Unnamed Training'}</h4>
+              <span class="status-badge status-${statusLower}">${tr.status || 'draft'}</span>
+            </div>
+            <div class="detail-item">
+              <span class="label">Model:</span>
+              <span class="value">${tr.baseModel || 'Unknown'}</span>
+            </div>
+            <div class="detail-item">
+              <span class="label">Progress:</span>
+              <div class="progress-bar"><div class="progress-fill" style="width: ${tr.progress || 0}%"></div></div>
+              <span class="progress-text">${progressText}</span>
+            </div>
+            <div class="training-actions">
+              <button class="btn-secondary view-details" data-id="${tr._id}">Details</button>
+              ${tr.status === 'QUEUED' ? `<button class="btn-danger cancel-training" data-id="${tr._id}">Cancel</button>` : ''}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>` : '';
+
+    // Datasets (compact grid)
+    const datasetGrid = loadingTrain ? '<div class="loading-spinner">Loading...</div>' : trainError ? `<div class="error-message">${trainError}</div>` :
+      datasets.length ? `<div class="wizard-dataset-grid compact">
+        ${datasets.map(ds => {
+          const dsId = this.normalizeId(ds._id);
+          const imgCount = (ds.images || []).length;
+          // Count caption sets for this dataset
+          const captionBadge = ds.captionSetCount != null ? ds.captionSetCount : '';
+          return `<div class="compact-dataset-card" data-id="${dsId}">
+            <div class="dataset-preview">
+              ${(ds.images || []).slice(0, 2).map(img => `<img src="${img}" class="preview-thumb" />`).join('')}
+            </div>
+            <div class="compact-dataset-info">
+              <h4>${ds.name || 'Unnamed'}</h4>
+              <span class="wizard-card-meta">${imgCount} img${captionBadge ? ` &middot; ${captionBadge} cap sets` : ''}</span>
+            </div>
+            <div class="dataset-actions">
+              <button class="btn-secondary edit-dataset" data-id="${dsId}">Edit</button>
+              <button class="btn-primary use-dataset" data-id="${dsId}">Train</button>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>` : '<div class="empty-message">No datasets yet.</div>';
+
+    // History
+    const historyHtml = historyTrainings.length ? `<div class="history-section">
+      ${historyTrainings.map(tr => {
+        const statusLower = (tr.status || 'draft').toLowerCase();
+        const hfLink = tr.modelRepoUrl ? `<a href="${tr.modelRepoUrl}" target="_blank" class="hf-link">HF</a>` : '';
+        const date = tr.completedAt ? new Date(tr.completedAt).toLocaleDateString() : '';
+        return `<div class="history-item" data-id="${tr._id}">
+          <span class="status-badge status-${statusLower}">${tr.status || 'draft'}</span>
+          <span class="history-name">${tr.name || 'Unnamed'}</span>
+          <span class="history-model">${tr.baseModel || ''}</span>
+          <span class="history-date">${date}</span>
+          ${hfLink}
+          <div class="training-actions">
+            <button class="btn-secondary view-details" data-id="${tr._id}">Details</button>
+            ${tr.status === 'FAILED' ? `<button class="btn-primary retry-training" data-id="${tr._id}">Retry</button>` : ''}
+            <button class="btn-danger delete-training" data-id="${tr._id}">Delete</button>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>` : '<div class="empty-message">No training history yet.</div>';
+
+    return `
+      <div class="dashboard-header-bar">
+        <h2>Training Studio</h2>
+        <div class="dashboard-actions-bar">
+          <button class="add-training-btn btn-primary">+ New Training</button>
+          <button class="add-dataset-btn btn-secondary">+ New Dataset</button>
+        </div>
+      </div>
+      ${activeTrainings.length ? `<div class="train-section active-section-wrapper">
+        <div class="train-section-header"><h3>Active Trainings</h3><span class="active-count-badge">${activeTrainings.length}</span></div>
+        ${activeSection}
+      </div>` : ''}
+      <div class="dashboard-bottom">
+        <div class="train-section">
+          <div class="train-section-header"><h3>Datasets</h3><span class="section-count">${datasets.length}</span></div>
+          ${datasetGrid}
+        </div>
+        <div class="train-section">
+          <div class="train-section-header"><h3>History</h3><span class="section-count">${historyTrainings.length}</span></div>
+          ${historyHtml}
+        </div>
+      </div>`;
   }
 
   addImageUrls(urls){
@@ -2007,7 +2446,7 @@ export default class ModsMenuModal {
       if (useBtn) {
         useBtn.onclick = (e) => {
           e.stopPropagation();
-          this.openTrainingForm({ datasetId });
+          this.openWizard(datasetId);
         };
       }
 

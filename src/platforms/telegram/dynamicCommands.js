@@ -343,8 +343,6 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
             }
 
             // Handle image inputs (main or supporting)
-            const missingImageKeys = [];
-
             // If main image key is known
             if (imageInputKey) {
               logger.debug(`[Telegram EXEC /${commandName}] Attempting to extract image for key "${imageInputKey}" from message (has photo: ${!!msg.photo}, has reply_to_message: ${!!msg.reply_to_message})`);
@@ -357,14 +355,20 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
               }
             }
 
-            // Evaluate all required image fields
+            // Evaluate all required fields (images and text prompts)
+            const missingRequiredKeys = [];
             for (const [key, def] of Object.entries(tool.inputSchema)) {
-              if (def.type?.toLowerCase?.() === 'image' && def.required && !inputs[key]) {
-                missingImageKeys.push(key);
+              if (!def.required || inputs[key]) continue;
+              const fieldType = def.type?.toLowerCase?.() || '';
+              if (fieldType === 'image') {
+                missingRequiredKeys.push(key);
+              } else if ((fieldType === 'string' || fieldType === 'text') && key.toLowerCase().includes('prompt')) {
+                missingRequiredKeys.push(key);
               }
             }
 
-            if (missingImageKeys.length > 0) {
+            if (missingRequiredKeys.length > 0) {
+              logger.info(`[Telegram EXEC /${commandName}] Missing required inputs: ${missingRequiredKeys.join(', ')}. Launching InputCollector.`);
               const collector = new InputCollector(bot, { logger, setReaction });
               try {
                 await collector.collect({
@@ -372,7 +376,7 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
                   originatingMsg: msg,
                   tool,
                   currentInputs: inputs,
-                  missingInputKeys: missingImageKeys,
+                  missingInputKeys: missingRequiredKeys,
                   timeoutMs: 60000
                 });
               } catch (collectErr) {

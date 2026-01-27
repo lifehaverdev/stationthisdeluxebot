@@ -24,6 +24,12 @@ const DEFAULTS = {
   GUIDANCE_SCALE: '3.5-4.0',
   INFERENCE_STEPS: '20-30',
   HF_ORG: 'ms2stationthis',
+  LORA_RANK: '32',
+  LORA_ALPHA: '32',
+  OPTIMIZER: 'adamw8bit',
+  LEARNING_RATE: '1e-4',
+  TRAIN_DTYPE: 'bf16',
+  RESOLUTION: '512, 768, 1024',
 };
 
 class ModelCardGenerator {
@@ -49,7 +55,7 @@ class ModelCardGenerator {
    * @param {string} [params.hfOrg] - HuggingFace organization
    * @returns {Promise<{readme: string, description: string, samplePrompts: string[]}>}
    */
-  async generate({ modelName, triggerWord, trainingSteps, captions, description: userDescription, hfOrg = DEFAULTS.HF_ORG }) {
+  async generate({ modelName, triggerWord, trainingSteps, captions, description: userDescription, hfOrg = DEFAULTS.HF_ORG, trainingConfig = {} }) {
     this.logger.info(`[ModelCardGenerator] Generating model card for ${modelName}`);
 
     let description;
@@ -87,6 +93,7 @@ class ModelCardGenerator {
       samplePrompts,
       examplePrompts,
       hfOrg,
+      trainingConfig,
     });
 
     return {
@@ -208,7 +215,7 @@ Write ONLY the description, no headers.`;
   /**
    * Build the final README from template
    */
-  _buildReadme({ modelName, triggerWord, trainingSteps, description, samplePrompts, examplePrompts, hfOrg }) {
+  _buildReadme({ modelName, triggerWord, trainingSteps, description, samplePrompts, examplePrompts, hfOrg, trainingConfig = {} }) {
     let template;
     try {
       template = fs.readFileSync(TEMPLATE_PATH, 'utf-8');
@@ -228,7 +235,7 @@ Write ONLY the description, no headers.`;
     // Simple short prompt for code example
     const examplePromptShort = 'portrait, soft lighting, detailed';
 
-    // Replace all placeholders
+    // Replace all placeholders — trainingConfig values override defaults
     const replacements = {
       '{{LICENSE}}': DEFAULTS.LICENSE,
       '{{BASE_MODEL}}': DEFAULTS.BASE_MODEL,
@@ -243,6 +250,12 @@ Write ONLY the description, no headers.`;
       '{{SAMPLE_IMAGES_GRID}}': sampleGrid,
       '{{EXAMPLE_PROMPTS}}': examplePromptsMarkdown,
       '{{EXAMPLE_PROMPT_SHORT}}': examplePromptShort,
+      '{{LORA_RANK}}': String(trainingConfig.loraRank || DEFAULTS.LORA_RANK),
+      '{{LORA_ALPHA}}': String(trainingConfig.loraAlpha || DEFAULTS.LORA_ALPHA),
+      '{{OPTIMIZER}}': trainingConfig.optimizer || DEFAULTS.OPTIMIZER,
+      '{{LEARNING_RATE}}': trainingConfig.learningRate || DEFAULTS.LEARNING_RATE,
+      '{{TRAIN_DTYPE}}': trainingConfig.trainDtype || DEFAULTS.TRAIN_DTYPE,
+      '{{RESOLUTION}}': trainingConfig.resolution || DEFAULTS.RESOLUTION,
     };
 
     let readme = template;
@@ -298,6 +311,66 @@ Write ONLY the description, no headers.`;
     return manifest.images
       .map(img => img.caption)
       .filter(c => c && c.trim().length > 0);
+  }
+
+  /**
+   * Extract training config values from a YAML config template.
+   * Parses the static (non-templated) values like LoRA rank, optimizer, etc.
+   *
+   * @param {string} configPath - Path to the YAML config template
+   * @returns {object} Extracted training config values
+   */
+  static extractTrainingConfig(configPath) {
+    let content;
+    try {
+      content = fs.readFileSync(configPath, 'utf-8');
+    } catch (err) {
+      return {};
+    }
+
+    const extract = (pattern) => {
+      const match = content.match(pattern);
+      return match ? match[1].trim() : null;
+    };
+
+    // Extract LoRA network config
+    const loraRank = extract(/^\s+linear:\s*(\d+)/m);
+    const loraAlpha = extract(/^\s+linear_alpha:\s*(\d+)/m);
+
+    // Extract training params
+    const optimizer = extract(/^\s+optimizer:\s*"?([^"\s]+)"?/m);
+    const learningRate = extract(/^\s+lr:\s*([^\s#]+)/m);
+    const trainDtype = extract(/^\s+dtype:\s*([^\s#]+)/m);
+    const batchSize = extract(/^\s+batch_size:\s*(\d+)/m);
+    const gradAccum = extract(/^\s+gradient_accumulation_steps:\s*(\d+)/m);
+
+    // Extract resolution array
+    const resMatch = content.match(/^\s+resolution:\s*\[\s*([^\]]+)\]/m);
+    const resolution = resMatch
+      ? resMatch[1].split(',').map(s => s.trim()).join(', ')
+      : null;
+
+    // Extract EMA config
+    const useEma = extract(/^\s+use_ema:\s*(true|false)/m);
+    const emaDecay = extract(/^\s+ema_decay:\s*([^\s#]+)/m);
+
+    // Extract model quantization
+    const quantize = extract(/^\s+quantize:\s*(true|false)/m);
+
+    const config = {};
+    if (loraRank) config.loraRank = loraRank;
+    if (loraAlpha) config.loraAlpha = loraAlpha;
+    if (optimizer) config.optimizer = optimizer;
+    if (learningRate) config.learningRate = learningRate;
+    if (trainDtype) config.trainDtype = trainDtype;
+    if (batchSize) config.batchSize = batchSize;
+    if (gradAccum) config.gradAccum = gradAccum;
+    if (resolution) config.resolution = resolution;
+    if (useEma) config.useEma = useEma === 'true';
+    if (emaDecay) config.emaDecay = emaDecay;
+    if (quantize) config.quantize = quantize === 'true';
+
+    return config;
   }
 }
 

@@ -228,6 +228,7 @@ module.exports = function generationExecutionApi(dependencies) {
             metadata: {
               ...tool.metadata,
               ...metadata,
+              ...(tool.deliveryHints && { deliveryHints: tool.deliveryHints }),
               costRate: costRateInfo,
               platformContext: user.platformContext
             }
@@ -322,12 +323,13 @@ module.exports = function generationExecutionApi(dependencies) {
             status: 'processing',
             deliveryStatus: initialDeliveryStatus,
             notificationPlatform: user.platform || 'none',
-            pointsSpent: 0,
+            pointsSpent: pointsRequired,
             protocolNetPoints: 0,
-            costUsd: null,
+            costUsd: costUsd,
             metadata: {
               ...tool.metadata,
               ...metadata,
+              ...(tool.deliveryHints && { deliveryHints: tool.deliveryHints }),
               costRate: costRateInfo,
               platformContext: user.platformContext,
               ...(meta ? { adapterMeta: meta } : {}),
@@ -455,10 +457,10 @@ module.exports = function generationExecutionApi(dependencies) {
             metadata: {
               ...tool.metadata,
               ...metadata,
+              ...(tool.deliveryHints && { deliveryHints: tool.deliveryHints }),
               costRate: costRateInfo,
               loraResolutionData,
-              platformContext: user.platformContext
-              ,
+              platformContext: user.platformContext,
               // Ensure dispatcher can route sandbox notifications
               ...(user.platform === 'web-sandbox' ? { notificationContext: { platform: 'web-sandbox' } } : {})
             }
@@ -574,6 +576,7 @@ module.exports = function generationExecutionApi(dependencies) {
             metadata: {
               ...tool.metadata,
               ...metadata,
+              ...(tool.deliveryHints && { deliveryHints: tool.deliveryHints }),
               costRate: costRateInfo,
               platformContext: user.platformContext
             }

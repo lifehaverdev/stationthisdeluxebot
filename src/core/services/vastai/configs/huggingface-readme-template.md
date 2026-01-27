@@ -71,8 +71,10 @@ image.save("output.png")
 - **Base model:** {{BASE_MODEL}}
 - **Training steps:** {{TRAINING_STEPS}}
 - **Trigger word:** `{{TRIGGER_WORD}}`
-- **Resolution:** 512, 768, 1024 (multi-res)
-- **Network:** LoRA rank 16
+- **Network:** LoRA rank {{LORA_RANK}}, alpha {{LORA_ALPHA}}
+- **Optimizer:** {{OPTIMIZER}}, lr {{LEARNING_RATE}}
+- **Precision:** {{TRAIN_DTYPE}}
+- **Resolution:** {{RESOLUTION}} (multi-res bucketed)
 
 ## About
 

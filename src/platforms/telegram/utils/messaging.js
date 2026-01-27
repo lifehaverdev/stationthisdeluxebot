@@ -180,6 +180,43 @@ async function sendDocumentWithEscapedCaption(bot, chatId, docBuffer, filename =
   }
 }
 
+/**
+ * Sends multiple photos as a single Telegram media group message.
+ * Falls back to individual sends if sendMediaGroup fails.
+ *
+ * @param {object} bot - The node-telegram-bot-api instance.
+ * @param {number|string} chatId - The chat ID.
+ * @param {Array<{url: string, caption?: string}>} photos - Photo URLs with optional captions.
+ * @param {object} [options={}] - Additional options (reply_to_message_id, etc.).
+ * @returns {Promise<object[]>} The sent messages.
+ */
+async function sendPhotoMediaGroup(bot, chatId, photos, options = {}) {
+    const media = photos.map((photo, i) => {
+        const item = {
+            type: 'photo',
+            media: photo.url,
+        };
+        // Caption only on first photo (Telegram media group convention)
+        if (i === 0 && photo.caption) {
+            item.caption = escapeMarkdownV2(photo.caption);
+            item.parse_mode = 'MarkdownV2';
+        }
+        return item;
+    });
+
+    const groupOptions = {};
+    if (options.reply_to_message_id) {
+        groupOptions.reply_to_message_id = options.reply_to_message_id;
+    }
+
+    try {
+        return await bot.sendMediaGroup(chatId, media, groupOptions);
+    } catch (error) {
+        console.error('[messaging] sendPhotoMediaGroup error:', error.message);
+        throw error;
+    }
+}
+
 module.exports = {
     sendEscapedMessage,
     editEscapedMessageText,
@@ -189,4 +226,5 @@ module.exports = {
     sendAnimationWithEscapedCaption,
     sendVideoWithEscapedCaption,
     sendDocumentWithEscapedCaption,
+    sendPhotoMediaGroup,
 }; 
