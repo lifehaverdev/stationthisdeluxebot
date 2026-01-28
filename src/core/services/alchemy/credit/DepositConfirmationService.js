@@ -12,6 +12,11 @@ const { getGroupKey, acquireGroupLock } = require('./groupLockUtils');
 const NATIVE_ETH_ADDRESS = '0x0000000000000000000000000000000000000000';
 const USD_TO_POINTS_CONVERSION_RATE = 0.000337;
 
+// MS2 is our native token - we accept deposits regardless of gas profitability
+// as long as they have some minimum value (platform strategic decision)
+const MS2_TOKEN_ADDRESS = '0x98ed411b8cf8536657c660db8aa55d9d4baaf820';
+const MS2_MINIMUM_VALUE_USD = 0.02; // Accept MS2 deposits worth at least 2 cents
+
 class DepositConfirmationService {
   constructor(
     ethereumService,
@@ -159,17 +164,25 @@ class DepositConfirmationService {
       const fundAddress = vaultAccount;
       const estimatedGasCostUsd = await this.estimateGasCost(amount, token, fundAddress, user);
       
-      if (estimatedGasCostUsd >= depositValueUsd) {
-        const reason = { 
-          deposit_value_usd: depositValueUsd, 
-          failure_reason: `Estimated gas cost ($${estimatedGasCostUsd.toFixed(4)}) exceeded total unconfirmed deposit value ($${depositValueUsd.toFixed(2)}).` 
+      // MS2 is our native token - bypass profitability check if deposit has minimum value
+      const isMS2Deposit = token.toLowerCase() === MS2_TOKEN_ADDRESS;
+      const bypassProfitabilityCheck = isMS2Deposit && grossDepositUsd >= MS2_MINIMUM_VALUE_USD;
+
+      if (bypassProfitabilityCheck) {
+        this.logger.info(`[DepositConfirmationService] MS2 native token deposit ($${grossDepositUsd.toFixed(4)}) - bypassing profitability check (gas: $${estimatedGasCostUsd.toFixed(4)})`);
+      }
+
+      if (estimatedGasCostUsd >= depositValueUsd && !bypassProfitabilityCheck) {
+        const reason = {
+          deposit_value_usd: depositValueUsd,
+          failure_reason: `Estimated gas cost ($${estimatedGasCostUsd.toFixed(4)}) exceeded total unconfirmed deposit value ($${depositValueUsd.toFixed(2)}).`
         };
         for (const deposit of deposits) {
           await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'REJECTED_UNPROFITABLE', reason);
         }
-        this.depositNotificationService.notifyDepositUpdate(masterAccountId, 'failed', { 
-          reason: reason.failure_reason, 
-          originalTxHashes 
+        this.depositNotificationService.notifyDepositUpdate(masterAccountId, 'failed', {
+          reason: reason.failure_reason,
+          originalTxHashes
         });
         return;
       }
@@ -247,29 +260,44 @@ class DepositConfirmationService {
       const actualGasCostUsd = parseFloat(tokenDecimalService.formatTokenAmount(actualGasCostEth, NATIVE_ETH_ADDRESS)) * ethPriceInUsd;
       const netAdjustedDepositUsd = adjustedGrossDepositUsd - actualGasCostUsd;
       
-      if (netAdjustedDepositUsd < 0) {
+      if (netAdjustedDepositUsd < 0 && !bypassProfitabilityCheck) {
         this.logger.warn(`[DepositConfirmationService] Adjusted deposit value for group is negative after gas costs. Rejecting as unprofitable. Net adjusted value: ${netAdjustedDepositUsd}`);
-        const reason = { 
-          failure_reason: `Adjusted deposit value was less than gas cost.`, 
-          original_deposit_usd: depositValueUsd, 
-          adjusted_deposit_usd: adjustedGrossDepositUsd, 
-          gas_cost_usd: actualGasCostUsd 
+        const reason = {
+          failure_reason: `Adjusted deposit value was less than gas cost.`,
+          original_deposit_usd: depositValueUsd,
+          adjusted_deposit_usd: adjustedGrossDepositUsd,
+          gas_cost_usd: actualGasCostUsd
         };
         for (const deposit of deposits) {
           await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'REJECTED_UNPROFITABLE', reason);
         }
-        this.depositNotificationService.notifyDepositUpdate(masterAccountId, 'failed', { 
-          reason: reason.failure_reason, 
-          originalTxHashes 
+        this.depositNotificationService.notifyDepositUpdate(masterAccountId, 'failed', {
+          reason: reason.failure_reason,
+          originalTxHashes
         });
         return;
       }
+
+      // For MS2 bypassed deposits with negative net value, credit minimum points
+      if (netAdjustedDepositUsd < 0 && bypassProfitabilityCheck) {
+        this.logger.info(`[DepositConfirmationService] MS2 native token deposit has negative net value ($${netAdjustedDepositUsd.toFixed(4)}) but proceeding with minimum credit.`);
+      }
       
-      const userCreditedUsd = netAdjustedDepositUsd;
+      // For MS2 bypassed deposits with negative net, credit based on gross value minus a nominal fee
+      // This ensures MS2 depositors always get something for their native token deposits
+      let userCreditedUsd;
+      if (bypassProfitabilityCheck && netAdjustedDepositUsd < 0) {
+        // Credit at least 50% of gross deposit value for MS2 when gas exceeds deposit
+        userCreditedUsd = Math.max(grossDepositUsd * 0.5, 0.01);
+        this.logger.info(`[DepositConfirmationService] MS2 bypass: crediting $${userCreditedUsd.toFixed(4)} (50% of gross) instead of negative net value.`);
+      } else {
+        userCreditedUsd = Math.max(netAdjustedDepositUsd, 0);
+      }
+
       const platformCutUsd = grossDepositUsd * (1 - fundingRate);
       const finalReferralPayoutUsd = Math.min(platformCutUsd, referralRewardUsd);
       const netProtocolProfitUsd = platformCutUsd - finalReferralPayoutUsd;
-      
+
       this.logger.info(`[DepositConfirmationService] Step 5: Applying credit to user's off-chain account. Adj. Gross: $${adjustedGrossDepositUsd.toFixed(2)}, Gas: $${actualGasCostUsd.toFixed(2)}, Adj. Net: $${netAdjustedDepositUsd.toFixed(2)}, User Credit: $${userCreditedUsd.toFixed(2)}.`);
       this.logger.info(`[DepositConfirmationService] Accounting Details -> Platform Cut: $${platformCutUsd.toFixed(4)}, Referral Payout: $${finalReferralPayoutUsd.toFixed(4)}, Net Protocol Profit: $${netProtocolProfitUsd.toFixed(4)}`);
 

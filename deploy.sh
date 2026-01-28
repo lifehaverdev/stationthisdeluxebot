@@ -210,8 +210,10 @@ rotate_logs() {
 
 stop_container_if_exists() {
   local name="$1"
+  # Use 35-second timeout to allow graceful shutdown of credit worker (30s) + buffer
+  local stop_timeout=35
   if docker ps -a --format '{{.Names}}' | grep -q "^${name}$"; then
-    run_logged "Stopping container ${name}..." docker stop "${name}"
+    run_logged "Stopping container ${name} (${stop_timeout}s graceful shutdown)..." docker stop --time "${stop_timeout}" "${name}"
     run_logged "Removing container ${name}..." docker rm "${name}"
   fi
 }
@@ -349,15 +351,31 @@ start_caddy() {
 health_check_app() {
   local retries="${HEALTH_CHECK_RETRIES}"
   local delay="${HEALTH_CHECK_DELAY}"
-  log "Checking application health..."
+  log "Checking application health (streaming startup logs)..."
+
+  # Start streaming container logs in background
+  docker logs -f "${APP_CONTAINER}" 2>&1 &
+  local log_pid=$!
+
+  # Give the log stream a moment to start
+  sleep 1
+
   while (( retries > 0 )); do
     if docker run --rm --network "${NETWORK_NAME}" curlimages/curl:8.5.0 -sS -f "http://${CONTAINER_ALIAS}:4000/api/health" >/dev/null 2>&1; then
+      # Stop the log stream
+      kill "${log_pid}" 2>/dev/null || true
+      wait "${log_pid}" 2>/dev/null || true
+      echo ""
       log "Application responded to /api/health."
       return 0
     fi
     retries=$((retries - 1))
     sleep "${delay}"
   done
+
+  # Stop the log stream on failure too
+  kill "${log_pid}" 2>/dev/null || true
+  wait "${log_pid}" 2>/dev/null || true
   log "Application health check failed."
   return 1
 }

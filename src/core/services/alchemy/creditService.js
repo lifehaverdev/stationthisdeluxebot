@@ -24,6 +24,8 @@ const WithdrawalExecutionService = require('./credit/WithdrawalExecutionService'
 const WithdrawalProcessorService = require('./credit/WithdrawalProcessorService');
 const ReferralVaultService = require('./credit/ReferralVaultService');
 const EventWebhookProcessor = require('./credit/EventWebhookProcessor');
+const CreditWorker = require('./credit/CreditWorker');
+const { WebhookEventQueueDb } = require('../db/alchemy/webhookEventQueueDb');
 
 const NATIVE_ETH_ADDRESS = '0x0000000000000000000000000000000000000000';
 
@@ -234,6 +236,21 @@ class CreditService {
       this.eventWebhookProcessor = null;
       this.logger.info('[CreditService] Event webhook processor not initialized (disabled).');
     }
+
+    // 14. Webhook Event Queue (MongoDB-backed job queue)
+    this.webhookEventQueueDb = new WebhookEventQueueDb(this.logger);
+
+    // 15. Credit Worker (processes queued webhook events)
+    if (!this.disableWebhookActions && this.eventWebhookProcessor) {
+      this.creditWorker = new CreditWorker(
+        this.webhookEventQueueDb,
+        this.eventWebhookProcessor,
+        this.logger
+      );
+    } else {
+      this.creditWorker = null;
+      this.logger.info('[CreditService] Credit worker not initialized (webhook actions disabled).');
+    }
   }
 
   /**
@@ -289,11 +306,148 @@ class CreditService {
       this.logger.error('[CreditService] Stage 3 failed (stale vault check):', error.message);
     }
 
+    // Stage 4: Initial reconciliation of stuck deposits
+    try {
+      this.logger.info('[CreditService] Stage 4: Running initial reconciliation of stuck deposits...');
+      const result = await this.reconcileStuckDeposits();
+      this.logger.info(`[CreditService] Stage 4 complete. Reconciled: ${result.reconciled}, Still stuck: ${result.stillStuck}`);
+      stagesCompleted++;
+    } catch (error) {
+      stagesFailed++;
+      this.logger.error('[CreditService] Stage 4 failed (stuck deposit reconciliation):', error.message);
+    }
+
+    // Stage 5: Start credit worker for queue processing (drains pending events)
+    try {
+      this.logger.info('[CreditService] Stage 5: Starting credit worker and draining pending events...');
+      await this.startCreditWorker();
+      this.logger.info('[CreditService] Stage 5 complete. Credit worker started and queue drained.');
+      stagesCompleted++;
+    } catch (error) {
+      stagesFailed++;
+      this.logger.error('[CreditService] Stage 5 failed (credit worker start):', error.message);
+    }
+
     if (stagesFailed > 0) {
       this.logger.warn(`[CreditService] Startup completed with ${stagesFailed} failed stage(s) and ${stagesCompleted} successful stage(s).`);
     } else {
       this.logger.info('[CreditService] Startup processing complete. All stages succeeded.');
     }
+
+    // Start periodic reconciliation (every 5 minutes)
+    this.startPeriodicReconciliation(5 * 60 * 1000);
+  }
+
+  /**
+   * Starts the credit worker for processing queued webhook events.
+   * Drains any pending events from previous run, then goes idle.
+   */
+  async startCreditWorker() {
+    if (!this.creditWorker) {
+      this.logger.warn('[CreditService] Credit worker not available (webhook actions may be disabled).');
+      return;
+    }
+    await this.creditWorker.start();
+  }
+
+  /**
+   * Stops the credit worker gracefully.
+   * @returns {Promise<void>}
+   */
+  async stopCreditWorker() {
+    if (!this.creditWorker) {
+      return;
+    }
+    await this.creditWorker.stop();
+  }
+
+  /**
+   * Gets credit worker statistics.
+   * @returns {object|null}
+   */
+  getCreditWorkerStats() {
+    if (!this.creditWorker) {
+      return null;
+    }
+    return this.creditWorker.getStats();
+  }
+
+  /**
+   * Gets webhook queue statistics.
+   * @returns {Promise<object>}
+   */
+  async getWebhookQueueStats() {
+    if (!this.webhookEventQueueDb) {
+      return { error: 'Queue not available' };
+    }
+    return this.webhookEventQueueDb.getQueueStats();
+  }
+
+  /**
+   * Starts periodic reconciliation of stuck deposits.
+   * @param {number} intervalMs - Interval in milliseconds (default: 5 minutes)
+   */
+  startPeriodicReconciliation(intervalMs = 5 * 60 * 1000) {
+    if (this.reconciliationInterval) {
+      this.logger.warn('[CreditService] Periodic reconciliation already running. Clearing existing interval.');
+      clearInterval(this.reconciliationInterval);
+    }
+
+    this.logger.info(`[CreditService] Starting periodic reconciliation every ${intervalMs / 1000}s`);
+    this.reconciliationInterval = setInterval(async () => {
+      try {
+        await this.reconcileStuckDeposits();
+      } catch (error) {
+        this.logger.error('[CreditService] Periodic reconciliation failed:', error.message);
+      }
+    }, intervalMs);
+
+    // Don't let the interval keep the process alive if everything else is done
+    if (this.reconciliationInterval.unref) {
+      this.reconciliationInterval.unref();
+    }
+  }
+
+  /**
+   * Stops periodic reconciliation.
+   */
+  stopPeriodicReconciliation() {
+    if (this.reconciliationInterval) {
+      clearInterval(this.reconciliationInterval);
+      this.reconciliationInterval = null;
+      this.logger.info('[CreditService] Periodic reconciliation stopped.');
+    }
+  }
+
+  /**
+   * Gracefully stops the credit service.
+   * Waits for the worker to finish current processing before returning.
+   * Call this before shutting down the application or during deploys.
+   * @returns {Promise<void>}
+   */
+  async stop() {
+    this.logger.info('[CreditService] Stopping service...');
+
+    // Stop accepting new work
+    this.stopPeriodicReconciliation();
+
+    // Wait for worker to finish current event
+    await this.stopCreditWorker();
+
+    this.logger.info('[CreditService] Service stopped gracefully.');
+  }
+
+  /**
+   * Reconciles stuck PENDING_CONFIRMATION deposits.
+   * Delegates to EventWebhookProcessor if available.
+   * @returns {Promise<{reconciled: number, stillStuck: number}>}
+   */
+  async reconcileStuckDeposits() {
+    if (!this.eventWebhookProcessor) {
+      this.logger.warn('[CreditService] Cannot reconcile - event webhook processor unavailable.');
+      return { reconciled: 0, stillStuck: 0 };
+    }
+    return await this.eventWebhookProcessor.reconcileStuckDeposits();
   }
 
   /**
@@ -312,17 +466,98 @@ class CreditService {
 
   /**
    * Handles all events received from an Alchemy webhook.
+   * Enqueues the event for processing by the worker (fire-and-forget for fast response).
+   * @param {object} webhookPayload - The raw webhook payload
+   * @param {object} options - Options
+   * @param {boolean} options.synchronous - If true, process immediately instead of enqueueing (legacy mode)
+   * @returns {Promise<{success: boolean, message: string, eventId?: string}>}
    */
-  async handleEventWebhook(webhookPayload) {
+  async handleEventWebhook(webhookPayload, options = {}) {
     if (this.disableWebhookActions) {
       this.logger.warn('[CreditService] Ignoring event webhook because webhook-driven actions are disabled.');
       return { success: false, message: 'Webhook actions disabled in this environment.' };
     }
-    if (!this.eventWebhookProcessor) {
-      this.logger.error('[CreditService] Event webhook processor unavailable.');
-      return { success: false, message: 'Webhook processor unavailable.' };
+
+    // Legacy synchronous mode (for testing or direct processing)
+    if (options.synchronous) {
+      if (!this.eventWebhookProcessor) {
+        this.logger.error('[CreditService] Event webhook processor unavailable.');
+        return { success: false, message: 'Webhook processor unavailable.' };
+      }
+      return await this.eventWebhookProcessor.processWebhook(webhookPayload);
     }
-    return await this.eventWebhookProcessor.processWebhook(webhookPayload);
+
+    // Default: Enqueue for worker processing (fast response, reliable delivery)
+    if (!this.webhookEventQueueDb) {
+      this.logger.error('[CreditService] Webhook event queue unavailable.');
+      return { success: false, message: 'Webhook queue unavailable.' };
+    }
+
+    try {
+      const result = await this.webhookEventQueueDb.enqueue('credit_webhook', webhookPayload, {
+        received_at: new Date().toISOString()
+      });
+
+      this.logger.info(`[CreditService] Webhook enqueued for processing: ${result.insertedId}`);
+
+      // Immediately trigger processing (event-driven, no polling)
+      if (this.creditWorker) {
+        // Fire and forget - don't await, return fast to Alchemy
+        this.creditWorker.triggerProcessing().catch(err => {
+          this.logger.error('[CreditService] Error triggering worker:', err);
+        });
+      }
+
+      return {
+        success: true,
+        message: 'Webhook enqueued for processing',
+        eventId: result.insertedId.toString()
+      };
+    } catch (error) {
+      this.logger.error('[CreditService] Failed to enqueue webhook:', error);
+      return { success: false, message: `Failed to enqueue: ${error.message}` };
+    }
+  }
+
+  /**
+   * Handles a withdrawal webhook by enqueueing it.
+   * @param {object} webhookPayload - The raw webhook payload
+   * @returns {Promise<{success: boolean, message: string, eventId?: string}>}
+   */
+  async handleWithdrawalWebhookQueued(webhookPayload) {
+    if (this.disableWebhookActions) {
+      this.logger.warn('[CreditService] Ignoring withdrawal webhook because webhook-driven actions are disabled.');
+      return { success: false, message: 'Webhook actions disabled in this environment.' };
+    }
+
+    if (!this.webhookEventQueueDb) {
+      this.logger.error('[CreditService] Webhook event queue unavailable.');
+      return { success: false, message: 'Webhook queue unavailable.' };
+    }
+
+    try {
+      const result = await this.webhookEventQueueDb.enqueue('withdrawal_webhook', webhookPayload, {
+        received_at: new Date().toISOString()
+      });
+
+      this.logger.info(`[CreditService] Withdrawal webhook enqueued: ${result.insertedId}`);
+
+      // Immediately trigger processing (event-driven, no polling)
+      if (this.creditWorker) {
+        this.creditWorker.triggerProcessing().catch(err => {
+          this.logger.error('[CreditService] Error triggering worker:', err);
+        });
+      }
+
+      return {
+        success: true,
+        message: 'Withdrawal webhook enqueued for processing',
+        eventId: result.insertedId.toString()
+      };
+    } catch (error) {
+      this.logger.error('[CreditService] Failed to enqueue withdrawal webhook:', error);
+      return { success: false, message: `Failed to enqueue: ${error.message}` };
+    }
   }
 
   /**

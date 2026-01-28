@@ -367,14 +367,29 @@ class EthereumService {
         }
         
         const feeData = await this.provider.getFeeData();
-        // Prefer EIP-1559 if available, fallback to legacy gasPrice
-        const gasPrice = feeData.maxFeePerGas || feeData.gasPrice;
-        
-        if (!gasPrice) {
-            throw new Error('Could not retrieve gas price from provider.');
+
+        // Use realistic gas price instead of worst-case maxFeePerGas
+        // For EIP-1559: actual cost = baseFee + priorityFee (not maxFeePerGas which is a cap)
+        // maxFeePerGas can be 2-3x higher than actual execution cost
+        let effectiveGasPrice;
+        if (feeData.maxFeePerGas && feeData.maxPriorityFeePerGas) {
+          // EIP-1559: Use current baseFee + priority fee for realistic estimate
+          // baseFee is approximately: maxFeePerGas - maxPriorityFeePerGas (with some buffer)
+          // For a more accurate estimate, use about 60% of maxFeePerGas
+          const realisticGasPrice = (feeData.maxFeePerGas * 60n) / 100n;
+          effectiveGasPrice = realisticGasPrice > feeData.maxPriorityFeePerGas
+            ? realisticGasPrice
+            : feeData.maxPriorityFeePerGas;
+          this.logger.debug(`[EthereumService] EIP-1559 gas: maxFee=${feeData.maxFeePerGas}, using realistic=${effectiveGasPrice}`);
+        } else if (feeData.gasPrice) {
+          // Legacy: use gasPrice directly
+          effectiveGasPrice = feeData.gasPrice;
+          this.logger.debug(`[EthereumService] Legacy gas price: ${effectiveGasPrice}`);
+        } else {
+          throw new Error('Could not retrieve gas price from provider.');
         }
 
-        const estimatedCostEth = gasEstimate * gasPrice;
+        const estimatedCostEth = gasEstimate * effectiveGasPrice;
 
         const NATIVE_ETH_ADDRESS = '0x0000000000000000000000000000000000000000';
         const ethPriceUsd = await this.priceFeedService.getPriceInUsd(NATIVE_ETH_ADDRESS);
@@ -385,8 +400,8 @@ class EthereumService {
         
         const estimatedCostUsd = parseFloat(formatEther(estimatedCostEth)) * ethPriceUsd;
 
-        this.logger.info(`[EthereumService] Gas estimation complete. Est. Gas: ${gasEstimate}, Est. Cost: ~${estimatedCostUsd.toFixed(4)} USD`);
-        this.logger.debug('[EthereumService] Note: Gas estimation is a simulation and does not produce a transaction hash.');
+        this.logger.info(`[EthereumService] Gas estimation complete. Est. Gas: ${gasEstimate}, Gas Price: ${formatEther(effectiveGasPrice * 1000000000n)} gwei, Est. Cost: ~${estimatedCostUsd.toFixed(4)} USD`);
+        this.logger.debug('[EthereumService] Note: Using realistic gas price (60% of maxFeePerGas) instead of worst-case for profitability checks.');
         return estimatedCostUsd;
 
     } catch (error) {

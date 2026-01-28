@@ -59,11 +59,12 @@ async function startApp() {
     
     // Initialize core services, passing the WebSocketService instance
     const exportProcessingEnabled = process.env.COLLECTION_EXPORT_PROCESSING_ENABLED !== 'false';
-    const services = await initializeServices({ 
+    const services = await initializeServices({
       logger: logger,
       webSocketService: websocketServer,
       collectionExportProcessingEnabled: exportProcessingEnabled
     });
+    _services = services; // Store for graceful shutdown
     logger.info('Core services initialized.');
     /*
     ] [app]: services (shallow): {
@@ -431,9 +432,66 @@ async function startApp() {
   }
 }
 
+// Track services for graceful shutdown
+let _services = null;
+
+/**
+ * Gracefully shuts down all services.
+ * Call this before process exit to ensure in-flight operations complete.
+ * @returns {Promise<void>}
+ */
+async function shutdownApp() {
+  logger.info('[App] Graceful shutdown initiated...');
+
+  if (_services && _services.creditService) {
+    const creditServices = _services.creditService;
+    const chainIds = Object.keys(creditServices);
+
+    for (const chainId of chainIds) {
+      const serviceInstance = creditServices[chainId];
+      if (serviceInstance && typeof serviceInstance.stop === 'function') {
+        try {
+          logger.info(`[App] Stopping CreditService for chainId ${chainId}...`);
+          await serviceInstance.stop();
+          logger.info(`[App] CreditService for chainId ${chainId} stopped.`);
+        } catch (err) {
+          logger.error(`[App] Error stopping CreditService (chain ${chainId}):`, err);
+        }
+      }
+    }
+  }
+
+  logger.info('[App] Graceful shutdown complete.');
+}
+
+// Setup graceful shutdown handlers
+let isShuttingDown = false;
+const gracefulShutdown = async (signal) => {
+  if (isShuttingDown) {
+    logger.warn(`[App] Already shutting down, ignoring ${signal}`);
+    return;
+  }
+  isShuttingDown = true;
+
+  logger.info(`[App] Received ${signal}, starting graceful shutdown...`);
+
+  try {
+    await shutdownApp();
+  } catch (err) {
+    logger.error('[App] Error during graceful shutdown:', err);
+  }
+
+  logger.info('[App] Exiting process.');
+  process.exit(0);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
 // Export components for use in other files
 module.exports = {
   startApp,
+  shutdownApp,
   APP_START_TIME
 };
 
