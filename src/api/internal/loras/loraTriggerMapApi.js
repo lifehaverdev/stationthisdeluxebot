@@ -18,7 +18,8 @@ const loRAPermissionsDb = new LoRAPermissionsDB(logger);
 
 // --- Caching Layer ---
 let publicLorasCache = null;
-let publicTriggerMapCache = null; // NEW: cached trigger map for public LoRAs
+let publicTriggerMapCache = null; // cached trigger map for public LoRAs
+const PUBLIC_CACHE_REFRESH_INTERVAL_MS = 5 * 60 * 1000; // Refresh every 5 minutes
 
 // Helper to build trigger map from a list of LoRA records
 function buildTriggerMapFromLoras(loras) {
@@ -209,6 +210,14 @@ router.get('/lora/trigger-map-data', getLoraTriggerMapDataHandler);
 
 // Populate cache on startup
 refreshPublicLoraCache();
+
+// Periodically refresh the cache so new models (e.g., from training finalization
+// in a separate worker process) are picked up without requiring a restart.
+setInterval(() => {
+  refreshPublicLoraCache().catch(err => {
+    logger.error('[LoraTriggerMapApi] Periodic cache refresh failed:', err.message);
+  });
+}, PUBLIC_CACHE_REFRESH_INTERVAL_MS);
 
 // Export the refresh function alongside the router
 module.exports = {

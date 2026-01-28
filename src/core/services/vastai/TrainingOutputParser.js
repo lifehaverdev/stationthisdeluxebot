@@ -197,6 +197,7 @@ const NON_TRAINING_LINE_PATTERNS = [
   /tokenizer/i,
   /resolving\s+data\s+files/i,
   /^map:/i,
+  /caching\s+latents/i,
 ];
 
 // Sample generation patterns
@@ -474,12 +475,16 @@ class TrainingOutputParser {
   }
 
   _parseSpeed(output, result) {
+    // Filter out non-training lines to avoid picking up speeds from
+    // model loading or latent caching tqdm bars (e.g., 10.14it/s from caching).
+    const filtered = this._filterTrainingLines(output);
+
     for (const { pattern, isSecondsPerIter } of SPEED_PATTERNS) {
       pattern.lastIndex = 0;
       let match;
       let lastSpeed = null;
 
-      while ((match = pattern.exec(output)) !== null) {
+      while ((match = pattern.exec(filtered)) !== null) {
         let speed = parseFloat(match[1]);
         if (!Number.isNaN(speed) && Number.isFinite(speed) && speed > 0) {
           // Convert seconds/iteration to iterations/second if needed

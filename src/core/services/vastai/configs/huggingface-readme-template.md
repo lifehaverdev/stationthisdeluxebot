@@ -6,9 +6,16 @@ tags:
   - text-to-image
   - lora
   - diffusers
+  - template:diffusion-lora
   - flux
+  - flowmatch
   - stationthis
-library_name: diffusers
+widget:
+{{WIDGET_YAML}}
+instance_prompt: "{{TRIGGER_WORD}}"
+training_steps: {{TRAINING_STEPS}}
+network_type: lora
+library_name: ai-toolkit
 ---
 
 # {{MODEL_NAME}}

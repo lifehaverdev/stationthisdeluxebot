@@ -229,6 +229,9 @@ Write ONLY the description, no headers.`;
     // Build sample images grid (placeholders - will be uploaded later)
     const sampleGrid = this._buildSampleGrid(samplePrompts);
 
+    // Build widget YAML for HuggingFace model card preview
+    const widgetYaml = this._buildWidgetYaml(samplePrompts, modelName);
+
     // Build example prompts markdown
     const examplePromptsMarkdown = examplePrompts.map(p => `- ${p}`).join('\n');
 
@@ -247,6 +250,7 @@ Write ONLY the description, no headers.`;
       '{{GUIDANCE_SCALE}}': DEFAULTS.GUIDANCE_SCALE,
       '{{INFERENCE_STEPS}}': DEFAULTS.INFERENCE_STEPS,
       '{{GENERATED_DESCRIPTION}}': description,
+      '{{WIDGET_YAML}}': widgetYaml,
       '{{SAMPLE_IMAGES_GRID}}': sampleGrid,
       '{{EXAMPLE_PROMPTS}}': examplePromptsMarkdown,
       '{{EXAMPLE_PROMPT_SHORT}}': examplePromptShort,
@@ -297,6 +301,25 @@ Write ONLY the description, no headers.`;
     }
 
     return rows.join('\n');
+  }
+
+  /**
+   * Build widget YAML for HuggingFace model card preview.
+   * Uses the first sample prompt as the text and the first sample image as the output.
+   */
+  _buildWidgetYaml(samplePrompts, modelName) {
+    if (!samplePrompts || samplePrompts.length === 0) {
+      return '  - text: "' + modelName + '"';
+    }
+
+    // Use first sample prompt. Escape double quotes for YAML safety.
+    const promptText = samplePrompts[0].replace(/"/g, '\\"');
+    const lines = [
+      `  - text: "${promptText}"`,
+      `    output:`,
+      `      url: samples/sample_000.jpg`,
+    ];
+    return lines.join('\n');
   }
 
   /**

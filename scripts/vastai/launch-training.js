@@ -1104,9 +1104,12 @@ async function main() {
           ? Math.round((status.parsed.lastStep / status.parsed.totalSteps) * 100)
           : 0;
         const loss = status.parsed.lastLoss ? status.parsed.lastLoss.toFixed(4) : 'N/A';
-        const eta = status.parsed.estimatedTimeRemaining
-          ? `${Math.round(status.parsed.estimatedTimeRemaining / 60)}m`
-          : 'calculating...';
+        let eta = 'calculating...';
+        if (status.parsed.estimatedTimeRemaining) {
+          const etaHours = Math.floor(status.parsed.estimatedTimeRemaining / 3600);
+          const etaMins = Math.floor((status.parsed.estimatedTimeRemaining % 3600) / 60);
+          eta = etaHours > 0 ? `${etaHours}h ${etaMins}m` : `${etaMins}m`;
+        }
 
         // Output in format that TrainingOutputParser and TrainingJobProcessor can pick up
         // This mimics the tqdm output format
