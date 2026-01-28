@@ -203,7 +203,20 @@ export default class AccountDropdown {
                 if (window.openReferralVaultModal) window.openReferralVaultModal();
             });
         }
-        // ... add other action handlers here
+        const logoutBtn = this.container.querySelector('[data-action="logout"]');
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.closeDropdown();
+                // Disconnect wallet client-side state
+                if (window.walletConnect && typeof window.walletConnect.disconnectWallet === 'function') {
+                    window.walletConnect.disconnectWallet();
+                    window.dispatchEvent(new CustomEvent('walletDisconnected'));
+                }
+                // Redirect to server logout to clear JWT cookie
+                window.location.href = '/logout';
+            });
+        }
     }
 
     toggleDropdown() {
