@@ -138,4 +138,23 @@ docs/plans/
 docs/_archived/
 archive/
 ROADMAP_EXPLORATION.md
-cleanup.sh
+
+# Shell scripts in root (should be in /scripts/)
+/*.sh
+!deploy.sh
+
+# Operational directories (generated, not committed)
+reports/
+secrets/
+logs/
+output/
+tmp/
+storage/
+.stationthis/
+.claude/
+.cursor/
+
+# Old cruft (in case it reappears)
+backup-before-migration.json
+agent_prompts/
+stationthisdeluxebot/
