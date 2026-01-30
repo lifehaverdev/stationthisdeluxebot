@@ -188,23 +188,33 @@ class DepositConfirmationService {
       }
 
       // 4. EXECUTE ON-CHAIN CONFIRMATION
-      const estimatedGasCostEth = estimatedGasCostUsd / priceInUsd;
-      let gasFeeInWei = ethers.parseEther(estimatedGasCostEth.toFixed(18));
-      let escrowAmountForContract = amount - gasFeeInWei;
-      
-      if (escrowAmountForContract < 0n) {
-        const reason = { 
-          deposit_value_usd: depositValueUsd, 
-          failure_reason: `Total fees (gas) exceeded total deposit value.` 
-        };
-        for (const deposit of deposits) {
-          await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'REJECTED_UNPROFITABLE', reason);
+      let gasFeeInWei;
+      let escrowAmountForContract;
+
+      if (bypassProfitabilityCheck) {
+        // MS2 native token: platform absorbs gas cost, no deduction from deposit
+        gasFeeInWei = 0n;
+        escrowAmountForContract = amount;
+        this.logger.info(`[DepositConfirmationService] MS2 bypass: platform absorbing gas cost, full amount goes to escrow.`);
+      } else {
+        const estimatedGasCostEth = estimatedGasCostUsd / priceInUsd;
+        gasFeeInWei = ethers.parseEther(estimatedGasCostEth.toFixed(18));
+        escrowAmountForContract = amount - gasFeeInWei;
+
+        if (escrowAmountForContract < 0n) {
+          const reason = {
+            deposit_value_usd: depositValueUsd,
+            failure_reason: `Total fees (gas) exceeded total deposit value.`
+          };
+          for (const deposit of deposits) {
+            await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'REJECTED_UNPROFITABLE', reason);
+          }
+          this.depositNotificationService.notifyDepositUpdate(masterAccountId, 'failed', {
+            reason: reason.failure_reason,
+            originalTxHashes
+          });
+          return;
         }
-        this.depositNotificationService.notifyDepositUpdate(masterAccountId, 'failed', { 
-          reason: reason.failure_reason, 
-          originalTxHashes 
-        });
-        return;
       }
 
       // Re-verify custody balance before confirmation to prevent race conditions
@@ -216,24 +226,31 @@ class DepositConfirmationService {
         amount = amountRecheck;
         grossDepositUsd = tokenDecimalService.calculateUsdValue(amount, token, priceInUsd);
         adjustedGrossDepositUsd = grossDepositUsd * fundingRate;
-        const newEstimatedGasCostEth = estimatedGasCostUsd / priceInUsd;
-        const newGasFeeInWei = ethers.parseEther(newEstimatedGasCostEth.toFixed(18));
-        const newEscrowAmountForContract = amount - newGasFeeInWei;
-        
-        if (newEscrowAmountForContract < 0n) {
-          const reason = { failure_reason: `Balance changed and new balance is insufficient after gas fees.` };
-          for (const deposit of deposits) {
-            await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'REJECTED_UNPROFITABLE', reason);
+
+        if (bypassProfitabilityCheck) {
+          // MS2 native token: platform absorbs gas cost
+          escrowAmountForContract = amount;
+          gasFeeInWei = 0n;
+        } else {
+          const newEstimatedGasCostEth = estimatedGasCostUsd / priceInUsd;
+          const newGasFeeInWei = ethers.parseEther(newEstimatedGasCostEth.toFixed(18));
+          const newEscrowAmountForContract = amount - newGasFeeInWei;
+
+          if (newEscrowAmountForContract < 0n) {
+            const reason = { failure_reason: `Balance changed and new balance is insufficient after gas fees.` };
+            for (const deposit of deposits) {
+              await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'REJECTED_UNPROFITABLE', reason);
+            }
+            this.depositNotificationService.notifyDepositUpdate(masterAccountId, 'failed', {
+              reason: reason.failure_reason,
+              originalTxHashes
+            });
+            return;
           }
-          this.depositNotificationService.notifyDepositUpdate(masterAccountId, 'failed', { 
-            reason: reason.failure_reason, 
-            originalTxHashes 
-          });
-          return;
+
+          escrowAmountForContract = newEscrowAmountForContract;
+          gasFeeInWei = newGasFeeInWei;
         }
-        
-        escrowAmountForContract = newEscrowAmountForContract;
-        gasFeeInWei = newGasFeeInWei;
       }
       
       this.logger.info(`[DepositConfirmationService] Step 4: Sending on-chain confirmation for user ${user}. Total Net Escrow: ${parseFloat(tokenDecimalService.formatTokenAmount(escrowAmountForContract, token)).toFixed(6)} ${tokenDecimalService.getTokenMetadata(token).symbol}, Total Fee: ${parseFloat(tokenDecimalService.formatTokenAmount(gasFeeInWei, token)).toFixed(6)} ${tokenDecimalService.getTokenMetadata(token).symbol}`);

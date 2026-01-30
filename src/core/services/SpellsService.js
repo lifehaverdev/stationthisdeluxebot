@@ -44,8 +44,8 @@ class SpellsService {
             }
         }
 
-        // If still not found, try a partial match for spells owned by the user
-        if (!spell) {
+        // If still not found and user is authenticated, try a partial match for spells owned by the user
+        if (!spell && context.masterAccountId) {
             this.logger.info(`[SpellsService] Exact slug "${slug}" not found. Trying partial match for user ${context.masterAccountId}.`);
             const possibleSpells = await this.db.spells.findSpellsByOwnerAndPartialSlug(context.masterAccountId, slug);
             
@@ -153,17 +153,30 @@ class SpellsService {
     }
 
     async checkPermissions(spell, masterAccountId) {
-        if (spell.visibility === 'public') {
+        // Owner can always cast their own spells
+        if (masterAccountId && spell.ownedBy && spell.ownedBy.toString() === masterAccountId.toString()) {
             return true;
         }
-        if (spell.ownedBy.toString() === masterAccountId.toString()) {
-            return true;
+
+        // Handle visibility levels
+        const visibility = spell.visibility || (spell.isPublic ? 'public' : 'private');
+
+        switch (visibility) {
+            case 'public':
+                // Public spells can be cast by any authenticated user
+                return true;
+
+            case 'listed':
+                // Listed (marketplace) spells require purchase/license
+                if (!masterAccountId) return false;
+                const hasLicense = await this.spellPermissionsDb.hasAccess(masterAccountId, spell._id);
+                return !!hasLicense;
+
+            case 'private':
+            default:
+                // Private spells - only owner (already checked above)
+                return false;
         }
-        if (spell.permissionType === 'licensed') {
-            const permission = await this.spellPermissionsDb.hasAccess(masterAccountId, spell._id);
-            return !!permission;
-        }
-        return false;
     }
 
     async quoteSpell(spellIdentifier, { sampleSize = 10 } = {}) {

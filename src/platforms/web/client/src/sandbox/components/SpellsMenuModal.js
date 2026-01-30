@@ -20,7 +20,8 @@ export default class SpellsMenuModal {
             // For create form
             newSpellName: '',
             newSpellDescription: '',
-            newSpellIsPublic: false,
+            newSpellVisibility: 'private', // 'private', 'listed', 'public'
+            newSpellPricePoints: 100, // Default price for listed spells
             subgraph: options.initialData?.subgraph || null,
             newSpellExposedInputs: {},
             editExposedInputMap: {},
@@ -108,7 +109,8 @@ export default class SpellsMenuModal {
                 masterAccountId,
                 name: selectedSpell.name,
                 description: selectedSpell.description,
-                isPublic: !!selectedSpell.isPublic,
+                visibility: selectedSpell.visibility || 'private',
+                pricePoints: selectedSpell.visibility === 'listed' ? (selectedSpell.pricePoints || 0) : undefined,
                 steps: structure.steps,
                 connections: structure.connections,
                 exposedInputs: currentExposedInputs,
@@ -454,7 +456,6 @@ export default class SpellsMenuModal {
         if (this.state.view === 'create') {
             const nameInput = this.modalElement.querySelector('.create-spell-name');
             const descInput = this.modalElement.querySelector('.create-spell-desc');
-            const publicChk = this.modalElement.querySelector('.create-spell-public');
             if (nameInput) {
                 nameInput.oninput = (e) => {
                     this.state.newSpellName = e.target.value;
@@ -470,8 +471,27 @@ export default class SpellsMenuModal {
                     this.state.newSpellDescription = e.target.value;
                 };
             }
-            if (publicChk) {
-                publicChk.onchange = (e)=>{ this.state.newSpellIsPublic = e.target.checked; };
+            // Handle visibility radio buttons
+            const visibilityRadios = this.modalElement.querySelectorAll('.create-spell-visibility');
+            visibilityRadios.forEach(radio => {
+                radio.onchange = (e) => {
+                    this.state.newSpellVisibility = e.target.value;
+                    // Re-render to show/hide price input
+                    this.render();
+                };
+            });
+            // Handle price input
+            const priceInput = this.modalElement.querySelector('.create-spell-price');
+            if (priceInput) {
+                priceInput.oninput = (e) => {
+                    const points = parseInt(e.target.value, 10) || 0;
+                    this.state.newSpellPricePoints = points;
+                    // Update the conversion display
+                    const conversionSpan = this.modalElement.querySelector('.price-conversion');
+                    if (conversionSpan) {
+                        conversionSpan.textContent = `≈ $${(points * SpellsMenuModal.POINTS_TO_USD_RATE).toFixed(2)} USD`;
+                    }
+                };
             }
             // Handle exposed inputs checkboxes
             const inputCheckboxes = this.modalElement.querySelectorAll('.spell-input-checkbox');
@@ -487,7 +507,7 @@ export default class SpellsMenuModal {
             const cancelBtn = this.modalElement.querySelector('.cancel-create-spell-btn');
             if (submitBtn) submitBtn.onclick = () => this.handleCreateSpell();
             if (cancelBtn) cancelBtn.onclick = () => {
-                this.setState({ view: 'main', newSpellName: '', newSpellDescription: '', error: null, newSpellExposedInputs: {} });
+                this.setState({ view: 'main', newSpellName: '', newSpellDescription: '', newSpellVisibility: 'private', newSpellPricePoints: 100, error: null, newSpellExposedInputs: {} });
                 this.fetchUserSpells();
             };
             // --- step reordering events ---
@@ -780,8 +800,20 @@ export default class SpellsMenuModal {
         return html;
     }
 
+    // Points to USD conversion (keep in sync with CreditService)
+    static POINTS_TO_USD_RATE = 0.000337;
+
+    getVisibilityDisplayName(visibility) {
+        switch (visibility) {
+            case 'public': return 'Public';
+            case 'listed': return 'Listed (Marketplace)';
+            case 'private':
+            default: return 'Private';
+        }
+    }
+
     renderCreateView() {
-        const { newSpellName, newSpellDescription, subgraph, error, newSpellExposedInputs, newSpellIsPublic } = this.state;
+        const { newSpellName, newSpellDescription, subgraph, error, newSpellExposedInputs, newSpellVisibility, newSpellPricePoints } = this.state;
         
         if (!subgraph || !subgraph.nodes) {
             return `<div class="create-spell-view"><h2>Mint New Spell</h2><div class="empty-message">No nodes were selected to create a spell.</div></div>`;
@@ -874,8 +906,33 @@ export default class SpellsMenuModal {
                         <label for="spell-desc">Description</label>
                         <textarea id="spell-desc" class="create-spell-desc" placeholder="A short description of what this spell does.">${newSpellDescription}</textarea>
                     </div>
-                    <div class="form-group">
-                        <label><input type="checkbox" class="create-spell-public" ${newSpellIsPublic ? 'checked' : ''}/> Make spell public / shareable</label>
+                    <div class="form-group visibility-group">
+                        <label>Visibility</label>
+                        <div class="visibility-options">
+                            <label class="visibility-option">
+                                <input type="radio" name="spell-visibility" value="private" class="create-spell-visibility" ${newSpellVisibility === 'private' ? 'checked' : ''}>
+                                <span class="visibility-label">Private</span>
+                                <span class="visibility-desc">Only you can use this spell</span>
+                            </label>
+                            <label class="visibility-option">
+                                <input type="radio" name="spell-visibility" value="listed" class="create-spell-visibility" ${newSpellVisibility === 'listed' ? 'checked' : ''}>
+                                <span class="visibility-label">Listed (Marketplace)</span>
+                                <span class="visibility-desc">Others can purchase and use this spell</span>
+                            </label>
+                            <label class="visibility-option">
+                                <input type="radio" name="spell-visibility" value="public" class="create-spell-visibility" ${newSpellVisibility === 'public' ? 'checked' : ''}>
+                                <span class="visibility-label">Public</span>
+                                <span class="visibility-desc">Anyone can use this spell for free</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group price-group" style="display: ${newSpellVisibility === 'listed' ? 'block' : 'none'}">
+                        <label for="spell-price">Price (in points) <span class="required">*</span></label>
+                        <div class="price-input-wrapper">
+                            <input type="number" id="spell-price" class="create-spell-price" min="1" value="${newSpellPricePoints}" placeholder="100">
+                            <span class="price-conversion">≈ $${(newSpellPricePoints * SpellsMenuModal.POINTS_TO_USD_RATE).toFixed(2)} USD</span>
+                        </div>
+                        <p class="price-help-text">Users will pay this amount each time they cast your spell.</p>
                     </div>
                 </div>
 
@@ -968,11 +1025,29 @@ export default class SpellsMenuModal {
                             <label for="spell-edit-desc">Description</label>
                             <textarea id="spell-edit-desc" class="spell-detail-desc" ${isEditable ? '' : 'readonly'}>${descValue}</textarea>
                         </div>
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" class="spell-detail-public" ${selectedSpell.isPublic ? 'checked' : ''} ${isEditable ? '' : 'disabled'} />
-                                Make spell public / shareable
-                            </label>
+                        <div class="form-group visibility-group">
+                            <label>Visibility</label>
+                            <div class="visibility-options">
+                                <label class="visibility-option">
+                                    <input type="radio" name="spell-edit-visibility" value="private" class="spell-detail-visibility" ${(selectedSpell.visibility || 'private') === 'private' ? 'checked' : ''} ${isEditable ? '' : 'disabled'}>
+                                    <span class="visibility-label">Private</span>
+                                </label>
+                                <label class="visibility-option">
+                                    <input type="radio" name="spell-edit-visibility" value="listed" class="spell-detail-visibility" ${selectedSpell.visibility === 'listed' ? 'checked' : ''} ${isEditable ? '' : 'disabled'}>
+                                    <span class="visibility-label">Listed</span>
+                                </label>
+                                <label class="visibility-option">
+                                    <input type="radio" name="spell-edit-visibility" value="public" class="spell-detail-visibility" ${selectedSpell.visibility === 'public' ? 'checked' : ''} ${isEditable ? '' : 'disabled'}>
+                                    <span class="visibility-label">Public</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="form-group price-group" style="display: ${selectedSpell.visibility === 'listed' ? 'block' : 'none'}">
+                            <label for="spell-edit-price">Price (in points)</label>
+                            <div class="price-input-wrapper">
+                                <input type="number" id="spell-edit-price" class="spell-detail-price" min="1" value="${selectedSpell.pricePoints || 100}" ${isEditable ? '' : 'readonly'}>
+                                <span class="price-conversion">≈ $${((selectedSpell.pricePoints || 100) * SpellsMenuModal.POINTS_TO_USD_RATE).toFixed(2)} USD</span>
+                            </div>
                         </div>
                     </div>
                 ` : `
@@ -987,12 +1062,12 @@ export default class SpellsMenuModal {
                         </div>
                         <div class="spell-detail-field">
                             <label>Visibility</label>
-                            <div class="spell-detail-value">${selectedSpell.isPublic ? 'Public' : 'Private'}</div>
+                            <div class="spell-detail-value">${this.getVisibilityDisplayName(selectedSpell.visibility)}${selectedSpell.visibility === 'listed' ? ` (${selectedSpell.pricePoints || 0} points)` : ''}</div>
                         </div>
                     </div>
                 `}
-                
-                ${selectedSpell.isPublic && (selectedSpell.publicSlug || selectedSpell.slug) ? `
+
+                ${(selectedSpell.visibility === 'public' || selectedSpell.visibility === 'listed') && (selectedSpell.publicSlug || selectedSpell.slug) ? `
                     <div class="public-link">
                         <label>Public Link</label>
                         <div class="public-link-wrapper">
@@ -1124,11 +1199,10 @@ export default class SpellsMenuModal {
     attachSpellDetailHandlers() {
         const { selectedSpell, isEditingSpell } = this.state;
         if (!selectedSpell) return;
-        
+
         const nameInput = this.modalElement.querySelector('.spell-detail-name');
         const descInput = this.modalElement.querySelector('.spell-detail-desc');
-        const publicChk = this.modalElement.querySelector('.spell-detail-public');
-        
+
         if (nameInput && isEditingSpell) {
             nameInput.oninput = (e) => {
                 this.state.selectedSpell.name = e.target.value;
@@ -1139,10 +1213,34 @@ export default class SpellsMenuModal {
                 this.state.selectedSpell.description = e.target.value;
             };
         }
-        if (publicChk && isEditingSpell) {
-            publicChk.onchange = (e) => {
-                this.state.selectedSpell.isPublic = e.target.checked;
-            };
+
+        // Handle visibility radio buttons
+        if (isEditingSpell) {
+            const visibilityRadios = this.modalElement.querySelectorAll('.spell-detail-visibility');
+            visibilityRadios.forEach(radio => {
+                radio.onchange = (e) => {
+                    this.state.selectedSpell.visibility = e.target.value;
+                    // Show/hide price input
+                    const priceGroup = this.modalElement.querySelector('.price-group');
+                    if (priceGroup) {
+                        priceGroup.style.display = e.target.value === 'listed' ? 'block' : 'none';
+                    }
+                };
+            });
+
+            // Handle price input
+            const priceInput = this.modalElement.querySelector('.spell-detail-price');
+            if (priceInput) {
+                priceInput.oninput = (e) => {
+                    const points = parseInt(e.target.value, 10) || 0;
+                    this.state.selectedSpell.pricePoints = points;
+                    // Update conversion display
+                    const conversionSpan = this.modalElement.querySelector('.price-conversion');
+                    if (conversionSpan) {
+                        conversionSpan.textContent = `≈ $${(points * SpellsMenuModal.POINTS_TO_USD_RATE).toFixed(2)} USD`;
+                    }
+                };
+            }
         }
         
         const editBtn = this.modalElement.querySelector('.edit-spell-btn');
@@ -1347,13 +1445,20 @@ export default class SpellsMenuModal {
 
     async handleCastMarketplaceSpell(slug) {
         if (!slug) return;
-        
+
         this.setState({ loading: true, error: null });
-        
+
         try {
+            // Get the current user's masterAccountId (required for casting)
+            const masterAccountId = await this.getCurrentMasterAccountId();
+            if (!masterAccountId) {
+                this.setState({ error: 'You must be logged in to cast spells.', loading: false });
+                return;
+            }
+
             const csrfRes = await fetch('/api/v1/csrf-token');
             const { csrfToken } = await csrfRes.json();
-            
+
             const res = await fetch('/api/v1/spells/cast', {
                 method: 'POST',
                 headers: {
@@ -1364,6 +1469,7 @@ export default class SpellsMenuModal {
                 body: JSON.stringify({
                     slug,
                     context: {
+                        masterAccountId,
                         parameterOverrides: {},
                         platform: 'web-sandbox'
                     }
@@ -1403,7 +1509,7 @@ export default class SpellsMenuModal {
      * 6. Users can then provide values for exposed inputs when casting the spell
      */
     async handleCreateSpell() {
-        const { newSpellName, newSpellDescription, spells, subgraph, newSpellExposedInputs } = this.state;
+        const { newSpellName, newSpellDescription, spells, subgraph, newSpellExposedInputs, newSpellVisibility, newSpellPricePoints } = this.state;
 
         // Validation
         if (!newSpellName.trim()) {
@@ -1414,6 +1520,12 @@ export default class SpellsMenuModal {
         const isDuplicate = spells.some(s => (s.name || '').trim().toLowerCase() === newSpellName.trim().toLowerCase());
         if (isDuplicate) {
             this.setState({ error: 'You already have a spell with this name. Please choose a different name.' });
+            return;
+        }
+
+        // For listed spells, price is required
+        if (newSpellVisibility === 'listed' && (!newSpellPricePoints || newSpellPricePoints < 1)) {
+            this.setState({ error: 'Listed spells must have a price of at least 1 point.' });
             return;
         }
 
@@ -1466,7 +1578,8 @@ export default class SpellsMenuModal {
             const payload = {
                 name: newSpellName,
                 description: newSpellDescription,
-                isPublic: !!this.state.newSpellIsPublic,
+                visibility: newSpellVisibility,
+                pricePoints: newSpellVisibility === 'listed' ? newSpellPricePoints : undefined,
                 steps: steps,
                 connections: subgraph ? subgraph.connections : [],
                 exposedInputs: exposedInputs,
@@ -1487,7 +1600,7 @@ export default class SpellsMenuModal {
                 throw new Error(errData.message || 'Failed to create spell');
             }
 
-            this.setState({ loading: false, view: 'main', newSpellName: '', newSpellDescription: '', newSpellExposedInputs: {} });
+            this.setState({ loading: false, view: 'main', newSpellName: '', newSpellDescription: '', newSpellVisibility: 'private', newSpellPricePoints: 100, newSpellExposedInputs: {} });
             this.fetchUserSpells();
         } catch (err) {
             this.setState({ error: err.message, loading: false });

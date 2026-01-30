@@ -70,11 +70,11 @@ module.exports = function spellsApi(dependencies) {
     const { slug, context } = req.body;
 
     if (!slug || !context || !context.masterAccountId) {
-      return res.status(400).json({ 
-        error: { 
-          code: 'BAD_REQUEST', 
-          message: 'Request body must include a spell slug and a context object with a masterAccountId.' 
-        } 
+      return res.status(400).json({
+        error: {
+          code: 'BAD_REQUEST',
+          message: 'Request body must include a spell slug and a context object with a masterAccountId.'
+        }
       });
     }
 
@@ -312,10 +312,19 @@ module.exports = function spellsApi(dependencies) {
   router.post('/', async (req, res) => {
     // NOTE: We need the user's masterAccountId. This should come from a middleware.
     // For now, we'll expect it in the request body.
-    const { name, description, creatorId, steps, connections, exposedInputs, tags } = req.body;
+    const { name, description, creatorId, steps, connections, exposedInputs, tags, visibility, pricePoints } = req.body;
 
     if (!name || !creatorId) {
       return res.status(400).json({ error: 'Spell name and creatorId are required.' });
+    }
+
+    // Validate visibility
+    const validVisibilities = ['private', 'listed', 'public'];
+    const spellVisibility = validVisibilities.includes(visibility) ? visibility : 'private';
+
+    // Validate pricePoints for listed spells
+    if (spellVisibility === 'listed' && (!pricePoints || pricePoints < 1)) {
+      return res.status(400).json({ error: 'Listed spells must have a price of at least 1 point.' });
     }
 
     try {
@@ -326,7 +335,8 @@ module.exports = function spellsApi(dependencies) {
         steps: Array.isArray(steps) ? steps : [], // Persist the spell steps for UI rendering and execution
         connections: Array.isArray(connections) ? connections : [], // Persist the sub-graph connections
         exposedInputs: Array.isArray(exposedInputs) ? exposedInputs : [],
-        visibility: 'private', // All new spells start as private
+        visibility: spellVisibility,
+        pricePoints: spellVisibility === 'listed' ? pricePoints : undefined,
         tags: Array.isArray(tags) ? tags : [],
       };
       const newSpell = await spellsDb.createSpell(spellData);
@@ -372,6 +382,18 @@ module.exports = function spellsApi(dependencies) {
     }
     if (!ObjectId.isValid(spellId)) {
         return res.status(400).json({ error: 'Invalid spellId format.' });
+    }
+
+    // Validate visibility if provided
+    if (updateData.visibility) {
+        const validVisibilities = ['private', 'listed', 'public'];
+        if (!validVisibilities.includes(updateData.visibility)) {
+            return res.status(400).json({ error: 'Invalid visibility value. Must be private, listed, or public.' });
+        }
+        // Validate pricePoints for listed spells
+        if (updateData.visibility === 'listed' && (!updateData.pricePoints || updateData.pricePoints < 1)) {
+            return res.status(400).json({ error: 'Listed spells must have a price of at least 1 point.' });
+        }
     }
 
     try {

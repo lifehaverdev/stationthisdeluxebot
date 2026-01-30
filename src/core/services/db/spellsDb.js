@@ -88,6 +88,10 @@ class SpellsDB extends BaseDB {
     const baseSlug = slugify(spellData.name);
     const uniqueSlug = `${baseSlug}-${new ObjectId().toHexString().substring(0, 6)}`;
 
+    // Normalize visibility - support legacy isPublic field
+    const visibility = spellData.visibility || (spellData.isPublic ? 'public' : 'private');
+    const isPubliclyVisible = visibility === 'public' || visibility === 'listed';
+
     const dataToInsert = {
       ...spellData,
       slug: uniqueSlug,
@@ -99,10 +103,11 @@ class SpellsDB extends BaseDB {
       tags: spellData.tags || [],
       usageCount: 0,
       rating: { avg: 0, count: 0 },
-      visibility: spellData.visibility || (spellData.isPublic ? 'public' : 'private'),
-      permissionType: spellData.permissionType || (spellData.isPublic ? 'public' : 'private'),
-      isPublic: !!spellData.isPublic,
-      publicSlug: spellData.isPublic ? uniqueSlug : undefined,
+      visibility,
+      // For listed spells, store the price in points (required for marketplace)
+      pricePoints: visibility === 'listed' ? (spellData.pricePoints || 0) : undefined,
+      // Generate publicSlug for public or listed spells (needed for marketplace/sharing)
+      publicSlug: isPubliclyVisible ? uniqueSlug : undefined,
       createdAt: now,
       updatedAt: now,
     };
@@ -188,12 +193,34 @@ class SpellsDB extends BaseDB {
         updatedAt: new Date(),
     };
 
-    // If toggling public and publicSlug missing, generate one
-    if (updateData.isPublic === true && !updateData.publicSlug) {
-        const existing = await this.findById(spellId);
-        if (existing && !existing.publicSlug) {
-            dataToSet.publicSlug = existing.slug;
+    // Handle visibility changes
+    const visibility = updateData.visibility;
+    if (visibility) {
+        const isPubliclyVisible = visibility === 'public' || visibility === 'listed';
+
+        // Generate publicSlug if becoming publicly visible and missing
+        if (isPubliclyVisible && !updateData.publicSlug) {
+            const existing = await this.findById(spellId);
+            if (existing && !existing.publicSlug) {
+                dataToSet.publicSlug = existing.slug;
+            }
         }
+
+        // Handle pricePoints for listed spells
+        if (visibility === 'listed') {
+            // Require pricePoints for listed spells
+            if (typeof updateData.pricePoints === 'number') {
+                dataToSet.pricePoints = updateData.pricePoints;
+            }
+        } else {
+            // Clear pricePoints for non-listed spells
+            dataToSet.pricePoints = null;
+        }
+    }
+
+    // Legacy support: convert isPublic to visibility
+    if (typeof updateData.isPublic === 'boolean' && !updateData.visibility) {
+        dataToSet.visibility = updateData.isPublic ? 'public' : 'private';
     }
     // Ensure ObjectIds are correctly formatted if passed as strings
     if (dataToSet.ownedBy) dataToSet.ownedBy = new ObjectId(dataToSet.ownedBy);
