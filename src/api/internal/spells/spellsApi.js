@@ -169,9 +169,9 @@ module.exports = function spellsApi(dependencies) {
         // The count can be derived from stepGenerationIds.length if needed
     }
     
-    if (typeof costDeltaUsd !== 'undefined') {
+    if (costDeltaUsd !== undefined && costDeltaUsd !== null) {
         const numericCost = typeof costDeltaUsd === 'string' ? parseFloat(costDeltaUsd) : costDeltaUsd;
-        if (!isNaN(numericCost) && numericCost !== 0) {
+        if (typeof numericCost === 'number' && !isNaN(numericCost) && numericCost !== 0) {
             update.$inc = { ...(update.$inc||{}), costUsd: numericCost };
         }
     }

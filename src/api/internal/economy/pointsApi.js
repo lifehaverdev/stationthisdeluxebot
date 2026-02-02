@@ -283,20 +283,16 @@ module.exports = function pointsApi(dependencies) {
                 const humanReadable = tokenDecimalService.formatTokenAmount(amount, assetAddress);
                 const adjustedAmount = amount; // Already in correct format
                 assetAmount = parseFloat(humanReadable);
-                // Get price in USD
-                price = await priceFeedService.getPriceInUsd(assetAddress);
-                
-                logger.info(`[pointsApi:/quote] Amount conversion`, {
+
+                logger.debug(`[pointsApi:/quote] Amount conversion`, {
                     requestId,
                     token: assetAddress,
                     decimals,
-                    originalAmount: amount,
                     humanReadable,
-                    adjustedAmount: adjustedAmount.toString(),
                     assetAmount
                 });
-                
-                // Get price in USD
+
+                // Get price in USD (single call - was duplicated before)
                 price = await priceFeedService.getPriceInUsd(assetAddress);
                 if (!price || price <= 0) {
                     return res.status(400).json(createErrorResponse(

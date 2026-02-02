@@ -32,7 +32,7 @@ class DatasetDownloader {
    * @param {string} jobId - Training job ID (used for temp directory naming)
    * @param {Object} options - Optional settings
    * @param {string} options.baseDir - Base directory for downloads (default: /tmp/training)
-   * @returns {Object} { datasetDir, imageCount, captionCount }
+   * @returns {Object} { datasetDir, controlDir?, imageCount, captionCount, hasControlImages }
    */
   async download(datasetId, jobId, options = {}) {
     const baseDir = options.baseDir || '/tmp/training';
@@ -62,25 +62,47 @@ class DatasetDownloader {
     // Write captions
     const captionCount = await this._writeCaptions(dataset, imageResults, datasetDir);
 
+    // Handle control images if present
+    let controlDir;
+    let hasControlImages = false;
+
+    if (dataset.controlImages && dataset.controlImages.length > 0) {
+      controlDir = path.join(baseDir, jobId, 'control');
+      await fsp.mkdir(controlDir, { recursive: true });
+
+      await this._downloadControlImages(dataset.controlImages, imageResults, controlDir);
+      hasControlImages = true;
+
+      this.logger.info(`[DatasetDownloader] Downloaded ${dataset.controlImages.length} control images to ${controlDir}`);
+    }
+
     // Write .ready marker file to signal download is complete
     const readyMarker = path.join(datasetDir, '.ready');
     await fsp.writeFile(readyMarker, JSON.stringify({
       completedAt: new Date().toISOString(),
       imageCount: imageResults.length,
       captionCount,
+      hasControlImages,
     }), 'utf-8');
 
     this.logger.info(`[DatasetDownloader] Downloaded ${imageResults.length} images, ${captionCount} captions to ${datasetDir}`);
 
-    return {
+    const result = {
       datasetDir,
       imageCount: imageResults.length,
       captionCount,
+      hasControlImages,
       dataset: {
         _id: dataset._id,
         name: dataset.name,
       }
     };
+
+    if (controlDir) {
+      result.controlDir = controlDir;
+    }
+
+    return result;
   }
 
   /**
@@ -151,6 +173,37 @@ class DatasetDownloader {
     }
 
     return writtenCount;
+  }
+
+  /**
+   * Download control images to a separate folder with matching filenames
+   * @private
+   */
+  async _downloadControlImages(controlImages, imageResults, controlDir) {
+    // Build a map from sourceFilename to control image URL
+    const controlMap = new Map();
+    for (const ctrl of controlImages) {
+      controlMap.set(ctrl.sourceFilename, ctrl.url);
+    }
+
+    for (const img of imageResults) {
+      // Find matching control image by source filename
+      const controlUrl = controlMap.get(img.filename);
+
+      if (!controlUrl) {
+        this.logger.warn(`[DatasetDownloader] No control image found for ${img.filename}`);
+        continue;
+      }
+
+      const controlFilepath = path.join(controlDir, img.filename);
+
+      try {
+        await this._downloadFile(controlUrl, controlFilepath);
+      } catch (err) {
+        this.logger.error(`[DatasetDownloader] Failed to download control image for ${img.filename}: ${err.message}`);
+        throw new Error(`Failed to download control image for ${img.filename}: ${err.message}`);
+      }
+    }
   }
 
   /**

@@ -1843,6 +1843,99 @@
   border-radius: 4px;
 }
 
+/* Step 2: KONTEXT Training Mode Cards */
+.wizard-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.wizard-mode-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid #333;
+  border-radius: 10px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.wizard-mode-card:hover {
+  border-color: #9b59b6;
+  background: rgba(155, 89, 182, 0.08);
+  transform: translateY(-2px);
+}
+
+.wizard-mode-card.selected {
+  border-color: #9b59b6;
+  background: rgba(155, 89, 182, 0.12);
+  box-shadow: 0 0 12px rgba(155, 89, 182, 0.3);
+}
+
+.mode-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #f0f0f0;
+  margin-bottom: 6px;
+}
+
+.mode-desc {
+  font-size: 12px;
+  color: #aaa;
+  line-height: 1.4;
+}
+
+/* Step 2.5: Control Dataset Selection */
+.wizard-control-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.wizard-control-dataset-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid #333;
+  border-radius: 10px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.wizard-control-dataset-card:hover {
+  border-color: #e67e22;
+  background: rgba(230, 126, 34, 0.08);
+  transform: translateY(-2px);
+}
+
+.wizard-control-dataset-card.selected {
+  border-color: #e67e22;
+  background: rgba(230, 126, 34, 0.12);
+  box-shadow: 0 0 12px rgba(230, 126, 34, 0.3);
+}
+
+.wizard-control-dataset-card h4 {
+  margin: 8px 0 4px;
+  font-size: 13px;
+  color: #f0f0f0;
+}
+
+.wizard-control-dataset-card .dataset-preview {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: 6px;
+}
+
+.wizard-control-dataset-card .preview-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 /* Step 3: Caption Cards */
 .wizard-caption-grid {
   display: flex;
@@ -2382,4 +2475,154 @@ textarea.wizard-input {
   .wizard-dataset-grid.compact {
     grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
   }
+}
+
+/* ====================== CAPTION CHOICE DIALOG ====================== */
+.caption-choice-dialog {
+  max-width: 420px;
+}
+
+.caption-choice-desc {
+  color: #aaa;
+  margin-bottom: 20px;
+  font-size: 14px;
+}
+
+.caption-choice-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.caption-choice-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 16px;
+  background: linear-gradient(135deg, #2a2a2a 0%, #252525 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.caption-choice-btn:hover {
+  background: linear-gradient(135deg, #333 0%, #2a2a2a 100%);
+  border-color: rgba(139, 92, 246, 0.4);
+  transform: translateY(-2px);
+}
+
+.caption-choice-icon {
+  font-size: 24px;
+  margin-bottom: 8px;
+}
+
+.caption-choice-label {
+  font-size: 16px;
+  font-weight: 600;
+  color: #f0f0f0;
+  margin-bottom: 4px;
+}
+
+.caption-choice-hint {
+  font-size: 13px;
+  color: #888;
+}
+
+/* ====================== EDITABLE CAPTION VIEWER ====================== */
+.caption-editor-dialog {
+  max-width: 700px;
+  width: 90%;
+}
+
+.caption-editor-dialog .caption-viewer-list textarea {
+  background: #1a1a1a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #f0f0f0;
+  resize: vertical;
+  min-height: 80px;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 10px;
+  border-radius: 6px;
+  transition: border-color 0.2s;
+}
+
+.caption-editor-dialog .caption-viewer-list textarea:focus {
+  outline: none;
+  border-color: rgba(139, 92, 246, 0.5);
+}
+
+.caption-editor-dialog .caption-viewer-list textarea::placeholder {
+  color: #555;
+}
+
+.caption-save-status {
+  font-size: 12px;
+  color: #8b5cf6;
+}
+
+/* ====================== SIMPLIFIED AI CAPTION UI ====================== */
+.caption-generator-dialog .cap-instructions {
+  margin: 16px 0;
+}
+
+.caption-generator-dialog .cap-instructions-text {
+  background: rgba(139, 92, 246, 0.1);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: #c4b5fd;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.caption-generator-dialog .cap-user-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.caption-generator-dialog .cap-user-input {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.caption-generator-dialog .cap-user-input label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #e0e0e0;
+}
+
+.caption-generator-dialog .cap-user-input label .required {
+  color: #ef4444;
+}
+
+.caption-generator-dialog .cap-input-field {
+  background: #1a1a1a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #f0f0f0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+
+.caption-generator-dialog .cap-input-field:focus {
+  outline: none;
+  border-color: rgba(139, 92, 246, 0.5);
+}
+
+.caption-generator-dialog .cap-input-field::placeholder {
+  color: #555;
+}
+
+.caption-generator-dialog .cap-input-hint {
+  font-size: 12px;
+  color: #777;
+  line-height: 1.4;
 }

@@ -13,24 +13,34 @@ const stringPrimitiveTool = {
       description: 'Operation to perform',
       enum: ['concat', 'replace']
     },
-    stringA: {
-      name: 'stringA',
+    // Shared input field
+    inputText: {
+      name: 'inputText',
       type: 'string',
       required: true,
-      description: 'Primary string input.'
+      description: 'The main text input.'
     },
-    stringB: {
-      name: 'stringB',
+    // Concat-specific
+    appendText: {
+      name: 'appendText',
       type: 'string',
-      required: false,
-      description: 'Secondary string input or replacement value.',
-      visibleIf: { field: 'operation', values: ['concat', 'replace'] }
+      required: true,
+      description: 'Text to append after the input text.',
+      visibleIf: { field: 'operation', values: ['concat'] }
     },
-    searchValue: {
-      name: 'searchValue',
+    // Replace-specific
+    searchText: {
+      name: 'searchText',
       type: 'string',
-      required: false,
-      description: 'Substring or regex to search for (used in replace).',
+      required: true,
+      description: 'The text to search for (will be replaced).',
+      visibleIf: { field: 'operation', values: ['replace'] }
+    },
+    replacementText: {
+      name: 'replacementText',
+      type: 'string',
+      required: true,
+      description: 'Text to replace matches with (leave empty to delete).',
       visibleIf: { field: 'operation', values: ['replace'] }
     }
   },

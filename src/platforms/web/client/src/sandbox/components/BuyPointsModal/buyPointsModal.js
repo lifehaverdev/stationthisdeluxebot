@@ -17,7 +17,11 @@ const buyPointsState = {
     // Wallet + balance tracking
     walletAddress: null,
     walletBalances: null,
-    balancesLoading: false
+    balancesLoading: false,
+    // Status feedback for better UX
+    statusMessage: null,
+    statusPhase: null, // 'preparing' | 'approval' | 'approving' | 'deposit' | 'confirming'
+    statusProgress: 0 // 0-100
 };
 
 // --- Request Cancellation ---
@@ -104,9 +108,58 @@ function showError(message) {
     render();
 }
 
+/**
+ * Show a status message with optional progress indicator
+ * @param {string} message - The status message to display
+ * @param {string} phase - The current phase: 'preparing' | 'approval' | 'approving' | 'deposit' | 'confirming'
+ * @param {number} progress - Progress percentage (0-100)
+ */
+function showStatus(message, phase = null, progress = null) {
+    buyPointsState.statusMessage = message;
+    buyPointsState.statusPhase = phase;
+    if (progress !== null) {
+        buyPointsState.statusProgress = progress;
+    }
+    render();
+}
+
+function clearStatus() {
+    buyPointsState.statusMessage = null;
+    buyPointsState.statusPhase = null;
+    buyPointsState.statusProgress = 0;
+}
+
 function render() {
     [step1, step2, step3, step4, step5].forEach(step => step && (step.style.display = 'none'));
-    if (loader) loader.style.display = buyPointsState.isLoading ? 'flex' : 'none';
+    if (loader) {
+        loader.style.display = buyPointsState.isLoading ? 'flex' : 'none';
+        // Update status message in loader
+        const statusEl = document.getElementById('loader-status');
+        const progressContainer = document.getElementById('loader-progress-container');
+        const progressBar = document.getElementById('loader-progress-bar');
+        const phaseEl = document.getElementById('loader-phase');
+
+        if (statusEl) {
+            statusEl.textContent = buyPointsState.statusMessage || '';
+        }
+        if (progressContainer && progressBar && phaseEl) {
+            if (buyPointsState.statusPhase) {
+                progressContainer.style.display = 'block';
+                progressBar.style.width = `${buyPointsState.statusProgress}%`;
+                // Show phase labels
+                const phaseLabels = {
+                    'preparing': 'Step 1/4: Preparing transaction',
+                    'approval': 'Step 2/4: Waiting for wallet signature',
+                    'approving': 'Step 2/4: Confirming approval on-chain',
+                    'deposit': 'Step 3/4: Waiting for wallet signature',
+                    'confirming': 'Step 4/4: Processing deposit'
+                };
+                phaseEl.textContent = phaseLabels[buyPointsState.statusPhase] || '';
+            } else {
+                progressContainer.style.display = 'none';
+            }
+        }
+    }
     if (errorDisplay) {
         errorDisplay.style.display = buyPointsState.error ? 'block' : 'none';
         errorDisplay.textContent = buyPointsState.error || '';
@@ -397,19 +450,60 @@ function renderTxStatusStep() {
         return;
     }
     const s = buyPointsState.txStatus;
+
+    // Determine status display
+    const statusColors = {
+        'submitted': '#90caf9',
+        'pending': '#ffc107',
+        'confirming': '#ffc107',
+        'confirmed': '#4caf50',
+        'Success!': '#4caf50',
+        'Failed': '#e74c3c'
+    };
+    const statusColor = statusColors[s.status] || '#90caf9';
+    const isProcessing = ['submitted', 'pending', 'confirming'].includes(s.status);
+
     let html = `
-        <div>Status: <b>${s.status || 'Submitted'}</b></div>
-        <div>Your Tx Hash: <span class="copyable" title="Click to copy">${s.txHash}</span></div>
+        <div style="text-align:center;padding:20px 0;">
+            ${isProcessing ? `
+                <div class="processing-animation" style="margin-bottom:16px;">
+                    <div style="width:60px;height:60px;margin:0 auto;border:3px solid #333;border-top-color:${statusColor};border-radius:50%;animation:spin 1s linear infinite;"></div>
+                </div>
+                <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+            ` : ''}
+            <div style="font-size:18px;color:${statusColor};font-weight:bold;margin-bottom:8px;">
+                ${s.status === 'submitted' ? 'Transaction Submitted' :
+                  s.status === 'pending' ? 'Transaction Pending' :
+                  s.status === 'confirming' ? 'Confirming...' :
+                  s.status === 'confirmed' || s.status === 'Success!' ? 'Confirmed!' :
+                  s.status === 'Failed' ? 'Transaction Failed' :
+                  s.status || 'Processing'}
+            </div>
+            ${s.message ? `<p style="color:#aaa;font-size:14px;margin:8px 0;">${s.message}</p>` : ''}
+        </div>
+        <div style="background:#1a1a1a;padding:12px;border-radius:6px;margin-top:12px;">
+            <div style="font-size:12px;color:#666;margin-bottom:4px;">Transaction Hash</div>
+            <div style="font-family:monospace;font-size:13px;word-break:break-all;color:#90caf9;" class="copyable" title="Click to copy">${s.txHash}</div>
+        </div>
     `;
-    if (s.message) {
-        html += `<p style="margin-top: 10px;">${s.message}</p>`;
-    }
+
     if (s.confirmationTxHash) {
-        html += `<div>Confirmation Tx: <span class="copyable" title="Click to copy">${s.confirmationTxHash}</span></div>`;
+        html += `
+            <div style="background:#1a1a1a;padding:12px;border-radius:6px;margin-top:8px;">
+                <div style="font-size:12px;color:#666;margin-bottom:4px;">Confirmation Tx</div>
+                <div style="font-family:monospace;font-size:13px;word-break:break-all;color:#4caf50;" class="copyable" title="Click to copy">${s.confirmationTxHash}</div>
+            </div>
+        `;
     }
+
     if (s.failureReason) {
-        html += `<div style="color: #e74c3c; margin-top: 10px;">Error: ${s.failureReason}</div>`;
+        html += `<div style="background:#3d1a1a;color:#e74c3c;padding:12px;border-radius:6px;margin-top:12px;">${s.failureReason}</div>`;
     }
+
+    if (isProcessing) {
+        html += `<p style="text-align:center;color:#666;font-size:12px;margin-top:16px;">This usually takes 15-60 seconds. You can close this modal - your points will be credited automatically.</p>`;
+    }
+
     txStatusDisplay.innerHTML = html;
 }
 
@@ -703,10 +797,11 @@ async function fetchQuote() {
         currentQuoteAbortController.abort();
     }
     currentQuoteAbortController = new AbortController();
-    
+
     showLoader(true);
     buyPointsState.error = null; // Clear previous errors
-    
+    showStatus('Fetching current prices...');
+
     try {
         let amountToSend = buyPointsState.amount;
         if (buyPointsState.selectedAsset.type === 'token') {
@@ -719,68 +814,63 @@ async function fetchQuote() {
             assetAddress: buyPointsState.selectedAsset.address,
             amount: amountToSend,
             mode: buyPointsState.mode
-            // userId should be filled by backend session if needed
         };
         const token = await window.auth.ensureCsrfToken();
-        const res = await fetch(`${API_BASE_URL}/quote`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-Token': token
-            },
-            body: JSON.stringify(body),
-            credentials: 'include',
-            signal: currentQuoteAbortController.signal
-        });
-        
-        if (!res.ok) {
-            const errorText = await res.text();
-            let errorMessage = 'Could not fetch quote.';
-            try {
-                const errorData = JSON.parse(errorText);
-                errorMessage = errorData.message || errorMessage;
-            } catch {
-                // If not JSON, use default message
-            }
-            throw new Error(errorMessage);
-        }
-        
-        buyPointsState.quote = await res.json();
 
-        // If current mode is contribute, fetch a donate quote in parallel for comparison
-        if (buyPointsState.mode === 'contribute') {
-            try {
-                const donateBody = { ...body, mode: 'donate' };
-                const donateRes = await fetch(`${API_BASE_URL}/quote`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-Token': token
-                    },
-                    body: JSON.stringify(donateBody),
-                    credentials: 'include',
-                    signal: currentQuoteAbortController.signal
-                });
-                if (donateRes.ok) {
-                    buyPointsState.donateQuote = await donateRes.json();
-                }
-            } catch (e) {
-                // Only log if not aborted
-                if (e.name !== 'AbortError') {
-                    console.warn('[BuyPointsModal] Failed to fetch donate quote:', e);
-                }
+        // Fetch both quotes in parallel for better performance
+        const fetchQuoteWithMode = async (quoteMode) => {
+            const quoteBody = { ...body, mode: quoteMode };
+            const response = await fetch(`${API_BASE_URL}/quote`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': token
+                },
+                body: JSON.stringify(quoteBody),
+                credentials: 'include',
+                signal: currentQuoteAbortController.signal
+            });
+            if (!response.ok) {
+                const errorText = await response.text();
+                let errorMessage = 'Could not fetch quote.';
+                try {
+                    const errorData = JSON.parse(errorText);
+                    errorMessage = errorData.message || errorMessage;
+                } catch {}
+                throw new Error(errorMessage);
             }
+            return response.json();
+        };
+
+        // If contribute mode, fetch both quotes in parallel
+        if (buyPointsState.mode === 'contribute') {
+            const [contributeQuote, donateQuote] = await Promise.all([
+                fetchQuoteWithMode('contribute'),
+                fetchQuoteWithMode('donate').catch(e => {
+                    if (e.name !== 'AbortError') {
+                        console.warn('[BuyPointsModal] Failed to fetch donate quote:', e);
+                    }
+                    return null;
+                })
+            ]);
+            buyPointsState.quote = contributeQuote;
+            buyPointsState.donateQuote = donateQuote;
         } else {
-            buyPointsState.donateQuote = null; // clear if switched to donate
+            // Donate mode - just fetch donate quote
+            buyPointsState.quote = await fetchQuoteWithMode('donate');
+            buyPointsState.donateQuote = null;
         }
         showLoader(false);
+        clearStatus();
         render();
     } catch (err) {
         // Don't show error if request was aborted (user changed amount)
         if (err.name === 'AbortError') {
+            clearStatus();
             return;
         }
         showLoader(false);
+        clearStatus();
         const errorMessage = err.message || 'Could not fetch quote. Please check your network connection and try again.';
         showError(errorMessage);
     } finally {
@@ -803,27 +893,76 @@ async function sendTransaction(tx) {
     });
 }
 
+/**
+ * Wait for a transaction to be confirmed on-chain
+ * @param {string} txHash - The transaction hash to wait for
+ * @param {number} maxWaitMs - Maximum time to wait (default 120 seconds)
+ * @param {number} pollIntervalMs - How often to check (default 2 seconds)
+ * @returns {Promise<object>} The transaction receipt
+ */
+async function waitForTransactionConfirmation(txHash, maxWaitMs = 120000, pollIntervalMs = 2000) {
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < maxWaitMs) {
+        try {
+            const receipt = await window.ethereum.request({
+                method: 'eth_getTransactionReceipt',
+                params: [txHash]
+            });
+
+            if (receipt && receipt.blockNumber) {
+                // Transaction is confirmed
+                const status = parseInt(receipt.status, 16);
+                if (status === 0) {
+                    throw new Error('Transaction reverted on-chain');
+                }
+                console.log(`[BuyPointsModal] Transaction ${txHash} confirmed in block ${parseInt(receipt.blockNumber, 16)}`);
+                return receipt;
+            }
+        } catch (err) {
+            // RPC error - log but continue polling
+            console.warn('[BuyPointsModal] Error checking tx receipt:', err.message);
+        }
+
+        // Wait before next poll
+        await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+    }
+
+    throw new Error(`Transaction confirmation timeout after ${maxWaitMs / 1000} seconds`);
+}
+
 async function initiatePurchase() {
     if (!buyPointsState.quote) return;
     if (!(await ensureCorrectNetwork())) return;
+
+    // Clear any previous errors and show initial status
+    buyPointsState.error = null;
     showLoader(true);
+    showStatus('Preparing your transaction...', 'preparing', 10);
+
     try {
         let amountToSend = buyPointsState.amount;
         if (buyPointsState.selectedAsset.type === 'token') {
             const decimals = buyPointsState.selectedAsset.decimals || 18;
             amountToSend = toSmallestUnit(buyPointsState.amount, decimals);
         }
-        // Get wallet address
-        let userWalletAddress;
-        try {
-            userWalletAddress = await getUserWalletAddress();
-            console.log('[BuyPointsModal] Wallet address obtained:', userWalletAddress);
-        } catch (walletErr) {
-            console.error('[BuyPointsModal] Wallet connection error:', walletErr);
-            showLoader(false);
-            showError(walletErr.message || 'Could not connect wallet.');
-            return;
+        // Use cached wallet address if available, otherwise request it
+        let userWalletAddress = buyPointsState.walletAddress;
+        if (!userWalletAddress) {
+            showStatus('Connecting to wallet...', 'preparing', 15);
+            try {
+                userWalletAddress = await getUserWalletAddress();
+            } catch (walletErr) {
+                console.error('[BuyPointsModal] Wallet connection error:', walletErr);
+                showLoader(false);
+                clearStatus();
+                showError(walletErr.message || 'Could not connect wallet.');
+                return;
+            }
         }
+
+        showStatus('Checking token allowance...', 'preparing', 20);
+
         const body = {
             quoteId: buyPointsState.quote.quoteId,
             type: buyPointsState.selectedAsset.type,
@@ -831,7 +970,6 @@ async function initiatePurchase() {
             amount: amountToSend,
             userWalletAddress,
             mode: buyPointsState.mode
-            // userId should be filled by backend session if needed
         };
         console.log('[BuyPointsModal] Sending purchase payload:', body);
         const token = await window.auth.ensureCsrfToken();
@@ -846,48 +984,87 @@ async function initiatePurchase() {
         });
         if (!res.ok) throw new Error('Failed to initiate purchase');
         buyPointsState.purchase = await res.json();
-        showLoader(false);
+
         // --- Prompt user to sign transactions ---
         const { approvalRequired, approvalTx, depositTx, donationTx } = buyPointsState.purchase;
         let txHash;
+
         if (approvalRequired && approvalTx) {
+            // APPROVAL PHASE
+            showStatus('Please sign the APPROVAL in your wallet...', 'approval', 30);
             try {
-                showLoader(true);
-                showError('Please sign the approval transaction in your wallet.');
                 const approvalHash = await sendTransaction(approvalTx);
                 console.log('[BuyPointsModal] Approval tx sent:', approvalHash);
-                // Optionally, wait for confirmation before proceeding
+
+                // Wait for approval to be confirmed on-chain
+                showStatus('Approval submitted! Waiting for blockchain confirmation...', 'approving', 40);
+
+                // Update progress while waiting
+                let approvalProgress = 40;
+                const progressInterval = setInterval(() => {
+                    if (approvalProgress < 55) {
+                        approvalProgress += 1;
+                        showStatus('Waiting for approval confirmation...', 'approving', approvalProgress);
+                    }
+                }, 2000);
+
+                try {
+                    await waitForTransactionConfirmation(approvalHash, 120000, 2000);
+                    clearInterval(progressInterval);
+                    showStatus('Approval confirmed!', 'approving', 60);
+                    console.log('[BuyPointsModal] Approval confirmed, proceeding with deposit');
+                } catch (confirmErr) {
+                    clearInterval(progressInterval);
+                    throw confirmErr;
+                }
             } catch (err) {
                 showLoader(false);
-                showError('Approval transaction was rejected or failed.');
+                clearStatus();
+                const errorMsg = err.message?.includes('reverted')
+                    ? 'Approval transaction reverted on-chain.'
+                    : err.message?.includes('timeout')
+                    ? 'Approval confirmation timed out. Please try again.'
+                    : 'Approval transaction was rejected or failed.';
+                showError(errorMsg);
                 return;
             }
+        } else {
+            showStatus('No approval needed, proceeding to deposit...', 'preparing', 60);
         }
+
+        // DEPOSIT PHASE
         const finalTx = buyPointsState.mode === 'donate' ? donationTx || depositTx : depositTx;
+        const actionLabel = buyPointsState.mode === 'donate' ? 'DONATION' : 'DEPOSIT';
 
         try {
-            showLoader(true);
-            const actionLabel = buyPointsState.mode === 'donate' ? 'donation' : 'deposit';
-            showError(`Please sign the ${actionLabel} transaction in your wallet.`);
+            showStatus(`Please sign the ${actionLabel} in your wallet...`, 'deposit', 65);
             txHash = await sendTransaction(finalTx);
             console.log(`[BuyPointsModal] ${actionLabel} tx sent:`, txHash);
-            buyPointsState.txStatus = { 
-                status: 'submitted', 
-                txHash: txHash, 
-                message: 'Waiting for blockchain confirmation and backend processing...' 
+
+            showStatus('Transaction submitted! Processing...', 'confirming', 80);
+
+            buyPointsState.txStatus = {
+                status: 'submitted',
+                txHash: txHash,
+                message: 'Transaction submitted to the blockchain. Waiting for confirmation...'
             };
         } catch (err) {
             showLoader(false);
+            clearStatus();
             showError('Transaction was rejected or failed.');
             return;
         }
+
+        // Clear loader and status, move to step 4
         showLoader(false);
+        clearStatus();
         goToStep(4); // Step 4: Waiting for confirmation
-        
+
         // Subscribe to real-time transaction status updates via WebSocket
         subscribeToTransactionUpdates(txHash);
     } catch (err) {
         showLoader(false);
+        clearStatus();
         showError(err.message || 'Could not initiate purchase.');
     }
 }
@@ -1122,7 +1299,10 @@ function closeModal() {
         isLoading: false,
         pollInterval: null,
         mode: 'contribute',
-        donateQuote: null
+        donateQuote: null,
+        statusMessage: null,
+        statusPhase: null,
+        statusProgress: 0
     });
     
     // Remove modal from DOM
@@ -1189,11 +1369,18 @@ const buyPointsModalHTML = `
             <button class="modal-close-btn-bottom">Close</button>
         </div>
         
-        <!-- Loading Spinner -->
+        <!-- Loading Spinner with Status -->
         <div id="modal-loader" style="display: none;">
             <div class="spinner"></div>
+            <div id="loader-status" style="margin-top:12px;text-align:center;color:#90caf9;font-size:14px;"></div>
+            <div id="loader-progress-container" style="display:none;margin-top:8px;width:100%;max-width:200px;">
+                <div style="background:#333;border-radius:4px;height:6px;overflow:hidden;">
+                    <div id="loader-progress-bar" style="background:#4caf50;height:100%;width:0%;transition:width 0.3s ease;"></div>
+                </div>
+                <div id="loader-phase" style="margin-top:4px;font-size:11px;color:#666;text-align:center;"></div>
+            </div>
         </div>
-        
+
         <!-- Error Display -->
         <div id="modal-error-display" style="display: none;"></div>
     </div>

@@ -17,6 +17,7 @@ export default class SpellsMenuModal {
             selectedSpell: null,
             isEditingSpell: false, // Track if spell is in edit mode
             currentUserId: null, // Cache current user ID for ownership checks
+            expandedSteps: {}, // Track which step indices are expanded for parameter editing
             // For create form
             newSpellName: '',
             newSpellDescription: '',
@@ -133,12 +134,13 @@ export default class SpellsMenuModal {
             const refreshedSpell = await this.fetchSpellById(spellId) || selectedSpell;
             const { sanitizedSpell, exposureMap } = this.prepareSpellForEdit(refreshedSpell);
 
-            this.setState({ 
-                loading: false, 
+            this.setState({
+                loading: false,
                 isEditingSpell: false,
                 selectedSpell: sanitizedSpell,
                 pendingSpellStructure: null,
                 editExposedInputMap: exposureMap,
+                expandedSteps: {},
                 error: null
             });
             
@@ -185,7 +187,7 @@ export default class SpellsMenuModal {
                 try { const errData = await res.json(); errMsg = errData.error || errMsg; } catch {}
                 throw new Error(errMsg);
             }
-            this.setState({ loading: false, view: 'main', selectedSpell: null, pendingSpellStructure: null, isEditingSpell: false, editExposedInputMap: {} });
+            this.setState({ loading: false, view: 'main', selectedSpell: null, pendingSpellStructure: null, isEditingSpell: false, editExposedInputMap: {}, expandedSteps: {} });
             this.fetchUserSpells();
         } catch (err) {
             this.setState({ error: err.message || 'Failed to delete spell.', loading: false });
@@ -417,10 +419,10 @@ export default class SpellsMenuModal {
             btn.onclick = () => {
                 const tab = btn.getAttribute('data-tab');
                 if (tab === 'main') {
-                    this.setState({ view: 'main', selectedSpell: null, pendingSpellStructure: null, isEditingSpell: false, editExposedInputMap: {} });
+                    this.setState({ view: 'main', selectedSpell: null, pendingSpellStructure: null, isEditingSpell: false, editExposedInputMap: {}, expandedSteps: {} });
                     this.fetchUserSpells();
                 } else if (tab === 'marketplace') {
-                    this.setState({ view: 'marketplace', selectedSpell: null, pendingSpellStructure: null, isEditingSpell: false, editExposedInputMap: {} });
+                    this.setState({ view: 'marketplace', selectedSpell: null, pendingSpellStructure: null, isEditingSpell: false, editExposedInputMap: {}, expandedSteps: {} });
                     this.fetchMarketplaceSpells();
                 }
             };
@@ -976,16 +978,41 @@ export default class SpellsMenuModal {
         
         let stepsHtml = '';
         if (selectedSpell.steps) {
+            const availableTools = getAvailableTools?.() || [];
+            const toolMap = new Map(availableTools.map(tool => [tool.toolId, tool]));
+
             stepsHtml = `
                 <div class="spell-detail-steps">
                     <h4>Steps (${selectedSpell.steps.length})</h4>
+                    ${isEditingSpell ? '<p class="steps-help-text">Click on a step to expand and edit its baked-in parameters.</p>' : ''}
                     <ul class="spell-steps-list">
-                        ${selectedSpell.steps.map((step, idx) => `
-                            <li class="spell-step-display-item">
-                                <span class="step-number-small">${idx + 1}</span>
-                                <span class="step-name">${step.displayName || step.toolIdentifier || 'Unknown'}</span>
-                            </li>
-                        `).join('')}
+                        ${selectedSpell.steps.map((step, idx) => {
+                            const isExpanded = this.state.expandedSteps[idx] || false;
+                            const tool = toolMap.get(step.toolIdentifier);
+                            const hasParams = step.parameterMappings && Object.keys(step.parameterMappings).length > 0;
+                            const canExpandEdit = isEditingSpell && tool && tool.inputSchema;
+                            const canExpandView = !isEditingSpell && hasParams;
+                            const canExpand = canExpandEdit || canExpandView;
+
+                            let parametersHtml = '';
+                            if (canExpandEdit && isExpanded && tool.inputSchema) {
+                                parametersHtml = this.renderStepParametersEditor(step, tool, idx);
+                            } else if (canExpandView && isExpanded) {
+                                // Show read-only parameter values when expanded in view mode
+                                parametersHtml = this.renderStepParametersReadOnly(step, tool);
+                            }
+
+                            return `
+                                <li class="spell-step-display-item ${isExpanded ? 'expanded' : ''} ${canExpand ? 'expandable' : ''}" data-step-index="${idx}">
+                                    <div class="step-header">
+                                        <span class="step-number-small">${idx + 1}</span>
+                                        <span class="step-name">${step.displayName || step.toolIdentifier || 'Unknown'}</span>
+                                        ${canExpand ? `<span class="step-expand-icon">${isExpanded ? '▼' : '▶'}</span>` : ''}
+                                    </div>
+                                    ${parametersHtml}
+                                </li>
+                            `;
+                        }).join('')}
                     </ul>
                 </div>
             `;
@@ -1156,6 +1183,166 @@ export default class SpellsMenuModal {
         `;
     }
 
+    /**
+     * Render editable parameter inputs for a spell step when in edit mode.
+     * @param {Object} step - The spell step
+     * @param {Object} tool - The tool definition
+     * @param {number} stepIndex - Index of the step
+     * @returns {string} HTML string for parameter editor
+     */
+    renderStepParametersEditor(step, tool, stepIndex) {
+        if (!tool || !tool.inputSchema) return '';
+
+        const inputSchema = tool.inputSchema;
+        const parameterMappings = step.parameterMappings || {};
+        const exposedInputs = this.state.selectedSpell?.exposedInputs || [];
+        const exposedSet = new Set(exposedInputs.map(e => `${step.id}__${e.paramKey}`));
+
+        // Get all parameters sorted by order
+        const params = Object.entries(inputSchema).sort((a, b) => {
+            const orderA = a[1]?.order !== undefined ? a[1].order : Infinity;
+            const orderB = b[1]?.order !== undefined ? b[1].order : Infinity;
+            return orderA - orderB;
+        });
+
+        if (params.length === 0) {
+            return '<div class="step-params-empty">No parameters available for this tool.</div>';
+        }
+
+        const paramInputs = params.map(([paramKey, paramDef]) => {
+            const isExposed = exposedSet.has(`${step.id}__${paramKey}`);
+            const mapping = parameterMappings[paramKey];
+            const currentValue = mapping?.value !== undefined ? mapping.value : (paramDef.default || '');
+
+            // Skip parameters that are connected to other nodes (type: nodeOutput)
+            if (mapping?.type === 'nodeOutput') {
+                return `
+                    <div class="step-param-item connected">
+                        <label class="step-param-label" title="${paramDef.description || ''}">${paramDef.name || paramKey}</label>
+                        <span class="step-param-connected">Connected to ${mapping.nodeId}.${mapping.outputKey}</span>
+                    </div>
+                `;
+            }
+
+            // If this parameter is exposed, show a note instead of an editor
+            if (isExposed) {
+                return `
+                    <div class="step-param-item exposed">
+                        <label class="step-param-label" title="${paramDef.description || ''}">${paramDef.name || paramKey}</label>
+                        <span class="step-param-exposed-note">📤 Exposed input (user-provided when casting)</span>
+                    </div>
+                `;
+            }
+
+            // Render appropriate input based on parameter type
+            let inputHtml = '';
+            const escapedValue = String(currentValue).replace(/"/g, '&quot;');
+
+            if (Array.isArray(paramDef.enum) && paramDef.enum.length > 0) {
+                // Enum -> dropdown
+                const options = paramDef.enum.map(opt => {
+                    const selected = String(currentValue) === String(opt) ? 'selected' : '';
+                    return `<option value="${opt}" ${selected}>${opt}</option>`;
+                }).join('');
+                inputHtml = `<select class="step-param-input" data-step-index="${stepIndex}" data-param-key="${paramKey}">${options}</select>`;
+            } else if (paramDef.type === 'number' || paramDef.type === 'integer') {
+                inputHtml = `<input type="number" class="step-param-input" data-step-index="${stepIndex}" data-param-key="${paramKey}" value="${escapedValue}" placeholder="${paramDef.description || paramDef.name || paramKey}" />`;
+            } else if (paramDef.type === 'boolean') {
+                const checked = currentValue === true || currentValue === 'true' ? 'checked' : '';
+                inputHtml = `<input type="checkbox" class="step-param-input step-param-checkbox" data-step-index="${stepIndex}" data-param-key="${paramKey}" ${checked} />`;
+            } else {
+                // Default: text input (for string, image URLs, etc.)
+                inputHtml = `<input type="text" class="step-param-input" data-step-index="${stepIndex}" data-param-key="${paramKey}" value="${escapedValue}" placeholder="${paramDef.description || paramDef.name || paramKey}" />`;
+            }
+
+            return `
+                <div class="step-param-item">
+                    <label class="step-param-label" title="${paramDef.description || ''}">${paramDef.name || paramKey}</label>
+                    ${inputHtml}
+                    ${paramDef.description ? `<span class="step-param-desc">${paramDef.description}</span>` : ''}
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <div class="step-params-editor" data-step-index="${stepIndex}">
+                ${paramInputs}
+            </div>
+        `;
+    }
+
+    /**
+     * Render read-only parameter values for a spell step when not in edit mode.
+     * @param {Object} step - The spell step
+     * @param {Object|null} tool - The tool definition (optional, for display names)
+     * @returns {string} HTML string for read-only parameters
+     */
+    renderStepParametersReadOnly(step, tool) {
+        const parameterMappings = step.parameterMappings || {};
+        const entries = Object.entries(parameterMappings);
+
+        if (entries.length === 0) return '';
+
+        const inputSchema = tool?.inputSchema || {};
+
+        const items = entries.map(([paramKey, mapping]) => {
+            const paramDef = inputSchema[paramKey] || {};
+            const displayName = paramDef.name || paramKey;
+
+            if (mapping.type === 'nodeOutput') {
+                return `<div class="step-param-readonly"><strong>${displayName}:</strong> <em>Connected to ${mapping.nodeId}.${mapping.outputKey}</em></div>`;
+            }
+
+            let displayValue = mapping.value;
+            // Truncate long values
+            if (typeof displayValue === 'string' && displayValue.length > 50) {
+                displayValue = displayValue.substring(0, 47) + '...';
+            }
+            return `<div class="step-param-readonly"><strong>${displayName}:</strong> ${displayValue !== undefined ? displayValue : '<em>Not set</em>'}</div>`;
+        }).join('');
+
+        return `<div class="step-params-readonly">${items}</div>`;
+    }
+
+    /**
+     * Toggle whether a step is expanded for parameter editing.
+     * @param {number} stepIndex - Index of the step to toggle
+     */
+    toggleStepExpanded(stepIndex) {
+        const newExpandedSteps = { ...this.state.expandedSteps };
+        newExpandedSteps[stepIndex] = !newExpandedSteps[stepIndex];
+        this.setState({ expandedSteps: newExpandedSteps });
+    }
+
+    /**
+     * Update a baked-in parameter value for a spell step.
+     * This modifies the pendingSpellStructure to track unsaved changes.
+     * @param {number} stepIndex - Index of the step
+     * @param {string} paramKey - Parameter key
+     * @param {any} value - New value
+     */
+    updateStepParameter(stepIndex, paramKey, value) {
+        const { selectedSpell, pendingSpellStructure } = this.state;
+        if (!selectedSpell || !selectedSpell.steps) return;
+
+        // Create a deep copy of the current structure (either pending or from spell)
+        const steps = JSON.parse(JSON.stringify(pendingSpellStructure?.steps || selectedSpell.steps));
+        const connections = pendingSpellStructure?.connections || selectedSpell.connections || [];
+
+        if (stepIndex >= 0 && stepIndex < steps.length) {
+            const step = steps[stepIndex];
+            if (!step.parameterMappings) {
+                step.parameterMappings = {};
+            }
+            step.parameterMappings[paramKey] = { type: 'static', value: value };
+        }
+
+        // Update pendingSpellStructure to track the change
+        this.setState({
+            pendingSpellStructure: { steps, connections }
+        });
+    }
+
     renderMarketplaceSpellDetailView() {
         const { selectedSpell } = this.state;
         if (!selectedSpell) return '<div class="error-message">Spell not found.</div>';
@@ -1268,11 +1455,11 @@ export default class SpellsMenuModal {
                 this.fetchSpellById(spellId).then(spell => {
                     if (spell) {
                         const { sanitizedSpell, exposureMap } = this.prepareSpellForEdit(spell);
-                        this.setState({ selectedSpell: sanitizedSpell, isEditingSpell: false, pendingSpellStructure: null, editExposedInputMap: exposureMap });
+                        this.setState({ selectedSpell: sanitizedSpell, isEditingSpell: false, pendingSpellStructure: null, editExposedInputMap: exposureMap, expandedSteps: {} });
                         // Re-render to show display view
                         this.render();
                     } else {
-                        this.setState({ isEditingSpell: false, pendingSpellStructure: null });
+                        this.setState({ isEditingSpell: false, pendingSpellStructure: null, expandedSteps: {} });
                         this.render();
                     }
                 });
@@ -1283,7 +1470,7 @@ export default class SpellsMenuModal {
         }
         if (backBtn) {
             backBtn.onclick = () => {
-                this.setState({ view: 'main', selectedSpell: null, isEditingSpell: false, pendingSpellStructure: null, editExposedInputMap: {} });
+                this.setState({ view: 'main', selectedSpell: null, isEditingSpell: false, pendingSpellStructure: null, editExposedInputMap: {}, expandedSteps: {} });
                 this.fetchUserSpells();
             };
         }
@@ -1303,6 +1490,20 @@ export default class SpellsMenuModal {
             flowBtn.onclick = () => this.launchSpellFlowEditor(flowBtn);
         }
 
+        // Step expansion toggle handlers (works in both edit and view mode)
+        const stepItems = this.modalElement.querySelectorAll('.spell-step-display-item.expandable');
+        stepItems.forEach(item => {
+            const header = item.querySelector('.step-header');
+            if (header) {
+                header.onclick = (e) => {
+                    // Don't toggle if clicking on an input inside the header
+                    if (e.target.closest('.step-param-input')) return;
+                    const stepIndex = parseInt(item.dataset.stepIndex, 10);
+                    this.toggleStepExpanded(stepIndex);
+                };
+            }
+        });
+
         if (isEditingSpell) {
             const exposureCheckboxes = this.modalElement.querySelectorAll('.edit-exposed-input-checkbox');
             exposureCheckboxes.forEach(checkbox => {
@@ -1311,6 +1512,38 @@ export default class SpellsMenuModal {
                     const checked = e.target.checked;
                     this.updateExposedInputSelection(inputId, checked);
                 };
+            });
+
+            // Step parameter input handlers
+            const paramInputs = this.modalElement.querySelectorAll('.step-param-input');
+            paramInputs.forEach(input => {
+                const stepIndex = parseInt(input.dataset.stepIndex, 10);
+                const paramKey = input.dataset.paramKey;
+
+                if (input.type === 'checkbox') {
+                    input.onchange = (e) => {
+                        e.stopPropagation();
+                        this.updateStepParameter(stepIndex, paramKey, e.target.checked);
+                    };
+                } else if (input.tagName.toLowerCase() === 'select') {
+                    input.onchange = (e) => {
+                        e.stopPropagation();
+                        this.updateStepParameter(stepIndex, paramKey, e.target.value);
+                    };
+                } else {
+                    input.oninput = (e) => {
+                        e.stopPropagation();
+                        let value = e.target.value;
+                        // Convert to number if number input
+                        if (input.type === 'number') {
+                            value = parseFloat(value) || 0;
+                        }
+                        this.updateStepParameter(stepIndex, paramKey, value);
+                    };
+                }
+
+                // Prevent clicks from collapsing the step
+                input.onclick = (e) => e.stopPropagation();
             });
         }
     }

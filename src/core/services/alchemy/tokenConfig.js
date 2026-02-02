@@ -81,24 +81,8 @@ function normaliseChainId(chainId) {
 }
 
 function getChainTokenConfig(chainId = MAINNET_CHAIN_ID) {
-  console.log('[tokenConfig] getChainTokenConfig(chainId=%s)', chainId);
   return TOKEN_CONFIG[normaliseChainId(chainId)] || TOKEN_CONFIG[MAINNET_CHAIN_ID];
 }
-
-// Instrument helpers for debugging
-function _logKeys(label, obj) {
-  if (obj && typeof obj === 'object') {
-    console.log(`[tokenConfig] ${label} keys:`, Object.keys(obj));
-  }
-}
-
-// Wrap original helpers with logging
-const _origGetChainTokenConfig = getChainTokenConfig;
-getChainTokenConfig = function(chainId = MAINNET_CHAIN_ID) {
-  const cfg = _origGetChainTokenConfig(chainId);
-  _logKeys('TOKEN_CONFIG[' + chainId + ']', cfg);
-  return cfg;
-};
 
 function getTokenConfig(address, chainId = MAINNET_CHAIN_ID) {
   if (!address) return null;
@@ -183,19 +167,8 @@ function getDecimals(address, chainId = MAINNET_CHAIN_ID) {
 }
 
 function getChainNftConfig(chainId = MAINNET_CHAIN_ID) {
-  console.log('[tokenConfig] getChainNftConfig(chainId=%s)', chainId);
-  const cfg = TRUSTED_NFT_COLLECTIONS[normaliseChainId(chainId)] || {};
-  _logKeys('NFT_CONFIG[' + chainId + ']', cfg);
-  return cfg;
+  return TRUSTED_NFT_COLLECTIONS[normaliseChainId(chainId)] || {};
 }
-
-const _origGetChainNftConfig = getChainNftConfig;
-getChainNftConfig = function(chainId = MAINNET_CHAIN_ID) {
-  console.log('[tokenConfig] getChainNftConfig(chainId=%s)', chainId);
-  const cfg = _origGetChainNftConfig(chainId);
-  _logKeys('NFT_CONFIG[' + chainId + ']', cfg);
-  return cfg;
-};
 
 // Validate all funding rates on module load
 try {

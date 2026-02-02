@@ -58,16 +58,24 @@ const offerings = [
     description: 'LoRA for WAN-based anime checkpoints.',
     minImages: 20,
     autoCaption: true,
-    status: 'coming_soon'
+    status: 'hidden' // Not yet trainable
   },
   {
     id: 'kontext-lora',
     name: 'Kontext LoRA',
     baseModel: 'KONTEXT',
-    description: 'LoRA for Kontext architecture.',
-    minImages: 20,
+    description: 'LoRA for FLUX Kontext - supports style/subject and concept training modes.',
+    minImages: 15,
     autoCaption: true,
-    status: 'coming_soon'
+    costPoints: 120000,
+    status: 'active',
+    hyperParams: {
+      steps: 3000,
+      lr: 1e-4,
+      loraRank: 16,
+      loraAlpha: 16
+    },
+    trainingModes: ['style_subject', 'concept']
   }
 ];
 

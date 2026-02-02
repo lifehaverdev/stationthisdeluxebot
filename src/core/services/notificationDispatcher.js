@@ -147,10 +147,12 @@ class NotificationDispatcher {
     // CRITICAL: Atomically check and set deliveryStatus to 'processing' to prevent race conditions
     // Fetch current record first to check status, then update only if still 'pending'
     const updateOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
+    let currentRecord = null; // Hoisted to function scope so it's accessible in the second try block
     try {
-      // Fetch current record to check its deliveryStatus
-      const currentRecord = await this.internalApiClient.get(`/internal/v1/data/generations/${recordId}`, updateOptions);
-      const currentStatus = currentRecord.data?.deliveryStatus;
+      // Fetch current record to check its deliveryStatus AND get full record data
+      const currentRecordResponse = await this.internalApiClient.get(`/internal/v1/data/generations/${recordId}`, updateOptions);
+      currentRecord = currentRecordResponse.data;
+      const currentStatus = currentRecord?.deliveryStatus;
       
       // If already processing or sent, skip (another handler is processing this)
       if (currentStatus === 'processing' || currentStatus === 'sent' || currentStatus === 'failed') {
@@ -187,15 +189,16 @@ class NotificationDispatcher {
           if (webSandboxNotifier && typeof webSandboxNotifier.sendNotification === 'function') {
             try {
               // Create a notification context for the websocket update
-              const notificationContext = record.metadata?.notificationContext || {
+              const fullRecord = currentRecord || record;
+              const notificationContext = fullRecord.metadata?.notificationContext || {
                 type: 'spell_step_completion',
-                spellId: record.metadata?.spell?._id || record.metadata?.spellId,
-                stepIndex: record.metadata?.stepIndex,
+                spellId: fullRecord.metadata?.spell?._id || fullRecord.metadata?.spellId,
+                stepIndex: fullRecord.metadata?.stepIndex,
                 platform: 'web-sandbox'
               };
-              
+
               // Send websocket update for this completed step
-              await webSandboxNotifier.sendNotification(notificationContext, '', record);
+              await webSandboxNotifier.sendNotification(notificationContext, '', fullRecord);
               this.logger.info(`[NotificationDispatcher] Sent websocket update for spell step GenID ${recordId} to web-sandbox.`);
             } catch (wsErr) {
               // Log but don't fail - continuation should still proceed
@@ -204,7 +207,9 @@ class NotificationDispatcher {
           }
         }
         
-        await this.workflowExecutionService.continueExecution(record);
+        // Use the full record fetched from DB (currentRecord) instead of event record
+        // The event record may not have all fields like responsePayload
+        await this.workflowExecutionService.continueExecution(currentRecord || record);
         
         // Mark this step's generation record as complete so it isn't picked up again.
         await this.internalApiClient.put(`/internal/v1/data/generations/${recordId}`, {

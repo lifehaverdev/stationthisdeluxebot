@@ -74,7 +74,10 @@ function createTrainingsApi(dependencies) {
       loraRank,
       loraAlpha,
       loraDropout,
-      triggerWords
+      triggerWords,
+      // KONTEXT-specific fields
+      trainingMode,
+      controlDatasetId
     } = req.body;
 
     logger.info(`[TrainingsAPI] POST / - Creating new training with name "${name}" for MAID ${masterAccountId}`);
@@ -158,6 +161,9 @@ function createTrainingsApi(dependencies) {
         triggerWords: triggerWordsArray,
         // Estimated cost in points (for display and analytics)
         costPoints: parseInt(costPoints) || 0,
+        // KONTEXT-specific fields
+        trainingMode: trainingMode || null, // 'style_subject' or 'concept' for KONTEXT
+        controlDatasetId: controlDatasetId || null, // Required for concept mode
         // status: 'draft', // createTrainingSession in trainingDb.js sets this default
         // ownedBy: masterAccountId, // createTrainingSession in trainingDb.js sets this default
       };

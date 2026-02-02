@@ -26,6 +26,7 @@ const DatasetDB = require('./datasetDb'); // ADDED: dataset service
 const CostsDB = require('./costsDb'); // ADDED: costs service
 const CollectionExportsDB = require('./collectionExportsDb');
 const ReviewQueueDB = require('./reviewQueueDb');
+const EmbellishmentTasksDB = require('./embellishmentTasksDb');
 
 // Import new on-chain DB services
 const CreditLedgerDB = require('./alchemy/creditLedgerDb');
@@ -73,7 +74,8 @@ function initializeDbServices(logger) {
     costs: CostsDB ? new CostsDB(logger) : null, // ADDED: costs service
     collectionExports: CollectionExportsDB ? new CollectionExportsDB(logger) : null,
     reviewQueue: ReviewQueueDB ? new ReviewQueueDB(logger) : null,
-    
+    embellishmentTasks: EmbellishmentTasksDB ? new EmbellishmentTasksDB(logger) : null,
+
     // On-chain services
     creditLedger: CreditLedgerDB ? new CreditLedgerDB(logger) : null,
     systemState: SystemStateDB ? new SystemStateDB(logger) : null,

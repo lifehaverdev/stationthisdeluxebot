@@ -45,10 +45,13 @@ export default class ModsMenuModal {
       captionError: null,
       captionerSpells: [],
       captionTasks: {},
+      embellishmentTasks: {},
       // Wizard state (separate namespace to avoid breaking formMode flows)
       wizardStep: 0,               // 0=dashboard, 1-4=wizard steps
       wizardDatasetId: null,        // selected dataset in step 1
-      wizardModelType: null,        // 'SDXL'|'FLUX'|'WAN' from step 2
+      wizardModelType: null,        // 'SDXL'|'FLUX'|'KONTEXT' from step 2
+      wizardTrainingMode: null,     // 'style_subject'|'concept' for KONTEXT
+      wizardControlDatasetId: null, // control dataset for concept mode
       wizardCaptionSetId: null,     // selected caption set from step 3
       wizardFormValues: {},         // name, triggerWords, description, advanced params
       wizardCaptionSets: [],        // caption sets for selected dataset
@@ -173,6 +176,27 @@ export default class ModsMenuModal {
         } else {
           // No captionSetId – refresh whole list to get latest data
           this.fetchCaptionSets(datasetId);
+        }
+      });
+
+      // Embellishment progress updates (unified progress for captions, control images, etc.)
+      this.ws.on('embellishmentProgress', (data) => {
+        this.handleEmbellishmentProgressEvent(data);
+        const { datasetId, status, embellishmentType } = data;
+        const normalizedDatasetId = this.normalizeId(datasetId);
+
+        // Wizard awareness: refresh wizard caption sets when on step 3 and this is a caption embellishment
+        if (embellishmentType === 'caption' && this.state.wizardStep === 3 && normalizedDatasetId === this.normalizeId(this.state.wizardDatasetId)) {
+          this.fetchWizardCaptionSets(this.state.wizardDatasetId);
+        }
+
+        // Re-render if viewing the affected dataset
+        if (normalizedDatasetId === this.normalizeId(this.state.selectedDatasetId)) {
+          if (status === 'completed' || status === 'failed' || status === 'cancelled') {
+            // Refresh embellishments list when task completes
+            this.fetchCaptionSets(datasetId);
+          }
+          this.render();
         }
       });
     }
@@ -1018,6 +1042,15 @@ export default class ModsMenuModal {
         this.cancelCaptionTask(datasetId);
       };
     });
+    this.modalElement.querySelectorAll('.cancel-embellishment-task').forEach(btn=>{
+      btn.onclick=(e)=>{
+        e.preventDefault();
+        e.stopPropagation();
+        const taskId = btn.getAttribute('data-task-id');
+        const datasetId = btn.getAttribute('data-dataset-id');
+        this.cancelEmbellishmentTask(taskId, datasetId);
+      };
+    });
 
     // Import button
     const impBtn = this.modalElement.querySelector('.import-btn');
@@ -1072,6 +1105,43 @@ export default class ModsMenuModal {
         this.wizardSelectModel(type);
       };
     });
+
+    // Step 2: Training mode selection (for KONTEXT)
+    this.modalElement.querySelectorAll('.wizard-mode-card').forEach(card => {
+      card.onclick = () => {
+        const mode = card.getAttribute('data-mode');
+        this.wizardSelectTrainingMode(mode);
+      };
+    });
+
+    // Step 2.5: Control dataset selection (for KONTEXT concept mode)
+    this.modalElement.querySelectorAll('.wizard-control-dataset-card').forEach(card => {
+      card.onclick = () => {
+        const id = card.getAttribute('data-id');
+        this.wizardSelectControlDataset(id);
+      };
+    });
+
+    // Step 2.5: Generate control images button
+    const genControlBtn = this.modalElement.querySelector('.wizard-generate-control-btn');
+    if (genControlBtn) {
+      genControlBtn.onclick = () => {
+        const dsId = genControlBtn.getAttribute('data-dataset-id');
+        this.generateControlImages(dsId);
+      };
+    }
+
+    // Step 2.5: Use self-control checkbox (use control images from same dataset)
+    const selfControlCheckbox = this.modalElement.querySelector('.wizard-use-self-control');
+    if (selfControlCheckbox) {
+      selfControlCheckbox.onchange = () => {
+        if (selfControlCheckbox.checked) {
+          this.wizardSelectControlDataset(this.state.wizardDatasetId);
+        } else {
+          this.wizardSelectControlDataset(null);
+        }
+      };
+    }
 
     // Step 3: Caption set selection
     this.modalElement.querySelectorAll('.wizard-caption-card').forEach(card => {
@@ -1280,6 +1350,8 @@ export default class ModsMenuModal {
       wizardStep: 1,
       wizardDatasetId: preselectedDatasetId,
       wizardModelType: null,
+      wizardTrainingMode: null,
+      wizardControlDatasetId: null,
       wizardCaptionSetId: null,
       wizardFormValues: {},
       wizardCaptionSets: [],
@@ -1289,20 +1361,31 @@ export default class ModsMenuModal {
   }
 
   wizardNext() {
-    const { wizardStep, wizardDatasetId, wizardModelType, wizardCaptionSetId } = this.state;
+    const { wizardStep, wizardDatasetId, wizardModelType, wizardTrainingMode, wizardControlDatasetId, wizardCaptionSetId } = this.state;
     if (wizardStep === 1) {
       if (!wizardDatasetId) { alert('Please select a dataset.'); return; }
       this.fetchWizardCaptionSets(wizardDatasetId);
       this.setState({ wizardStep: 2 });
     } else if (wizardStep === 2) {
       if (!wizardModelType) { alert('Please select a model type.'); return; }
-      const defaults = this.getModelDefaults(wizardModelType);
+      // KONTEXT requires training mode selection
+      if (wizardModelType === 'KONTEXT') {
+        if (!wizardTrainingMode) { alert('Please select a training mode for KONTEXT.'); return; }
+        // Concept mode requires control dataset
+        if (wizardTrainingMode === 'concept' && !wizardControlDatasetId) {
+          alert('Please select a control dataset for concept training.');
+          return;
+        }
+      }
+      const defaults = this.getModelDefaults(wizardModelType, wizardTrainingMode);
       this.setState({
         wizardStep: 3,
         wizardFormValues: {
           ...this.state.wizardFormValues,
           modelType: wizardModelType,
           baseModel: wizardModelType,
+          trainingMode: wizardTrainingMode,
+          controlDatasetId: wizardControlDatasetId,
           ...defaults,
         },
       });
@@ -1326,6 +1409,8 @@ export default class ModsMenuModal {
       wizardStep: 0,
       wizardDatasetId: null,
       wizardModelType: null,
+      wizardTrainingMode: null,
+      wizardControlDatasetId: null,
       wizardCaptionSetId: null,
       wizardFormValues: {},
       wizardCaptionSets: [],
@@ -1341,6 +1426,8 @@ export default class ModsMenuModal {
     const defaults = this.getModelDefaults(type);
     this.setState({
       wizardModelType: type,
+      wizardTrainingMode: null, // Reset training mode when model changes
+      wizardControlDatasetId: null, // Reset control dataset
       wizardFormValues: {
         ...this.state.wizardFormValues,
         modelType: type,
@@ -1350,8 +1437,39 @@ export default class ModsMenuModal {
     });
   }
 
+  wizardSelectTrainingMode(mode) {
+    this.setState({
+      wizardTrainingMode: mode,
+      wizardControlDatasetId: null, // Reset control dataset when mode changes
+      wizardFormValues: {
+        ...this.state.wizardFormValues,
+        trainingMode: mode,
+      },
+    });
+  }
+
+  wizardSelectControlDataset(id) {
+    this.setState({ wizardControlDatasetId: id });
+  }
+
   wizardSelectCaptionSet(id) {
     this.setState({ wizardCaptionSetId: id });
+  }
+
+  /**
+   * Generate control images for a dataset (for KONTEXT concept mode)
+   * This opens the embellishment dialog for control image generation
+   */
+  async generateControlImages(datasetId) {
+    if (!datasetId) return;
+    // Open embellishment dialog for control image generation
+    const dataset = this.getDatasetById(datasetId);
+    if (!dataset) {
+      alert('Dataset not found');
+      return;
+    }
+    // Trigger control image generation embellishment
+    this.openEmbellishmentDialog(dataset, 'control');
   }
 
   async fetchWizardCaptionSets(datasetId) {
@@ -1427,12 +1545,33 @@ export default class ModsMenuModal {
   }
 
   renderWizardStep2() {
-    const { wizardModelType } = this.state;
+    const { wizardModelType, wizardTrainingMode, wizardControlDatasetId, wizardDatasetId, datasets } = this.state;
     const models = [
       { type: 'SDXL', name: 'SDXL', desc: 'Stable Diffusion XL — fast training, great for stylized art and characters.', defaults: '1000 steps, LR 0.0004, rank 16' },
       { type: 'FLUX', name: 'FLUX', desc: 'FLUX — high-fidelity realism, best for photorealistic and detailed subjects.', defaults: '4000 steps, LR 0.0001, rank 32' },
-      { type: 'WAN', name: 'WAN', desc: 'WAN Video — video model training for motion and animation LoRAs.', defaults: '1500 steps, LR 0.0003, rank 24' },
+      { type: 'KONTEXT', name: 'KONTEXT', desc: 'FLUX Kontext — train style/subject LoRAs or concept transformations.', defaults: '3000 steps, LR 0.0001, rank 16' },
     ];
+
+    // Training mode selection for KONTEXT
+    const kontextModes = [
+      { mode: 'style_subject', name: 'Style / Subject', desc: 'Train on a single dataset to capture a style or subject. Works like standard LoRA training.' },
+      { mode: 'concept', name: 'Concept', desc: 'Train on paired before/after images to teach a transformation. Requires a control dataset.' },
+    ];
+
+    // Get datasets with control images for concept mode
+    // Control datasets have embellishment of type 'control' that is completed
+    const controlDatasets = (datasets || []).filter(ds => {
+      // Don't show the currently selected dataset as a control option
+      if (this.normalizeId(ds._id) === this.normalizeId(wizardDatasetId)) return false;
+      // Check if dataset has control embellishments completed
+      const hasControlImages = ds.embellishments?.some(e => e.type === 'control' && e.status === 'completed');
+      return hasControlImages;
+    });
+
+    // Check if the selected dataset itself has control images
+    const selectedDataset = (datasets || []).find(ds => this.normalizeId(ds._id) === this.normalizeId(wizardDatasetId));
+    const selectedHasControl = selectedDataset?.embellishments?.some(e => e.type === 'control' && e.status === 'completed');
+
     return `<div class="wizard-body">
       <h3>Choose Model Type</h3>
       <p style="color:#aaa;margin-bottom:16px;">Select the base model architecture for your LoRA.</p>
@@ -1446,14 +1585,74 @@ export default class ModsMenuModal {
           </div>`;
         }).join('')}
       </div>
+      ${wizardModelType === 'KONTEXT' ? `
+        <div class="wizard-mode-section" style="margin-top:24px;">
+          <h4 style="margin-bottom:8px;">Training Mode</h4>
+          <p style="color:#aaa;margin-bottom:12px;font-size:13px;">Choose how you want to train your KONTEXT LoRA.</p>
+          <div class="wizard-mode-grid">
+            ${kontextModes.map(m => {
+              const sel = wizardTrainingMode === m.mode ? ' selected' : '';
+              return `<div class="wizard-mode-card${sel}" data-mode="${m.mode}">
+                <div class="mode-name">${m.name}</div>
+                <div class="mode-desc">${m.desc}</div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+        ${wizardTrainingMode === 'concept' ? `
+          <div class="wizard-control-section" style="margin-top:24px;">
+            <h4 style="margin-bottom:8px;">Control Dataset</h4>
+            <p style="color:#aaa;margin-bottom:12px;font-size:13px;">Select a dataset with control images (before images) to pair with your result dataset.</p>
+            ${selectedHasControl ? `
+              <div class="wizard-control-info" style="background:#2a3a2a;border:1px solid #3a5a3a;padding:12px;border-radius:8px;margin-bottom:12px;">
+                <strong style="color:#8f8;">Use this dataset's control images</strong>
+                <p style="color:#aaa;font-size:12px;margin:4px 0 0;">Your selected dataset has control images. You can use these as the "before" images.</p>
+                <label style="margin-top:8px;display:flex;align-items:center;cursor:pointer;">
+                  <input type="checkbox" class="wizard-use-self-control" ${wizardControlDatasetId === wizardDatasetId ? 'checked' : ''} style="margin-right:8px;" />
+                  Use control images from this dataset
+                </label>
+              </div>
+            ` : ''}
+            ${controlDatasets.length > 0 ? `
+              <div class="wizard-control-grid">
+                ${controlDatasets.map(ds => {
+                  const dsId = this.normalizeId(ds._id);
+                  const sel = this.normalizeId(wizardControlDatasetId) === dsId ? ' selected' : '';
+                  const imgCount = (ds.images || []).length;
+                  return `<div class="wizard-control-dataset-card${sel}" data-id="${dsId}">
+                    <div class="dataset-preview">
+                      ${(ds.images || []).slice(0, 4).map(img => `<img src="${img}" class="preview-thumb" />`).join('')}
+                    </div>
+                    <h4>${ds.name || 'Unnamed Dataset'}</h4>
+                    <span class="wizard-card-meta">${imgCount} control images</span>
+                  </div>`;
+                }).join('')}
+              </div>
+            ` : (!selectedHasControl ? `
+              <div class="empty-message" style="text-align:center;padding:20px;">
+                <p style="color:#aaa;">No datasets with control images found.</p>
+                <p style="color:#888;font-size:12px;margin-top:8px;">Generate control images on your dataset first.</p>
+                <button class="btn-secondary wizard-generate-control-btn" data-dataset-id="${this.normalizeId(wizardDatasetId)}" style="margin-top:12px;">
+                  Generate Control Images
+                </button>
+              </div>
+            ` : '')}
+          </div>
+        ` : ''}
+      ` : ''}
     </div>`;
   }
 
   renderWizardStep3() {
-    const { wizardCaptionSets, wizardCaptionSetId, wizardLoadingCaptions, wizardModelType, wizardDatasetId } = this.state;
-    const recommendation = wizardModelType === 'FLUX' ? 'FLUX models work best with detailed, natural language captions.'
-      : wizardModelType === 'WAN' ? 'WAN models benefit from motion-descriptive captions.'
-      : 'SDXL models work well with tag-style and short captions.';
+    const { wizardCaptionSets, wizardCaptionSetId, wizardLoadingCaptions, wizardModelType, wizardTrainingMode, wizardDatasetId } = this.state;
+    let recommendation = 'SDXL models work well with tag-style and short captions.';
+    if (wizardModelType === 'FLUX') {
+      recommendation = 'FLUX models work best with detailed, natural language captions.';
+    } else if (wizardModelType === 'KONTEXT') {
+      recommendation = wizardTrainingMode === 'concept'
+        ? 'For concept training, captions should describe the transformation or desired output.'
+        : 'KONTEXT works well with detailed captions describing the subject or style.';
+    }
 
     if (wizardLoadingCaptions) {
       return `<div class="wizard-body"><div class="loading-spinner">Loading caption sets...</div></div>`;
@@ -1478,15 +1677,28 @@ export default class ModsMenuModal {
   }
 
   renderWizardStep4() {
-    const { wizardFormValues, wizardDatasetId, wizardModelType, wizardCaptionSetId, estimatedCost } = this.state;
+    const { wizardFormValues, wizardDatasetId, wizardModelType, wizardTrainingMode, wizardControlDatasetId, wizardCaptionSetId, estimatedCost, datasets } = this.state;
     const dataset = this.getDatasetById(wizardDatasetId);
     const captionSet = this.state.wizardCaptionSets.find(cs => this.normalizeId(cs._id) === this.normalizeId(wizardCaptionSetId));
+    const controlDataset = wizardControlDatasetId ? (datasets || []).find(ds => this.normalizeId(ds._id) === this.normalizeId(wizardControlDatasetId)) : null;
     const fv = wizardFormValues;
+
+    // Format training mode for display
+    const trainingModeDisplay = wizardTrainingMode === 'style_subject' ? 'Style / Subject'
+      : wizardTrainingMode === 'concept' ? 'Concept'
+      : null;
+
     return `<div class="wizard-body">
       <h3>Review &amp; Start Training</h3>
       <div class="wizard-summary-card">
         <div class="wizard-summary-row"><span class="label">Dataset:</span> <span class="value">${dataset?.name || 'Unknown'} (${(dataset?.images || []).length} images)</span></div>
         <div class="wizard-summary-row"><span class="label">Model Type:</span> <span class="value">${wizardModelType}</span></div>
+        ${wizardModelType === 'KONTEXT' && trainingModeDisplay ? `
+          <div class="wizard-summary-row"><span class="label">Training Mode:</span> <span class="value">${trainingModeDisplay}</span></div>
+        ` : ''}
+        ${controlDataset ? `
+          <div class="wizard-summary-row"><span class="label">Control Dataset:</span> <span class="value">${controlDataset.name || 'Unknown'}${this.normalizeId(wizardControlDatasetId) === this.normalizeId(wizardDatasetId) ? ' (same dataset)' : ''}</span></div>
+        ` : ''}
         <div class="wizard-summary-row"><span class="label">Captions:</span> <span class="value">${captionSet?.method || 'Unknown'} (${captionSet?.captions?.length || 0})</span></div>
         <div class="wizard-summary-row"><span class="label">Steps:</span> <span class="value">${fv.steps || '—'}</span></div>
         <div class="wizard-summary-row"><span class="label">Learning Rate:</span> <span class="value">${fv.learningRate || '—'}</span></div>
@@ -1537,7 +1749,7 @@ export default class ModsMenuModal {
   /* ====================== WIZARD SUBMISSION ====================== */
 
   async submitWizard() {
-    const { wizardDatasetId, wizardModelType, wizardCaptionSetId, wizardFormValues } = this.state;
+    const { wizardDatasetId, wizardModelType, wizardTrainingMode, wizardControlDatasetId, wizardCaptionSetId, wizardFormValues } = this.state;
     // Read latest input values from DOM before submitting
     const nameInput = this.modalElement.querySelector('[name="wizardName"]');
     const descInput = this.modalElement.querySelector('[name="wizardDescription"]');
@@ -1562,6 +1774,14 @@ export default class ModsMenuModal {
       loraAlpha: wizardFormValues.loraAlpha,
       loraDropout: wizardFormValues.loraDropout,
     };
+
+    // Add KONTEXT-specific fields
+    if (wizardModelType === 'KONTEXT') {
+      payload.trainingMode = wizardTrainingMode;
+      if (wizardTrainingMode === 'concept' && wizardControlDatasetId) {
+        payload.controlDatasetId = wizardControlDatasetId;
+      }
+    }
 
     // Read advanced overrides from DOM if present
     const advFields = { wizardSteps: 'steps', wizardLearningRate: 'learningRate', wizardBatchSize: 'batchSize', wizardResolution: 'resolution', wizardLoraRank: 'loraRank', wizardLoraAlpha: 'loraAlpha', wizardLoraDropout: 'loraDropout' };
@@ -2098,7 +2318,7 @@ export default class ModsMenuModal {
   }
 
   // Get default values for each model type
-  getModelDefaults(modelType) {
+  getModelDefaults(modelType, trainingMode = null) {
     switch(modelType) {
       case 'SDXL':
         return {
@@ -2116,13 +2336,14 @@ export default class ModsMenuModal {
           loraAlpha: 32,
           loraDropout: 0.05
         };
-      case 'WAN':
+      case 'KONTEXT':
         return {
-          steps: 1500,
-          learningRate: 0.0003,
-          loraRank: 24,
-          loraAlpha: 48,
-          loraDropout: 0.1
+          steps: 3000,
+          learningRate: 0.0001,
+          loraRank: 16,
+          loraAlpha: 16,
+          loraDropout: 0.05,
+          resolution: '512,768'
         };
       default:
         return {};
@@ -2517,14 +2738,88 @@ export default class ModsMenuModal {
     }
   }
 
+  handleEmbellishmentProgressEvent(data = {}) {
+    const { taskId, datasetId, embellishmentType, status, progress = {} } = data;
+    const id = this.normalizeId(datasetId);
+    if (!id || !taskId) return;
+
+    const dataset = this.getDatasetById(id);
+    const prev = this.state.embellishmentTasks[taskId] || {};
+
+    // Map backend status to UI status
+    let uiStatus = 'running';
+    if (status === 'completed' || status === 'failed' || status === 'cancelled') {
+      uiStatus = status;
+    } else if (status === 'started') {
+      uiStatus = 'running';
+    }
+
+    const task = {
+      taskId,
+      datasetId: id,
+      datasetName: dataset?.name || prev.datasetName || 'Dataset',
+      embellishmentType: embellishmentType || prev.embellishmentType || 'caption',
+      total: progress.total || prev.total || 0,
+      completedCount: progress.completed || prev.completedCount || 0,
+      failedCount: progress.failed || prev.failedCount || 0,
+      status: uiStatus,
+      updatedAt: Date.now(),
+    };
+
+    if (uiStatus !== 'running') {
+      task.completedAt = Date.now();
+    }
+
+    this.setEmbellishmentTask(taskId, task);
+
+    if (uiStatus !== 'running') {
+      this.scheduleEmbellishmentTaskCleanup(taskId);
+    }
+  }
+
+  setEmbellishmentTask(taskId, task) {
+    if (!taskId) return;
+    const next = { ...this.state.embellishmentTasks };
+    if (task) next[taskId] = task;
+    else delete next[taskId];
+    this.setState({ embellishmentTasks: next });
+  }
+
+  scheduleEmbellishmentTaskCleanup(taskId, delay = 8000) {
+    if (!taskId) return;
+    this._embellishmentTaskCleanupTimers = this._embellishmentTaskCleanupTimers || {};
+    if (this._embellishmentTaskCleanupTimers[taskId]) {
+      clearTimeout(this._embellishmentTaskCleanupTimers[taskId]);
+    }
+    this._embellishmentTaskCleanupTimers[taskId] = setTimeout(() => {
+      delete this._embellishmentTaskCleanupTimers[taskId];
+      const task = this.state.embellishmentTasks[taskId];
+      if (task && task.status !== 'running') {
+        this.setEmbellishmentTask(taskId, null);
+      }
+    }, delay);
+  }
+
   renderCaptionProgressPanel() {
     const selectedId = this.normalizeId(this.state.selectedDatasetId);
-    const entries = Object.values(this.state.captionTasks || {}).filter(task => {
+
+    // Collect legacy caption tasks
+    const captionEntries = Object.values(this.state.captionTasks || {}).filter(task => {
       if (!task) return false;
       if (task.status === 'running') return true;
       return task.datasetId === selectedId;
-    });
+    }).map(t => ({ ...t, _source: 'caption' }));
+
+    // Collect embellishment tasks (for this dataset or running)
+    const embellishmentEntries = Object.values(this.state.embellishmentTasks || {}).filter(task => {
+      if (!task) return false;
+      if (task.status === 'running') return true;
+      return task.datasetId === selectedId;
+    }).map(t => ({ ...t, _source: 'embellishment' }));
+
+    const entries = [...captionEntries, ...embellishmentEntries];
     if (!entries.length) return '';
+
     const ordered = entries.sort((a, b) => {
       if (a.datasetId === selectedId && b.datasetId !== selectedId) return -1;
       if (b.datasetId === selectedId && a.datasetId !== selectedId) return 1;
@@ -2537,25 +2832,60 @@ export default class ModsMenuModal {
 
   renderCaptionProgressCard(task, selectedId) {
     if (!task) return '';
+    const isEmbellishment = task._source === 'embellishment';
     const percent = task.total ? Math.min(100, Math.round((Math.min(task.completedCount, task.total) / task.total) * 100)) : (task.status === 'completed' ? 100 : 0);
-    const statusLabel = task.status === 'completed'
-      ? 'Completed'
-      : task.status === 'failed'
-        ? 'Failed'
-        : 'Captioning…';
-    const secondary = task.status === 'running' && task.total
-      ? `${task.completedCount}/${task.total} images`
-      : `${task.completedCount} images`;
+
+    // Determine status label based on task type and status
+    let statusLabel;
+    if (task.status === 'completed') {
+      statusLabel = 'Completed';
+    } else if (task.status === 'failed') {
+      statusLabel = 'Failed';
+    } else if (task.status === 'cancelled') {
+      statusLabel = 'Cancelled';
+    } else {
+      // Running - show type-specific label
+      const typeLabel = isEmbellishment ? this.getEmbellishmentTypeLabel(task.embellishmentType) : 'Captioning';
+      statusLabel = `${typeLabel}…`;
+    }
+
+    // Build secondary text with count and failed info
+    let secondary;
+    if (task.status === 'running' && task.total) {
+      secondary = `${task.completedCount}/${task.total} images`;
+      if (task.failedCount > 0) {
+        secondary += ` (${task.failedCount} failed)`;
+      }
+    } else {
+      secondary = `${task.completedCount} images`;
+      if (task.failedCount > 0) {
+        secondary += ` (${task.failedCount} failed)`;
+      }
+    }
+
     const highlightClass = selectedId && task.datasetId === selectedId ? ' selected-dataset' : '';
-    const actions = task.status === 'running'
-      ? `<button class="btn-danger cancel-caption-task" data-id="${task.datasetId}">Cancel</button>`
-      : '';
+
+    // Cancel button - use different data attribute for embellishment vs legacy caption tasks
+    let actions = '';
+    if (task.status === 'running') {
+      if (isEmbellishment) {
+        actions = `<button class="btn-danger cancel-embellishment-task" data-task-id="${task.taskId}" data-dataset-id="${task.datasetId}">Cancel</button>`;
+      } else {
+        actions = `<button class="btn-danger cancel-caption-task" data-id="${task.datasetId}">Cancel</button>`;
+      }
+    }
+
+    // Method label - for legacy tasks use method, for embellishments use type
+    const methodLabel = isEmbellishment
+      ? this.getEmbellishmentTypeLabel(task.embellishmentType)
+      : (task.method || '');
+
     return `
       <div class="caption-progress-card status-${task.status}${highlightClass}">
         <div class="caption-progress-top">
           <div>
             <div class="caption-progress-title">${this.escapeHtml(task.datasetName || 'Dataset')}</div>
-            <div class="caption-progress-method">${this.escapeHtml(task.method || '')}</div>
+            <div class="caption-progress-method">${this.escapeHtml(methodLabel)}</div>
           </div>
           <span class="caption-progress-status">${statusLabel}</span>
         </div>
@@ -2567,6 +2897,16 @@ export default class ModsMenuModal {
           ${actions}
         </div>
       </div>`;
+  }
+
+  getEmbellishmentTypeLabel(type) {
+    const labels = {
+      caption: 'Captioning',
+      controlImage: 'Control Images',
+      audio: 'Audio',
+      video: 'Video',
+    };
+    return labels[type] || type || 'Processing';
   }
 
   bindDatasetCardEvents(root = this.modalElement) {
@@ -3273,6 +3613,152 @@ export default class ModsMenuModal {
   }
 
   async generateCaptionSet(initialDatasetId){
+    // Show choice dialog: Write manually or Generate with AI
+    const overlay=document.createElement('div');
+    overlay.className='import-overlay';
+    overlay.innerHTML=`<div class="import-dialog caption-choice-dialog">
+      <h3>Add Captions</h3>
+      <p class="caption-choice-desc">How would you like to caption this dataset?</p>
+      <div class="caption-choice-options">
+        <button class="caption-choice-btn caption-choice-manual">
+          <span class="caption-choice-icon">✏️</span>
+          <span class="caption-choice-label">Write Manually</span>
+          <span class="caption-choice-hint">Create captions yourself for each image</span>
+        </button>
+        <button class="caption-choice-btn caption-choice-ai">
+          <span class="caption-choice-icon">✨</span>
+          <span class="caption-choice-label">Generate with AI</span>
+          <span class="caption-choice-hint">Use a captioning spell to auto-generate</span>
+        </button>
+      </div>
+      <div class="btn-row"><button class="cancel-choice-btn">Cancel</button></div>
+    </div>`;
+    document.body.appendChild(overlay);
+
+    const cleanup=()=>{document.body.removeChild(overlay);};
+    overlay.querySelector('.cancel-choice-btn').onclick=cleanup;
+    overlay.onclick=(e)=>{if(e.target===overlay) cleanup();};
+
+    overlay.querySelector('.caption-choice-manual').onclick=()=>{
+      cleanup();
+      this.createManualCaptions(initialDatasetId);
+    };
+    overlay.querySelector('.caption-choice-ai').onclick=()=>{
+      cleanup();
+      this.generateCaptionSetWithAI(initialDatasetId);
+    };
+  }
+
+  async createManualCaptions(datasetId){
+    const dataset = this.getDatasetById(datasetId);
+    if(!dataset || !dataset.images?.length){
+      alert('Dataset has no images.');
+      return;
+    }
+
+    try {
+      const csrfRes = await fetch('/api/v1/csrf-token');
+      const { csrfToken } = await csrfRes.json();
+      const masterAccountId = await this.getCurrentMasterAccountId();
+
+      const res = await fetch(`/api/v1/datasets/${encodeURIComponent(datasetId)}/embellishments/manual`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrfToken },
+        body: JSON.stringify({ masterAccountId, type: 'caption' })
+      });
+
+      if (!res.ok) throw new Error('Failed to create caption set');
+      const { data } = await res.json();
+
+      // Open editable caption viewer
+      this.openEditableCaptionViewer(datasetId, data.embellishmentId, dataset.images);
+    } catch (err) {
+      console.error('[ModsMenuModal] createManualCaptions error', err);
+      alert('Failed to create caption set. Please try again.');
+    }
+  }
+
+  openEditableCaptionViewer(datasetId, embellishmentId, images){
+    const overlay = document.createElement('div');
+    overlay.className = 'import-overlay caption-viewer-overlay';
+
+    overlay.innerHTML = `<div class="import-dialog caption-editor-dialog">
+      <div class="caption-viewer-header">
+        <h3>Edit Captions</h3>
+        <button class="caption-viewer-close" aria-label="Close">×</button>
+      </div>
+      <div class="caption-viewer-meta">
+        <span>${images.length} images</span>
+        <span class="caption-save-status"></span>
+      </div>
+      <div class="caption-viewer-list">
+        ${images.map((img, idx) => {
+          const imageUrl = this.resolveImageUrl(img);
+          return `
+          <div class="caption-viewer-row">
+            ${imageUrl ? `<img src="${this.escapeHtml(imageUrl)}" alt="Image ${idx+1}" />` : `<div class="caption-thumb placeholder">#${idx+1}</div>`}
+            <div class="caption-text-block">
+              <div class="caption-row-title">Image ${idx+1}</div>
+              <textarea data-caption-idx="${idx}" placeholder="Enter caption for this image..."></textarea>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="btn-row">
+        <button class="btn-secondary caption-save-btn">Save All</button>
+        <button class="btn-primary caption-done-btn">Done</button>
+      </div>
+    </div>`;
+
+    document.body.appendChild(overlay);
+
+    const cleanup = () => { if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+    overlay.addEventListener('click', (e) => { if(e.target === overlay) cleanup(); });
+    overlay.querySelector('.caption-viewer-close').onclick = cleanup;
+    overlay.querySelector('.caption-done-btn').onclick = async () => {
+      await this.saveEditableCaptions(overlay, datasetId, embellishmentId, images.length);
+      cleanup();
+      this.fetchCaptionSets(datasetId);
+    };
+    overlay.querySelector('.caption-save-btn').onclick = async () => {
+      await this.saveEditableCaptions(overlay, datasetId, embellishmentId, images.length);
+    };
+  }
+
+  async saveEditableCaptions(overlay, datasetId, embellishmentId, imageCount){
+    const statusEl = overlay.querySelector('.caption-save-status');
+    const textareas = overlay.querySelectorAll('textarea[data-caption-idx]');
+    const results = [];
+
+    for (let i = 0; i < imageCount; i++) {
+      const textarea = overlay.querySelector(`textarea[data-caption-idx="${i}"]`);
+      results.push(textarea ? textarea.value : null);
+    }
+
+    try {
+      statusEl.textContent = 'Saving...';
+      const csrfRes = await fetch('/api/v1/csrf-token');
+      const { csrfToken } = await csrfRes.json();
+      const masterAccountId = await this.getCurrentMasterAccountId();
+
+      const res = await fetch(`/api/v1/datasets/${encodeURIComponent(datasetId)}/embellishments/${encodeURIComponent(embellishmentId)}/results`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrfToken },
+        body: JSON.stringify({ masterAccountId, results })
+      });
+
+      if (!res.ok) throw new Error('Save failed');
+      statusEl.textContent = 'Saved!';
+      setTimeout(() => { statusEl.textContent = ''; }, 2000);
+    } catch (err) {
+      console.error('[ModsMenuModal] saveEditableCaptions error', err);
+      statusEl.textContent = 'Save failed';
+    }
+  }
+
+  async generateCaptionSetWithAI(initialDatasetId){
     const overlay=document.createElement('div');
     overlay.className='import-overlay';
 
@@ -3281,21 +3767,44 @@ export default class ModsMenuModal {
       const value=this.normalizeId(d._id);
       return `<option value="${value}" ${value===normalizedInitialId?'selected':''}>${d.name}</option>`;
     }).join('');
-    if(!this.state.captionerSpells.length){ await this.fetchCaptionerSpells(); }
-    const spellOpts=(this.state.captionerSpells.length?this.state.captionerSpells:[{slug:'',name:'(no captioner spells found)'}]).map(s=>{
-      const value=s.slug||s.spellId||'';
-      const internalId=s.spellId||'';
-      return `<option value="${value}" data-spell-id="${internalId}">${s.name||s.displayName}</option>`;
-    }).join('');
-    overlay.innerHTML=`<div class="import-dialog caption-generator-dialog"><h3>Generate Captions</h3>
+
+    // Fetch embellishment spells instead of marketplace spells
+    let embellishmentSpells = [];
+    try {
+      const res = await fetch('/api/v1/datasets/embellishment-spells?type=caption', { credentials: 'include' });
+      console.log('[ModsMenuModal] embellishment-spells response status:', res.status);
+      if (res.ok) {
+        const json = await res.json();
+        console.log('[ModsMenuModal] embellishment-spells response:', JSON.stringify(json, null, 2));
+        embellishmentSpells = json.data || [];
+        console.log('[ModsMenuModal] embellishmentSpells count:', embellishmentSpells.length);
+        if (embellishmentSpells.length > 0) {
+          console.log('[ModsMenuModal] First spell embellishment:', JSON.stringify(embellishmentSpells[0]?.embellishment, null, 2));
+        }
+      }
+    } catch (err) {
+      console.warn('[ModsMenuModal] Failed to fetch embellishment spells', err);
+    }
+
+    // Fallback to old method if no embellishment spells found
+    if (!embellishmentSpells.length) {
+      if(!this.state.captionerSpells.length){ await this.fetchCaptionerSpells(); }
+      embellishmentSpells = this.state.captionerSpells.map(s => ({
+        slug: s.slug || s.spellId,
+        name: s.name || s.displayName,
+        embellishment: { instructions: 'Enter your trigger word below if using one.', userInputs: [] }
+      }));
+    }
+
+    const spellOpts = embellishmentSpells.length
+      ? embellishmentSpells.map(s => `<option value="${s.slug}" data-idx="${embellishmentSpells.indexOf(s)}">${s.name}</option>`).join('')
+      : '<option value="">(no caption spells found)</option>';
+
+    overlay.innerHTML=`<div class="import-dialog caption-generator-dialog"><h3>Generate Captions with AI</h3>
       <label>Dataset:<br><select class="cap-dataset">${dsOptions}</select></label><br>
-      <label>Captioner Spell:<br><select class="cap-method">${spellOpts}</select></label>
-      <div class="cap-parameter-section">
-        <div class="cap-param-info">Image URLs are injected automatically for each dataset photo. Add any extra spell inputs (for example, set <code>stringB</code> to your trigger word) so captions stay consistent.</div>
-        <div class="cap-param-rows"></div>
-        <button type="button" class="add-cap-param">＋ Add Parameter</button>
-      </div>
-      <div class="cap-spell-preview"><div class="cap-spell-preview-content">Select a spell to see how its exposed inputs map to caption generation.</div></div>
+      <label>Caption Spell:<br><select class="cap-method">${spellOpts}</select></label>
+      <div class="cap-instructions"></div>
+      <div class="cap-user-inputs"></div>
       <div class="error-message" style="display:none"></div>
       <div class="btn-row"><button class="confirm-generate-btn">Generate</button><button class="cancel-generate-btn">Cancel</button></div>
     </div>`;
@@ -3305,77 +3814,107 @@ export default class ModsMenuModal {
     const cleanup=()=>{document.body.removeChild(overlay);};
     overlay.querySelector('.cancel-generate-btn').onclick=cleanup;
     overlay.onclick=(e)=>{if(e.target===overlay) cleanup();};
-    const rowsContainer=overlay.querySelector('.cap-param-rows');
-    const addParamRow=(key='',value='')=>{
-      const row=document.createElement('div');
-      row.className='cap-param-row';
-      row.innerHTML=`<input type="text" class="cap-param-key" placeholder="parameter key" />
-        <input type="text" class="cap-param-value" placeholder="value" />
-        <button type="button" class="cap-param-remove" title="Remove">×</button>`;
-      const keyInput=row.querySelector('.cap-param-key');
-      const valInput=row.querySelector('.cap-param-value');
-      if(key) keyInput.value=key;
-      if(value) valInput.value=value;
-      row.querySelector('.cap-param-remove').onclick=()=>{
-        if(rowsContainer.children.length<=1){
-          keyInput.value='';
-          valInput.value='';
-          return;
-        }
-        row.remove();
-      };
-      rowsContainer.appendChild(row);
-    };
-    overlay.querySelector('.add-cap-param').onclick=()=>addParamRow('', '');
-    addParamRow('stringB','');
+
+    const instructionsEl = overlay.querySelector('.cap-instructions');
+    const userInputsEl = overlay.querySelector('.cap-user-inputs');
     const methodSelect = overlay.querySelector('.cap-method');
-    const previewContainer = overlay.querySelector('.cap-spell-preview-content');
-    const refreshPreview = async () => {
-      if(!previewContainer) return;
-      const slug = methodSelect.value;
-      const selectedOption = methodSelect.options[methodSelect.selectedIndex];
-      const spellId = selectedOption?.dataset?.spellId || '';
-      previewContainer.innerHTML = '<div class="cap-spell-preview-loading">Loading spell mapping…</div>';
-      try {
-        const definition = await this.fetchSpellDefinition(slug, spellId);
-        if(!definition){
-          previewContainer.innerHTML = '<div class="cap-spell-preview-empty">Spell inputs unavailable. You can still provide overrides manually.</div>';
-          return;
-        }
-        previewContainer.innerHTML = this.renderCaptionSpellPreview(definition);
-      } catch(err){
-        previewContainer.innerHTML = '<div class="cap-spell-preview-empty">Unable to load spell mapping.</div>';
+
+    // Render instructions and user inputs for selected spell
+    const renderSpellUI = (spellIdx) => {
+      const spell = embellishmentSpells[spellIdx];
+      const emb = spell?.embellishment || {};
+
+      // Show instructions
+      if (emb.instructions) {
+        instructionsEl.innerHTML = `<div class="cap-instructions-text">${this.escapeHtml(emb.instructions)}</div>`;
+      } else {
+        instructionsEl.innerHTML = '';
+      }
+
+      // Show user inputs
+      const userInputs = emb.userInputs || [];
+      if (userInputs.length) {
+        userInputsEl.innerHTML = userInputs.map(input => `
+          <div class="cap-user-input">
+            <label>${this.escapeHtml(input.label || input.key)}${input.required ? ' <span class="required">*</span>' : ''}</label>
+            <input type="text" class="cap-input-field" data-key="${this.escapeHtml(input.key)}" placeholder="${this.escapeHtml(input.placeholder || '')}" />
+            ${input.description ? `<div class="cap-input-hint">${this.escapeHtml(input.description)}</div>` : ''}
+          </div>
+        `).join('');
+      } else {
+        userInputsEl.innerHTML = '';
       }
     };
-    methodSelect.onchange = refreshPreview;
-    refreshPreview();
+
+    // Initial render
+    const initialIdx = methodSelect.selectedOptions[0]?.dataset?.idx || 0;
+    renderSpellUI(parseInt(initialIdx, 10));
+
+    methodSelect.onchange = () => {
+      const idx = methodSelect.selectedOptions[0]?.dataset?.idx || 0;
+      renderSpellUI(parseInt(idx, 10));
+    };
+
     overlay.querySelector('.confirm-generate-btn').onclick=async ()=>{
       const spellSlug=overlay.querySelector('.cap-method').value;
+      if (!spellSlug) {
+        errEl.textContent = 'Please select a caption spell';
+        errEl.style.display = 'block';
+        return;
+      }
+
+      // Collect parameter overrides from user inputs
       const parameterOverrides={};
-      rowsContainer.querySelectorAll('.cap-param-row').forEach(row=>{
-        const key=row.querySelector('.cap-param-key').value.trim();
-        const value=row.querySelector('.cap-param-value').value;
-        if(!key || value===undefined || value===null || value==='') return;
-        parameterOverrides[key]=value;
+      overlay.querySelectorAll('.cap-input-field').forEach(input=>{
+        const key = input.dataset.key;
+        const value = input.value.trim();
+        if(key && value) {
+          parameterOverrides[key] = value;
+        }
       });
+
       overlay.querySelector('.confirm-generate-btn').disabled=true;
       try{
         const dsId=overlay.querySelector('.cap-dataset').value;
         const csrfRes=await fetch('/api/v1/csrf-token');
         const {csrfToken}=await csrfRes.json();
         const masterAccountId = await this.getCurrentMasterAccountId();
-        const payload={spellSlug,masterAccountId,parameterOverrides};
-        if(parameterOverrides.triggerWord){
-          payload.triggerWord=parameterOverrides.triggerWord;
-        }
-        const res=await fetch(`/api/v1/datasets/${encodeURIComponent(dsId)}/caption-via-spell`,{
+
+        // Use new embellishment API
+        const payload={spellSlug, masterAccountId, parameterOverrides};
+        const res=await fetch(`/api/v1/datasets/${encodeURIComponent(dsId)}/embellish`,{
           method:'POST',credentials:'include',headers:{'Content-Type':'application/json','x-csrf-token':csrfToken},
           body:JSON.stringify(payload)});
-        if(!res.ok) throw new Error('Generate failed');
-        this.markCaptionTaskStarting(dsId, spellSlug);
+
+        if(!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error?.message || 'Generate failed');
+        }
+
+        // Get task info from response and show immediate progress
+        const taskInfo = await res.json();
+        if (taskInfo.taskId) {
+          // Show immediate progress using embellishment task system
+          this.handleEmbellishmentProgressEvent({
+            taskId: taskInfo.taskId.toString(),
+            datasetId: dsId,
+            embellishmentType: taskInfo.type || 'caption',
+            status: 'started',
+            progress: {
+              total: taskInfo.totalItems || 0,
+              completed: 0,
+              failed: 0
+            }
+          });
+        }
+
         cleanup();
         this.fetchCaptionSets(dsId);
-      }catch(err){errEl.textContent=err.message||'Generate failed';errEl.style.display='block';overlay.querySelector('.confirm-generate-btn').disabled=false;}
+      }catch(err){
+        errEl.textContent=err.message||'Generate failed';
+        errEl.style.display='block';
+        overlay.querySelector('.confirm-generate-btn').disabled=false;
+      }
     };
   }
 
@@ -3623,6 +4162,33 @@ export default class ModsMenuModal {
     }catch(err){
       console.error('[ModsMenuModal] cancelCaptionTask error',err);
       alert('Failed to cancel caption task. Please try again.');
+    }
+  }
+
+  async cancelEmbellishmentTask(taskId, datasetId) {
+    if (!taskId) return;
+    const confirmed = confirm('Cancel this embellishment task?');
+    if (!confirmed) return;
+    try {
+      const csrfRes = await fetch('/api/v1/csrf-token');
+      const { csrfToken } = await csrfRes.json();
+      const res = await fetch(`/api/v1/datasets/embellishment-tasks/${encodeURIComponent(taskId)}/cancel`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrfToken },
+        body: JSON.stringify({})
+      });
+      if (!res.ok) throw new Error('Failed');
+      // Update local state to show cancelled status
+      this.handleEmbellishmentProgressEvent({ taskId, datasetId, status: 'cancelled' });
+      // Refresh embellishments list if viewing this dataset
+      const normalizedId = this.normalizeId(datasetId);
+      if (normalizedId && this.normalizeId(this.state.selectedDatasetId) === normalizedId) {
+        this.fetchCaptionSets(normalizedId);
+      }
+    } catch (err) {
+      console.error('[ModsMenuModal] cancelEmbellishmentTask error', err);
+      alert('Failed to cancel embellishment task. Please try again.');
     }
   }
 

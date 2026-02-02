@@ -11,6 +11,10 @@ const MS2_ADDRESSES = {
   SOL: 'AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg'
 };
 
+// Price cache to avoid hammering external APIs
+const priceCache = new Map();
+const PRICE_CACHE_TTL_MS = 30_000; // 30 seconds
+
 /**
  * @class PriceFeedService
  * @description A dedicated service for fetching real-time and historical token prices.
@@ -89,19 +93,32 @@ class PriceFeedService {
    * @returns {Promise<number>} The price of the token in USD. Returns 0 if no price can be found.
    */
   /**
-   * Fetches MS2 token price from CoinGecko
+   * Fetches MS2 token price from CoinGecko with caching
    * @returns {Promise<number>} The price of MS2 in USD
    * @private
    */
   async _getMS2Price() {
-    const MAX_ATTEMPTS = 3;
-    const RETRY_DELAY_MS = 20_000; // 20 seconds
+    const CACHE_KEY = 'ms2_price';
+    const MAX_ATTEMPTS = 2;
+    const RETRY_DELAY_MS = 2_000; // 2 seconds (was 20 - too long)
+
+    // Check cache first
+    const cached = priceCache.get(CACHE_KEY);
+    if (cached && Date.now() - cached.timestamp < PRICE_CACHE_TTL_MS) {
+      this.logger.info(`[PriceFeedService] Using cached MS2 price: $${cached.price}`);
+      return cached.price;
+    }
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10_000); // 10 second timeout
+
         const response = await fetch(
-          'https://api.coingecko.com/api/v3/simple/price?ids=station-this&vs_currencies=usd'
+          'https://api.coingecko.com/api/v3/simple/price?ids=station-this&vs_currencies=usd',
+          { signal: controller.signal }
         );
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
@@ -114,15 +131,26 @@ class PriceFeedService {
           throw new Error('Could not parse MS2 price from CoinGecko response.');
         }
 
-        return parseFloat(price);
+        const parsedPrice = parseFloat(price);
+
+        // Cache the result
+        priceCache.set(CACHE_KEY, { price: parsedPrice, timestamp: Date.now() });
+        this.logger.info(`[PriceFeedService] Fetched and cached MS2 price: $${parsedPrice}`);
+
+        return parsedPrice;
       } catch (error) {
-        this.logger.error(`[PriceFeedService] Attempt ${attempt} to fetch MS2 price failed:`, error?.message || error);
+        const isTimeout = error.name === 'AbortError';
+        this.logger.error(`[PriceFeedService] Attempt ${attempt} to fetch MS2 price failed:`, isTimeout ? 'Request timeout' : (error?.message || error));
         if (attempt < MAX_ATTEMPTS) {
-          this.logger.info(`[PriceFeedService] Retrying MS2 price fetch in ${RETRY_DELAY_MS / 1000}s (${MAX_ATTEMPTS - attempt} retries left)…`);
+          this.logger.info(`[PriceFeedService] Retrying MS2 price fetch in ${RETRY_DELAY_MS / 1000}s...`);
           await new Promise(res => setTimeout(res, RETRY_DELAY_MS));
           continue;
         }
-        // Exhausted retries
+        // Exhausted retries - try to use stale cache if available
+        if (cached) {
+          this.logger.warn(`[PriceFeedService] Using stale cached MS2 price: $${cached.price}`);
+          return cached.price;
+        }
         this.logger.error('[PriceFeedService] All retry attempts to fetch MS2 price failed. Returning 0.');
         return 0;
       }
@@ -139,6 +167,15 @@ class PriceFeedService {
       return this._getMS2Price();
     }
 
+    const cacheKey = `price_${tokenAddress.toLowerCase()}`;
+
+    // Check cache first
+    const cached = priceCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < PRICE_CACHE_TTL_MS) {
+      this.logger.info(`[PriceFeedService] Using cached price for ${tokenAddress}: $${cached.price}`);
+      return cached.price;
+    }
+
     if (tokenAddress.toLowerCase() === NATIVE_ETH_ADDRESS) {
       // Use "Token Prices By Symbol" for native ETH
       this.logger.info(`[PriceFeedService] Identified native ETH, using 'by-symbol' endpoint.`);
@@ -147,18 +184,31 @@ class PriceFeedService {
       const urlWithParams = `${fetchURL}?${params.toString()}`;
 
       try {
-        const response = await fetch(urlWithParams, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10_000);
+
+        const response = await fetch(urlWithParams, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        
+
         const json = await response.json();
         const ethData = json.data?.find(d => d.symbol === 'ETH');
         const price = ethData?.prices?.find(p => p.currency === 'usd')?.value;
 
         if (!price) throw new Error('Could not parse ETH price from Alchemy response.');
-        
-        return parseFloat(price);
+
+        const parsedPrice = parseFloat(price);
+        priceCache.set(cacheKey, { price: parsedPrice, timestamp: Date.now() });
+        return parsedPrice;
       } catch (error) {
-        this.logger.error(`[PriceFeedService] Failed to fetch price for ETH by symbol:`, error);
+        this.logger.error(`[PriceFeedService] Failed to fetch price for ETH by symbol:`, error?.message || error);
+        // Return stale cache if available
+        if (cached) return cached.price;
         return 0;
       }
     } else {
@@ -169,24 +219,34 @@ class PriceFeedService {
           addresses: [{ network, address: tokenAddress }],
           currency: "USD"
       };
-      
+
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10_000);
+
         const response = await fetch(fetchURL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestBody),
+            signal: controller.signal
         });
+        clearTimeout(timeoutId);
+
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
         const json = await response.json();
         const tokenData = json.data?.[0];
         const price = tokenData?.prices?.find(p => p.currency === 'usd')?.value;
-        
+
         if (!price) throw new Error(`Could not parse price for ${tokenAddress} from Alchemy response.`);
 
-        return parseFloat(price);
+        const parsedPrice = parseFloat(price);
+        priceCache.set(cacheKey, { price: parsedPrice, timestamp: Date.now() });
+        return parsedPrice;
       } catch (error) {
-        this.logger.error(`[PriceFeedService] Failed to fetch price for ${tokenAddress}:`, error);
+        this.logger.error(`[PriceFeedService] Failed to fetch price for ${tokenAddress}:`, error?.message || error);
+        // Return stale cache if available
+        if (cached) return cached.price;
         return 0;
       }
     }

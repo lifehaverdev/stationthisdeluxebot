@@ -239,6 +239,137 @@ class DatasetValidator {
       return false;
     }
   }
+
+  /**
+   * Validate dataset with control folder for KONTEXT concept training
+   *
+   * @param {string} datasetDir - Path to result dataset directory
+   * @param {string} controlDir - Path to control dataset directory
+   * @param {object} options - Validation options
+   * @returns {Promise<ValidationResult>}
+   */
+  async validateWithControl(datasetDir, controlDir, options = {}) {
+    // First validate the main dataset
+    const baseResult = await this.validate(datasetDir, options);
+
+    // If base validation failed, return early
+    if (!baseResult.valid) {
+      return baseResult;
+    }
+
+    const errors = [...baseResult.errors];
+    const warnings = [...baseResult.warnings];
+
+    // Check control directory exists
+    const controlDirExists = await this.pathExists(controlDir);
+    if (!controlDirExists) {
+      errors.push(`Control directory not found: ${controlDir}`);
+      return {
+        valid: false,
+        errors,
+        warnings,
+        stats: { ...baseResult.stats, controlImageCount: 0, missingControlImages: [], orphanControlImages: [] }
+      };
+    }
+
+    // Scan control directory
+    const controlFiles = await fsp.readdir(controlDir);
+    const controlStats = this.analyzeControlFiles(controlFiles, baseResult.stats);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // REQUIRED: Every result image must have a matching control image
+    // ─────────────────────────────────────────────────────────────────────────
+    if (controlStats.missingControlImages.length > 0) {
+      const examples = controlStats.missingControlImages.slice(0, 3).join(', ');
+      const more = controlStats.missingControlImages.length > 3
+        ? ` (and ${controlStats.missingControlImages.length - 3} more)`
+        : '';
+      errors.push(`Missing control images for: ${examples}${more}`);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // WARNING: Orphan control images (control images without matching result)
+    // ─────────────────────────────────────────────────────────────────────────
+    if (controlStats.orphanControlImages.length > 0) {
+      warnings.push(
+        `${controlStats.orphanControlImages.length} orphan control images without matching result images`
+      );
+    }
+
+    const valid = errors.length === 0;
+
+    if (this.logger) {
+      const status = valid ? 'VALID' : 'INVALID';
+      this.logger.info(
+        `[DatasetValidator] Control validation ${status}: ${controlStats.controlImageCount} control images`
+      );
+    }
+
+    return {
+      valid,
+      errors,
+      warnings,
+      stats: {
+        ...baseResult.stats,
+        controlImageCount: controlStats.controlImageCount,
+        missingControlImages: controlStats.missingControlImages,
+        orphanControlImages: controlStats.orphanControlImages
+      }
+    };
+  }
+
+  /**
+   * Analyze control folder files against result images
+   * @param {string[]} controlFiles - Files in control directory
+   * @param {Object} resultStats - Stats from main dataset validation
+   * @returns {Object}
+   */
+  analyzeControlFiles(controlFiles, resultStats) {
+    const controlImages = new Set();
+
+    for (const file of controlFiles) {
+      const ext = path.extname(file).toLowerCase();
+      if (IMAGE_EXTENSIONS.has(ext)) {
+        const basename = path.basename(file, ext);
+        controlImages.add(basename);
+      }
+    }
+
+    // Get result image basenames from the uncaptioned + paired counts
+    // We need the actual basenames, so we derive from stats
+    const resultBasenames = new Set();
+
+    // Result images = all images in the dataset
+    // Since analyzeFiles stores this info, we need to reconstruct
+    // For now, we assume sequential naming (001, 002, etc.)
+    // This works because DatasetDownloader uses sequential naming
+    const totalResultImages = resultStats.imageCount;
+    for (let i = 1; i <= totalResultImages; i++) {
+      resultBasenames.add(String(i).padStart(3, '0'));
+    }
+
+    // Find missing control images (result images without control)
+    const missingControlImages = [];
+    for (const basename of resultBasenames) {
+      if (!controlImages.has(basename)) {
+        missingControlImages.push(basename);
+      }
+    }
+
+    // Find orphan control images (control images without result)
+    const orphanControlImages = [];
+    for (const basename of controlImages) {
+      if (!resultBasenames.has(basename)) {
+        orphanControlImages.push(basename);
+      }
+    }
+
+    return {
+      controlImageCount: controlImages.size,
+      missingControlImages,
+      orphanControlImages
+    };
+  }
 }
 
 module.exports = DatasetValidator;

@@ -28,6 +28,7 @@ module.exports = function createTrainingsApiRouter(deps = {}) {
         'SDXL': 'SDXL',
         'SD1.5': 'SD1.5',
         'WAN': 'FLUX', // WAN uses similar resources to FLUX
+        'KONTEXT': 'FLUX', // KONTEXT uses similar resources to FLUX
       };
 
       const baseModel = baseModelMap[modelType] || 'FLUX';

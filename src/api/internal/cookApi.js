@@ -1672,7 +1672,12 @@ function createCookApi(deps = {}) {
       const genIdObj = ObjectId.isValid(generationId) ? new ObjectId(generationId) : generationId;
       update.$push = { generationIds: genIdObj };
     }
-    if(costDeltaUsd!==undefined) update.$inc = { costUsd: costDeltaUsd, generatedCount:1 };
+    if(costDeltaUsd !== undefined && costDeltaUsd !== null && typeof costDeltaUsd === 'number') {
+      update.$inc = { costUsd: costDeltaUsd, generatedCount: 1 };
+    } else if(generationId) {
+      // Still increment generatedCount even if no cost
+      update.$inc = { generatedCount: 1 };
+    }
     if(status) update.$set = { status, completedAt: status==='completed'?new Date():undefined };
     // ✅ Always update updatedAt
     if(!update.$set) update.$set = {};

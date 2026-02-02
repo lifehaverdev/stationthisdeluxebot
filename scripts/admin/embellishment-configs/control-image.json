@@ -1,0 +1,10 @@
+{
+  "type": "control_image",
+  "resultExtraction": {
+    "path": "outputs[0].url",
+    "valueType": "url"
+  },
+  "requiredContext": ["imageUrl", "conceptDescription"],
+  "optionalContext": [],
+  "description": "Generates control images by removing/reversing the concept from source images"
+}

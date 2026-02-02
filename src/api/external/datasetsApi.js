@@ -44,6 +44,22 @@ function createDatasetsApiRouter(deps = {}) {
     }
   });
 
+  // GET /embellishment-spells – list spells with embellishment capabilities (BEFORE /:id to avoid conflict)
+  router.get('/embellishment-spells', async (req, res) => {
+    const { type } = req.query;
+    try {
+      const url = type
+        ? `/internal/v1/data/embellishment-spells?type=${encodeURIComponent(type)}`
+        : '/internal/v1/data/embellishment-spells';
+      const { data } = await client.get(url);
+      res.json(data);
+    } catch (err) {
+      const status = err.response?.status || 500;
+      logger.error('list embellishment spells proxy error', err.response?.data || err.message);
+      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
   // GET /:id (fetch dataset by id)
   router.get('/:id', async (req, res) => {
     try {
@@ -221,6 +237,121 @@ function createDatasetsApiRouter(deps = {}) {
     } catch (err) {
       const status = err.response?.status || 500;
       logger.error('set default caption set proxy error', err.response?.data || err.message);
+      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+  // --- Embellishment Routes ---
+
+  // POST /:id/embellishments/manual – create manual embellishment (user-written captions)
+  router.post('/:id/embellishments/manual', async (req, res) => {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
+    }
+    const ownerId = user.masterAccountId || user.userId;
+    const { id } = req.params;
+    try {
+      const payload = { ...req.body, masterAccountId: ownerId };
+      const { data } = await client.post(`/internal/v1/data/datasets/${encodeURIComponent(id)}/embellishments/manual`, payload);
+      res.status(201).json(data);
+    } catch (err) {
+      const status = err.response?.status || 500;
+      logger.error('create manual embellishment proxy error', err.response?.data || err.message);
+      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+  // GET /:id/embellishments – list embellishments for dataset
+  router.get('/:id/embellishments', async (req, res) => {
+    const { id } = req.params;
+    const { type } = req.query;
+    try {
+      const url = type
+        ? `/internal/v1/data/datasets/${encodeURIComponent(id)}/embellishments?type=${encodeURIComponent(type)}`
+        : `/internal/v1/data/datasets/${encodeURIComponent(id)}/embellishments`;
+      const { data } = await client.get(url);
+      res.json(data);
+    } catch (err) {
+      const status = err.response?.status || 500;
+      logger.error('list embellishments proxy error', err.response?.data || err.message);
+      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+  // DELETE /:id/embellishments/:embellishmentId – remove embellishment
+  router.delete('/:id/embellishments/:embellishmentId', async (req, res) => {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
+    }
+    const ownerId = user.masterAccountId || user.userId;
+    const { id, embellishmentId } = req.params;
+    try {
+      const { data } = await client.delete(`/internal/v1/data/datasets/${encodeURIComponent(id)}/embellishments/${encodeURIComponent(embellishmentId)}`, {
+        data: { masterAccountId: ownerId },
+      });
+      res.json(data);
+    } catch (err) {
+      const status = err.response?.status || 500;
+      logger.error('delete embellishment proxy error', err.response?.data || err.message);
+      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+  // PATCH /:id/embellishments/:embellishmentId/results – bulk update embellishment results
+  router.patch('/:id/embellishments/:embellishmentId/results', async (req, res) => {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
+    }
+    const ownerId = user.masterAccountId || user.userId;
+    const { id, embellishmentId } = req.params;
+    try {
+      const payload = { ...req.body, masterAccountId: ownerId };
+      const { data } = await client.patch(`/internal/v1/data/datasets/${encodeURIComponent(id)}/embellishments/${encodeURIComponent(embellishmentId)}/results`, payload);
+      res.json(data);
+    } catch (err) {
+      const status = err.response?.status || 500;
+      logger.error('bulk update embellishment results proxy error', err.response?.data || err.message);
+      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+  // POST /:id/embellish – start embellishment task via spell
+  router.post('/:id/embellish', async (req, res) => {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
+    }
+    const ownerId = user.masterAccountId || user.userId;
+    const { id } = req.params;
+    try {
+      const payload = { ...req.body, masterAccountId: ownerId };
+      const { data } = await client.post(`/internal/v1/data/datasets/${encodeURIComponent(id)}/embellish`, payload);
+      res.status(202).json(data);
+    } catch (err) {
+      const status = err.response?.status || 500;
+      logger.error('start embellishment task proxy error', err.response?.data || err.message);
+      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+  // POST /embellishment-tasks/:taskId/cancel – cancel a running embellishment task
+  router.post('/embellishment-tasks/:taskId/cancel', async (req, res) => {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
+    }
+    const ownerId = user.masterAccountId || user.userId;
+    const { taskId } = req.params;
+    try {
+      const payload = { masterAccountId: ownerId };
+      const { data } = await client.post(`/internal/v1/data/embellishment-tasks/${encodeURIComponent(taskId)}/cancel`, payload);
+      res.json(data);
+    } catch (err) {
+      const status = err.response?.status || 500;
+      logger.error('cancel embellishment task proxy error', err.response?.data || err.message);
       res.status(status).json(err.response?.data || { error: 'proxy-error' });
     }
   });

@@ -114,8 +114,7 @@ class OpenAIService {
     }
 
     const messages = [
-      { "role": "user", "content": instructions },
-      { "role": "system", "content": "Acknowledged. I will follow these instructions. Exactly how you instructed. Please provide your prompt."},
+      { "role": "system", "content": instructions },
       { "role": "user", "content": prompt }
     ];
 

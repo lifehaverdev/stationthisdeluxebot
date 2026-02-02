@@ -45,6 +45,7 @@ const GuestAccountService = require('./guestAccountService');
 const GuestAuthService = require('./guestAuthService');
 const SpellPaymentService = require('./spellPaymentService');
 const createCaptionTaskService = require('./CaptionTaskService');
+const createEmbellishmentTaskService = require('./EmbellishmentTaskService');
 
 /**
  * Initialize all core services
@@ -122,6 +123,19 @@ async function initializeServices(options = {}) {
       logger.info('[initializeServices] CaptionTaskService initialized.');
     } catch (err) {
       logger.error('[initializeServices] Failed to initialize CaptionTaskService:', err);
+    }
+
+    let embellishmentTaskService = null;
+    try {
+      embellishmentTaskService = createEmbellishmentTaskService({
+        logger,
+        db: initializedDbServices.data,
+        websocketService: webSocketService,
+        spellsService: null, // Will be injected after SpellsService is created
+      });
+      logger.info('[initializeServices] EmbellishmentTaskService initialized.');
+    } catch (err) {
+      logger.error('[initializeServices] Failed to initialize EmbellishmentTaskService:', err);
     }
 
     // --- Initialize On-Chain Services ---
@@ -270,6 +284,12 @@ async function initializeServices(options = {}) {
     });
     logger.info('SpellsService initialized (pre-API).');
 
+    // Inject spellsService into EmbellishmentTaskService now that it's available
+    if (embellishmentTaskService && typeof embellishmentTaskService.setSpellsService === 'function') {
+      embellishmentTaskService.setSpellsService(spellsService);
+      logger.info('[initializeServices] SpellsService injected into EmbellishmentTaskService.');
+    }
+
     // Initialize Guest Account Services
     const guestAccountService = new GuestAccountService({
       logger,
@@ -368,9 +388,9 @@ async function initializeServices(options = {}) {
       adminActivityService, // Add admin activity service
       guestAccountService, // Add guest account service
       guestAuthService, // Add guest auth service
-      spellPaymentService // Add spell payment service
-      ,
-      collectionExportService
+      spellPaymentService, // Add spell payment service
+      collectionExportService,
+      embellishmentTaskService // Add embellishment task service
     });
     
     // The internalApiClient is a singleton utility, not from apiServices.
@@ -441,7 +461,8 @@ async function initializeServices(options = {}) {
       guestAccountService, // expose GuestAccountService
       guestAuthService, // expose GuestAuthService
       spellPaymentService, // expose SpellPaymentService
-      collectionExportService
+      collectionExportService,
+      embellishmentTaskService, // expose EmbellishmentTaskService
     };
 
     // DIAGNOSTIC LOGGING REMOVED

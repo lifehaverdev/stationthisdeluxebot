@@ -505,16 +505,39 @@ function createDatasetsApi(dependencies) {
   });
 
   // GET /internal/v1/data/datasets/:datasetId/captions – list caption sets for dataset
+  // Returns both legacy captionSets AND embellishments of type 'caption' (unified view)
   router.get('/:datasetId/captions', async (req, res) => {
     const { datasetId } = req.params;
     try {
       const dataset = await datasetDb.findOne({ _id: new ObjectId(datasetId) }, {
-        projection: { captionSets: 1 },
+        projection: { captionSets: 1, embellishments: 1 },
       });
       if (!dataset) {
         return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Dataset not found' } });
       }
-      res.json({ success: true, data: dataset.captionSets || [] });
+
+      // Start with legacy captionSets
+      const allCaptions = [...(dataset.captionSets || [])];
+
+      // Add embellishments of type 'caption', converting to captionSet-like format
+      const captionEmbellishments = (dataset.embellishments || []).filter(e => e.type === 'caption');
+      for (const emb of captionEmbellishments) {
+        allCaptions.push({
+          _id: emb._id,
+          method: emb.method || 'embellishment',
+          status: emb.status,
+          createdBy: emb.createdBy,
+          createdAt: emb.createdAt,
+          completedAt: emb.completedAt,
+          // Convert results array to captions array (extract 'value' field)
+          captions: (emb.results || []).map(r => r?.value || ''),
+          // Flag to indicate this is from embellishments (for frontend if needed)
+          isEmbellishment: true,
+          embellishmentId: emb._id,
+        });
+      }
+
+      res.json({ success: true, data: allCaptions });
     } catch (err) {
       logger.error('[DatasetsAPI] Failed fetching caption sets:', err);
       res.status(500).json({ error: { code: 'FETCH_ERROR', message: 'Could not fetch caption sets' } });
@@ -571,7 +594,7 @@ function createDatasetsApi(dependencies) {
     }
   });
 
-  // DELETE /internal/v1/data/datasets/:datasetId/captions/:captionId – remove caption set
+  // DELETE /internal/v1/data/datasets/:datasetId/captions/:captionId – remove caption set or embellishment
   router.delete('/:datasetId/captions/:captionId', async (req, res) => {
     const { datasetId, captionId } = req.params;
     const { masterAccountId } = req.body || {};
@@ -581,7 +604,7 @@ function createDatasetsApi(dependencies) {
     }
 
     try {
-      const dataset = await datasetDb.findOne({ _id: new ObjectId(datasetId) }, { projection: { ownerAccountId: 1, captionSets: 1 } });
+      const dataset = await datasetDb.findOne({ _id: new ObjectId(datasetId) }, { projection: { ownerAccountId: 1, captionSets: 1, embellishments: 1 } });
       if (!dataset) {
         return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Dataset not found' } });
       }
@@ -589,27 +612,43 @@ function createDatasetsApi(dependencies) {
         return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'You can only modify your own datasets' } });
       }
 
+      // Check legacy captionSets first
       const captionSets = dataset.captionSets || [];
       const target = captionSets.find((cs) => cs._id.toString() === captionId);
-      if (!target) {
-        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Caption set not found' } });
+
+      if (target) {
+        // Legacy caption set - delete from captionSets
+        const fallback = captionSets.find((cs) => cs._id.toString() !== captionId);
+        await datasetDb.removeCaptionSet(datasetId, captionId);
+
+        if (target.isDefault && fallback) {
+          await datasetDb.setDefaultCaptionSet(datasetId, fallback._id.toString());
+        }
+
+        return res.json({
+          success: true,
+          data: {
+            deleted: true,
+            reassignedDefault: Boolean(target.isDefault && fallback),
+            fallbackCaptionSetId: target.isDefault && fallback ? fallback._id.toString() : null,
+          },
+        });
       }
 
-      const fallback = captionSets.find((cs) => cs._id.toString() !== captionId);
-      await datasetDb.removeCaptionSet(datasetId, captionId);
+      // Check embellishments (new system)
+      const embellishments = dataset.embellishments || [];
+      const embTarget = embellishments.find((e) => e._id.toString() === captionId && e.type === 'caption');
 
-      if (target.isDefault && fallback) {
-        await datasetDb.setDefaultCaptionSet(datasetId, fallback._id.toString());
+      if (embTarget) {
+        // Delete embellishment
+        await datasetDb.removeEmbellishment(datasetId, captionId);
+        return res.json({
+          success: true,
+          data: { deleted: true, isEmbellishment: true },
+        });
       }
 
-      res.json({
-        success: true,
-        data: {
-          deleted: true,
-          reassignedDefault: Boolean(target.isDefault && fallback),
-          fallbackCaptionSetId: target.isDefault && fallback ? fallback._id.toString() : null,
-        },
-      });
+      return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Caption set not found' } });
     } catch (err) {
       logger.error('[DatasetsAPI] Failed deleting caption set:', err);
       res.status(500).json({ error: { code: 'DELETE_ERROR', message: 'Failed to delete caption set' } });

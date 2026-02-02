@@ -1,0 +1,20 @@
+{
+  "type": "caption",
+  "resultExtraction": {
+    "path": "text",
+    "valueType": "text"
+  },
+  "requiredContext": ["imageUrl"],
+  "optionalContext": ["triggerWord", "triggerWords"],
+  "description": "Generates descriptive captions for training images",
+  "instructions": "This spell will automatically caption each image in your dataset. If your model has a trigger word, enter it below so captions include it consistently.",
+  "userInputs": [
+    {
+      "key": "stringB",
+      "label": "Trigger Word",
+      "placeholder": "e.g., ohwx, sks, my_style",
+      "description": "Your model's trigger word. Leave blank if not using one.",
+      "required": false
+    }
+  ]
+}

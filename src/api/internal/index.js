@@ -36,6 +36,7 @@ const createCostCalculationApi = require('./costCalculationApi');
 const createAnalyticsApi = require('./analyticsApi');
 const createMarketplaceApi = require('./marketplaceApi');
 const createUploadApi = require('./uploadApi');
+const createEmbellishmentApi = require('./embellishmentApi');
 // Placeholder imports for new API service modules
 // const createUserSessionsApiService = require('./userSessionsApiService');
 
@@ -134,7 +135,8 @@ function initializeInternalServices(dependencies = {}) {
       saltMiningService: dependencies.saltMiningService,
       // Platform notifiers for cross-platform notifications
       platformNotifiers: dependencies.platformNotifiers || {},
-      collectionExportService: dependencies.collectionExportService
+      collectionExportService: dependencies.collectionExportService,
+      embellishmentTaskService: dependencies.embellishmentTaskService
   };
 
   // Create an instance of teamServiceDb and add it to apiDependencies
@@ -509,6 +511,27 @@ function initializeInternalServices(dependencies = {}) {
     v1DataRouter.use('/workspaces', workspacesRouter);
     logger.info('[InternalAPI] Workspaces API mounted to /v1/data/workspaces');
   } catch(err){ logger.error('[InternalAPI] Failed to init Workspaces API', err); }
+
+  // Embellishment API Service (must be mounted BEFORE datasets API to handle /datasets/:id/embellishments routes):
+  try {
+    console.log('[InternalAPI] About to create embellishment API...');
+    console.log('[InternalAPI] dbDataServices keys:', dbDataServices ? Object.keys(dbDataServices) : 'null');
+    const embellishmentApi = createEmbellishmentApi({
+      logger,
+      db: dbDataServices,
+      embellishmentTaskService: apiDependencies.embellishmentTaskService,
+    });
+    console.log('[InternalAPI] embellishmentApi created:', !!embellishmentApi);
+    if (embellishmentApi) {
+      v1DataRouter.use('/', embellishmentApi);
+      logger.info('[InternalAPI] Embellishment API service mounted to /v1/data (before datasets)');
+    } else {
+      logger.error('[InternalAPI] Failed to create Embellishment API router.');
+    }
+  } catch (err) {
+    console.error('[InternalAPI] Error creating embellishment API:', err);
+    logger.error('[InternalAPI] Error creating embellishment API:', err);
+  }
 
   // Datasets API Service:
   const datasetsApi = createDatasetsApi(apiDependencies);

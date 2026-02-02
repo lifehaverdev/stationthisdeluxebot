@@ -61,6 +61,18 @@ const { slugify } = require('../../../utils/stringUtils'); // Assuming a slugify
  *     reviewedAt?: Date
  *   },
  *
+ *   // Embellishment capabilities (admin-configured)
+ *   embellishment?: {
+ *     type: string,                   // 'caption' | 'control_image' | 'video' | 'audio'
+ *     resultExtraction: {
+ *       path: string,                 // JSONPath-like path to extract result (e.g., 'outputs[0].text')
+ *       valueType: 'text' | 'url'     // How to interpret the extracted value
+ *     },
+ *     requiredContext: [string],      // Required context keys (e.g., ['imageUrl'])
+ *     optionalContext: [string],      // Optional context keys (e.g., ['triggerWord'])
+ *     description: string             // Human-readable description
+ *   },
+ *
  *   createdAt: Date,
  *   updatedAt: Date
  * }
@@ -373,6 +385,44 @@ class SpellsDB extends BaseDB {
             $set: { updatedAt: new Date() }
         }
     );
+  }
+
+  /**
+   * Set embellishment metadata for a spell (admin only)
+   * @param {string} spellId
+   * @param {Object} embellishment - { type, resultExtraction, requiredContext, optionalContext, description }
+   */
+  async setEmbellishmentMetadata(spellId, embellishment) {
+    return this.updateOne(
+      { _id: new ObjectId(spellId) },
+      {
+        $set: {
+          embellishment,
+          updatedAt: new Date()
+        }
+      }
+    );
+  }
+
+  /**
+   * Find spells that have embellishment capabilities
+   * @param {string} type - Optional type filter
+   */
+  async findEmbellishmentSpells(type = null) {
+    const filter = { embellishment: { $exists: true } };
+    if (type) {
+      filter['embellishment.type'] = type;
+    }
+    return this.findMany(filter);
+  }
+
+  /**
+   * Check if a spell has embellishment capabilities
+   * @param {string} spellSlug
+   */
+  async getEmbellishmentMetadata(spellSlug) {
+    const spell = await this.findBySlug(spellSlug);
+    return spell?.embellishment || null;
   }
 }
 

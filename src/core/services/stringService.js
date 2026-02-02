@@ -51,42 +51,67 @@ class StringService {
    * Perform an operation.
    * @param {object} params
    * @param {'concat'|'replace'} params.operation
-   * @param {string} params.stringA
-   * @param {string} [params.stringB]
-   * @param {string} [params.searchValue]
+   * @param {string} params.inputText - Main text input
+   * @param {string} [params.appendText] - Text to append (concat)
+   * @param {string} [params.searchText] - Text to find (replace)
+   * @param {string} [params.replacementText] - Replacement text (replace)
+   * @param {string} [params.stringA] - Legacy: maps to inputText
+   * @param {string} [params.stringB] - Legacy: maps to appendText/replacementText
+   * @param {string} [params.searchValue] - Legacy: maps to searchText
    * @returns {string}
    */
-  execute({ operation, stringA, stringB = '', searchValue = '' }) {
+  execute({
+    operation,
+    // New field names
+    inputText,
+    appendText,
+    searchText,
+    replacementText,
+    // Legacy field names for backwards compatibility
+    stringA,
+    stringB = '',
+    searchValue = ''
+  }) {
+    // Map legacy names to new names (new names take precedence)
+    const mainText = inputText ?? stringA;
+
     switch (operation) {
-      case 'concat':
-        return `${stringA}${stringB}`;
-      case 'replace':
+      case 'concat': {
+        const textToAppend = appendText ?? stringB ?? '';
+        return `${mainText}${textToAppend}`;
+      }
+      case 'replace': {
+        // Map legacy names to new names (new names take precedence)
+        const sourceText = inputText ?? stringA;
+        const findText = searchText ?? searchValue;
+        const replaceWithText = replacementText ?? stringB ?? '';
+
         // Validate required parameters
-        if (stringA == null) {
-          throw new Error('stringA is required for replace operation');
+        if (sourceText == null) {
+          throw new Error('inputText is required for replace operation');
         }
-        if (searchValue == null) {
-          throw new Error('searchValue is required for replace operation');
+        if (findText == null) {
+          throw new Error('searchText is required for replace operation');
         }
-        
+
         // Convert to strings to handle numbers or other types
-        // Also handle generation output objects for stringA and searchValue
-        const strA = this._extractTextValue(stringA);
-        const strB = this._extractTextValue(stringB);
-        // Extract text from searchValue (may be a generation output object)
-        const strSearchValue = this._extractTextValue(searchValue).trim();
+        // Also handle generation output objects
+        const strA = this._extractTextValue(sourceText);
+        const strB = this._extractTextValue(replaceWithText);
+        // Extract text from searchText (may be a generation output object)
+        const strSearchValue = this._extractTextValue(findText).trim();
         
         // Validate after extraction (in case object extracted to empty string)
         if (strA === '') {
-          throw new Error('stringA cannot be empty after extraction');
+          throw new Error('inputText cannot be empty after extraction');
         }
         if (strSearchValue === '') {
-          throw new Error('searchValue cannot be empty or only whitespace after extraction');
+          throw new Error('searchText cannot be empty or only whitespace after extraction');
         }
-        
+
         // Logging to diagnose issues - use info level so it's visible
-        this.logger.info(`[StringService] Replace operation - searchValue: "${strSearchValue}", stringB: "${strB}", stringA length: ${strA.length}`);
-        this.logger.info(`[StringService] First 200 chars of stringA: "${strA.substring(0, 200)}"`);
+        this.logger.info(`[StringService] Replace operation - searchText: "${strSearchValue}", replacementText: "${strB}", inputText length: ${strA.length}`);
+        this.logger.info(`[StringService] First 200 chars of inputText: "${strA.substring(0, 200)}"`);
         
         // Count occurrences before replacement
         const escapedForCount = strSearchValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -110,6 +135,7 @@ class StringService {
         }
         
         return result;
+      }
       default:
         throw new Error(`Unsupported operation: ${operation}`);
     }

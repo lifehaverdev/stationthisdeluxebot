@@ -7,6 +7,7 @@
 const SDXLRecipe = require('./recipes/SDXLRecipe');
 const FLUXRecipe = require('./recipes/FLUXRecipe');
 const WANRecipe = require('./recipes/WANRecipe');
+const KONTEXTRecipe = require('./recipes/KONTEXTRecipe');
 
 class TrainingRecipeService {
   constructor({ logger }) {
@@ -34,7 +35,11 @@ class TrainingRecipeService {
       // Register WAN recipe
       const wanRecipe = new WANRecipe({ logger: this.logger });
       this.recipes.set('WAN', wanRecipe);
-      
+
+      // Register KONTEXT recipe
+      const kontextRecipe = new KONTEXTRecipe({ logger: this.logger });
+      this.recipes.set('KONTEXT', kontextRecipe);
+
       this.logger.info(`Registered ${this.recipes.size} training recipes: ${Array.from(this.recipes.keys()).join(', ')}`);
       
     } catch (error) {

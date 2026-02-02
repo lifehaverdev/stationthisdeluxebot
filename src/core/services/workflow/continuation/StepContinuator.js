@@ -338,6 +338,7 @@ class StepContinuator {
                     result: completedGeneration?.result || null
                 },
                 captionTask: originalContext?.captionTask || null,
+                embellishmentTask: originalContext?.embellishmentTask || null,
             });
         } catch (emitErr) {
             this.logger.warn(`[StepContinuator] Failed to emit spellCompletion event: ${emitErr.message}`);
