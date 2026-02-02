@@ -1,10 +1,11 @@
 class SpellsService {
-    constructor({ logger, db, workflowExecutionService, spellPermissionsDb, creditService }) {
+    constructor({ logger, db, workflowExecutionService, spellPermissionsDb, creditService, spellMigrator }) {
         this.logger = logger;
         this.db = db; // Contains spellsDb
         this.workflowExecutionService = workflowExecutionService;
         this.spellPermissionsDb = spellPermissionsDb;
         this.creditService = creditService; // Optional: for upfront payment charging
+        this.spellMigrator = spellMigrator; // Optional: for auto-healing spells when tool schemas change
     }
 
     /**
@@ -62,6 +63,26 @@ class SpellsService {
         if (!spell) {
             this.logger.warn(`[SpellsService] Spell with slug "${slug}" not found for user ${context.masterAccountId}.`);
             throw new Error(`Spell "${slug}" not found.`);
+        }
+
+        // 1.5. Auto-heal: Migrate spell steps to current tool versions
+        if (this.spellMigrator) {
+            const { spell: migratedSpell, migrated, changes } = this.spellMigrator.migrate(spell);
+            if (migrated) {
+                this.logger.info(`[SpellsService] Auto-healed spell "${spell.name}": ${JSON.stringify(changes)}`);
+                spell = migratedSpell;
+
+                // Optionally persist the healed spell (unless explicitly disabled)
+                if (context.persistMigration !== false) {
+                    try {
+                        await this.db.spells.updateSpell(spell._id, { steps: spell.steps });
+                        this.logger.info(`[SpellsService] Persisted migrated spell "${spell.name}" to database.`);
+                    } catch (persistError) {
+                        this.logger.warn(`[SpellsService] Failed to persist migrated spell "${spell.name}": ${persistError.message}`);
+                        // Continue execution even if persistence fails
+                    }
+                }
+            }
         }
 
         // 2. Check permissions

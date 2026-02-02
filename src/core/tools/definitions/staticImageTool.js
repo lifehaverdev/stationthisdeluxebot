@@ -4,6 +4,7 @@
 const staticImageTool = {
   toolId: 'static-image',
   service: 'static',
+  version: '1.0.0',
   displayName: 'Static Image',
   commandName: '/staticimage',
   apiPath: '/static/image',

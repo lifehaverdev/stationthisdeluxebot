@@ -1,6 +1,7 @@
 const dalleImageTool = {
   toolId: 'dall-e-3-image',
   service: 'openai',
+  version: '1.0.0',
   displayName: 'dalleiii',
   commandName: '/image',
   apiPath: '/llm/image',

@@ -43,42 +43,67 @@ class StringAdapter {
   /**
    * @param {object} params
    * @param {'concat'|'replace'} params.operation
-   * @param {string} params.stringA
-   * @param {string} [params.stringB]
-   * @param {string} [params.searchValue]
+   * @param {string} [params.inputText] - New parameter name for main text
+   * @param {string} [params.appendText] - New parameter name for concat text
+   * @param {string} [params.searchText] - New parameter name for search string
+   * @param {string} [params.replacementText] - New parameter name for replacement
+   * @param {string} [params.stringA] - Legacy parameter name (maps to inputText)
+   * @param {string} [params.stringB] - Legacy parameter name (maps to appendText/replacementText)
+   * @param {string} [params.searchValue] - Legacy parameter name (maps to searchText)
    */
   async execute(params) {
-    const { operation, stringA, stringB = '', searchValue } = params;
-    if (!stringA) throw new Error('stringA required');
+    const {
+      operation,
+      // New parameter names
+      inputText,
+      appendText,
+      searchText,
+      replacementText,
+      // Legacy parameter names
+      stringA,
+      stringB = '',
+      searchValue
+    } = params;
+
+    // Map new names to legacy names (new names take precedence)
+    const mainText = inputText ?? stringA;
+    if (!mainText) throw new Error('inputText (or stringA) required');
+
     let result;
     switch (operation) {
-      case 'concat':
-        result = stringA + stringB;
+      case 'concat': {
+        const textToAppend = appendText ?? stringB ?? '';
+        result = this._extractTextValue(mainText) + this._extractTextValue(textToAppend);
         break;
-      case 'replace':
-        if (searchValue == null) {
-          throw new Error('searchValue is required for replace operation');
+      }
+      case 'replace': {
+        const findText = searchText ?? searchValue;
+        const replaceWithText = replacementText ?? stringB ?? '';
+
+        if (findText == null) {
+          throw new Error('searchText (or searchValue) is required for replace operation');
         }
         // Convert to strings to handle numbers or other types
-        // Also handle generation output objects for stringA and searchValue
-        const strA = this._extractTextValue(stringA);
-        const strB = this._extractTextValue(stringB);
-        // Extract text from searchValue (may be a generation output object)
-        const strSearchValue = this._extractTextValue(searchValue).trim();
-        
+        // Also handle generation output objects
+        const strA = this._extractTextValue(mainText);
+        const strB = this._extractTextValue(replaceWithText);
+        // Extract text from searchText (may be a generation output object)
+        const strSearchValue = this._extractTextValue(findText).trim();
+
         // Validate after extraction
         if (strA === '') {
-          throw new Error('stringA cannot be empty after extraction');
+          throw new Error('inputText cannot be empty after extraction');
         }
         if (strSearchValue === '') {
-          throw new Error('searchValue cannot be empty or only whitespace after extraction');
+          throw new Error('searchText cannot be empty or only whitespace after extraction');
         }
-        
+
         // Replace all occurrences by escaping regex special chars and using global + case-insensitive flags
         const escapedSearchValue = strSearchValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const regex = new RegExp(escapedSearchValue, 'gi');
         result = strA.replace(regex, strB);
         break;
+      }
       default:
         throw new Error(`Unknown string operation ${operation}`);
     }

@@ -4008,7 +4008,8 @@ export default class ModsMenuModal {
   extractStringPrimitiveTemplate(definition) {
     if (!definition) return '';
     const step = (definition.steps || []).find(s => s.toolIdentifier === 'string-primitive');
-    const template = step?.parameterMappings?.stringA?.value;
+    // Support both new (inputText) and legacy (stringA) parameter names
+    const template = step?.parameterMappings?.inputText?.value ?? step?.parameterMappings?.stringA?.value;
     return typeof template === 'string' ? template : '';
   }
 

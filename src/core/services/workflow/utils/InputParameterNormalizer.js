@@ -71,6 +71,21 @@ class InputParameterNormalizer {
   }
 
   /**
+   * Legacy parameter name mappings for specific tools
+   * Maps new schema keys to their legacy equivalents
+   */
+  static LEGACY_MAPPINGS = {
+    // string-primitive tool: old names → new names
+    inputText: ['stringA'],
+    appendText: ['stringB'],  // for concat operation
+    replacementText: ['stringB'],  // for replace operation
+    searchText: ['searchValue'],
+    // chatgpt tool: old names → new names
+    prompt: ['input_prompt'],
+    instructions: ['input_instructions'],
+  };
+
+  /**
    * Builds parameter name variations for each schema field
    * @param {Object} inputSchema - Tool input schema
    * @returns {Object} - Map of schemaKey → [variations]
@@ -78,13 +93,19 @@ class InputParameterNormalizer {
    */
   static _buildParameterMappings(inputSchema) {
     const mappings = {};
-    
+
     for (const [schemaKey, fieldDef] of Object.entries(inputSchema)) {
       const fieldType = (fieldDef.type || '').toLowerCase();
       const variations = this._generateVariations(schemaKey, fieldType);
+
+      // Add any legacy mappings for this schema key
+      if (this.LEGACY_MAPPINGS[schemaKey]) {
+        this.LEGACY_MAPPINGS[schemaKey].forEach(legacy => variations.push(legacy));
+      }
+
       mappings[schemaKey] = variations;
     }
-    
+
     return mappings;
   }
 

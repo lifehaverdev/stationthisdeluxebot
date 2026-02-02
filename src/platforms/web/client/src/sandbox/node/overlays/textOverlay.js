@@ -15,9 +15,12 @@ function injectTextOverlay() {
         <textarea class="text-overlay-textarea"></textarea>
       </div>
     `;
+    // Try sandbox-main first, then fall back to body
     const sandboxMain = document.querySelector('.sandbox-main');
     if (sandboxMain) {
         sandboxMain.appendChild(overlay);
+    } else {
+        document.body.appendChild(overlay);
     }
     // Event listeners for closing overlay
     overlay.querySelector('.text-overlay-close').onclick = hideTextOverlay;

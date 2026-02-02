@@ -1,6 +1,7 @@
 const qwenLayeredTool = {
   toolId: 'qwen-layered',
   service: 'huggingface',
+  version: '1.0.0',
   displayName: 'Qwen Image Layered',
   commandName: '/qwenlayered',
   apiPath: '/huggingface/qwen-layered',

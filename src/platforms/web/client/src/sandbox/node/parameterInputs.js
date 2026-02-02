@@ -140,7 +140,15 @@ function createParameterInput(key, param, mapping, toolWindows) {
                 if (!depEl) return;
                 const depValue = depEl.value;
                 const shouldShow = param.visibleIf.values.includes(depValue);
+                const wasHidden = container.style.display === 'none';
                 container.style.display = shouldShow ? '' : 'none';
+
+                // If field just became visible, bind text overlay
+                if (shouldShow && wasHidden) {
+                    import('../node/overlays/textOverlay.js')
+                        .then(m => m.bindPromptFieldOverlays())
+                        .catch(() => {});
+                }
             };
 
             // Initial toggle after DOM attach microtask

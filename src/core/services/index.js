@@ -46,6 +46,8 @@ const GuestAuthService = require('./guestAuthService');
 const SpellPaymentService = require('./spellPaymentService');
 const createCaptionTaskService = require('./CaptionTaskService');
 const createEmbellishmentTaskService = require('./EmbellishmentTaskService');
+// --- Spell Migration Service ---
+const { SpellMigrator } = require('./workflow/migrations');
 
 /**
  * Initialize all core services
@@ -275,12 +277,20 @@ async function initializeServices(options = {}) {
     });
     logger.info('WorkflowExecutionService initialized (pre-API).');
 
+    // Initialize SpellMigrator for auto-healing spells when tool schemas change
+    const spellMigrator = new SpellMigrator({
+      toolRegistry,
+      logger
+    });
+    logger.info('SpellMigrator initialized.');
+
     const spellsService = new SpellsService({
       logger,
       db: initializedDbServices.data,
       workflowExecutionService,
       spellPermissionsDb: initializedDbServices.data.spellPermissions,
       creditService: creditServices && creditServices['1'] ? creditServices['1'] : null, // Mainnet credit service for upfront payments
+      spellMigrator, // Inject SpellMigrator for auto-healing
     });
     logger.info('SpellsService initialized (pre-API).');
 

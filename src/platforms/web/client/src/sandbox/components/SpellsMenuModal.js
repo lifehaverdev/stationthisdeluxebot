@@ -1785,12 +1785,17 @@ export default class SpellsMenuModal {
             // CRITICAL: Filter out exposed inputs from parameterMappings before saving
             // Exposed inputs should NOT have static values saved - they should be user-provided when using the spell
             // This prevents "baking in" static values that should be left open for user input
-            // 
+            //
             // NOTE: subgraph.nodes is already in the correct order (may have been reordered via reorderSpellSteps)
             // The order of nodes in this array determines the execution order of steps in the spell
+
+            // Build a tool map for looking up tool versions
+            const availableTools = getAvailableTools?.() || [];
+            const toolMap = new Map(availableTools.map(t => [t.toolId, t]));
+
             const steps = subgraph ? subgraph.nodes.map(n => {
                 const stepMappings = { ...n.parameterMappings };
-                
+
                 // Remove any parameters that are marked as exposed inputs
                 // This ensures exposed inputs don't have static values "baked in"
                 Object.keys(stepMappings).forEach(paramKey => {
@@ -1799,10 +1804,14 @@ export default class SpellsMenuModal {
                         delete stepMappings[paramKey];
                     }
                 });
-                
+
+                // Look up the tool to capture its current version
+                const tool = toolMap.get(n.toolId);
+
                 return {
                     id: n.id,
                     toolIdentifier: n.toolId,
+                    toolVersion: tool?.version || '1.0.0', // Capture current tool version for migration tracking
                     displayName: n.displayName,
                     parameterMappings: stepMappings
                 };

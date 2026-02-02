@@ -80,7 +80,10 @@ class OpenAIAdapter {
   async execute(params) {
     const { action = 'chat' } = params;
     if (action === 'chat') {
-      const { prompt, instructions, temperature, model } = params;
+      // Support both new (prompt, instructions) and legacy (input_prompt, input_instructions) parameter names
+      const prompt = params.prompt ?? params.input_prompt;
+      const instructions = params.instructions ?? params.input_instructions;
+      const { temperature, model } = params;
       const result = await this.svc.executeChatCompletion({ prompt, instructions, temperature, model });
       
       // Handle both old format (string) and new format (object with content, usage)

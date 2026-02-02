@@ -1,6 +1,7 @@
 const ltxVideoTool = {
   toolId: 'ltx-video',
   service: 'huggingface',
+  version: '1.0.0',
   displayName: 'LTX Video',
   commandName: '/ltxvideo',
   apiPath: '/huggingface/ltx-video',

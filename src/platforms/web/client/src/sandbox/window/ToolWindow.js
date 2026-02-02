@@ -39,6 +39,10 @@ export default class ToolWindow extends BaseWindow {
     // Build parameter mappings (defaults) if not provided
     if (parameterMappings) {
       this.parameterMappings = JSON.parse(JSON.stringify(parameterMappings));
+      // Migrate old parameter names to new ones for string-primitive tool
+      if (this.tool.toolId === 'string-primitive') {
+        this._migrateStringPrimitiveParams();
+      }
     } else {
       this.parameterMappings = {};
       if (this.tool.inputSchema) {
@@ -202,6 +206,35 @@ export default class ToolWindow extends BaseWindow {
       currentVersionIndex: this.currentVersionIndex,
       parameterMappings: this.parameterMappings,
     };
+  }
+
+  /**
+   * Migrate old string-primitive parameter names to new ones.
+   * Old: stringA, stringB, searchValue
+   * New: inputText, appendText, searchText, replacementText
+   */
+  _migrateStringPrimitiveParams() {
+    const pm = this.parameterMappings;
+    // Migrate stringA -> inputText
+    if (pm.stringA && !pm.inputText) {
+      pm.inputText = pm.stringA;
+      delete pm.stringA;
+    }
+    // Migrate stringB -> appendText (for concat) or replacementText (for replace)
+    if (pm.stringB && !pm.appendText && !pm.replacementText) {
+      const operation = pm.operation?.value || 'concat';
+      if (operation === 'concat') {
+        pm.appendText = pm.stringB;
+      } else {
+        pm.replacementText = pm.stringB;
+      }
+      delete pm.stringB;
+    }
+    // Migrate searchValue -> searchText
+    if (pm.searchValue && !pm.searchText) {
+      pm.searchText = pm.searchValue;
+      delete pm.searchValue;
+    }
   }
 
   // ---------------------------------------------------------------------

@@ -4,10 +4,22 @@
 const chatGptTool = {
   toolId: 'chatgpt-free',
   service: 'openai',
+  version: '2.0.0',
   displayName: 'ChatGPT',
   commandName: '/chat',
   apiPath: '/llm/chat',
   description: 'A general-purpose conversational AI. Use it to ask questions, get explanations, or generate text.',
+
+  // Migration definitions for upgrading spells from older tool versions
+  migrations: {
+    '1.0.0': {
+      parameters: {
+        'input_prompt': 'prompt',
+        'input_instructions': 'instructions'
+      }
+    }
+  },
+
   inputSchema: {
     prompt: {
       name: 'prompt',

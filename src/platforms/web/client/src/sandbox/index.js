@@ -816,16 +816,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 function initLassoSelection() {
     const canvas = document.querySelector('.sandbox-canvas');
+    const sandboxContent = document.querySelector('.sandbox-content');
 
-    canvas.addEventListener('mousedown', (e) => {
+    // Listen on sandboxContent instead of canvas because after zoom/pan transforms,
+    // the canvas element may not cover the full visible area (especially when zoomed out),
+    // causing clicks to miss the canvas and hit sandbox-bg or sandbox-content instead.
+    sandboxContent.addEventListener('mousedown', (e) => {
         // Figma-style: only start lasso with left mouse, no spacebar
         // Exclude tool windows and their interactive elements from lasso selection
         const isToolWindow = e.target.closest('.tool-window, .spell-window');
         if (isToolWindow) return; // Don't start lasso when clicking on tool windows
-        
-        // Only start lasso when clicking directly on canvas background
-        const isCanvasClick = e.target === canvas || 
-                             (e.target.classList && e.target.classList.contains('sandbox-bg'));
+
+        // Only start lasso when clicking on canvas or background areas (not on other UI elements)
+        const isCanvasClick = e.target === canvas ||
+                             e.target.closest('.sandbox-canvas') ||
+                             (e.target.classList && e.target.classList.contains('sandbox-bg')) ||
+                             e.target === sandboxContent;
         if (e.button !== 0 || !isCanvasClick || spacebarIsDown) return;
 
         lasso.active = true;

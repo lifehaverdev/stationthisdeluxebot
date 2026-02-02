@@ -1,6 +1,7 @@
 const joycaptionTool = {
   toolId: 'joycaption',
   service: 'huggingface',
+  version: '1.0.0',
   displayName: 'JoyCaption',
   commandName: '/joycaption',
   apiPath: '/huggingface/interrogate',
