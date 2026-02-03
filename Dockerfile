@@ -17,7 +17,7 @@ COPY package*.json ./
 # Install only production dependencies (skip dev stack for faster builds)
 ENV NODE_ENV=production
 RUN npm install -g pm2 \
-    && npm install --omit=dev
+    && npm install --omit=dev --legacy-peer-deps
 
 # Copy the rest of the application code
 # Note: Docker will automatically invalidate this cache when files change
