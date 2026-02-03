@@ -113,6 +113,14 @@ async function initializeServices(options = {}) {
       if (reviewQueueDb && typeof reviewQueueDb.ensureIndexes === 'function') {
         await reviewQueueDb.ensureIndexes();
       }
+      // x402 payment log indexes (for replay protection and analytics)
+      if (process.env.X402_ENABLED === 'true' || process.env.X402_ENABLED === '1') {
+        const x402PaymentLogDb = initializedDbServices?.data?.x402PaymentLog;
+        if (x402PaymentLogDb && typeof x402PaymentLogDb.ensureIndexes === 'function') {
+          await x402PaymentLogDb.ensureIndexes();
+          logger.info('[initializeServices] x402PaymentLogDb indexes ensured.');
+        }
+      }
     } catch (indexErr) {
       logger.error('Failed to ensure DB indexes:', indexErr);
     }

@@ -5,6 +5,10 @@ const TrainingRunner = require('./TrainingRunner');
 const TrainingOutputParser = require('./TrainingOutputParser');
 const TrainingMonitor = require('./TrainingMonitor');
 const StallDetector = require('./StallDetector');
+const WarmPoolManager = require('./WarmPoolManager');
+const GPUScheduler = require('./GPUScheduler');
+const ServiceRunner = require('./ServiceRunner');
+const ServiceJobProcessor = require('./ServiceJobProcessor');
 
 module.exports = {
   VastAIService,
@@ -13,5 +17,9 @@ module.exports = {
   TrainingRunner,
   TrainingOutputParser,
   TrainingMonitor,
-  StallDetector
+  StallDetector,
+  WarmPoolManager,
+  GPUScheduler,
+  ServiceRunner,
+  ServiceJobProcessor
 };

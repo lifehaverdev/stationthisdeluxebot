@@ -246,7 +246,9 @@ router.get('/list', async (req, res) => {
       dbQuery.$or = [
         { name: { $regex: searchTerm, $options: 'i' } },
         { slug: { $regex: searchTerm, $options: 'i' } },
-        { triggerWords: { $regex: searchTerm, $options: 'i' } }
+        { triggerWords: { $regex: searchTerm, $options: 'i' } },
+        { description: { $regex: searchTerm, $options: 'i' } },
+        { 'tags.tag': { $regex: searchTerm, $options: 'i' } }
       ];
     }
 

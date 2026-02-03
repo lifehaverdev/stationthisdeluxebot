@@ -27,6 +27,7 @@ const CostsDB = require('./costsDb'); // ADDED: costs service
 const CollectionExportsDB = require('./collectionExportsDb');
 const ReviewQueueDB = require('./reviewQueueDb');
 const EmbellishmentTasksDB = require('./embellishmentTasksDb');
+const X402PaymentLogDB = require('./x402PaymentLogDb');
 
 // Import new on-chain DB services
 const CreditLedgerDB = require('./alchemy/creditLedgerDb');
@@ -75,6 +76,7 @@ function initializeDbServices(logger) {
     collectionExports: CollectionExportsDB ? new CollectionExportsDB(logger) : null,
     reviewQueue: ReviewQueueDB ? new ReviewQueueDB(logger) : null,
     embellishmentTasks: EmbellishmentTasksDB ? new EmbellishmentTasksDB(logger) : null,
+    x402PaymentLog: X402PaymentLogDB ? new X402PaymentLogDB(logger) : null,
 
     // On-chain services
     creditLedger: CreditLedgerDB ? new CreditLedgerDB(logger) : null,

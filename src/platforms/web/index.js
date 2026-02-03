@@ -15,6 +15,7 @@ const { createLogger } = require('../../utils/logger');
 const { authenticateUser } = require('./middleware/auth');
 const csrfProtection = require('./middleware/csrf'); // <-- Import new CSRF middleware
 const { referralHandler } = require('./middleware/referralHandler');
+const { createAgentCardRouter } = require('../../api/external/mcp/agentCard');
 
 // Add this function before middleware setup
 function rawBodySaver(req, res, buf, encoding) {
@@ -155,6 +156,16 @@ function initializeWebPlatform(services, options = {}) {
       app.get('/api/health', (req, res) => {
         res.status(200).json({ status: 'ok' });
       });
+
+      // ERC-8004 Agent Card (/.well-known/agent-card.json)
+      const agentCardRouter = createAgentCardRouter({
+        toolRegistry: services.toolRegistry,
+        internalApiClient: services.internalApiClient
+      });
+      if (agentCardRouter) {
+        app.use('/.well-known/agent-card.json', agentCardRouter);
+        logger.info('[WebPlatform] Agent card mounted at /.well-known/agent-card.json');
+      }
 
       // --- Static File Serving ---
       const clientDir = path.join(__dirname, 'client');

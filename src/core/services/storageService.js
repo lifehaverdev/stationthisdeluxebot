@@ -33,7 +33,8 @@ class StorageService {
       uploads: base,
       datasets: process.env.R2_DATASETS_BUCKET || 'datasets',
       exports: process.env.R2_EXPORTS_BUCKET || 'exports',
-      gallery: process.env.R2_EXPORTS_BUCKET || 'exports'
+      gallery: process.env.R2_EXPORTS_BUCKET || 'exports',
+      models: process.env.R2_MODELS_BUCKET || 'models'
     };
   }
 
@@ -214,6 +215,12 @@ class StorageService {
         return process.env.R2_GALLERY_PUBLIC_URL;
       }
       return 'https://gallery.miladystation2.net';
+    }
+    if (alias === 'models') {
+      if (process.env.R2_MODELS_PUBLIC_URL) {
+        return process.env.R2_MODELS_PUBLIC_URL;
+      }
+      return 'https://models.miladystation2.net';
     }
     return null;
   }

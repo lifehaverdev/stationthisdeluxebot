@@ -578,6 +578,20 @@ function initializeInternalServices(dependencies = {}) {
     logger.error('[InternalAPI] Failed to create Upload API router.');
   }
 
+  // Admin API Service (Revenue reporting, etc.):
+  try {
+    const { createAdminApi } = require('./admin');
+    const adminApiRouter = createAdminApi(apiDependencies);
+    if (adminApiRouter) {
+      v1DataRouter.use('/admin', adminApiRouter);
+      logger.info('[InternalAPI] Admin API service mounted to /v1/data/admin');
+    } else {
+      logger.error('[InternalAPI] Failed to create Admin API router.');
+    }
+  } catch (err) {
+    logger.error('[InternalAPI] Error initializing Admin API:', err);
+  }
+
   // --- Global Error Handling ---
   // Catch-all for 404 Not Found on the internal API path
   mainInternalRouter.use((req, res, next) => {

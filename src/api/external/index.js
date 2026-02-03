@@ -22,6 +22,9 @@ const createCookApiRouter = require('./cookApi');
 const createReviewQueueApiRouter = require('./reviewQueueApi');
 const createWorkspacesApiRouter = require('./workspacesApi');
 const createPaymentsApi = require('./payments/paymentsApi');
+const createX402GenerationApi = require('./x402/x402GenerationApi');
+const { createX402Middleware } = require('../../platforms/web/middleware/x402');
+const { createMcpRouter } = require('./mcp');
 
 
 /**
@@ -72,6 +75,30 @@ function initializeExternalApi(dependencies) {
 
   // Apply the rate limiter to all routes in the external API router.
   externalApiRouter.use(limiter);
+
+  /**
+   * x402 Payment Middleware
+   * Parses and verifies X-PAYMENT headers for x402 payment protocol.
+   * Only applied to x402 routes - attaches payment info to req.x402
+   */
+  const x402Enabled = process.env.X402_ENABLED === 'true' || process.env.X402_ENABLED === '1';
+  const x402ReceiverAddress = process.env.X402_RECEIVER_ADDRESS;
+  const x402Network = process.env.X402_NETWORK || 'eip155:8453'; // Default to Base mainnet
+
+  let x402Middleware = null;
+  if (x402Enabled && x402ReceiverAddress) {
+    try {
+      x402Middleware = createX402Middleware({
+        receiverAddress: x402ReceiverAddress,
+        network: x402Network
+      });
+      logger.info('[ExternalAPI] x402 middleware initialized', { network: x402Network });
+    } catch (err) {
+      logger.error('[ExternalAPI] Failed to initialize x402 middleware:', err.message);
+    }
+  } else if (x402Enabled && !x402ReceiverAddress) {
+    logger.warn('[ExternalAPI] x402 enabled but X402_RECEIVER_ADDRESS not set. x402 endpoints will not be available.');
+  }
 
   /**
    * API Key Authentication Middleware (Placeholder)
@@ -251,6 +278,18 @@ function initializeExternalApi(dependencies) {
     logger.warn('External Tools API router not mounted due to missing dependencies.');
   }
 
+  // Mount the MCP API router (Model Context Protocol - Public discovery, auth for execution)
+  const mcpRouter = createMcpRouter({
+    toolRegistry: dependencies.toolRegistry,
+    internalApiClient: dependencies.internalApiClient || internalApiClient
+  });
+  if (mcpRouter) {
+    externalApiRouter.use('/mcp', mcpRouter);
+    logger.info('External MCP API router mounted at /mcp. (Public discovery, API key for execution)');
+  } else {
+    logger.warn('External MCP API router not mounted due to missing dependencies.');
+  }
+
   // Mount the Auth API router (Publicly Accessible)
   const authRouter = createAuthApi(dependencies);
   if (authRouter) {
@@ -306,6 +345,27 @@ function initializeExternalApi(dependencies) {
     logger.info('External Webhook API router mounted at /webhook. (Public with validation)');
   } else {
     logger.warn('External Webhook API router not mounted due to missing dependencies.');
+  }
+
+  // Mount the x402 Generation API router (Payment-authenticated, no account required)
+  // This enables pay-per-request access for AI agents with wallets
+  if (x402Enabled && x402Middleware && x402ReceiverAddress) {
+    try {
+      const x402Router = createX402GenerationApi({
+        toolRegistry: dependencies.toolRegistry,
+        internalApiClient: dependencies.internalApiClient,
+        x402PaymentLogDb: dependencies.db?.data?.x402PaymentLog,
+        receiverAddress: x402ReceiverAddress,
+        network: x402Network
+      });
+      // Apply x402 middleware only to x402 routes
+      externalApiRouter.use('/x402', x402Middleware, x402Router);
+      logger.info('External x402 Generation API router mounted at /x402. (Payment auth via X-PAYMENT header)');
+    } catch (err) {
+      logger.error('[ExternalAPI] Failed to mount x402 API:', err.message);
+    }
+  } else if (!x402Enabled) {
+    logger.info('[ExternalAPI] x402 protocol disabled (X402_ENABLED not set)');
   }
 
   // Mount the Admin Vault API router (Protected by NFT ownership verification)
