@@ -190,6 +190,15 @@ export default class ModsMenuModal {
           this.fetchWizardCaptionSets(this.state.wizardDatasetId);
         }
 
+        // Wizard awareness: refresh datasets when control embellishment completes (for step 2 control dataset selection)
+        if (embellishmentType === 'control' && status === 'completed') {
+          this.fetchDatasets().then(() => {
+            if (this.state.wizardStep === 2) {
+              this.render();
+            }
+          });
+        }
+
         // Re-render if viewing the affected dataset
         if (normalizedDatasetId === this.normalizeId(this.state.selectedDatasetId)) {
           if (status === 'completed' || status === 'failed' || status === 'cancelled') {
@@ -570,9 +579,12 @@ export default class ModsMenuModal {
         else if (wizardStep === 4) stepContent = this.renderWizardStep4();
         const isFirst = wizardStep === 1;
         const isLast = wizardStep === 4;
+        // Show progress panel for running embellishment tasks in wizard
+        const progressHtml = this.renderWizardProgressPanel();
         mainContent = `
           <h2>New Training</h2>
           ${stepBar}
+          ${progressHtml}
           ${stepContent}
           <div class="wizard-footer">
             <button class="btn-secondary wizard-cancel-btn">Cancel</button>
@@ -1458,18 +1470,136 @@ export default class ModsMenuModal {
 
   /**
    * Generate control images for a dataset (for KONTEXT concept mode)
-   * This opens the embellishment dialog for control image generation
+   * Shows a dialog to select spell and input concept description
    */
   async generateControlImages(datasetId) {
     if (!datasetId) return;
-    // Open embellishment dialog for control image generation
     const dataset = this.getDatasetById(datasetId);
     if (!dataset) {
       alert('Dataset not found');
       return;
     }
-    // Trigger control image generation embellishment
-    this.openEmbellishmentDialog(dataset, 'control');
+
+    // Fetch available control spells
+    let controlSpells = [];
+    try {
+      const res = await fetch('/api/v1/datasets/embellishment-spells?type=control', { credentials: 'include' });
+      if (res.ok) {
+        const json = await res.json();
+        controlSpells = json.data || [];
+      }
+    } catch (err) {
+      console.warn('[ModsMenuModal] Failed to fetch control spells', err);
+    }
+
+    if (!controlSpells.length) {
+      alert('No control image generation spells are available. Please contact support.');
+      return;
+    }
+
+    // Create dialog
+    const overlay = document.createElement('div');
+    overlay.className = 'import-overlay';
+
+    const spellOpts = controlSpells.map((s, idx) =>
+      `<option value="${s.slug}" data-idx="${idx}">${s.name}</option>`
+    ).join('');
+
+    overlay.innerHTML = `<div class="import-dialog control-generator-dialog">
+      <h3>Generate Control Images</h3>
+      <p class="dialog-description">Create "before" images for KONTEXT concept training. These will be paired with your result images to teach the model a transformation.</p>
+
+      <label>Dataset:<br>
+        <input type="text" class="control-dataset-name" value="${this.escapeHtml(dataset.name)} (${(dataset.images || []).length} images)" disabled />
+      </label>
+
+      <label>Control Spell:<br>
+        <select class="control-spell-select">${spellOpts}</select>
+      </label>
+
+      <label>Concept Description:<br>
+        <textarea class="control-concept-input" rows="3" placeholder="Describe what transformation/concept you're training. Example: 'make her a fullyarmoredgirl with a deluxe weaponized mech suit'"></textarea>
+      </label>
+      <p class="input-hint">This tells the spell what was added to the original images, so it can generate the "before" versions.</p>
+
+      <div class="error-message" style="display:none"></div>
+      <div class="btn-row">
+        <button class="confirm-control-btn btn-primary">Generate</button>
+        <button class="cancel-control-btn btn-secondary">Cancel</button>
+      </div>
+    </div>`;
+
+    document.body.appendChild(overlay);
+
+    const errEl = overlay.querySelector('.error-message');
+    const cleanup = () => { document.body.removeChild(overlay); };
+
+    overlay.querySelector('.cancel-control-btn').onclick = cleanup;
+    overlay.onclick = (e) => { if (e.target === overlay) cleanup(); };
+
+    overlay.querySelector('.confirm-control-btn').onclick = async () => {
+      const spellSlug = overlay.querySelector('.control-spell-select').value;
+      const concept = overlay.querySelector('.control-concept-input').value.trim();
+
+      if (!concept) {
+        errEl.textContent = 'Please describe the concept you are training.';
+        errEl.style.display = 'block';
+        return;
+      }
+
+      overlay.querySelector('.confirm-control-btn').disabled = true;
+
+      try {
+        const csrfRes = await fetch('/api/v1/csrf-token');
+        const { csrfToken } = await csrfRes.json();
+        const masterAccountId = await this.getCurrentMasterAccountId();
+
+        const payload = {
+          spellSlug,
+          masterAccountId,
+          parameterOverrides: {
+            prompt: concept
+          }
+        };
+
+        const res = await fetch(`/api/v1/datasets/${encodeURIComponent(datasetId)}/embellish`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrfToken },
+          body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error?.message || 'Failed to start control image generation');
+        }
+
+        const taskInfo = await res.json();
+        if (taskInfo.taskId) {
+          this.handleEmbellishmentProgressEvent({
+            taskId: taskInfo.taskId.toString(),
+            datasetId,
+            embellishmentType: 'control',
+            status: 'started',
+            progress: {
+              total: taskInfo.totalItems || 0,
+              completed: 0,
+              failed: 0
+            }
+          });
+        }
+
+        cleanup();
+
+        // Refresh datasets to show the embellishment task
+        await this.fetchDatasets();
+        this.render();
+      } catch (err) {
+        errEl.textContent = err.message || 'Generation failed';
+        errEl.style.display = 'block';
+        overlay.querySelector('.confirm-control-btn').disabled = false;
+      }
+    };
   }
 
   async fetchWizardCaptionSets(datasetId) {
@@ -1500,6 +1630,45 @@ export default class ModsMenuModal {
   }
 
   /* ====================== WIZARD RENDER METHODS ====================== */
+
+  /**
+   * Render progress panel for running embellishment tasks in wizard view
+   * Shows tasks for the currently selected wizard dataset or any running tasks
+   */
+  renderWizardProgressPanel() {
+    const { wizardDatasetId, embellishmentTasks } = this.state;
+    const normalizedWizardId = this.normalizeId(wizardDatasetId);
+
+    // Get running tasks (for wizard dataset or any running)
+    const runningTasks = Object.values(embellishmentTasks || {}).filter(task => {
+      if (!task) return false;
+      if (task.status === 'running') return true;
+      // Also show recently completed for the wizard dataset
+      if (task.datasetId === normalizedWizardId && task.completedAt && (Date.now() - task.completedAt) < 5000) return true;
+      return false;
+    });
+
+    if (!runningTasks.length) return '';
+
+    return `<div class="wizard-progress-panel">
+      ${runningTasks.map(task => {
+        const percent = task.total ? Math.min(100, Math.round((task.completedCount / task.total) * 100)) : 0;
+        const typeLabel = this.getEmbellishmentTypeLabel(task.embellishmentType);
+        const statusLabel = task.status === 'completed' ? 'Completed' : `${typeLabel}…`;
+        const secondary = task.total ? `${task.completedCount}/${task.total} images` : 'Starting...';
+
+        return `<div class="wizard-progress-card status-${task.status}">
+          <div class="wizard-progress-info">
+            <span class="wizard-progress-label">${statusLabel}</span>
+            <span class="wizard-progress-count">${secondary}</span>
+          </div>
+          <div class="wizard-progress-bar">
+            <div class="wizard-progress-fill" style="width:${percent}%;"></div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
 
   renderWizardStepBar() {
     const { wizardStep } = this.state;
@@ -2902,6 +3071,7 @@ export default class ModsMenuModal {
   getEmbellishmentTypeLabel(type) {
     const labels = {
       caption: 'Captioning',
+      control: 'Control Images',
       controlImage: 'Control Images',
       audio: 'Audio',
       video: 'Video',

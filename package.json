@@ -7,6 +7,7 @@
     "@aws-sdk/client-s3": "^3.840.0",
     "@aws-sdk/lib-storage": "^3.840.0",
     "@aws-sdk/s3-request-presigner": "^3.840.0",
+    "@coinbase/x402": "^2.1.0",
     "@modelcontextprotocol/sdk": "^1.25.3",
     "@privy-io/server-auth": "^1.17.2",
     "@solana/spl-token": "^0.4.9",

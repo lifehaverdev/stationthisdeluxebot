@@ -1,8 +1,11 @@
 /**
  * StationThis Bot - Entry Point
- * 
+ *
  * This file serves as the entry point for the application.
  */
+
+// Load environment variables FIRST before any other imports
+require('dotenv').config();
 
 //const express = require('express');
 const path = require('path');

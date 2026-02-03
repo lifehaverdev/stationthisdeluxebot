@@ -28,16 +28,15 @@ const TEST_PROMPT = `This is a digital illustration in a fantasy art style, remi
 
 To her left, there is a small, floating mushroom-like creature, adding a whimsical and mystical aspect to the b0throps-infused scene. The background, with its subtle light blue and gray patterns, enhances the overall b0throps aesthetic of the artwork. At the bottom left, a game-like interface with text options adds a futuristic twist to the b0throps theme, creating a unique blend of styles. The muted color palette of silver, white, and green further accentuates the b0throps influence in the illustration.`;
 
-// Flux Schnell from HuggingFace
-const FLUX_SCHNELL_URL = 'https://huggingface.co/black-forest-labs/FLUX.1-schnell/resolve/main/flux1-schnell.safetensors';
-
-// Flux component models (VAE + CLIP)
-const FLUX_VAE_URL = 'https://huggingface.co/black-forest-labs/FLUX.1-schnell/resolve/main/ae.safetensors';
-const FLUX_T5_URL = 'https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp16.safetensors';
-const FLUX_CLIP_URL = 'https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors';
-
-// b0throps LoRA from HuggingFace (user's trained model)
-const LORA_URL = 'https://huggingface.co/ms2stationthis/b0throps/resolve/main/b0throps.safetensors';
+// Models from R2 CDN (faster than HuggingFace, no auth required)
+const R2_BASE = 'https://models.miladystation2.net';
+const MODELS = {
+  unet: { url: `${R2_BASE}/unet/flux1-schnell.safetensors`, dest: 'unet/flux1-schnell.safetensors', size: '23GB' },
+  vae: { url: `${R2_BASE}/vae/ae.safetensors`, dest: 'vae/ae.safetensors', size: '320MB' },
+  t5xxl: { url: `${R2_BASE}/clip/t5xxl_fp16.safetensors`, dest: 'clip/t5xxl_fp16.safetensors', size: '9.2GB' },
+  clip_l: { url: `${R2_BASE}/clip/clip_l.safetensors`, dest: 'clip/clip_l.safetensors', size: '235MB' },
+  lora: { url: `${R2_BASE}/loras/b0throps.safetensors`, dest: 'loras/b0throps.safetensors', size: '328MB' }
+};
 const LORA_NAME = 'b0throps.safetensors';
 
 class E2ETest {
@@ -307,77 +306,39 @@ class E2ETest {
     this.logger.info('Creating model directories...');
     await this.ssh.exec(`mkdir -p ${MODELS_DIR}/unet ${MODELS_DIR}/vae ${MODELS_DIR}/clip ${MODELS_DIR}/loras`);
 
-    // HuggingFace token for gated models (FLUX requires auth)
-    const hfToken = process.env.HF_TOKEN;
-    const hfAuth = hfToken ? `--header="Authorization: Bearer ${hfToken}"` : '';
+    // Download all models in PARALLEL from R2 CDN
+    // This is the key optimization: ~33GB downloaded concurrently instead of sequentially
+    this.logger.info('Downloading models from R2 CDN (parallel)...');
+    const downloadStart = Date.now();
 
-    // Download Flux Schnell UNet (~12GB)
-    const unetExists = await this.ssh.exec(`test -f ${MODELS_DIR}/unet/flux1-schnell.safetensors && echo "yes" || echo "no"`);
-    if (unetExists.trim() !== 'yes') {
-      this.logger.info('Downloading Flux Schnell UNet (~12GB)...');
-      await this.ssh.exec(
-        `wget -q --progress=dot:giga ${hfAuth} "${FLUX_SCHNELL_URL}" -O ${MODELS_DIR}/unet/flux1-schnell.safetensors`,
-        { timeout: 900000 }
-      );
-      this.logger.info('Flux Schnell downloaded!');
-    } else {
-      this.logger.info('Flux Schnell already present');
-    }
+    const downloadPromises = Object.entries(MODELS).map(async ([name, config]) => {
+      const destPath = `${MODELS_DIR}/${config.dest}`;
 
-    // Download VAE (~335MB)
-    const vaeExists = await this.ssh.exec(`test -f ${MODELS_DIR}/vae/ae.safetensors && echo "yes" || echo "no"`);
-    if (vaeExists.trim() !== 'yes') {
-      this.logger.info('Downloading Flux VAE (~335MB)...');
-      await this.ssh.exec(
-        `wget -q --progress=dot:giga ${hfAuth} "${FLUX_VAE_URL}" -O ${MODELS_DIR}/vae/ae.safetensors`,
-        { timeout: 300000 }
-      );
-      this.logger.info('Flux VAE downloaded!');
-    } else {
-      this.logger.info('Flux VAE already present');
-    }
+      // Check if already exists
+      const exists = await this.ssh.exec(`test -f ${destPath} && echo "yes" || echo "no"`);
+      if (exists.trim() === 'yes') {
+        this.logger.info(`  ${name}: already present`);
+        return { name, skipped: true };
+      }
 
-    // Download T5-XXL CLIP (~9.8GB)
-    const t5Exists = await this.ssh.exec(`test -f ${MODELS_DIR}/clip/t5xxl_fp16.safetensors && echo "yes" || echo "no"`);
-    if (t5Exists.trim() !== 'yes') {
-      this.logger.info('Downloading T5-XXL CLIP encoder (~9.8GB)...');
-      await this.ssh.exec(
-        `wget -q --progress=dot:giga ${hfAuth} "${FLUX_T5_URL}" -O ${MODELS_DIR}/clip/t5xxl_fp16.safetensors`,
-        { timeout: 900000 }
-      );
-      this.logger.info('T5-XXL downloaded!');
-    } else {
-      this.logger.info('T5-XXL already present');
-    }
+      this.logger.info(`  ${name}: downloading ${config.size}...`);
+      const start = Date.now();
 
-    // Download CLIP-L (~235MB)
-    const clipLExists = await this.ssh.exec(`test -f ${MODELS_DIR}/clip/clip_l.safetensors && echo "yes" || echo "no"`);
-    if (clipLExists.trim() !== 'yes') {
-      this.logger.info('Downloading CLIP-L encoder (~235MB)...');
       await this.ssh.exec(
-        `wget -q --progress=dot:giga ${hfAuth} "${FLUX_CLIP_URL}" -O ${MODELS_DIR}/clip/clip_l.safetensors`,
-        { timeout: 300000 }
+        `wget -q "${config.url}" -O ${destPath}`,
+        { timeout: 900000 }  // 15 min timeout for large files
       );
-      this.logger.info('CLIP-L downloaded!');
-    } else {
-      this.logger.info('CLIP-L already present');
-    }
 
-    // Download b0throps LoRA (344MB)
-    const loraExists = await this.ssh.exec(`test -f ${MODELS_DIR}/loras/${LORA_NAME} && echo "yes" || echo "no"`);
-    if (loraExists.trim() !== 'yes') {
-      this.logger.info('Downloading b0throps LoRA (344MB)...');
-      await this.ssh.exec(
-        `wget -q --progress=dot:giga "${LORA_URL}" -O ${MODELS_DIR}/loras/${LORA_NAME}`,
-        { timeout: 300000 }
-      );
-      this.logger.info('b0throps LoRA downloaded!');
-    } else {
-      this.logger.info('b0throps LoRA already present');
-    }
+      const duration = ((Date.now() - start) / 1000).toFixed(1);
+      this.logger.info(`  ${name}: done (${duration}s)`);
+      return { name, duration };
+    });
+
+    const results = await Promise.all(downloadPromises);
+    const downloadDuration = ((Date.now() - downloadStart) / 1000).toFixed(1);
+    this.logger.info(`All models ready in ${downloadDuration}s (parallel download)`);
 
     // Show downloaded models
-    this.logger.info('Models ready:');
     const modelList = await this.ssh.exec(`ls -lh ${MODELS_DIR}/unet/ ${MODELS_DIR}/vae/ ${MODELS_DIR}/clip/ ${MODELS_DIR}/loras/ 2>/dev/null | grep safetensors || echo "none"`);
     this.logger.info(modelList);
 

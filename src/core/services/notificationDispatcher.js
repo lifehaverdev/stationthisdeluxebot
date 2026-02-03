@@ -280,11 +280,15 @@ class NotificationDispatcher {
         }
       }
       
-      if (!record.metadata || !record.metadata.notificationContext) {
-          throw new Error('Missing metadata.notificationContext in generationRecord.');
+      // Webhook notifier doesn't need notificationContext - it reads webhookUrl from metadata
+      // Other platforms require notificationContext
+      if (record.notificationPlatform !== 'webhook') {
+        if (!record.metadata || !record.metadata.notificationContext) {
+            throw new Error('Missing metadata.notificationContext in generationRecord.');
+        }
       }
 
-      await notifier.sendNotification(record.metadata.notificationContext, messageContent, record);
+      await notifier.sendNotification(record.metadata?.notificationContext || {}, messageContent, record);
       
       this.logger.info(`[NotificationDispatcher] Successfully sent notification for generationId: ${recordId} via ${record.notificationPlatform}.`);
       const updateSentOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };

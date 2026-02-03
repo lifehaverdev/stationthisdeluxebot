@@ -34,6 +34,7 @@ const csrfExcluded = [
   '/api/v1/payments/', // Public payment endpoints for spell execution
   '/api/v1/mcp', // MCP protocol - discovery is public, execution uses API key auth
   '/api/v1/x402/', // x402 payment protocol - uses payment header auth, not session
+  '/.well-known/', // Agent discovery files - all public
 ];
 
 // Helper: robust path matching (ignores query params, matches prefix)

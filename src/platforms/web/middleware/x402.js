@@ -15,10 +15,11 @@
 const { HTTPFacilitatorClient } = require('@x402/core/server');
 const { decodePaymentSignatureHeader } = require('@x402/core/http');
 const { createLogger } = require('../../../utils/logger');
+const { createFacilitatorConfig } = require('@coinbase/x402');
 
 const logger = createLogger('x402Middleware');
 
-// Default facilitator (Coinbase CDP - supports Base mainnet, fee-free USDC settlement)
+// Fallback facilitator URL if @coinbase/x402 not available
 const DEFAULT_FACILITATOR_URL = 'https://api.cdp.coinbase.com/platform/v2/x402';
 
 /**
@@ -49,8 +50,7 @@ const DEFAULT_FACILITATOR_URL = 'https://api.cdp.coinbase.com/platform/v2/x402';
 function createX402Middleware(config) {
   const {
     receiverAddress,
-    network,
-    facilitatorUrl = DEFAULT_FACILITATOR_URL
+    network
   } = config;
 
   if (!receiverAddress) {
@@ -60,13 +60,27 @@ function createX402Middleware(config) {
     throw new Error('x402 middleware requires network');
   }
 
-  // Create facilitator client (talks to x402.org)
-  const facilitatorClient = new HTTPFacilitatorClient({ url: facilitatorUrl });
+  // Use CDP facilitator from @coinbase/x402 (handles auth automatically via env vars)
+  // Create config at runtime to ensure env vars are loaded
+  const apiKeyId = process.env.CDP_API_KEY_ID;
+  const apiKeySecret = process.env.CDP_API_KEY_SECRET;
+
+  if (!apiKeyId || !apiKeySecret) {
+    logger.warn('[x402] CDP credentials NOT found in environment (CDP_API_KEY_ID, CDP_API_KEY_SECRET)');
+  } else {
+    logger.info('[x402] CDP credentials found, key ID:', apiKeyId.slice(0, 8) + '...');
+  }
+
+  // Create facilitator config with explicit credentials (not relying on lazy env loading)
+  const cdpFacilitator = createFacilitatorConfig(apiKeyId, apiKeySecret);
+  logger.info('[x402] CDP Facilitator URL:', cdpFacilitator.url);
+
+  const facilitatorClient = new HTTPFacilitatorClient(cdpFacilitator);
 
   logger.info(`[x402] Middleware initialized`, {
     receiverAddress,
     network,
-    facilitatorUrl
+    facilitator: 'CDP (@coinbase/x402)'
   });
 
   return async function x402PaymentMiddleware(req, res, next) {

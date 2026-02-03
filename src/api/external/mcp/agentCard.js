@@ -32,15 +32,15 @@ function createAgentCardRouter(dependencies) {
    */
   router.get('/', async (req, res) => {
     try {
-      // Get live counts
-      const toolCount = await getToolCount(toolRegistry);
+      // Get live tool data
+      const { tools, categories } = getToolData(toolRegistry);
       const loraCount = await getLoraCount(internalApiClient);
 
       const agentCard = {
         // Required ERC-8004 fields
         type: 'https://eips.ethereum.org/EIPS/eip-8004#registration-v1',
         name: 'NOEMA',
-        description: buildDescription(toolCount, loraCount),
+        description: buildDescription(tools.length, loraCount),
         image: 'https://noema.art/images/noema-logo.png',
         active: true,
 
@@ -54,19 +54,18 @@ function createAgentCardRouter(dependencies) {
             name: 'MCP',
             endpoint: 'https://noema.art/api/v1/mcp',
             version: '2025-11-25'
+          },
+          {
+            name: 'x402',
+            endpoint: 'https://noema.art/api/v1/x402/generate',
+            version: '1.0'
           }
-          // Future: A2A endpoint
-          // {
-          //   name: 'A2A',
-          //   endpoint: 'https://noema.art/api/v1/a2a',
-          //   version: '1.0'
-          // }
         ],
 
         // Payment support
-        x402Support: process.env.X402_ENABLED === 'true',
+        x402Support: true,
 
-        // On-chain registrations (populated after registration)
+        // On-chain registrations
         registrations: ERC8004_CONFIG.agentId ? [{
           agentId: ERC8004_CONFIG.agentId,
           agentRegistry: ERC8004_CONFIG.agentRegistry
@@ -75,30 +74,33 @@ function createAgentCardRouter(dependencies) {
         // Trust mechanisms we support
         supportedTrust: ['reputation'],
 
-        // Extended metadata (not part of core spec, but useful)
+        // Extended metadata (not part of core spec, but useful for agents)
         metadata: {
           generatedAt: new Date().toISOString(),
-          toolCount,
+          toolCount: tools.length,
           loraCount,
-          categories: [
-            'text-to-image',
-            'image-to-image',
-            'text-to-video',
-            'image-to-video',
-            'upscale',
-            'image-to-text'
-          ],
+          categories,
+          tools: tools.map(t => ({
+            id: t.toolId,
+            name: t.displayName,
+            category: t.category
+          })),
           pricing: {
             model: 'credits',
+            x402: 'USDC on Base',
             documentation: 'https://noema.art/pricing',
-            x402Endpoint: process.env.X402_ENABLED === 'true'
-              ? 'https://noema.art/api/v1/x402/generate'
-              : null
+            x402Endpoint: 'https://noema.art/api/v1/x402/generate'
           },
           documentation: {
             api: 'https://noema.art/docs',
             tools: 'https://noema.art/api/v1/tools/registry',
             loras: 'https://noema.art/api/v1/loras/list'
+          },
+          skills: {
+            claude: 'https://noema.art/.well-known/ai-skill.md',
+            openai: 'https://noema.art/.well-known/openai-skill.md',
+            openapi: 'https://noema.art/.well-known/openapi.json',
+            plugin: 'https://noema.art/.well-known/ai-plugin.json'
           }
         }
       };
@@ -108,7 +110,7 @@ function createAgentCardRouter(dependencies) {
       res.setHeader('Content-Type', 'application/json');
       res.json(agentCard);
 
-      logger.info('[AgentCard] Served agent card', { toolCount, loraCount });
+      logger.info('[AgentCard] Served agent card', { toolCount: tools.length, loraCount });
 
     } catch (error) {
       logger.error('[AgentCard] Error generating agent card:', error);
@@ -123,18 +125,31 @@ function createAgentCardRouter(dependencies) {
 }
 
 /**
- * Get count of public tools
+ * Get live tool data from registry
+ * @returns {{ tools: Array, categories: string[] }}
  */
-async function getToolCount(toolRegistry) {
-  if (!toolRegistry) return 0;
+function getToolData(toolRegistry) {
+  if (!toolRegistry) return { tools: [], categories: [] };
 
   try {
     const allTools = toolRegistry.getAllTools();
     const publicTools = filterToolsForMcp(allTools);
-    return publicTools.length;
+
+    // Extract unique categories from live tools
+    const categorySet = new Set();
+    publicTools.forEach(tool => {
+      if (tool.category) {
+        categorySet.add(tool.category);
+      }
+    });
+
+    return {
+      tools: publicTools,
+      categories: Array.from(categorySet).sort()
+    };
   } catch (error) {
-    logger.error('[AgentCard] Error counting tools:', error);
-    return 0;
+    logger.error('[AgentCard] Error getting tool data:', error);
+    return { tools: [], categories: [] };
   }
 }
 

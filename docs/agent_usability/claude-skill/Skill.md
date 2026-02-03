@@ -18,14 +18,47 @@ NOEMA supports the **Model Context Protocol (MCP)** for AI agent communication:
 
 ### MCP Methods Available
 
+**Discovery (Public - No API Key Required):**
 ```
 initialize          - Protocol handshake
-tools/list          - List all 27 generation tools with schemas
-tools/call          - Execute a tool (requires X-API-Key header)
+tools/list          - List all generation tools with schemas
 resources/list      - List LoRA models (paginated)
 resources/read      - Search LoRAs or get details
 prompts/list        - Get prompt templates
-prompts/get         - Get a specific prompt template
+spells/list         - List available spell workflows
+spells/get          - Get spell details (public spells only)
+```
+
+**Execution (Requires API Key):**
+```
+tools/call          - Execute a generation tool
+spells/cast         - Execute a spell workflow
+spells/status       - Check spell execution status
+```
+
+**Collections (Requires API Key):**
+```
+collections/list    - List user's collections
+collections/get     - Get collection details
+collections/create  - Create new collection
+collections/update  - Update collection config
+collections/delete  - Delete collection
+collections/cook/start  - Start batch generation
+collections/cook/pause  - Pause generation
+collections/cook/resume - Resume generation
+collections/cook/stop   - Stop generation
+collections/review  - Review generated pieces
+collections/export  - Export approved pieces
+```
+
+**Training (Requires API Key):**
+```
+trainings/list          - List training jobs
+trainings/get           - Get training details
+trainings/create        - Start new LoRA training
+trainings/calculate-cost - Estimate training cost
+trainings/delete        - Delete training
+trainings/retry         - Retry failed training
 ```
 
 ### Quick MCP Example
@@ -48,6 +81,9 @@ Activate this skill when the user wants to:
 - Use trained models (LoRAs) for characters, styles, or concepts
 - Upscale or enhance existing images
 - Transform images (img2img, inpainting)
+- **Execute reusable workflows (Spells)**
+- **Batch generate and curate collections**
+- **Train custom LoRA models**
 
 ## Core Concepts
 
@@ -187,18 +223,58 @@ Body:
 ```
 
 ### Step 6: Handle Results
-For immediate delivery, the response contains the result directly.
 
-For webhook/async delivery, poll for status:
+**tools/call Response:**
+```json
+{
+  "content": [{
+    "type": "text",
+    "text": "{\"success\":true,\"generationId\":\"gen_abc123\",\"status\":\"pending\",\"pollUrl\":\"https://noema.art/api/v1/generation/status/gen_abc123\"}"
+  }]
+}
+```
+
+Parse the JSON in `content[0].text` to get the `generationId`.
+
+**Error Response:**
+```json
+{
+  "content": [{ "type": "text", "text": "{\"error\":\"Insufficient credits\"}" }],
+  "isError": true
+}
+```
+
+**Polling for Results:**
 ```
 GET https://noema.art/api/v1/generation/status/{generationId}
+Headers: X-API-Key: {key}
+```
+
+**Poll Response:**
+```json
+{
+  "generationId": "gen_abc123",
+  "status": "completed",
+  "progress": 100,
+  "result": {
+    "image": "https://storage.noema.art/outputs/abc123.png"
+  },
+  "duration": 12500,
+  "cost": { "amount": 0.04, "pointsDeducted": 120 }
+}
 ```
 
 Status values:
-- `pending`: Queued
-- `processing`: Generating
-- `completed`: Done - result available
-- `failed`: Error occurred
+- `pending`: Queued (poll again in 2-5 seconds)
+- `processing`: Generating (poll again in 2-5 seconds)
+- `completed`: Done - result available in `result` field
+- `failed`: Error occurred - check `error` field
+
+**Polling Guidance:**
+- Poll every 2-5 seconds
+- Most images complete in 10-30 seconds
+- Videos may take 60-180 seconds
+- Give up after 5 minutes if still pending (likely stuck)
 
 ## Authentication
 
@@ -218,11 +294,95 @@ Before executing, inform users of estimated cost:
 - `unit`: `second` | `token` | `request`
 - Estimate based on expected duration/complexity
 
+**Example costingModel:**
+```json
+{
+  "rateSource": "static",
+  "staticCost": { "amount": 0.04, "unit": "run" }
+}
+```
+This means 0.04 credits per generation. For time-based tools:
+```json
+{
+  "rateSource": "dynamic",
+  "rate": 0.001,
+  "unit": "second"
+}
+```
+
 Users have a credit balance queryable at:
 ```
 GET https://noema.art/api/v1/points
 Headers: X-API-Key: {key}
 ```
+
+**Response:**
+```json
+{
+  "balance": 5000,
+  "currency": "points"
+}
+```
+
+---
+
+## Image Uploads
+
+For img2img, style transfer, or any tool requiring an input image, users must provide an image URL. NOEMA accepts:
+
+1. **Direct URLs** - Publicly accessible image URLs (https://...)
+2. **Data URLs** - Base64 encoded images (`data:image/png;base64,...`)
+3. **NOEMA URLs** - URLs from previous generations
+
+For tools expecting `imageUrl` parameter:
+```json
+{"jsonrpc":"2.0","method":"tools/call","params":{
+  "name": "sdxl-img2img",
+  "arguments": {
+    "imageUrl": "https://example.com/source-image.jpg",
+    "prompt": "transform to watercolor style",
+    "denoisingStrength": 0.6
+  }
+},"id":1}
+```
+
+**Note:** Large base64 images may hit size limits. Prefer hosted URLs when possible.
+
+---
+
+## Dataset Upload (for Training)
+
+To train a custom LoRA, you first need to upload a training dataset:
+
+**Step 1: Create Upload Session**
+```
+POST https://noema.art/api/v1/upload/dataset
+Headers: X-API-Key: {key}
+Content-Type: application/json
+
+{ "name": "My Character Dataset", "imageCount": 20 }
+```
+
+**Step 2: Upload Images**
+Upload images to the returned presigned URLs or use the web interface.
+
+**Step 3: Use Dataset ID**
+Once uploaded, use the `datasetId` in your training request:
+```json
+{"jsonrpc":"2.0","method":"trainings/create","params":{
+  "name": "My Character LoRA",
+  "modelType": "SDXL",
+  "datasetId": "dataset_abc123",
+  "triggerWords": ["mycharacter"]
+},"id":1}
+```
+
+**Dataset Best Practices:**
+- 10-50 images recommended
+- Consistent subject, varied poses/angles/lighting
+- High resolution (512x512 minimum, 1024x1024 preferred)
+- Clear, uncluttered backgrounds help
+- Include close-ups and full shots for characters
 
 ## Trigger Word Best Practices
 
@@ -249,6 +409,347 @@ User: "Make this image higher resolution"
 User: "What's in this image?"
 → Use interrogator/captioning tool → Return description
 
+---
+
+## Spells (Reusable Workflows)
+
+Spells are pre-built, reusable generation workflows that combine multiple steps. Instead of manually orchestrating tool calls, cast a spell to execute a complete workflow.
+
+### When to Use Spells
+
+- User wants a complex multi-step workflow (e.g., "generate and then upscale")
+- User wants consistent results using a proven recipe
+- User describes a task that matches a known spell pattern
+- Simplifying repetitive workflows
+
+### Discovering Spells
+
+**Via MCP:**
+```json
+{"jsonrpc":"2.0","method":"spells/list","id":1}
+```
+
+**Via REST:**
+```
+GET https://noema.art/api/v1/spells/public
+```
+
+**Response Example:**
+```json
+{
+  "spells": [
+    {
+      "name": "Portrait Generator",
+      "slug": "portrait-generator",
+      "description": "Generate professional portraits with customizable styles",
+      "visibility": "public",
+      "inputs": [
+        { "name": "subject", "type": "string", "required": true },
+        { "name": "style", "type": "string", "required": false }
+      ]
+    }
+  ]
+}
+```
+
+### Getting Spell Details
+
+**Via MCP:**
+```json
+{"jsonrpc":"2.0","method":"spells/get","params":{"slug":"portrait-generator"},"id":1}
+```
+
+Returns full spell definition including all steps and parameters.
+
+### Casting a Spell
+
+**Via MCP:**
+```json
+{"jsonrpc":"2.0","method":"spells/cast","params":{
+  "slug": "portrait-generator",
+  "context": {
+    "subject": "a warrior princess",
+    "style": "fantasy art"
+  }
+},"id":1}
+```
+
+**Parameters:**
+- `slug`: Spell identifier (from spells/list)
+- `context`: Input values matching the spell's `inputs` definition
+
+**Via REST:**
+```
+POST https://noema.art/api/v1/spells/cast
+{
+  "slug": "portrait-generator",
+  "context": { "subject": "a warrior princess", "style": "fantasy art" }
+}
+```
+
+**Response:**
+```json
+{
+  "castId": "cast_abc123",
+  "status": "pending",
+  "spellSlug": "portrait-generator"
+}
+```
+
+### Checking Spell Status
+
+**Via MCP:**
+```json
+{"jsonrpc":"2.0","method":"spells/status","params":{"castId":"cast_abc123"},"id":1}
+```
+
+**Via REST:**
+```
+GET https://noema.art/api/v1/spells/casts/{castId}
+```
+
+**Response:**
+```json
+{
+  "castId": "cast_abc123",
+  "status": "completed",
+  "progress": 100,
+  "results": {
+    "outputs": [{ "type": "image", "url": "https://..." }]
+  }
+}
+```
+
+Status values: `pending`, `processing`, `completed`, `failed`
+
+**Polling Guidance:** Poll every 2-5 seconds. Most spells complete within 30-120 seconds depending on complexity. Give up after 5 minutes if still pending.
+
+### Spell Workflow Example
+
+```
+User: "Create a professional headshot with multiple variations"
+
+Claude's Process:
+1. Search spells → Find "headshot-variations" spell
+2. Get spell details → Requires: subject description, count
+3. Cast spell with parameters
+4. Poll status until complete
+5. Return all generated variations to user
+```
+
+---
+
+## Collections (Batch Generation)
+
+Collections enable batch generation workflows where you generate many pieces, review them, and export the best ones. This is ideal for creating NFT collections, asset packs, or any project requiring quantity with curation.
+
+### Collection Lifecycle
+
+```
+CREATE → COOK → REVIEW → EXPORT
+   │        │       │        │
+   │        │       │        └─ Package approved pieces
+   │        │       └─ Accept/reject each piece
+   │        └─ Batch generate (can pause/resume)
+   └─ Define config, prompts, target count
+```
+
+### When to Use Collections
+
+- User needs many variations of similar content
+- User is creating an NFT collection or asset pack
+- User wants to generate in bulk and curate the best
+- User needs to pause/resume a long generation job
+
+### Creating a Collection
+
+**Via MCP:**
+```json
+{"jsonrpc":"2.0","method":"collections/create","params":{
+  "name": "Fantasy Warriors Collection",
+  "targetCount": 100,
+  "toolId": "sdxl-base",
+  "promptTemplate": "fantasy warrior, {variation}, detailed armor, epic lighting",
+  "config": {
+    "width": 1024,
+    "height": 1024,
+    "variations": ["male", "female", "elf", "dwarf", "orc"]
+  }
+},"id":1}
+```
+
+### Starting Generation (Cook)
+
+**Via MCP:**
+```json
+{"jsonrpc":"2.0","method":"collections/cook/start","params":{"id":"col_abc123"},"id":1}
+```
+
+The system will generate pieces in the background. You can:
+- **Pause**: `collections/cook/pause` - Temporarily stop
+- **Resume**: `collections/cook/resume` - Continue where you left off
+- **Stop**: `collections/cook/stop` - End generation entirely
+
+### Reviewing Pieces
+
+**Via MCP:**
+```json
+{"jsonrpc":"2.0","method":"collections/review","params":{
+  "collectionId": "col_abc123",
+  "pieceId": "piece_xyz",
+  "decision": "accepted"
+},"id":1}
+```
+
+Decisions: `accepted`, `rejected`
+
+### Exporting Collection
+
+**Via MCP:**
+```json
+{"jsonrpc":"2.0","method":"collections/export","params":{
+  "id": "col_abc123",
+  "format": "zip",
+  "includeMetadata": true
+},"id":1}
+```
+
+### Collection Workflow Example
+
+```
+User: "I need to create a 50-piece NFT collection of cyberpunk cats"
+
+Claude's Process:
+1. Create collection with:
+   - name: "Cyberpunk Cats"
+   - targetCount: 50
+   - toolId: "flux-dev" (good for detailed art)
+   - promptTemplate with cyberpunk elements
+2. Start cook → Generation begins
+3. Periodically check status via collections/get
+4. Guide user through review process
+5. Export approved pieces when user is satisfied
+```
+
+---
+
+## Training (Custom LoRA Models)
+
+Train custom LoRA models to capture specific characters, styles, or concepts. Once trained, your LoRA can be activated via trigger words just like built-in LoRAs.
+
+### Training Workflow
+
+```
+PREPARE DATASET → CREATE TRAINING → MONITOR → USE LORA
+       │                │              │          │
+       │                │              │          └─ Include trigger in prompts
+       │                │              └─ Check progress, wait for completion
+       │                └─ Configure model type, steps, trigger words
+       └─ Upload images (10-50 recommended)
+```
+
+### When to Use Training
+
+- User wants consistent character across generations
+- User has a unique style they want to replicate
+- User wants to fine-tune for specific concepts
+- User mentions "train", "teach", "learn my style"
+
+### Supported Model Types
+
+| Model Type | Best For | Training Time |
+|------------|----------|---------------|
+| `FLUX` | Highest quality, photorealistic | Longer |
+| `SDXL` | Balanced quality, large ecosystem | Medium |
+| `SD1.5` | Fast training, many existing LoRAs | Shorter |
+| `KONTEXT` | Character consistency | Medium |
+
+### Calculating Training Cost
+
+Before committing, estimate the cost:
+
+**Via MCP:**
+```json
+{"jsonrpc":"2.0","method":"trainings/calculate-cost","params":{
+  "modelType": "FLUX",
+  "steps": 1000
+},"id":1}
+```
+
+### Creating a Training Job
+
+**Via MCP:**
+```json
+{"jsonrpc":"2.0","method":"trainings/create","params":{
+  "name": "My Character Sarah",
+  "modelType": "SDXL",
+  "datasetId": "dataset_abc123",
+  "triggerWords": ["sarah_character", "sarahv1"],
+  "steps": 1000,
+  "loraRank": 16,
+  "loraAlpha": 32
+},"id":1}
+```
+
+**Key Parameters:**
+- `datasetId`: Previously uploaded training images
+- `triggerWords`: Words that will activate this LoRA
+- `steps`: Training iterations (1000 default, more = longer but potentially better)
+- `loraRank`: Model capacity (16 default, higher = more detail but larger file)
+
+### Monitoring Training
+
+**Via MCP:**
+```json
+{"jsonrpc":"2.0","method":"trainings/get","params":{"id":"train_abc123"},"id":1}
+```
+
+Status values:
+- `pending`: Queued for processing
+- `processing`: Training in progress (check `progress` field)
+- `completed`: Done - LoRA ready to use
+- `failed`: Error occurred (can retry)
+
+### Using Your Trained LoRA
+
+Once completed, the LoRA is automatically available. Use your trigger words in any compatible generation:
+
+```json
+{"jsonrpc":"2.0","method":"tools/call","params":{
+  "name": "sdxl-base",
+  "arguments": {
+    "prompt": "sarah_character standing in a garden, detailed portrait, soft lighting"
+  }
+},"id":1}
+```
+
+### Training Workflow Example
+
+```
+User: "I want to train a model on my character design"
+
+Claude's Process:
+1. Confirm user has dataset uploaded (or guide them to upload)
+2. Calculate cost → Inform user
+3. Create training with appropriate settings:
+   - Model type matching their target use case
+   - Memorable trigger words
+   - Appropriate steps for quality/cost balance
+4. Monitor progress → Keep user updated
+5. Once complete, demonstrate using the new LoRA
+6. Explain how to use trigger words in future generations
+```
+
+### Training Best Practices
+
+1. **Dataset Quality**: 10-50 high-quality, varied images work best
+2. **Trigger Words**: Use unique, memorable words unlikely to conflict
+3. **Steps**: 1000 for quick results, 2000+ for complex concepts
+4. **Model Choice**: Match to your primary generation tool
+5. **Test First**: Generate samples to verify quality before heavy use
+
+---
+
 ## Error Handling
 
 | Error | Meaning | Action |
@@ -270,7 +771,13 @@ User: "What's in this image?"
 | `/api/v1/loras/list` | REST: List/search LoRAs |
 | `/api/v1/generation/cast` | REST: Execute generation |
 | `/api/v1/generation/status/{id}` | REST: Poll for results |
+| `/api/v1/spells/marketplace` | REST: List available spells |
+| `/api/v1/spells/cast` | REST: Execute spell |
+| `/api/v1/spells/casts/{id}` | REST: Spell status |
+| `/api/v1/collections` | REST: Collection management |
+| `/api/v1/trainings` | REST: Training management |
 | `/.well-known/agent-card.json` | ERC-8004 agent discovery |
+| `/.well-known/openapi.json` | OpenAPI spec for Codex/ChatGPT |
 
 ## Reference Documents
 
@@ -370,6 +877,8 @@ Claude's Process:
 
 ## Quick Reference
 
+### Generation Tasks
+
 | Task | Tool Type | LoRA Support | Key Parameters |
 |------|-----------|--------------|----------------|
 | Text → Image | DALL-E, FLUX, SDXL | DALL-E: No, Others: Yes | prompt, size, quality |
@@ -379,6 +888,25 @@ Claude's Process:
 | Image → Text | JoyCaption | No | imageUrl, captionType |
 | Upscale | Upscaler | No | imageUrl, scale |
 
+### Advanced Features
+
+| Feature | MCP Method | When to Use |
+|---------|------------|-------------|
+| Spell Workflows | `spells/cast` | Multi-step automated workflows |
+| Batch Generation | `collections/cook/start` | Generate many pieces at once |
+| Curation | `collections/review` | Accept/reject batch results |
+| Custom LoRA Training | `trainings/create` | Teach new characters/styles |
+| Cost Estimation | `trainings/calculate-cost` | Before committing to training |
+
+### MCP Method Quick Reference
+
+| Category | List | Execute | Status |
+|----------|------|---------|--------|
+| Tools | `tools/list` | `tools/call` | via generationId |
+| Spells | `spells/list` | `spells/cast` | `spells/status` |
+| Collections | `collections/list` | `collections/cook/start` | `collections/get` |
+| Trainings | `trainings/list` | `trainings/create` | `trainings/get` |
+
 ---
 
-*This skill enables rich AI generation workflows. Always check tool and LoRA availability via the API before making recommendations.*
+*This skill enables rich AI generation workflows including single generations, spell workflows, batch collections, and custom model training. Always check tool and LoRA availability via the API before making recommendations.*

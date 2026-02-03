@@ -16,6 +16,7 @@ const { authenticateUser } = require('./middleware/auth');
 const csrfProtection = require('./middleware/csrf'); // <-- Import new CSRF middleware
 const { referralHandler } = require('./middleware/referralHandler');
 const { createAgentCardRouter } = require('../../api/external/mcp/agentCard');
+const { createSkillRouter } = require('../../api/external/mcp/skillRouter');
 
 // Add this function before middleware setup
 function rawBodySaver(req, res, buf, encoding) {
@@ -165,6 +166,16 @@ function initializeWebPlatform(services, options = {}) {
       if (agentCardRouter) {
         app.use('/.well-known/agent-card.json', agentCardRouter);
         logger.info('[WebPlatform] Agent card mounted at /.well-known/agent-card.json');
+      }
+
+      // AI Skill files and OpenAPI spec (/.well-known/ai-skill.md, /.well-known/openapi.json, etc.)
+      const skillRouter = createSkillRouter({
+        toolRegistry: services.toolRegistry,
+        internalApiClient: services.internalApiClient
+      });
+      if (skillRouter) {
+        app.use('/.well-known', skillRouter);
+        logger.info('[WebPlatform] Skill router mounted at /.well-known/*');
       }
 
       // --- Static File Serving ---

@@ -1,6 +1,19 @@
 const express = require('express');
 const { ObjectId } = require('mongodb');
 
+/**
+ * Convert masterAccountId to appropriate format for storage.
+ * For x402 executions, keeps the synthetic string ID (e.g., "x402:0x...")
+ * For regular users, converts to ObjectId.
+ */
+function toMasterAccountId(id, isX402 = false) {
+  if (isX402) {
+    // x402 uses synthetic IDs like "x402:0x1234..." - store as string
+    return id;
+  }
+  return new ObjectId(id);
+}
+
 // This function initializes the routes for the centralized Generation Execution API
 module.exports = function generationExecutionApi(dependencies) {
   const { logger, db, toolRegistry, comfyUIService, openaiService, huggingfaceService, internalApiClient, loraResolutionService, stringService, webSocketService: websocketServer, adminActivityService } = dependencies;
@@ -49,6 +62,14 @@ module.exports = function generationExecutionApi(dependencies) {
       }
 
       // 3. --- Pre-Execution Credit Check ---
+      // Skip credit check for x402 payments - they pay directly in USDC
+      const isX402Execution = user.isX402 === true;
+      if (isX402Execution) {
+        logger.info(`[Execute] x402 payment detected - skipping credit check for payer ${user.payerAddress}`);
+        // For x402, we still need cost info for record-keeping, so continue to calculate it
+        // but don't do the user lookup or points check
+      }
+
       try {
         // 3a. --- Determine Cost Rate ---
         if (!tool.costingModel || !tool.costingModel.rateSource) {
@@ -116,34 +137,37 @@ module.exports = function generationExecutionApi(dependencies) {
         pointsRequired = Math.max(1, Math.round(costUsd / USD_PER_POINT));
 
         // 3c. --- Fetch User's Wallet and Points ---
-        const userId = user.masterAccountId;
-        const userCoreRes = await internalApiClient.get(`/internal/v1/data/users/${userId}`);
-        const userCore = userCoreRes.data;
+        // Skip for x402 executions - they pay directly in USDC, not points
+        if (!isX402Execution) {
+          const userId = user.masterAccountId;
+          const userCoreRes = await internalApiClient.get(`/internal/v1/data/users/${userId}`);
+          const userCore = userCoreRes.data;
 
-        let walletAddress = null;
-        if (userCore.wallets && userCore.wallets.length > 0) {
-          const primary = userCore.wallets.find(w => w.isPrimary);
-          walletAddress = (primary ? primary.address : userCore.wallets[0].address) || null;
-        }
+          let walletAddress = null;
+          if (userCore.wallets && userCore.wallets.length > 0) {
+            const primary = userCore.wallets.find(w => w.isPrimary);
+            walletAddress = (primary ? primary.address : userCore.wallets[0].address) || null;
+          }
 
-        if (!walletAddress) {
-          logger.error(`[Execute] Pre-check failed: Could not find a wallet address for user ${userId}.`);
-          return res.status(403).json({ error: { code: 'WALLET_NOT_FOUND', message: 'User wallet not available for credit check.' } });
-        }
+          if (!walletAddress) {
+            logger.error(`[Execute] Pre-check failed: Could not find a wallet address for user ${userId}.`);
+            return res.status(403).json({ error: { code: 'WALLET_NOT_FOUND', message: 'User wallet not available for credit check.' } });
+          }
 
-        const pointsResponse = await internalApiClient.get(`/internal/v1/data/ledger/points/by-wallet/${walletAddress}`);
-        const currentPoints = pointsResponse.data.points || 0;
-        
-        logger.info(`[Pre-Execution Credit Check] User ${userId} (Wallet: ${walletAddress}) has ${currentPoints} points. Required: ${pointsRequired}`);
-        
-        if (currentPoints < pointsRequired) {
-          return res.status(402).json({
-            error: {
-              code: 'INSUFFICIENT_FUNDS',
-              message: 'You do not have enough points to execute this workflow.',
-              details: { required: pointsRequired, available: currentPoints }
-            }
-          });
+          const pointsResponse = await internalApiClient.get(`/internal/v1/data/ledger/points/by-wallet/${walletAddress}`);
+          const currentPoints = pointsResponse.data.points || 0;
+
+          logger.info(`[Pre-Execution Credit Check] User ${userId} (Wallet: ${walletAddress}) has ${currentPoints} points. Required: ${pointsRequired}`);
+
+          if (currentPoints < pointsRequired) {
+            return res.status(402).json({
+              error: {
+                code: 'INSUFFICIENT_FUNDS',
+                message: 'You do not have enough points to execute this workflow.',
+                details: { required: pointsRequired, available: currentPoints }
+              }
+            });
+          }
         }
       } catch (creditCheckErr) {
         logger.error(`[Pre-Execution Credit Check] Error during credit check for user ${user.masterAccountId}:`, creditCheckErr);
@@ -209,7 +233,7 @@ module.exports = function generationExecutionApi(dependencies) {
           const isSpellStep = metadata && metadata.isSpell;
           
           const generationParams = {
-            masterAccountId: new ObjectId(masterAccountId),
+            masterAccountId: toMasterAccountId(masterAccountId, isX402Execution),
             ...(sessionId && { sessionId: new ObjectId(sessionId) }),
             ...(eventId && { initiatingEventId: new ObjectId(eventId) }),
             serviceName: tool.service,
@@ -221,7 +245,7 @@ module.exports = function generationExecutionApi(dependencies) {
             deliveryStatus: initialDeliveryStatus,
             ...(isSpellStep && { deliveryStrategy: 'spell_step' }), // CRITICAL: Mark spell steps for NotificationDispatcher routing
             notificationPlatform: user.platform || 'none',
-            pointsSpent: pointsRequired,
+            pointsSpent: isX402Execution ? 0 : pointsRequired, // x402 pays in USDC, not points
             protocolNetPoints: 0,
             // Use adapter's calculated cost if available, otherwise fall back to pre-calculated estimate
             costUsd: (toolResult.costUsd !== undefined && toolResult.costUsd !== null) ? toolResult.costUsd : costUsd,
@@ -313,7 +337,7 @@ module.exports = function generationExecutionApi(dependencies) {
           const initialDeliveryStatus = (user.platform && user.platform !== 'none') ? 'pending' : 'skipped';
 
           const generationParams = {
-            masterAccountId: new ObjectId(masterAccountId),
+            masterAccountId: toMasterAccountId(masterAccountId, isX402Execution),
             ...(sessionId && { sessionId: new ObjectId(sessionId) }),
             ...(eventId && { initiatingEventId: new ObjectId(eventId) }),
             serviceName: tool.service,
@@ -323,7 +347,7 @@ module.exports = function generationExecutionApi(dependencies) {
             status: 'processing',
             deliveryStatus: initialDeliveryStatus,
             notificationPlatform: user.platform || 'none',
-            pointsSpent: pointsRequired,
+            pointsSpent: isX402Execution ? 0 : pointsRequired,
             protocolNetPoints: 0,
             costUsd: costUsd,
             metadata: {
@@ -438,7 +462,7 @@ module.exports = function generationExecutionApi(dependencies) {
           const finalNotificationPlatform = isCookGeneration ? 'cook' : (user.platform || 'none');
           
           const generationParams = {
-            masterAccountId: new ObjectId(masterAccountId),
+            masterAccountId: toMasterAccountId(masterAccountId, isX402Execution),
             ...(sessionId && { sessionId: new ObjectId(sessionId) }),
             ...(eventId && { initiatingEventId: new ObjectId(eventId) }),
             serviceName: tool.service,
@@ -451,7 +475,7 @@ module.exports = function generationExecutionApi(dependencies) {
             deliveryStatus: initialDeliveryStatus,
             ...(isSpellStep && { deliveryStrategy: 'spell_step' }),
             notificationPlatform: finalNotificationPlatform,
-            pointsSpent: 0,
+            pointsSpent: 0, // Points calculated later after execution for comfyui
             protocolNetPoints: 0,
             costUsd: null,
             metadata: {
@@ -557,7 +581,7 @@ module.exports = function generationExecutionApi(dependencies) {
           
           const initialDeliveryStatus = (user.platform && user.platform !== 'none') ? 'pending' : 'skipped';
           const generationParams = {
-            masterAccountId: new ObjectId(masterAccountId),
+            masterAccountId: toMasterAccountId(masterAccountId, isX402Execution),
             ...(sessionId && { sessionId: new ObjectId(sessionId) }),
             ...(eventId && { initiatingEventId: new ObjectId(eventId) }),
             serviceName: tool.service,

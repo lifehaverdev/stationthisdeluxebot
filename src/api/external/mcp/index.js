@@ -55,16 +55,25 @@ function createMcpRouter(dependencies) {
     res.json({
       ...serverInfo,
       capabilities: serverCapabilities,
-      description: `NOEMA AI Generation Platform - ${publicTools.length} generation tools, LoRA model library, prompt templates`,
+      description: `NOEMA AI Generation Platform - ${publicTools.length} generation tools, LoRA model library, spell workflows, collection management, and LoRA training`,
       endpoints: {
         mcp: 'https://noema.art/api/v1/mcp',
         documentation: 'https://noema.art/docs',
         tools: 'https://noema.art/api/v1/tools/registry',
-        loras: 'https://noema.art/api/v1/loras/list'
+        loras: 'https://noema.art/api/v1/loras/list',
+        spells: 'https://noema.art/api/v1/spells/marketplace',
+        collections: 'https://noema.art/api/v1/collections',
+        trainings: 'https://noema.art/api/v1/trainings'
+      },
+      methods: {
+        discovery: ['tools/list', 'resources/list', 'resources/read', 'prompts/list', 'spells/list'],
+        execution: ['tools/call', 'spells/cast', 'spells/status'],
+        collections: ['collections/list', 'collections/get', 'collections/create', 'collections/update', 'collections/delete', 'collections/cook/start', 'collections/cook/pause', 'collections/cook/resume', 'collections/cook/stop', 'collections/export'],
+        trainings: ['trainings/list', 'trainings/get', 'trainings/create', 'trainings/calculate-cost', 'trainings/delete', 'trainings/retry']
       },
       authentication: {
-        required: 'Tool execution requires X-API-Key header',
-        discovery: 'Tool and resource listing is public'
+        required: 'Execution methods require X-API-Key header',
+        discovery: 'Discovery methods (tools/list, spells/list, resources/list) are public'
       }
     });
   });
@@ -207,10 +216,164 @@ async function handleMethod(method, params, context) {
     case 'prompts/get':
       return getPrompt(params);
 
+    // ============================================
+    // Spells (forwarded to external API)
+    // ============================================
+    case 'spells/list':
+      // Use /spells/public path which maps to /internal/v1/data/spells/public
+      return await forwardToApi('GET', '/api/v1/spells/public', params, null, internalApiClient);
+
+    case 'spells/get':
+      // Public spells don't require auth - use public endpoint
+      // Accepts either 'slug' or 'spellId' parameter
+      const spellSlug = params.slug || params.spellId;
+      return await forwardToApi('GET', `/api/v1/spells/public/${spellSlug}`, null, apiKey, internalApiClient);
+
+    case 'spells/cast':
+      requireApiKey(apiKey);
+      // Transform params to match internal API expectations
+      const castParams = {
+        slug: params.slug || params.spellId,
+        context: params.context || params.parameters || {}
+      };
+      return await forwardToApi('POST', '/api/v1/spells/cast', castParams, apiKey, internalApiClient);
+
+    case 'spells/status':
+      requireApiKey(apiKey);
+      return await forwardToApi('GET', `/api/v1/spells/casts/${params.castId}`, null, apiKey, internalApiClient);
+
+    // ============================================
+    // Collections (forwarded to external API)
+    // ============================================
+    case 'collections/list':
+      requireApiKey(apiKey);
+      return await forwardToApi('GET', '/api/v1/collections', params, apiKey, internalApiClient);
+
+    case 'collections/get':
+      requireApiKey(apiKey);
+      return await forwardToApi('GET', `/api/v1/collections/${params.id}`, null, apiKey, internalApiClient);
+
+    case 'collections/create':
+      requireApiKey(apiKey);
+      return await forwardToApi('POST', '/api/v1/collections', params, apiKey, internalApiClient);
+
+    case 'collections/update':
+      requireApiKey(apiKey);
+      return await forwardToApi('PUT', `/api/v1/collections/${params.id}`, params, apiKey, internalApiClient);
+
+    case 'collections/delete':
+      requireApiKey(apiKey);
+      return await forwardToApi('DELETE', `/api/v1/collections/${params.id}`, null, apiKey, internalApiClient);
+
+    case 'collections/cook/start':
+      requireApiKey(apiKey);
+      return await forwardToApi('POST', `/api/v1/collections/${params.id}/cook/start`, params, apiKey, internalApiClient);
+
+    case 'collections/cook/pause':
+      requireApiKey(apiKey);
+      return await forwardToApi('POST', `/api/v1/collections/${params.id}/cook/pause`, null, apiKey, internalApiClient);
+
+    case 'collections/cook/resume':
+      requireApiKey(apiKey);
+      return await forwardToApi('POST', `/api/v1/collections/${params.id}/cook/resume`, null, apiKey, internalApiClient);
+
+    case 'collections/cook/stop':
+      requireApiKey(apiKey);
+      return await forwardToApi('POST', `/api/v1/collections/${params.id}/cook/stop`, null, apiKey, internalApiClient);
+
+    case 'collections/review':
+      requireApiKey(apiKey);
+      return await forwardToApi('PUT', `/api/v1/collections/${params.collectionId}/pieces/${params.pieceId}/review`, params, apiKey, internalApiClient);
+
+    case 'collections/export':
+      requireApiKey(apiKey);
+      return await forwardToApi('POST', `/api/v1/collections/${params.id}/export`, params, apiKey, internalApiClient);
+
+    // ============================================
+    // Trainings (forwarded to external API)
+    // ============================================
+    case 'trainings/list':
+      requireApiKey(apiKey);
+      return await forwardToApi('GET', '/api/v1/trainings', params, apiKey, internalApiClient);
+
+    case 'trainings/get':
+      requireApiKey(apiKey);
+      return await forwardToApi('GET', `/api/v1/trainings/${params.id}`, null, apiKey, internalApiClient);
+
+    case 'trainings/create':
+      requireApiKey(apiKey);
+      return await forwardToApi('POST', '/api/v1/trainings', params, apiKey, internalApiClient);
+
+    case 'trainings/calculate-cost':
+      return await forwardToApi('POST', '/api/v1/trainings/calculate-cost', params, apiKey, internalApiClient);
+
+    case 'trainings/delete':
+      requireApiKey(apiKey);
+      return await forwardToApi('DELETE', `/api/v1/trainings/${params.id}`, null, apiKey, internalApiClient);
+
+    case 'trainings/retry':
+      requireApiKey(apiKey);
+      return await forwardToApi('POST', `/api/v1/trainings/${params.id}/retry`, null, apiKey, internalApiClient);
+
     default:
       const error = new Error(`Method not found: ${method}`);
       error.code = -32601;
       throw error;
+  }
+}
+
+/**
+ * Helper to require API key
+ */
+function requireApiKey(apiKey) {
+  if (!apiKey) {
+    const err = new Error('API key required. Include X-API-Key header.');
+    err.code = -32001;
+    throw err;
+  }
+}
+
+/**
+ * Forward MCP request to external API
+ */
+async function forwardToApi(method, path, params, apiKey, internalApiClient) {
+  try {
+    const headers = apiKey ? { 'X-Forwarded-API-Key': apiKey } : {};
+    let response;
+
+    // Convert external path to internal path
+    const internalPath = path.replace('/api/v1/', '/internal/v1/data/');
+
+    if (method === 'GET') {
+      response = await internalApiClient.get(internalPath, { params, headers });
+    } else if (method === 'POST') {
+      response = await internalApiClient.post(internalPath, params || {}, { headers });
+    } else if (method === 'PUT') {
+      response = await internalApiClient.put(internalPath, params || {}, { headers });
+    } else if (method === 'DELETE') {
+      response = await internalApiClient.delete(internalPath, { headers });
+    }
+
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify(response.data, null, 2)
+      }]
+    };
+  } catch (error) {
+    const status = error.response?.status;
+    const msg = error.response?.data?.error?.message || error.response?.data?.message || error.message;
+
+    // Map HTTP status to MCP error codes
+    let code = -32603; // Internal error
+    if (status === 401) code = -32001;
+    if (status === 402) code = -32002;
+    if (status === 404) code = -32004;
+    if (status === 400) code = -32602;
+
+    const err = new Error(msg);
+    err.code = code;
+    throw err;
   }
 }
 
