@@ -687,6 +687,47 @@ function createDatasetsApi(dependencies) {
     }
   });
 
+  // PATCH /internal/v1/data/datasets/:datasetId/captions/:captionSetId/entries/:index - Update a single caption
+  router.patch('/:datasetId/captions/:captionSetId/entries/:index', async (req, res) => {
+    const { datasetId, captionSetId, index } = req.params;
+    const { masterAccountId, text } = req.body;
+    const entryIndex = parseInt(index, 10);
+
+    if (!masterAccountId) {
+      return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'masterAccountId is required' } });
+    }
+    if (isNaN(entryIndex) || entryIndex < 0) {
+      return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Invalid entry index' } });
+    }
+    if (typeof text !== 'string') {
+      return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'text is required' } });
+    }
+
+    try {
+      // Verify ownership
+      const dataset = await datasetDb.findOne({ _id: new ObjectId(datasetId) }, { projection: { ownerAccountId: 1, captionSets: 1 } });
+      if (!dataset) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Dataset not found' } });
+      }
+      if (dataset.ownerAccountId.toString() !== masterAccountId) {
+        return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'You can only edit your own captions' } });
+      }
+
+      // Find the caption set
+      const captionSet = (dataset.captionSets || []).find(cs => cs._id.toString() === captionSetId);
+      if (!captionSet) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Caption set not found' } });
+      }
+
+      // Update the caption at the specified index
+      await datasetDb.updateCaptionInSet(datasetId, captionSetId, entryIndex, text);
+      res.json({ success: true, data: { updated: true, index: entryIndex } });
+    } catch (err) {
+      logger.error('[DatasetsAPI] Failed to update caption entry:', err);
+      res.status(500).json({ error: { code: 'UPDATE_ERROR', message: 'Failed to update caption' } });
+    }
+  });
+
   // POST /internal/v1/data/datasets/:datasetId/generate-captions - Generate captions for dataset
   router.post('/:datasetId/generate-captions', async (req, res, next) => {
     const { datasetId } = req.params;

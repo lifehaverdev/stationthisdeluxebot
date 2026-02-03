@@ -1064,6 +1064,33 @@ export default class ModsMenuModal {
       };
     });
 
+    // Control set card actions
+    this.modalElement.querySelectorAll('.view-control').forEach(btn=>{
+      btn.onclick=(e)=>{
+        e.stopPropagation();
+        const controlSetId = btn.getAttribute('data-id');
+        this.openControlViewer(controlSetId);
+      };
+    });
+    this.modalElement.querySelectorAll('.delete-control').forEach(btn=>{
+      btn.onclick=(e)=>{
+        e.stopPropagation();
+        const controlSetId = btn.getAttribute('data-id');
+        this.deleteControlSet(controlSetId);
+      };
+    });
+    // Generate control images button
+    const genControlDetailBtn = this.modalElement.querySelector('.detail-generate-control-btn');
+    if (genControlDetailBtn) {
+      genControlDetailBtn.onclick = () => {
+        if (!this.state.selectedDatasetId) {
+          alert('Select a dataset first.');
+          return;
+        }
+        this.generateControlImages(this.state.selectedDatasetId);
+      };
+    }
+
     // Import button
     const impBtn = this.modalElement.querySelector('.import-btn');
     if (impBtn) {
@@ -2164,6 +2191,31 @@ export default class ModsMenuModal {
     // Progress panel (reuse existing)
     const progressHtml = this.renderCaptionProgressPanel();
 
+    // Control sets (from embellishments)
+    const controlSets = (dataset.embellishments || []).filter(e => e.type === 'control');
+    let controlHtml = '';
+    if (controlSets.length) {
+      controlHtml = `<div class="detail-control-list">
+        ${controlSets.map(cs => {
+          const csId = this.normalizeId(cs._id);
+          const resultCount = (cs.results || []).filter(r => r && r.value).length;
+          const createdAt = cs.createdAt ? new Date(cs.createdAt).toLocaleDateString() : '';
+          return `<div class="detail-control-card" data-id="${csId}">
+            <div>
+              <span class="detail-control-method">${this.escapeHtml(cs.method || 'Control Images')}</span>
+              <div class="detail-control-meta">${resultCount} images &middot; ${cs.status || 'unknown'} &middot; ${createdAt}</div>
+            </div>
+            <div class="detail-control-actions">
+              <button class="btn-secondary view-control" data-id="${csId}">Inspect</button>
+              <button class="btn-danger delete-control" data-id="${csId}">Delete</button>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`;
+    } else {
+      controlHtml = '<div class="empty-message">No control image sets yet.</div>';
+    }
+
     return `
       ${header}
       ${descHtml}
@@ -2176,6 +2228,13 @@ export default class ModsMenuModal {
         </div>
         ${progressHtml}
         ${captionHtml}
+      </div>
+      <div class="detail-section">
+        <div class="train-section-header">
+          <h3>Control Images <span class="section-count">${controlSets.length}</span></h3>
+          <button class="btn-primary detail-generate-control-btn">Generate Control Images</button>
+        </div>
+        ${controlHtml}
       </div>`;
   }
 
@@ -4215,6 +4274,7 @@ export default class ModsMenuModal {
 
   openCaptionViewer(captionSet){
     if(!captionSet) return;
+    const captionSetId = this.normalizeId(captionSet._id);
     const entries = this.normalizeCaptionEntries(captionSet);
     const overlay=document.createElement('div');
     overlay.className='import-overlay caption-viewer-overlay';
@@ -4227,14 +4287,21 @@ export default class ModsMenuModal {
       <div class="caption-viewer-meta">
         <span>${entries.length} captions</span>
         <span>${createdAt}</span>
+        <span class="caption-edit-hint">Click a caption to edit</span>
       </div>
       <div class="caption-viewer-list">
         ${entries.length? entries.map((entry,idx)=>`
-          <div class="caption-viewer-row">
+          <div class="caption-viewer-row" data-idx="${idx}">
             ${entry.imageUrl?`<img src="${this.escapeHtml(entry.imageUrl)}" alt="Image ${idx+1}" />`:`<div class="caption-thumb placeholder">#${idx+1}</div>`}
             <div class="caption-text-block">
-              <div class="caption-row-title">Image ${idx+1}</div>
-              <textarea readonly data-caption-idx="${idx}"></textarea>
+              <div class="caption-row-header">
+                <span class="caption-row-title">Image ${idx+1}</span>
+                <div class="caption-row-actions">
+                  <button class="btn-small save-caption hidden" data-idx="${idx}">Save</button>
+                  <button class="btn-small cancel-edit hidden" data-idx="${idx}">Cancel</button>
+                </div>
+              </div>
+              <textarea data-caption-idx="${idx}" data-original=""></textarea>
             </div>
           </div>
         `).join('') : '<div class="empty-message">No captions available.</div>'}
@@ -4244,10 +4311,93 @@ export default class ModsMenuModal {
     const cleanup=()=>{ if(overlay.parentNode){ overlay.parentNode.removeChild(overlay); } };
     overlay.addEventListener('click',(e)=>{ if(e.target===overlay) cleanup(); });
     overlay.querySelector('.caption-viewer-close').onclick=cleanup;
+
+    // Initialize textareas
     overlay.querySelectorAll('textarea[data-caption-idx]').forEach(textarea=>{
       const idx=parseInt(textarea.getAttribute('data-caption-idx'),10);
-      textarea.value = entries[idx]?.text || '';
+      const text = entries[idx]?.text || '';
+      textarea.value = text;
+      textarea.setAttribute('data-original', text);
+
+      // Enable editing on focus
+      textarea.onfocus = () => {
+        const row = textarea.closest('.caption-viewer-row');
+        row.querySelectorAll('.save-caption, .cancel-edit').forEach(btn => btn.classList.remove('hidden'));
+      };
+
+      // Track changes
+      textarea.oninput = () => {
+        const original = textarea.getAttribute('data-original');
+        const row = textarea.closest('.caption-viewer-row');
+        const saveBtn = row.querySelector('.save-caption');
+        if (textarea.value !== original) {
+          saveBtn.classList.add('changed');
+        } else {
+          saveBtn.classList.remove('changed');
+        }
+      };
     });
+
+    // Save caption handlers
+    overlay.querySelectorAll('.save-caption').forEach(btn => {
+      btn.onclick = async () => {
+        const idx = parseInt(btn.getAttribute('data-idx'), 10);
+        const textarea = overlay.querySelector(`textarea[data-caption-idx="${idx}"]`);
+        const newText = textarea.value;
+
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+
+        try {
+          await this.updateCaption(captionSetId, idx, newText);
+          textarea.setAttribute('data-original', newText);
+          btn.textContent = 'Saved!';
+          btn.classList.remove('changed');
+          setTimeout(() => {
+            btn.textContent = 'Save';
+            btn.disabled = false;
+          }, 1500);
+        } catch (err) {
+          alert(`Failed to save: ${err.message}`);
+          btn.textContent = 'Save';
+          btn.disabled = false;
+        }
+      };
+    });
+
+    // Cancel edit handlers
+    overlay.querySelectorAll('.cancel-edit').forEach(btn => {
+      btn.onclick = () => {
+        const idx = parseInt(btn.getAttribute('data-idx'), 10);
+        const textarea = overlay.querySelector(`textarea[data-caption-idx="${idx}"]`);
+        const original = textarea.getAttribute('data-original');
+        textarea.value = original;
+        textarea.blur();
+        const row = textarea.closest('.caption-viewer-row');
+        row.querySelectorAll('.save-caption, .cancel-edit').forEach(b => b.classList.add('hidden'));
+        row.querySelector('.save-caption').classList.remove('changed');
+      };
+    });
+  }
+
+  async updateCaption(captionSetId, index, newText) {
+    const datasetId = this.state.selectedDatasetId;
+    if (!datasetId || !captionSetId) throw new Error('Missing IDs');
+
+    const csrfRes = await fetch('/api/v1/csrf-token');
+    const { csrfToken } = await csrfRes.json();
+
+    const res = await fetch(`/api/v1/datasets/${encodeURIComponent(datasetId)}/captions/${encodeURIComponent(captionSetId)}/entries/${index}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrfToken },
+      body: JSON.stringify({ text: newText })
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error?.message || 'Failed to update caption');
+    }
   }
 
   downloadCaptionSet(captionSet){
@@ -4308,6 +4458,151 @@ export default class ModsMenuModal {
     }catch(err){
       console.error('[ModsMenuModal] setDefaultCaptionSet error',err);
       this.setState({captionError:'Failed to update default caption set.'});
+    }
+  }
+
+  /* ====================== CONTROL SET METHODS ====================== */
+
+  getControlSetById(controlSetId) {
+    const dataset = this.getDatasetById(this.state.selectedDatasetId);
+    if (!dataset || !dataset.embellishments) return null;
+    const normalized = this.normalizeId(controlSetId);
+    return dataset.embellishments.find(e => e.type === 'control' && this.normalizeId(e._id) === normalized);
+  }
+
+  openControlViewer(controlSetId) {
+    const controlSet = this.getControlSetById(controlSetId);
+    if (!controlSet) {
+      alert('Control set not found');
+      return;
+    }
+
+    const dataset = this.getDatasetById(this.state.selectedDatasetId);
+    const images = dataset?.images || [];
+    const results = controlSet.results || [];
+
+    const overlay = document.createElement('div');
+    overlay.className = 'import-overlay control-viewer-overlay';
+
+    const createdAt = controlSet.createdAt ? new Date(controlSet.createdAt).toLocaleString() : '';
+    const resultCount = results.filter(r => r && r.value).length;
+
+    overlay.innerHTML = `<div class="import-dialog control-viewer-dialog">
+      <div class="control-viewer-header">
+        <h3>Control Images</h3>
+        <button class="control-viewer-close" aria-label="Close">×</button>
+      </div>
+      <div class="control-viewer-meta">
+        <span>${resultCount} of ${images.length} generated</span>
+        <span>${this.escapeHtml(controlSet.method || '')}</span>
+        <span>${createdAt}</span>
+      </div>
+      <div class="control-viewer-list">
+        ${images.length ? images.map((imgUrl, idx) => {
+          const result = results[idx];
+          const controlUrl = result?.value || null;
+          return `<div class="control-viewer-row" data-idx="${idx}">
+            <div class="control-image-pair">
+              <div class="control-image-box">
+                <div class="control-image-label">Original</div>
+                <img src="${this.escapeHtml(imgUrl)}" alt="Original ${idx + 1}" />
+              </div>
+              <div class="control-arrow">→</div>
+              <div class="control-image-box">
+                <div class="control-image-label">Control</div>
+                ${controlUrl
+                  ? `<img src="${this.escapeHtml(controlUrl)}" alt="Control ${idx + 1}" class="control-result-img" />`
+                  : `<div class="control-placeholder">Not generated</div>`}
+              </div>
+            </div>
+            <div class="control-row-actions">
+              <button class="btn-secondary regenerate-control" data-idx="${idx}">Regenerate</button>
+              ${controlUrl ? `<button class="btn-secondary replace-control" data-idx="${idx}">Replace</button>` : ''}
+            </div>
+          </div>`;
+        }).join('') : '<div class="empty-message">No images in dataset.</div>'}
+      </div>
+    </div>`;
+
+    document.body.appendChild(overlay);
+    const cleanup = () => { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(); });
+    overlay.querySelector('.control-viewer-close').onclick = cleanup;
+
+    // Bind regenerate/replace buttons
+    overlay.querySelectorAll('.regenerate-control').forEach(btn => {
+      btn.onclick = () => {
+        const idx = parseInt(btn.getAttribute('data-idx'), 10);
+        alert(`Regenerate for image ${idx + 1} not yet implemented`);
+        // TODO: Implement single image regeneration
+      };
+    });
+    overlay.querySelectorAll('.replace-control').forEach(btn => {
+      btn.onclick = () => {
+        const idx = parseInt(btn.getAttribute('data-idx'), 10);
+        this.openReplaceControlDialog(controlSetId, idx, cleanup);
+      };
+    });
+  }
+
+  openReplaceControlDialog(controlSetId, imageIndex, parentCleanup) {
+    const url = prompt('Enter the URL of the replacement control image:');
+    if (!url || !url.trim()) return;
+
+    this.replaceControlImage(controlSetId, imageIndex, url.trim())
+      .then(() => {
+        alert('Control image replaced successfully');
+        if (parentCleanup) parentCleanup();
+        this.fetchDatasets().then(() => this.render());
+      })
+      .catch(err => {
+        alert(`Failed to replace: ${err.message}`);
+      });
+  }
+
+  async replaceControlImage(controlSetId, imageIndex, newUrl) {
+    const datasetId = this.state.selectedDatasetId;
+    if (!datasetId || !controlSetId) throw new Error('Missing IDs');
+
+    const csrfRes = await fetch('/api/v1/csrf-token');
+    const { csrfToken } = await csrfRes.json();
+
+    const res = await fetch(`/api/v1/datasets/${encodeURIComponent(datasetId)}/embellishments/${encodeURIComponent(controlSetId)}/results/${imageIndex}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrfToken },
+      body: JSON.stringify({ value: newUrl })
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error?.message || 'Failed to replace control image');
+    }
+  }
+
+  async deleteControlSet(controlSetId) {
+    const datasetId = this.state.selectedDatasetId;
+    if (!datasetId || !controlSetId) return;
+    if (!confirm('Delete this control image set? This action cannot be undone.')) return;
+
+    try {
+      const csrfRes = await fetch('/api/v1/csrf-token');
+      const { csrfToken } = await csrfRes.json();
+
+      const res = await fetch(`/api/v1/datasets/${encodeURIComponent(datasetId)}/embellishments/${encodeURIComponent(controlSetId)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrfToken }
+      });
+
+      if (!res.ok) throw new Error('Failed to delete');
+
+      // Refresh datasets to update the view
+      await this.fetchDatasets();
+      this.render();
+    } catch (err) {
+      console.error('[ModsMenuModal] deleteControlSet error', err);
+      alert('Failed to delete control set.');
     }
   }
 

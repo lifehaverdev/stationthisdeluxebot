@@ -241,6 +241,28 @@ function createDatasetsApiRouter(deps = {}) {
     }
   });
 
+  // PATCH /:id/captions/:captionSetId/entries/:index – update a single caption entry
+  router.patch('/:id/captions/:captionSetId/entries/:index', async (req, res) => {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
+    }
+    const ownerId = user.masterAccountId || user.userId;
+    const { id, captionSetId, index } = req.params;
+    try {
+      const payload = { ...req.body, masterAccountId: ownerId };
+      const { data } = await client.patch(
+        `/internal/v1/data/datasets/${encodeURIComponent(id)}/captions/${encodeURIComponent(captionSetId)}/entries/${encodeURIComponent(index)}`,
+        payload
+      );
+      res.json(data);
+    } catch (err) {
+      const status = err.response?.status || 500;
+      logger.error('update caption entry proxy error', err.response?.data || err.message);
+      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
   // --- Embellishment Routes ---
 
   // POST /:id/embellishments/manual – create manual embellishment (user-written captions)
@@ -295,6 +317,28 @@ function createDatasetsApiRouter(deps = {}) {
     } catch (err) {
       const status = err.response?.status || 500;
       logger.error('delete embellishment proxy error', err.response?.data || err.message);
+      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+  // PATCH /:id/embellishments/:embellishmentId/results/:index – update a single embellishment result
+  router.patch('/:id/embellishments/:embellishmentId/results/:index', async (req, res) => {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
+    }
+    const ownerId = user.masterAccountId || user.userId;
+    const { id, embellishmentId, index } = req.params;
+    try {
+      const payload = { ...req.body, masterAccountId: ownerId };
+      const { data } = await client.patch(
+        `/internal/v1/data/datasets/${encodeURIComponent(id)}/embellishments/${encodeURIComponent(embellishmentId)}/results/${encodeURIComponent(index)}`,
+        payload
+      );
+      res.json(data);
+    } catch (err) {
+      const status = err.response?.status || 500;
+      logger.error('update embellishment result proxy error', err.response?.data || err.message);
       res.status(status).json(err.response?.data || { error: 'proxy-error' });
     }
   });
