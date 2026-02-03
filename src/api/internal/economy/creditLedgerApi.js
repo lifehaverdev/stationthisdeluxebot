@@ -260,6 +260,19 @@ function createCreditLedgerApi(services, logger) {
     }
   });
 
+  // GET /ledger/deposits/by-wallet/:walletAddress - Get active deposits for a wallet (for MS2 tier determination)
+  router.get('/deposits/by-wallet/:walletAddress', async (req, res) => {
+    const { walletAddress } = req.params;
+    const requestId = uuidv4();
+    try {
+      const deposits = await creditLedgerDb.findActiveDepositsForWalletAddress(walletAddress);
+      res.json({ deposits, requestId });
+    } catch (error) {
+      logger.error(`[creditLedgerApi] Error getting deposits for wallet ${walletAddress}:`, error);
+      res.status(500).json({ error: { message: 'Failed to get deposits', details: error.message, requestId } });
+    }
+  });
+
   return router;
 }
 

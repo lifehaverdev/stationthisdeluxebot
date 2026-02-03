@@ -1,5 +1,6 @@
 const express = require('express');
 const { createLogger } = require('../../utils/logger');
+const { getPricingService } = require('../../core/services/pricing');
 
 const logger = createLogger('ExternalToolsApi');
 
@@ -28,23 +29,44 @@ function createToolsApiRouter(dependencies) {
       const response = await internalApiClient.get('/internal/v1/data/tools');
       const allTools = response.data;
 
-      // Include cost-related fields so the web sandbox can show point estimates.
-      const simplifiedTools = allTools.map(tool => ({
-        displayName: tool.displayName,
-        description: tool.description?.split('\n')[0] || `A tool for ${tool.displayName}.`,
-        commandName: tool.commandName,
-        toolId: tool.toolId,
+      // Get pricing info to include platform fee multipliers
+      const pricingService = getPricingService(logger);
 
-        // Pass through cost information needed by the client. Keep the original
-        // structure so calculations like getToolCostEstimate() continue to work.
-        costingModel: tool.costingModel || null,
-        metadata: {
-          ...tool.metadata,
-          // Explicitly include the historical duration if present to avoid
-          // accidental omission when other metadata properties are stripped.
-          avgHistoricalDurationMs: tool.metadata?.avgHistoricalDurationMs ?? null
-        }
-      }));
+      // Include cost-related fields so the web sandbox can show point estimates.
+      const simplifiedTools = allTools.map(tool => {
+        // Get pricing multipliers for this tool's service
+        const serviceName = tool.service || 'default';
+        const standardMultiplier = pricingService.getMultiplier(serviceName, false, tool.toolId);
+        const ms2Multiplier = pricingService.getMultiplier(serviceName, true, tool.toolId);
+
+        return {
+          displayName: tool.displayName,
+          description: tool.description?.split('\n')[0] || `A tool for ${tool.displayName}.`,
+          commandName: tool.commandName,
+          toolId: tool.toolId,
+          service: tool.service,
+
+          // Pass through cost information needed by the client. Keep the original
+          // structure so calculations like getToolCostEstimate() continue to work.
+          costingModel: tool.costingModel || null,
+
+          // Pricing multipliers for platform fee recovery
+          // Client should multiply computed cost by these values
+          pricing: {
+            standardMultiplier,
+            ms2Multiplier,
+            ms2DiscountPercent: standardMultiplier > 1 ? Math.round((1 - ms2Multiplier / standardMultiplier) * 100) : 0,
+            hasPlatformFee: standardMultiplier > 1,
+          },
+
+          metadata: {
+            ...tool.metadata,
+            // Explicitly include the historical duration if present to avoid
+            // accidental omission when other metadata properties are stripped.
+            avgHistoricalDurationMs: tool.metadata?.avgHistoricalDurationMs ?? null
+          }
+        };
+      });
 
       res.status(200).json(simplifiedTools);
     } catch (error) {

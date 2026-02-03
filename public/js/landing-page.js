@@ -312,12 +312,19 @@ document.addEventListener('DOMContentLoaded', () => {
     return Number(val) || null;
   }
 
-  /** Derive human-readable cost badge text for a tool definition. */
+  /** Derive human-readable cost badge text for a tool definition.
+   *  Applies platform fee multiplier from pricing config. */
   function getToolCostEstimate(tool) {
     // 1. Explicit metadata wins
     if (tool?.metadata?.costEstimate) return tool.metadata.costEstimate;
 
-    const toPts = (usd) => `~${usdToPoints(usd)} POINTS`;
+    // Get pricing multiplier (platform fee recovery) - default to standard user rate
+    const pricingMultiplier = tool?.pricing?.standardMultiplier || 1;
+
+    const toPts = (baseUsd) => {
+      const finalUsd = baseUsd * pricingMultiplier;
+      return `~${usdToPoints(finalUsd)} POINTS`;
+    };
 
     // 2. Historical average (rate USD/sec * avgDurationMs)
     const rateSec = toNumber(tool?.costingModel?.rate);

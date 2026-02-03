@@ -5,6 +5,7 @@ const { createLogger } = require('../../../utils/logger');
 const internalApiClient = require('../../../utils/internalApiClient');
 const { CookOrchestratorService } = require('../cook');
 const adapterRegistry = require('../adapterRegistry');
+const { getPricingService } = require('../pricing');
 
 // Temporary in-memory cache for live progress (can be managed within this module)
 const activeJobProgress = new Map();
@@ -387,10 +388,47 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
           }
         }
 
-        const usdPerPoint = 0.000337;
-        const basePointsToSpend = Math.round(costUsd / usdPerPoint);
+        // --- Platform Fee Recovery (Pricing Multiplier) ---
+        // Get pricing service and determine if user qualifies for MS2 discount
+        const pricingService = getPricingService(logger);
+        const serviceName = generationRecord.serviceName || 'comfyui';
+        let isMs2User = false;
+        const requestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
 
-        logger.info(`[Webhook Processor] Converted cost $${costUsd.toFixed(4)} to ${basePointsToSpend} base points for spending.`);
+        try {
+          // Look up user's wallet address from their master account
+          const userRes = await internalApiClient.get(`/internal/v1/data/users/${spenderMasterAccountId}`, requestOptions);
+          const walletAddress = userRes.data?.walletAddress;
+
+          if (walletAddress) {
+            // Check user's active deposits for MS2 tokens
+            const depositsRes = await internalApiClient.get(
+              `/internal/v1/data/ledger/deposits/by-wallet/${walletAddress}`,
+              requestOptions
+            );
+            const deposits = depositsRes.data?.deposits || [];
+            isMs2User = pricingService.userQualifiesForMs2Pricing(deposits);
+            if (isMs2User) {
+              logger.info(`[Webhook Processor] User ${spenderMasterAccountId} qualifies for MS2 pricing tier.`);
+            }
+          } else {
+            logger.debug(`[Webhook Processor] User ${spenderMasterAccountId} has no wallet address. Using standard pricing.`);
+          }
+        } catch (e) {
+          logger.warn(`[Webhook Processor] Could not check MS2 status for ${spenderMasterAccountId}: ${e.message}. Using standard pricing.`);
+        }
+
+        // Calculate final cost with platform fee multiplier
+        const quote = pricingService.getQuote({
+          computeCostUsd: costUsd,
+          serviceName,
+          isMs2User,
+          toolId
+        });
+
+        const basePointsToSpend = quote.totalPoints;
+
+        logger.info(`[Webhook Processor] Pricing breakdown for gen ${generationId}: computeUsd=$${costUsd.toFixed(4)}, multiplier=${quote.multiplier}x, finalUsd=$${quote.finalCostUsd.toFixed(4)}, points=${basePointsToSpend} (MS2: ${isMs2User})`);
 
         try {
           // --- New Contributor Reward Logic ---

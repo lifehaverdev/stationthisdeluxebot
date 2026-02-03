@@ -32,10 +32,12 @@ function toNumber(val) {
 
 /**
  * Generate cost estimate badge text.
+ * Applies platform fee multiplier from pricing config.
  * @param {Object} tool
+ * @param {boolean} isMs2User - Whether user has MS2 pricing tier
  * @returns {string}
  */
-function getToolCostEstimate(tool) {
+function getToolCostEstimate(tool, isMs2User = false) {
     const debug = true; //window?.sandbox?.debugCosting;
     const logDbg = (...args) => { if (debug) console.debug('[CostEst]', ...args); };
 
@@ -45,10 +47,16 @@ function getToolCostEstimate(tool) {
         return tool.metadata.costEstimate;
     }
 
-    // Helper to safely convert and log numerical results
-    const toPts = (usd) => {
-        const pts = usdToPoints(usd);
-        logDbg(tool.displayName, 'computed pts', pts, 'from usd', usd);
+    // Get pricing multiplier (platform fee recovery)
+    const pricingMultiplier = isMs2User
+        ? (tool.pricing?.ms2Multiplier || 1)
+        : (tool.pricing?.standardMultiplier || 1);
+
+    // Helper to safely convert and log numerical results (with multiplier)
+    const toPts = (baseUsd) => {
+        const finalUsd = baseUsd * pricingMultiplier;
+        const pts = usdToPoints(finalUsd);
+        logDbg(tool.displayName, 'computed pts', pts, 'from base usd', baseUsd, 'x', pricingMultiplier, '=', finalUsd);
         return `~${pts} POINTS`;
     };
 
@@ -57,16 +65,16 @@ function getToolCostEstimate(tool) {
     const avgMs = toNumber(tool.metadata?.avgHistoricalDurationMs);
     if (rateSec && tool.costingModel?.unit === 'second' && avgMs) {
         const seconds = avgMs / 1000;
-        const costUsd = rateSec * seconds;
-        logDbg(tool.displayName, 'historical cost calc', { rate: tool.costingModel.rate, seconds, costUsd });
-        if (!isNaN(costUsd) && costUsd > 0) return toPts(costUsd);
+        const baseCostUsd = rateSec * seconds;
+        logDbg(tool.displayName, 'historical cost calc', { rate: tool.costingModel.rate, seconds, baseCostUsd, multiplier: pricingMultiplier });
+        if (!isNaN(baseCostUsd) && baseCostUsd > 0) return toPts(baseCostUsd);
     }
 
     // Static cost per request
     if (tool.costingModel?.rateSource === 'static' && tool.costingModel.staticCost) {
         const { amount, unit } = tool.costingModel.staticCost;
         if (unit === 'request' && typeof amount === 'number') {
-            logDbg(tool.displayName, 'static cost', amount);
+            logDbg(tool.displayName, 'static cost', amount, 'x', pricingMultiplier);
             return toPts(amount);
         }
     }

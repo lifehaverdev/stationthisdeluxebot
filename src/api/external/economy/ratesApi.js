@@ -1,5 +1,6 @@
 const express = require('express');
 const { createLogger } = require('../../../utils/logger');
+const { getPricingService } = require('../../../core/services/pricing');
 
 /**
  * External Rates API
@@ -181,7 +182,76 @@ function createRatesApi(dependencies) {
     }
   });
 
-  logger.info('[ratesApi-external] External Economy Rates API service initialized');
+  // ========================================================================
+  // PRICING TRANSPARENCY ENDPOINTS
+  // ========================================================================
+
+  /**
+   * @route GET /api/external/economy/pricing
+   * @description Get current pricing configuration (platform fees, multipliers, MS2 discounts)
+   * @access Public (transparency)
+   */
+  router.get('/pricing', (req, res) => {
+    try {
+      const pricingService = getPricingService(logger);
+      const pricingInfo = pricingService.getPublicPricingInfo();
+      res.json({
+        success: true,
+        data: pricingInfo,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      logger.error('[ratesApi-external] Error fetching pricing info:', error);
+      res.status(500).json({
+        success: false,
+        error: { code: 'PRICING_FETCH_ERROR', message: 'Failed to fetch pricing information' }
+      });
+    }
+  });
+
+  /**
+   * @route GET /api/external/economy/pricing/quote
+   * @description Get a price quote for a specific operation
+   * @query computeCostUsd - Base compute cost in USD
+   * @query serviceName - Service name (e.g., 'comfyui')
+   * @query isMs2 - Whether user is MS2 tier ('true' or 'false')
+   * @query toolId - Optional tool ID for per-tool pricing
+   * @access Public (transparency)
+   */
+  router.get('/pricing/quote', (req, res) => {
+    try {
+      const { computeCostUsd, serviceName, isMs2, toolId } = req.query;
+
+      if (!computeCostUsd || !serviceName) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'INVALID_PARAMS', message: 'Missing required query params: computeCostUsd, serviceName' }
+        });
+      }
+
+      const pricingService = getPricingService(logger);
+      const quote = pricingService.getQuote({
+        computeCostUsd: parseFloat(computeCostUsd),
+        serviceName,
+        isMs2User: isMs2 === 'true',
+        toolId: toolId || null,
+      });
+
+      res.json({
+        success: true,
+        data: quote,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      logger.error('[ratesApi-external] Error generating quote:', error);
+      res.status(500).json({
+        success: false,
+        error: { code: 'QUOTE_ERROR', message: 'Failed to generate price quote' }
+      });
+    }
+  });
+
+  logger.info('[ratesApi-external] External Economy Rates API service initialized (with pricing transparency)');
   return router;
 }
 

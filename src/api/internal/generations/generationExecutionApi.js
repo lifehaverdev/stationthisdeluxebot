@@ -1,5 +1,6 @@
 const express = require('express');
 const { ObjectId } = require('mongodb');
+const { getPricingService } = require('../../../core/services/pricing');
 
 /**
  * Convert masterAccountId to appropriate format for storage.
@@ -42,7 +43,10 @@ module.exports = function generationExecutionApi(dependencies) {
     // Variables needed across validation and execution phases
     let estimatedSeconds = 30;
     let costUsd = 0;
+    let baseCostUsd = 0; // Raw compute cost before platform fees
     let pointsRequired = 0;
+    let isMs2User = false;
+    let pricingBreakdown = null;
 
     // 1. --- Basic Request Validation ---
     if (!toolId || !inputs || !user || !user.masterAccountId) {
@@ -115,29 +119,28 @@ module.exports = function generationExecutionApi(dependencies) {
           return res.status(400).json({ error: { code: 'INVALID_TOOL_CONFIG', message: `Tool '${toolId}' has an invalid costing configuration.` } });
         }
 
-        // 3b. --- Estimate Cost in Points ---
+        // 3b. --- Estimate Base Compute Cost ---
         estimatedSeconds = 30; // reset default each request
-        costUsd = 0;
-        
+        baseCostUsd = 0;
+
         if (costRateInfo.unit && (costRateInfo.unit.toLowerCase() === 'second' || costRateInfo.unit.toLowerCase() === 'seconds')) {
           if (tool.metadata && tool.metadata.estimatedDurationSeconds) {
             estimatedSeconds = tool.metadata.estimatedDurationSeconds;
           } else if (tool.metadata && tool.metadata.minDurationSeconds) {
             estimatedSeconds = tool.metadata.minDurationSeconds;
           }
-          costUsd = estimatedSeconds * costRateInfo.amount;
+          baseCostUsd = estimatedSeconds * costRateInfo.amount;
         } else if (costRateInfo.unit && (costRateInfo.unit.toLowerCase() === 'run' || costRateInfo.unit.toLowerCase() === 'fixed' || costRateInfo.unit.toLowerCase() === 'token' || costRateInfo.unit.toLowerCase() === 'request')) {
-          costUsd = costRateInfo.amount;
+          baseCostUsd = costRateInfo.amount;
         } else {
           logger.error(`[Execute] Could not determine cost for tool '${toolId}' with unhandled unit type:`, costRateInfo.unit);
           return res.status(500).json({ error: { code: 'COSTING_ERROR', message: 'Could not determine execution cost for this tool.' } });
         }
-        
-        const USD_PER_POINT = 0.000337;
-        pointsRequired = Math.max(1, Math.round(costUsd / USD_PER_POINT));
 
-        // 3c. --- Fetch User's Wallet and Points ---
+        // 3c. --- Fetch User's Wallet, Determine MS2 Status, Apply Platform Pricing ---
         // Skip for x402 executions - they pay directly in USDC, not points
+        const pricingService = getPricingService(logger);
+
         if (!isX402Execution) {
           const userId = user.masterAccountId;
           const userCoreRes = await internalApiClient.get(`/internal/v1/data/users/${userId}`);
@@ -154,6 +157,33 @@ module.exports = function generationExecutionApi(dependencies) {
             return res.status(403).json({ error: { code: 'WALLET_NOT_FOUND', message: 'User wallet not available for credit check.' } });
           }
 
+          // Check user's active deposits to determine MS2 status
+          try {
+            const depositsResponse = await internalApiClient.get(`/internal/v1/data/ledger/deposits/by-wallet/${walletAddress}`);
+            const activeDeposits = depositsResponse.data.deposits || [];
+            isMs2User = pricingService.userQualifiesForMs2Pricing(activeDeposits);
+            logger.info(`[Pricing] User ${userId} MS2 status: ${isMs2User}`);
+          } catch (depositErr) {
+            logger.warn(`[Pricing] Could not determine MS2 status for user ${userId}: ${depositErr.message}. Defaulting to standard pricing.`);
+            isMs2User = false;
+          }
+
+          // Apply platform fee pricing
+          const pricingResult = pricingService.calculateCost({
+            computeCostUsd: baseCostUsd,
+            serviceName: tool.service,
+            isMs2User,
+            toolId: tool.toolId,
+          });
+          costUsd = pricingResult.finalCostUsd;
+          pricingBreakdown = pricingResult.breakdown;
+
+          logger.info(`[Pricing] Service: ${tool.service}, Base: $${baseCostUsd.toFixed(4)}, Final: $${costUsd.toFixed(4)}, Tier: ${isMs2User ? 'MS2' : 'standard'}`);
+
+          // Calculate points from the adjusted cost
+          const USD_PER_POINT = 0.000337;
+          pointsRequired = Math.max(1, Math.round(costUsd / USD_PER_POINT));
+
           const pointsResponse = await internalApiClient.get(`/internal/v1/data/ledger/points/by-wallet/${walletAddress}`);
           const currentPoints = pointsResponse.data.points || 0;
 
@@ -164,10 +194,24 @@ module.exports = function generationExecutionApi(dependencies) {
               error: {
                 code: 'INSUFFICIENT_FUNDS',
                 message: 'You do not have enough points to execute this workflow.',
-                details: { required: pointsRequired, available: currentPoints }
+                details: {
+                  required: pointsRequired,
+                  available: currentPoints,
+                  pricing: pricingBreakdown // Include breakdown for transparency
+                }
               }
             });
           }
+        } else {
+          // For x402, still calculate pricing for transparency/logging
+          const pricingResult = pricingService.calculateCost({
+            computeCostUsd: baseCostUsd,
+            serviceName: tool.service,
+            isMs2User: false, // x402 users pay standard rate
+            toolId: tool.toolId,
+          });
+          costUsd = pricingResult.finalCostUsd;
+          pricingBreakdown = pricingResult.breakdown;
         }
       } catch (creditCheckErr) {
         logger.error(`[Pre-Execution Credit Check] Error during credit check for user ${user.masterAccountId}:`, creditCheckErr);
@@ -485,6 +529,9 @@ module.exports = function generationExecutionApi(dependencies) {
               costRate: costRateInfo,
               loraResolutionData,
               platformContext: user.platformContext,
+              // Pricing transparency
+              pricingBreakdown,
+              isMs2User,
               // Ensure dispatcher can route sandbox notifications
               ...(user.platform === 'web-sandbox' ? { notificationContext: { platform: 'web-sandbox' } } : {})
             }
@@ -519,6 +566,8 @@ module.exports = function generationExecutionApi(dependencies) {
             ...(est !== null ? { estimatedDurationSeconds: est, checkAfterMs: est * 1000 } : {}),
             estimatedCostUsd: costUsd,
             estimatedPoints: pointsRequired,
+            // Pricing transparency
+            pricing: pricingBreakdown,
             message: 'Your request has been accepted and is being processed.',
           });
         }

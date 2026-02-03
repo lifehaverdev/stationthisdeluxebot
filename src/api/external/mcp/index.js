@@ -231,16 +231,37 @@ async function handleMethod(method, params, context) {
 
     case 'spells/cast':
       requireApiKey(apiKey);
+      // Resolve user from API key to get masterAccountId
+      const userInfo = await resolveUserFromApiKey(apiKey, internalApiClient);
       // Transform params to match internal API expectations
       const castParams = {
         slug: params.slug || params.spellId,
-        context: params.context || params.parameters || {}
+        context: {
+          ...(params.context || params.parameters || {}),
+          masterAccountId: userInfo.masterAccountId
+        }
       };
       return await forwardToApi('POST', '/api/v1/spells/cast', castParams, apiKey, internalApiClient);
 
     case 'spells/status':
       requireApiKey(apiKey);
       return await forwardToApi('GET', `/api/v1/spells/casts/${params.castId}`, null, apiKey, internalApiClient);
+
+    case 'spells/create':
+      requireApiKey(apiKey);
+      // Resolve user to get creatorId
+      const creatorInfo = await resolveUserFromApiKey(apiKey, internalApiClient);
+      const createSpellParams = {
+        name: params.name,
+        description: params.description || '',
+        creatorId: creatorInfo.masterAccountId,
+        steps: params.steps || [],
+        connections: params.connections || [],
+        exposedInputs: params.exposedInputs || [],
+        visibility: params.visibility || 'private',
+        tags: params.tags || []
+      };
+      return await forwardToApi('POST', '/api/v1/spells', createSpellParams, apiKey, internalApiClient);
 
     // ============================================
     // Collections (forwarded to external API)
@@ -328,6 +349,28 @@ async function handleMethod(method, params, context) {
 function requireApiKey(apiKey) {
   if (!apiKey) {
     const err = new Error('API key required. Include X-API-Key header.');
+    err.code = -32001;
+    throw err;
+  }
+}
+
+/**
+ * Resolve user info from API key
+ */
+async function resolveUserFromApiKey(apiKey, internalApiClient) {
+  try {
+    const response = await internalApiClient.post('/internal/v1/data/auth/validate-key', { apiKey });
+    // Response contains { user: { masterAccountId, ... }, apiKey: { ... } }
+    if (!response.data?.user?.masterAccountId) {
+      throw new Error('User not found');
+    }
+    return {
+      masterAccountId: response.data.user.masterAccountId.toString(),
+      user: response.data.user
+    };
+  } catch (error) {
+    logger.error('[MCP] Failed to resolve user from API key:', error.message);
+    const err = new Error('Invalid API key or unable to resolve user.');
     err.code = -32001;
     throw err;
   }

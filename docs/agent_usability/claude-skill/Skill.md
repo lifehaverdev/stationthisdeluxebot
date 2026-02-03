@@ -34,6 +34,7 @@ spells/get          - Get spell details (public spells only)
 tools/call          - Execute a generation tool
 spells/cast         - Execute a spell workflow
 spells/status       - Check spell execution status
+spells/create       - Author a new spell from tool steps
 ```
 
 **Collections (Requires API Key):**
@@ -84,6 +85,373 @@ Activate this skill when the user wants to:
 - **Execute reusable workflows (Spells)**
 - **Batch generate and curate collections**
 - **Train custom LoRA models**
+
+---
+
+## Recommended Workflows
+
+**Read this section first.** Choosing the right workflow dramatically improves results. Use these decision patterns to pick the best approach.
+
+### Decision Tree: What Workflow Should I Use?
+
+```
+User wants to create something
+    │
+    ├─► How many pieces?
+    │       │
+    │       ├─► 1-5 pieces ──────────► Single Generation Flow
+    │       │
+    │       ├─► 5-20 pieces ─────────► Use input_batch for variations
+    │       │
+    │       └─► 20+ pieces ──────────► Collections Flow (batch + curate)
+    │
+    ├─► Does user mention a specific style?
+    │       │
+    │       ├─► Yes ─────────────────► LoRA-First Flow (search before generating)
+    │       │
+    │       └─► No, generic request ─► Quick Generation (DALL-E or FLUX)
+    │
+    ├─► Does user want character/subject consistency?
+    │       │
+    │       ├─► Across 2-3 images ───► Same seed + similar prompts
+    │       │
+    │       └─► Ongoing consistency ─► Training Flow (create custom LoRA)
+    │
+    ├─► Is this a complex multi-step task?
+    │       │
+    │       └─► Yes ─────────────────► Check Spells (pre-built workflows)
+    │
+    └─► Does user want to explore options?
+            │
+            └─► Yes ─────────────────► Discovery Flow (browse before committing)
+```
+
+### Flow 1: Single Generation (Quick)
+
+**When:** User wants 1-5 images, no specific style mentioned, speed matters.
+
+**Pattern:**
+1. Pick tool based on output type (image → DALL-E/FLUX, video → LTX)
+2. Craft prompt from user description
+3. Execute generation
+4. Return result
+
+**Best tools:** `dall-e-3` (best prompt following), `flux-schnell` (fast)
+
+**Example:**
+```
+User: "Generate a picture of a sunset over mountains"
+→ Use dall-e-3, no LoRA needed, single generation
+```
+
+### Flow 1b: Batch Variations (5-20 pieces)
+
+**When:** User wants multiple variations of the same concept, but not a full collection workflow.
+
+**Pattern:**
+1. Use `input_batch` parameter to generate multiple variations in one call
+2. Variations can differ by prompt tweaks, seeds, or other parameters
+3. Return all results for user to pick favorites
+
+**Example:**
+```
+User: "Give me 10 different takes on a cyberpunk cityscape"
+
+→ Use tools/call with input_batch containing 10 prompt variations
+→ Returns 10 images in single response
+→ User picks favorites
+```
+
+**When to use Collections instead:** If user needs curation workflow (accept/reject UI), export packaging, or 20+ pieces, use Collections flow.
+
+### Flow 2: LoRA-First (Styled Generation)
+
+**When:** User mentions ANY style, aesthetic, or artistic reference.
+
+**Pattern:**
+1. **ALWAYS search LoRAs first** - even if you think you know what to use
+2. Match LoRA checkpoint to tool (FLUX LoRA → FLUX tool)
+3. Include trigger words in prompt
+4. Execute generation
+
+**Why LoRA-first matters:** NOEMA has 214+ style models. A generation with the right LoRA trigger produces dramatically better results than prompt engineering alone.
+
+**Style signals to watch for:**
+- Artist names: "like Ghibli", "Moebius style"
+- Aesthetics: "cyberpunk", "cottagecore", "vaporwave"
+- Media types: "anime", "oil painting", "pixel art"
+- Moods: "dreamy", "dark", "ethereal"
+- Eras: "80s", "vintage", "retro"
+
+**Example - Single LoRA:**
+```
+User: "Create a portrait with a dreamy, ethereal look"
+
+1. Search: resources/read with q=dreamy or q=ethereal
+2. Found: ethereal_portrait (triggers: ["ethereal_portrait"], checkpoint: SDXL)
+3. Select tool: sdxl-base (matches checkpoint)
+4. Craft prompt: "ethereal_portrait portrait, soft lighting, mystical atmosphere"
+5. Execute with SDXL tool
+```
+
+**Example - Combining LoRAs:**
+```
+User: "Ghibli style but with a dreamy ethereal vibe"
+
+1. Search: resources/read with q=ghibli → Found: ghibli_style (SDXL)
+2. Search: resources/read with q=ethereal → Found: ethereal_portrait (SDXL)
+3. Both are SDXL ✓ - can combine
+4. Craft prompt with reduced weights:
+   "ghibli_style:0.5 ethereal_portrait:0.4 portrait of a girl in a meadow, soft lighting"
+5. Execute with sdxl-base tool
+```
+
+**Anti-pattern:** Don't skip LoRA search because "the prompt is detailed enough." The LoRA adds trained aesthetic understanding that prompts alone cannot achieve.
+
+**Fallback - No LoRA found:**
+```
+User: "Make it look like a fantasy painting"
+
+1. Search: resources/read with q=fantasy → Empty results
+2. Try related terms: q=painterly, q=epic, q=magical
+3. Still empty? → Fall back to prompt-only generation:
+   - Use DALL-E 3 (best prompt interpretation)
+   - Include style details in prompt: "epic fantasy painting style,
+     dramatic lighting, detailed brushwork, magical atmosphere"
+4. Inform user: "I didn't find a specific fantasy LoRA, but I've
+   crafted a detailed prompt. For future sessions, we could train
+   a custom LoRA if you want this style consistently."
+```
+
+### Flow 3: Collections (Batch Production)
+
+**When:** User needs 6+ pieces, wants to curate quality, or mentions "collection", "set", "batch", "NFT", "assets".
+
+**Pattern:**
+1. Create collection with target count and prompt template
+2. Start cook (batch generation)
+3. Let it run (can pause/resume)
+4. Review generated pieces (accept/reject)
+5. Export approved pieces
+
+**Why Collections over repeated tools/call:**
+- **Curation built-in:** Review and select the best
+- **Cost efficient:** Batch processing, no repeated setup
+- **Resumable:** Pause overnight, continue tomorrow
+- **Export-ready:** Package approved pieces with metadata
+
+**Example:**
+```
+User: "I need 50 fantasy character portraits for my game"
+
+1. Create collection:
+   - name: "Fantasy Characters"
+   - targetCount: 50
+   - toolId: "sdxl-base"
+   - promptTemplate: "fantasy character portrait, {variation}, detailed armor"
+   - variations: ["warrior", "mage", "rogue", "healer", "ranger"]
+
+2. Start cook → Generates in background
+3. Review pieces as they complete
+4. Export approved set with metadata
+```
+
+**Guidance for users:** "For 50 pieces, I recommend using Collections. You'll generate a batch, review them, and export only the ones you like. This gives much better results than generating 50 individually."
+
+### Flow 4: Training (Custom LoRA)
+
+**When:** User wants consistent character/style across MANY generations, or says "my character", "my style", "remember this", "use this again".
+
+**Pattern:**
+1. Guide user to prepare dataset (10-50 images)
+2. Calculate training cost (set expectations)
+3. Create training job with memorable trigger words
+4. Monitor progress
+5. Once complete, use trigger in future generations
+
+**Training signals:**
+- "I want my OC to be consistent"
+- "Can you learn my art style?"
+- "I'll be generating this character a lot"
+- "Make it look like my previous work"
+
+**Example:**
+```
+User: "I have a character named Aria that I want to use in many images"
+
+1. Ask: "Do you have 10-50 reference images of Aria?"
+2. If yes → Guide through dataset upload
+3. Calculate cost → "Training will cost approximately X credits"
+4. Create training:
+   - name: "Aria Character"
+   - triggerWords: ["aria_char", "aria_oc"]
+   - modelType: "SDXL"
+5. Wait for completion (~30-60 min)
+6. Future generations: "aria_char standing in a garden..."
+```
+
+**When NOT to train:**
+- User only needs 2-3 images (use same seed instead)
+- Style already exists as public LoRA (search first!)
+- User is experimenting, not committed to a direction
+
+### Flow 5: Discovery (Exploration)
+
+**When:** User is exploring possibilities, asking "what can you do", or unsure what they want.
+
+**Pattern:**
+1. Understand general direction (image type, vibe, use case)
+2. Search LoRAs for relevant styles
+3. Present options with descriptions and previews
+4. Let user choose before generating
+5. Generate based on selection
+
+**Discovery signals:**
+- "What styles do you have?"
+- "Show me options for..."
+- "I'm not sure exactly what I want"
+- "What would look good for...?"
+
+**Example:**
+```
+User: "I want to make some fantasy art but I'm not sure what style"
+
+1. Search LoRAs: q=fantasy
+2. Present options:
+   - "epic_fantasy_xl: Dramatic, detailed, game-art style"
+   - "watercolor_fantasy: Soft, painterly, storybook feel"
+   - "dark_fantasy_v2: Gritty, moody, mature themes"
+3. User picks → Then proceed with LoRA-First flow
+```
+
+### Flow 6: Spells (Complex Workflows)
+
+**When:** Task requires multiple coordinated steps, OR you notice yourself repeating the same tool chain.
+
+**Two spell patterns:**
+
+#### Pattern A: Use Existing Spell
+1. Check spells/list for matching workflow
+2. If spell exists → Cast it (simpler than manual orchestration)
+
+#### Pattern B: Create New Spell (Authoring)
+**Trigger:** You find yourself chaining the same tools in sequence repeatedly.
+
+1. Recognize the pattern: "I keep doing generate → upscale → caption"
+2. Suggest to user: "I notice we keep doing this same workflow. Want me to create a spell so it's one-click next time?"
+3. If yes → Author a new spell capturing the workflow
+4. Future runs → Cast the spell instead of manual steps
+
+**Spell signals:**
+- Multi-step tasks: "generate then upscale then..."
+- Repeatable workflows: "do that thing you did before"
+- Complex pipelines: "I need to process these in a specific way"
+- **Pattern recognition:** Agent notices repeated tool chains in conversation
+
+**Example - Using existing spell:**
+```
+User: "Generate a portrait and then upscale it to 4K"
+
+1. Check spells → Found: "portrait-upscale" spell
+2. Cast spell with parameters
+3. Spell handles: generate → upscale → return
+```
+
+**Example - Creating a spell:**
+```
+[After doing generate → style-transfer → upscale three times...]
+
+Agent: "I notice we keep doing the same workflow: generate, apply
+style transfer, then upscale. Would you like me to create a spell
+called 'styled-upscale' so you can do this in one step next time?"
+
+User: "Yes please"
+```
+
+**Via MCP - spells/create:**
+```json
+{"jsonrpc":"2.0","method":"spells/create","params":{
+  "name": "Styled Upscale",
+  "description": "Generate image, apply style transfer, then upscale to 4K",
+  "steps": [
+    {
+      "stepId": 1,
+      "toolIdentifier": "flux-dev",
+      "parameters": { "width": 1024, "height": 1024 }
+    },
+    {
+      "stepId": 2,
+      "toolIdentifier": "sdxl-img2img",
+      "parameters": { "denoisingStrength": 0.4 }
+    },
+    {
+      "stepId": 3,
+      "toolIdentifier": "real-esrgan-4x",
+      "parameters": { "scale": 4 }
+    }
+  ],
+  "connections": [
+    { "from": { "stepId": 1, "output": "image" }, "to": { "stepId": 2, "input": "imageUrl" } },
+    { "from": { "stepId": 2, "output": "image" }, "to": { "stepId": 3, "input": "imageUrl" } }
+  ],
+  "exposedInputs": ["prompt", "style"],
+  "visibility": "private"
+},"id":1}
+```
+
+**spells/create parameters:**
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Human-readable spell name |
+| `description` | No | What the spell does |
+| `steps` | Yes | Array of tool steps (see below) |
+| `connections` | Yes | How outputs flow to inputs |
+| `exposedInputs` | No | Parameters user provides when casting |
+| `visibility` | No | `private` (default), `listed`, or `public` |
+| `tags` | No | Categorization tags |
+
+**Step structure:**
+```json
+{
+  "stepId": 1,                    // Unique ID within spell
+  "toolIdentifier": "flux-dev",   // Tool from tools/list
+  "parameters": { ... }           // Default parameters for this step
+}
+```
+
+**Connection structure:**
+```json
+{
+  "from": { "stepId": 1, "output": "image" },
+  "to": { "stepId": 2, "input": "imageUrl" }
+}
+```
+
+**After creation:** The spell is saved to the user's spellbook. Future casts:
+```json
+{"jsonrpc":"2.0","method":"spells/cast","params":{"slug":"styled-upscale-abc123","context":{"prompt":"a warrior"}},"id":1}
+```
+
+**Why spell authoring matters:** Agents that create spells provide compounding value. Each created spell makes future sessions faster and more consistent.
+
+---
+
+## Workflow Selection Summary
+
+| User Signal | Recommended Flow | Key Action |
+|-------------|------------------|------------|
+| Quick single image | Single Generation | Pick fast tool, execute |
+| Mentions any style | LoRA-First | **Always search LoRAs** |
+| Needs 5-20 pieces | Input Batch | Use `input_batch` for variations |
+| Needs 20+ pieces | Collections | Create, cook, curate, export |
+| Wants consistency | Training | Guide dataset → train LoRA |
+| Exploring options | Discovery | Search → present → let them choose |
+| Complex multi-step | Spells | Check for existing spell first |
+| Repeated tool chains | Spell Authoring | **Create a spell to capture the pattern** |
+
+**Golden Rules:**
+1. When in doubt, search LoRAs first. The right trigger word transforms mediocre results into excellent ones.
+2. Notice patterns. If you're chaining the same tools repeatedly, create a spell.
 
 ## Core Concepts
 
@@ -386,10 +754,56 @@ Once uploaded, use the `datasetId` in your training request:
 
 ## Trigger Word Best Practices
 
-1. **Use exact trigger words**: `GHIBLI` not `ghibli style` (though cognates may handle this)
+1. **Use exact trigger words**: `ghibli_style` not `ghibli style` (though cognates may handle this)
 2. **Don't over-trigger**: 2-3 LoRAs maximum per generation
-3. **Weight control**: Append `:weight` to control strength (e.g., `GHIBLI:0.5` for subtle effect)
-4. **Checkpoint matching**: Only use triggers compatible with the selected tool's base model
+3. **Checkpoint matching**: Only use triggers compatible with the selected tool's base model
+
+### LoRA Weight Syntax
+
+Control LoRA strength by appending `:weight` to the trigger word:
+
+```
+trigger_word:weight
+```
+
+**Weight scale:**
+| Weight | Effect | Use Case |
+|--------|--------|----------|
+| `0.2-0.4` | Subtle hint | Blend styles softly |
+| `0.5-0.7` | Balanced | Good default for combining |
+| `0.8-1.0` | Strong | Single LoRA, full effect |
+| `1.0+` | Overpowering | Rarely needed, can cause artifacts |
+
+**Examples:**
+```
+ghibli_style:0.8                    # Strong Ghibli influence
+ethereal_portrait:0.5               # Medium ethereal effect
+ghibli_style:0.4 ethereal:0.4       # Blend two styles equally
+```
+
+### Combining Multiple LoRAs
+
+When using 2-3 LoRAs together, **reduce weights** to avoid conflicts:
+
+**Single LoRA:**
+```
+ghibli_style portrait of a warrior, soft lighting
+```
+→ Uses default weight (~0.8-1.0)
+
+**Two LoRAs combined:**
+```
+ghibli_style:0.5 ethereal_portrait:0.4 portrait of a warrior, soft lighting
+```
+→ Both styles blend without overpowering
+
+**Three LoRAs (maximum recommended):**
+```
+ghibli_style:0.4 ethereal:0.3 detailed_skin:0.3 portrait...
+```
+→ Lower weights prevent muddy results
+
+**Golden rule for combining:** Total weights should sum to ~1.0-1.2 for best results. Going higher risks artifacts or style conflicts.
 
 ## Common Patterns
 
@@ -459,7 +873,43 @@ GET https://noema.art/api/v1/spells/public
 {"jsonrpc":"2.0","method":"spells/get","params":{"slug":"portrait-generator"},"id":1}
 ```
 
-Returns full spell definition including all steps and parameters.
+**Response - Full spell definition:**
+```json
+{
+  "name": "Portrait Upscale",
+  "slug": "portrait-upscale",
+  "description": "Generate a portrait and upscale to 4K",
+  "visibility": "public",
+  "steps": [
+    {
+      "stepId": 1,
+      "toolIdentifier": "flux-dev",
+      "parameters": { "width": 1024, "height": 1024 }
+    },
+    {
+      "stepId": 2,
+      "toolIdentifier": "real-esrgan-4x",
+      "parameters": { "scale": 4 }
+    }
+  ],
+  "connections": [
+    { "from": { "stepId": 1, "output": "image" }, "to": { "stepId": 2, "input": "imageUrl" } }
+  ],
+  "exposedInputs": ["prompt", "style"]
+}
+```
+
+**Understanding spell structure:**
+- `steps`: Array of tools that execute in sequence
+- `steps[].toolIdentifier`: The tool used (query `tools/list` to see its schema)
+- `connections`: How outputs flow between steps
+- `exposedInputs`: What parameters you pass when casting
+
+**To understand a spell's capabilities:**
+1. Get spell details via `spells/get`
+2. Extract `toolIdentifier` from each step
+3. Query `tools/list` to understand each tool's capabilities
+4. The spell's power = combined power of its tools
 
 ### Casting a Spell
 
@@ -771,7 +1221,7 @@ Claude's Process:
 | `/api/v1/loras/list` | REST: List/search LoRAs |
 | `/api/v1/generation/cast` | REST: Execute generation |
 | `/api/v1/generation/status/{id}` | REST: Poll for results |
-| `/api/v1/spells/marketplace` | REST: List available spells |
+| `/api/v1/spells/public` | REST: List available spells |
 | `/api/v1/spells/cast` | REST: Execute spell |
 | `/api/v1/spells/casts/{id}` | REST: Spell status |
 | `/api/v1/collections` | REST: Collection management |
@@ -900,12 +1350,12 @@ Claude's Process:
 
 ### MCP Method Quick Reference
 
-| Category | List | Execute | Status |
-|----------|------|---------|--------|
-| Tools | `tools/list` | `tools/call` | via generationId |
-| Spells | `spells/list` | `spells/cast` | `spells/status` |
-| Collections | `collections/list` | `collections/cook/start` | `collections/get` |
-| Trainings | `trainings/list` | `trainings/create` | `trainings/get` |
+| Category | List | Execute | Create | Status |
+|----------|------|---------|--------|--------|
+| Tools | `tools/list` | `tools/call` | - | via generationId |
+| Spells | `spells/list` | `spells/cast` | `spells/create` | `spells/status` |
+| Collections | `collections/list` | `collections/cook/start` | `collections/create` | `collections/get` |
+| Trainings | `trainings/list` | - | `trainings/create` | `trainings/get` |
 
 ---
 

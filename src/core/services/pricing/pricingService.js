@@ -7,10 +7,22 @@
 
 const { PRICING_CONFIG } = require('./pricingConfig');
 
+// Station economy: 1 point = $0.000337 (matches GPU baseline)
+const USD_PER_POINT = 0.000337;
+
 class PricingService {
   constructor(logger) {
     this.logger = logger || console;
     this.config = PRICING_CONFIG;
+  }
+
+  /**
+   * Convert USD to points.
+   * @param {number} usd - Amount in USD
+   * @returns {number} Points (rounded)
+   */
+  usdToPoints(usd) {
+    return Math.round(usd / USD_PER_POINT);
   }
 
   /**
@@ -63,7 +75,9 @@ class PricingService {
       computeCostUsd: Number(computeCostUsd.toFixed(6)),
       platformFeeUsd: Number(platformFeeUsd.toFixed(6)),
       finalCostUsd: Number(finalCostUsd.toFixed(6)),
-      multiplierApplied: multiplier,
+      totalPoints: this.usdToPoints(finalCostUsd),
+      multiplier: multiplier,
+      multiplierApplied: multiplier, // deprecated: use multiplier
       tier: isMs2User ? 'ms2' : 'standard',
       serviceName,
       toolId,
