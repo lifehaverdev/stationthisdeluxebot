@@ -208,6 +208,22 @@ export default class ModsMenuModal {
           this.render();
         }
       });
+
+      // Single item regeneration result
+      this.ws.on('embellishmentRegenerateResult', (data) => {
+        const { datasetId, embellishmentId, itemIndex, success, value, error } = data;
+        if (success) {
+          console.log(`[ModsMenuModal] Regenerated control image ${itemIndex} successfully`);
+          // Refresh the dataset to get updated embellishment results
+          this.fetchDatasets().then(() => {
+            if (this.normalizeId(datasetId) === this.normalizeId(this.state.selectedDatasetId)) {
+              this.render();
+            }
+          });
+        } else {
+          console.warn(`[ModsMenuModal] Regenerate failed for item ${itemIndex}:`, error);
+        }
+      });
     }
   }
 
@@ -4531,10 +4547,34 @@ export default class ModsMenuModal {
 
     // Bind regenerate/replace buttons
     overlay.querySelectorAll('.regenerate-control').forEach(btn => {
-      btn.onclick = () => {
+      btn.onclick = async () => {
         const idx = parseInt(btn.getAttribute('data-idx'), 10);
-        alert(`Regenerate for image ${idx + 1} not yet implemented`);
-        // TODO: Implement single image regeneration
+
+        // Check if controlSet has config stored
+        let config = controlSet.config;
+        if (!config || !config.prompt) {
+          // Legacy control set - need to ask for concept
+          const concept = prompt('This control set was created before config storage was added.\n\nPlease re-enter the concept description that was used to generate these control images:');
+          if (!concept || !concept.trim()) {
+            return; // User cancelled
+          }
+          config = { prompt: concept.trim() };
+        }
+
+        btn.disabled = true;
+        btn.textContent = 'Regenerating...';
+        try {
+          await this.regenerateControlImage(controlSetId, idx, config);
+          btn.textContent = 'Started!';
+          setTimeout(() => {
+            btn.textContent = 'Regenerate';
+            btn.disabled = false;
+          }, 2000);
+        } catch (err) {
+          alert(`Failed to regenerate: ${err.message}`);
+          btn.textContent = 'Regenerate';
+          btn.disabled = false;
+        }
       };
     });
     overlay.querySelectorAll('.replace-control').forEach(btn => {
@@ -4578,6 +4618,30 @@ export default class ModsMenuModal {
       const errData = await res.json().catch(() => ({}));
       throw new Error(errData.error?.message || 'Failed to replace control image');
     }
+  }
+
+  async regenerateControlImage(controlSetId, imageIndex, config = null) {
+    const datasetId = this.state.selectedDatasetId;
+    if (!datasetId || !controlSetId) throw new Error('Missing IDs');
+
+    const csrfRes = await fetch('/api/v1/csrf-token');
+    const { csrfToken } = await csrfRes.json();
+
+    const body = config ? { config } : {};
+
+    const res = await fetch(`/api/v1/datasets/${encodeURIComponent(datasetId)}/embellishments/${encodeURIComponent(controlSetId)}/regenerate/${imageIndex}`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrfToken },
+      body: JSON.stringify(body)
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error?.message || 'Failed to start regeneration');
+    }
+
+    return await res.json();
   }
 
   async deleteControlSet(controlSetId) {

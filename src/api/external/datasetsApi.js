@@ -362,6 +362,28 @@ function createDatasetsApiRouter(deps = {}) {
     }
   });
 
+  // POST /:id/embellishments/:embellishmentId/regenerate/:index – regenerate a single embellishment item
+  router.post('/:id/embellishments/:embellishmentId/regenerate/:index', async (req, res) => {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
+    }
+    const ownerId = user.masterAccountId || user.userId;
+    const { id, embellishmentId, index } = req.params;
+    try {
+      const payload = { masterAccountId: ownerId, ...req.body };
+      const { data } = await client.post(
+        `/internal/v1/data/datasets/${encodeURIComponent(id)}/embellishments/${encodeURIComponent(embellishmentId)}/regenerate/${encodeURIComponent(index)}`,
+        payload
+      );
+      res.json(data);
+    } catch (err) {
+      const status = err.response?.status || 500;
+      logger.error('regenerate embellishment item proxy error', err.response?.data || err.message);
+      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
   // POST /:id/embellish – start embellishment task via spell
   router.post('/:id/embellish', async (req, res) => {
     const user = req.user;

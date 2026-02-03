@@ -176,6 +176,7 @@ function createEmbellishmentTaskService(deps) {
       type: embellishmentMeta.type,
       method: spellSlug,
       createdBy: ownerAccountId,
+      config: parameterOverrides, // Store config for regeneration
       results: Array(dataset.images.length).fill(null),
     });
 
@@ -567,18 +568,6 @@ function createEmbellishmentTaskService(deps) {
     };
   }
 
-  // Listen for spell completions
-  notificationEvents.on('spellCompletion', async (payload = {}) => {
-    try {
-      if (payload.embellishmentTask) {
-        await handleSpellCompletion(payload);
-      }
-    } catch (err) {
-      logger.error('[EmbellishmentTaskService] Error handling spell completion:', err);
-    }
-  });
-
-  logger.info('[EmbellishmentTaskService] Listener attached.');
 
   /**
    * Set spellsService (for late injection after SpellsService is initialized)
@@ -588,10 +577,179 @@ function createEmbellishmentTaskService(deps) {
     logger.info('[EmbellishmentTaskService] SpellsService injected.');
   }
 
+  /**
+   * Regenerate a single item in an embellishment
+   * @param {string} datasetId
+   * @param {string} embellishmentId
+   * @param {number} itemIndex
+   * @param {string} ownerAccountId
+   * @param {Object} overrideConfig - Optional config overrides (for legacy embellishments without stored config)
+   */
+  async function regenerateSingleItem(datasetId, embellishmentId, itemIndex, ownerAccountId, overrideConfig = null) {
+    // 1. Get dataset and embellishment
+    const dataset = await datasetDb.findOne({ _id: new ObjectId(datasetId) });
+    if (!dataset) {
+      throw new Error('Dataset not found');
+    }
+    if (dataset.ownerAccountId.toString() !== ownerAccountId) {
+      throw new Error('You can only regenerate your own embellishments');
+    }
+
+    const embellishment = (dataset.embellishments || []).find(
+      e => e._id.toString() === embellishmentId
+    );
+    if (!embellishment) {
+      throw new Error('Embellishment not found');
+    }
+
+    const spellSlug = embellishment.method;
+    // Use override config if provided, otherwise fall back to stored config
+    const parameterOverrides = overrideConfig || embellishment.config || {};
+
+    // 2. Get spell metadata
+    const embellishmentMeta = await spellsDb.getEmbellishmentMetadata(spellSlug);
+    if (!embellishmentMeta) {
+      throw new Error(`Spell "${spellSlug}" no longer has embellishment capabilities`);
+    }
+
+    // 3. Validate item index
+    if (itemIndex < 0 || itemIndex >= dataset.images.length) {
+      throw new Error('Invalid item index');
+    }
+
+    const imageUrl = dataset.images[itemIndex];
+
+    // 4. Cast the spell for this single image
+    const context = {
+      masterAccountId: ownerAccountId,
+      platform: 'web-sandbox',
+      parameterOverrides: {
+        ...parameterOverrides,
+        imageUrl,
+      },
+      embellishmentRegenerate: {
+        datasetId,
+        embellishmentId,
+        itemIndex,
+        type: embellishmentMeta.type,
+        spellSlug,
+      },
+    };
+
+    try {
+      const result = await spellsService.castSpell(spellSlug, context, castsDb);
+      const castId = result?.castId || context.castId || null;
+
+      logger.info(`[EmbellishmentTaskService] Regenerate cast for embellishment ${embellishmentId} item ${itemIndex}, castId: ${castId}`);
+
+      return {
+        success: true,
+        castId,
+        itemIndex,
+        message: 'Regeneration started',
+      };
+    } catch (err) {
+      logger.error(`[EmbellishmentTaskService] Failed to regenerate item ${itemIndex}:`, err.message);
+      throw new Error(`Failed to start regeneration: ${err.message}`);
+    }
+  }
+
+  /**
+   * Handle regeneration completion from spell completion event
+   */
+  async function handleRegenerateCompletion(payload) {
+    const regenerateMeta = payload.embellishmentRegenerate;
+    if (!regenerateMeta) return;
+
+    const { datasetId, embellishmentId, itemIndex, type, spellSlug } = regenerateMeta;
+    const ownerAccountId = payload.masterAccountId;
+    const generationId = payload.finalGenerationId || (
+      Array.isArray(payload.stepGenerationIds) && payload.stepGenerationIds.length
+        ? payload.stepGenerationIds[payload.stepGenerationIds.length - 1]
+        : null
+    );
+
+    logger.debug(`[EmbellishmentTaskService] handleRegenerateCompletion for embellishment ${embellishmentId} item ${itemIndex}`);
+
+    // Get spell extraction config
+    const spellMeta = await spellsDb.getEmbellishmentMetadata(spellSlug);
+    if (!spellMeta) {
+      logger.error(`[EmbellishmentTaskService] Spell ${spellSlug} no longer has embellishment metadata`);
+      return;
+    }
+
+    // Get generation output
+    let generationOutput = payload.finalGenerationRecord || payload.finalStepSnapshot;
+    if (!generationOutput?.responsePayload && generationId && generationOutputsDb) {
+      generationOutput = await generationOutputsDb.findGenerationById(generationId);
+    }
+
+    // Extract result
+    const extractedValue = extractResult(generationOutput, spellMeta.resultExtraction);
+
+    if (!extractedValue) {
+      logger.warn(`[EmbellishmentTaskService] Failed to extract result for regenerate item ${itemIndex}`);
+
+      // Emit failure event
+      if (websocketService) {
+        websocketService.sendToUser(ownerAccountId, {
+          type: 'embellishmentRegenerateResult',
+          payload: {
+            datasetId,
+            embellishmentId,
+            itemIndex,
+            success: false,
+            error: 'Failed to extract result from spell output',
+          },
+        });
+      }
+      return;
+    }
+
+    // Update dataset embellishment result
+    await datasetDb.updateEmbellishmentResult(datasetId, embellishmentId, itemIndex, {
+      generationOutputId: generationId,
+      value: extractedValue,
+    });
+
+    // Emit success event
+    if (websocketService) {
+      websocketService.sendToUser(ownerAccountId, {
+        type: 'embellishmentRegenerateResult',
+        payload: {
+          datasetId,
+          embellishmentId,
+          itemIndex,
+          success: true,
+          value: extractedValue,
+        },
+      });
+    }
+
+    logger.info(`[EmbellishmentTaskService] Regenerated item ${itemIndex} for embellishment ${embellishmentId}`);
+  }
+
+  // Listen for spell completions (also handle regenerate)
+  notificationEvents.on('spellCompletion', async (payload = {}) => {
+    try {
+      if (payload.embellishmentTask) {
+        await handleSpellCompletion(payload);
+      }
+      if (payload.embellishmentRegenerate) {
+        await handleRegenerateCompletion(payload);
+      }
+    } catch (err) {
+      logger.error('[EmbellishmentTaskService] Error handling spell completion:', err);
+    }
+  });
+
+  logger.info('[EmbellishmentTaskService] Listener attached.');
+
   return {
     startTask,
     cancelTask,
     getTaskProgress,
+    regenerateSingleItem,
     setSpellsService,
   };
 }

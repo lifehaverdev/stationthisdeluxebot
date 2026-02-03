@@ -299,6 +299,40 @@ function createEmbellishmentApi({ logger, db, embellishmentTaskService }) {
     }
   });
 
+  // POST /datasets/:datasetId/embellishments/:embellishmentId/regenerate/:index - Regenerate a single item
+  router.post('/datasets/:datasetId/embellishments/:embellishmentId/regenerate/:index', async (req, res) => {
+    const { datasetId, embellishmentId, index } = req.params;
+    const { masterAccountId, config } = req.body;
+    const itemIndex = parseInt(index, 10);
+
+    if (!masterAccountId) {
+      return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'masterAccountId is required' } });
+    }
+    if (isNaN(itemIndex) || itemIndex < 0) {
+      return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Invalid item index' } });
+    }
+
+    try {
+      const result = await embellishmentTaskService.regenerateSingleItem(
+        datasetId,
+        embellishmentId,
+        itemIndex,
+        masterAccountId,
+        config || null  // Optional config override for legacy embellishments
+      );
+      res.json({ success: true, data: result });
+    } catch (err) {
+      logger.error('[EmbellishmentAPI] Failed to regenerate item:', err);
+
+      const statusCode = err.message.includes('not found') ? 404 :
+                        err.message.includes('own') ? 403 : 500;
+
+      res.status(statusCode).json({
+        error: { code: 'REGENERATE_ERROR', message: err.message }
+      });
+    }
+  });
+
   // GET /embellishment-spells - List spells with embellishment capabilities
   router.get('/embellishment-spells', async (req, res) => {
     const { type } = req.query;
