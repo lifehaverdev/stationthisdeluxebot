@@ -644,15 +644,221 @@ Status values:
 - Videos may take 60-180 seconds
 - Give up after 5 minutes if still pending (likely stuck)
 
-## Authentication
+## Agent Onboarding
 
-Users need an API key to execute generations. Guide them to obtain one:
-1. Visit the NOEMA web interface
-2. Navigate to Account/Settings
-3. Generate an API key
-4. Use header: `X-API-Key: {key}`
+New to NOEMA? Here's how to get started as an autonomous agent.
 
-Discovery endpoints (tools, LoRAs) are public and don't require authentication.
+---
+
+### Primary Path: Magic Amount Wallet Linking
+
+**This is the recommended path for AI agents.** Link your wallet and generate an API key by sending a unique "magic amount" deposit. The system detects your specific deposit amount and automatically completes account setup.
+
+**Step 1: Initiate Wallet Linking**
+
+```
+POST https://noema.art/api/v1/wallets/initiate
+Content-Type: application/json
+X-API-Key: {existing_key_or_session}
+
+{
+  "tokenAddress": "0x0000000000000000000000000000000000000000"
+}
+```
+
+Response:
+```json
+{
+  "requestId": "abc123...",
+  "magicAmount": "0.000047829156382",
+  "tokenAddress": "0x0000000000000000000000000000000000000000",
+  "expiresAt": "2026-02-03T12:15:00Z",
+  "depositToAddress": "0xFoundationContractAddress..."
+}
+```
+
+**Key fields:**
+- `requestId`: Use this to poll for status
+- `magicAmount`: The exact amount (in ETH) you must send
+- `depositToAddress`: The Foundation contract address to send to
+- `expiresAt`: Request expires after 15 minutes
+
+**Step 2: Send the Magic Amount Deposit**
+
+Send exactly the `magicAmount` to `depositToAddress`. The system monitors for deposits matching pending magic amounts.
+
+```javascript
+// Using ethers.js
+const tx = await wallet.sendTransaction({
+  to: depositToAddress,
+  value: ethers.parseEther(magicAmount)
+});
+await tx.wait();
+```
+
+**Important:** The amount must be exact. The system uses the unique amount (generated as a cryptographically random 6-byte number) to match your deposit to your linking request.
+
+**Step 3: Poll for Completion**
+
+```
+GET https://noema.art/api/v1/wallets/status/{requestId}
+```
+
+Poll every 2-5 seconds. Possible responses:
+
+**Status: PENDING (HTTP 202)**
+```json
+{
+  "status": "PENDING"
+}
+```
+→ Deposit not yet detected. Continue polling.
+
+**Status: COMPLETED (HTTP 200)**
+```json
+{
+  "status": "COMPLETED",
+  "apiKey": "sat_abc123def456...",
+  "message": "Wallet connected successfully. This is your API key. Store it securely, it will not be shown again."
+}
+```
+→ Success! Save the API key immediately.
+
+**Status: ALREADY_CLAIMED (HTTP 410)**
+```json
+{
+  "status": "ALREADY_CLAIMED",
+  "message": "This API key has already been claimed."
+}
+```
+→ Key was already retrieved. Cannot retrieve again.
+
+**Status: EXPIRED**
+```json
+{
+  "status": "EXPIRED"
+}
+```
+→ Request expired (15 minutes). Start over with a new initiate request.
+
+**⚠️ Save the API key immediately - it's only shown once!**
+
+The raw API key is cached for 5 minutes after wallet linking completes. After retrieval or cache expiry, the key cannot be recovered.
+
+**Step 4: Start Making Requests**
+
+```
+POST https://noema.art/api/v1/mcp
+Content-Type: application/json
+X-API-Key: sat_abc123def456...
+
+{"jsonrpc":"2.0","method":"tools/call","params":{
+  "name": "dall-e-3",
+  "arguments": {"prompt": "a sunset over mountains"}
+},"id":1}
+```
+
+**Complete Magic Amount Flow:**
+```
+1. POST /wallets/initiate    → Get unique magic amount + deposit address
+2. Send exact magic amount   → Deposit to Foundation contract
+3. System detects deposit    → Matches amount, links wallet, generates key
+4. GET /wallets/status/:id   → Poll until COMPLETED, retrieve API key
+5. Use X-API-Key header      → Make generation requests
+```
+
+**How It Works Under the Hood:**
+
+1. **Initiation**: Creates a linking request with a unique 6-byte random amount (in wei)
+2. **Detection**: Alchemy webhooks monitor the Foundation contract for deposits
+3. **Matching**: `MagicAmountLinkingService` checks if deposit amount matches any pending request
+4. **Linking**: On match, wallet is added to user with `verified: true` and `tag: magic-link-deposit`
+5. **Key Generation**: API key generated (SHA-256 hashed for storage), raw key cached for claiming
+6. **Delivery**: User polls status endpoint to claim the one-time API key
+
+---
+
+### Alternative: x402 Micropayments (No Account Needed)
+
+Best for: Autonomous agents with crypto wallets, no account needed.
+
+**How x402 Works:**
+1. Make a request without payment
+2. Receive `402 Payment Required` with payment details
+3. Pay the specified amount (USDC on Base)
+4. Retry request with payment proof
+5. Generation executes
+
+**Step 1: Have a Funded Wallet**
+- Need USDC on Base network
+- Agent controls its own wallet
+
+**Step 2: Make Request to x402 Endpoint**
+```
+POST https://noema.art/api/v1/x402/generate
+Content-Type: application/json
+
+{
+  "toolId": "dall-e-3",
+  "parameters": {"prompt": "a sunset over mountains"}
+}
+```
+
+**Step 3: Receive Payment Requirements**
+```json
+{
+  "status": 402,
+  "paymentRequired": {
+    "amount": "0.04",
+    "currency": "USDC",
+    "chain": "base",
+    "recipient": "0x...",
+    "memo": "gen_abc123"
+  }
+}
+```
+
+**Step 4: Pay and Retry**
+```
+1. Send USDC payment to recipient with memo
+2. Retry request with payment proof header:
+   X-Payment-Proof: {transaction_hash}
+3. Generation executes
+```
+
+**x402 Benefits:**
+- No account creation needed
+- No API key management
+- Pay exactly what you use
+- Fully autonomous agent-compatible
+
+### Which Should I Use?
+
+| Scenario | Recommended | Why |
+|----------|-------------|-----|
+| Human user with agent assistant | API Key | Easier setup, credit balance |
+| Fully autonomous agent | x402 | No account needed, agent pays directly |
+| Testing/development | API Key | Predictable costs, easier debugging |
+| High-volume production | API Key | Bulk credit discounts |
+| One-off requests | x402 | No commitment, instant access |
+
+### For Autonomous Agents
+
+If you're an autonomous agent with your own wallet:
+
+1. **Check your balance**: Ensure you have USDC on Base
+2. **Use x402 endpoint**: `https://noema.art/api/v1/x402/generate`
+3. **Handle 402 responses**: Parse payment requirements, execute payment, retry
+4. **No human intervention needed**: Fully programmatic flow
+
+### Authentication Summary
+
+| Endpoint Type | Auth Required | Method |
+|---------------|---------------|--------|
+| Discovery (tools/list, spells/list, etc.) | No | None |
+| Execution via MCP | Yes | `X-API-Key` header |
+| Execution via x402 | Yes | Payment proof |
+| Account management | Yes | Session or API key |
 
 ## Cost Awareness
 

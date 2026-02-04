@@ -153,15 +153,24 @@ class TrainingDB extends BaseDB {
     );
   }
 
-  async fetchQueued(limit = 3) {
-    return this.findMany({ status: 'QUEUED' }, { limit, sort: { createdAt: 1 } });
+  async fetchQueued(limit = 3, environment = null) {
+    const filter = { status: 'QUEUED' };
+    if (environment) {
+      filter.environment = environment;
+    }
+    const jobs = await this.findMany(filter, { limit, sort: { createdAt: 1 } });
+    if (jobs.length > 0) {
+      this.logger.info(`[TrainingDB] fetchQueued found ${jobs.length} job(s) for env=${environment || 'any'}: ${jobs.map(j => j._id).join(', ')}`);
+    }
+    return jobs;
   }
 
   /**
    * Fetch next queued job (one at a time for worker)
+   * @param {string} environment - Optional environment filter ('development' or 'production')
    */
-  async fetchNextQueued() {
-    const jobs = await this.fetchQueued(1);
+  async fetchNextQueued(environment = null) {
+    const jobs = await this.fetchQueued(1, environment);
     return jobs.length > 0 ? jobs[0] : null;
   }
 

@@ -20,6 +20,12 @@ if [ -z "$DISABLE_CREDIT_WEBHOOK_ACTIONS" ]; then
   echo "[run-dev-training.sh] DISABLE_CREDIT_WEBHOOK_ACTIONS not set. Defaulting to 1."
 fi
 
+# Set training environment to development so we don't conflict with production workers
+if [ -z "$TRAINING_ENVIRONMENT" ]; then
+  export TRAINING_ENVIRONMENT=development
+  echo "[run-dev-training.sh] TRAINING_ENVIRONMENT not set. Defaulting to 'development'."
+fi
+
 # --- Load Ethereum signer private key interactively unless SKIP_CREDIT_SERVICE=1 ---
 if [ "${SKIP_CREDIT_SERVICE}" != "1" ]; then
   if [ -z "$ETHEREUM_SIGNER_PRIVATE_KEY" ]; then
@@ -110,7 +116,7 @@ echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}  All services running${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo -e "${BLUE}[APP]${NC}     Main application"
-echo -e "${MAGENTA}[WORKER]${NC}  VastAI training worker"
+echo -e "${MAGENTA}[WORKER]${NC}  VastAI training worker (env: ${TRAINING_ENVIRONMENT})"
 echo -e "${CYAN}[SWEEPER]${NC} Instance sweeper (every ${SWEEPER_INTERVAL}s)"
 echo ""
 echo -e "${YELLOW}Press Ctrl+C to stop all services${NC}"

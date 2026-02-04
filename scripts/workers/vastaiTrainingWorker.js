@@ -41,6 +41,10 @@ const POLL_INTERVAL_MS = 30 * 1000;
 // Cooldown after processing a job (5 seconds)
 const POST_JOB_COOLDOWN_MS = 5 * 1000;
 
+// Environment filter - only process jobs tagged with matching environment
+// Set TRAINING_ENVIRONMENT=development in local dev, production in prod
+const WORKER_ENVIRONMENT = process.env.TRAINING_ENVIRONMENT || 'production';
+
 // Worker state
 let isRunning = true;
 let isPaused = false;
@@ -93,7 +97,8 @@ async function alertUser(userId, severity, message) {
  * Main worker loop
  */
 async function runWorkerLoop(trainingDb, processor) {
-  logger.info('[VastAIWorker] Starting worker loop...');
+  logger.info(`[VastAIWorker] Starting worker loop for environment: ${WORKER_ENVIRONMENT}`);
+  let pollCount = 0;
 
   while (isRunning) {
     try {
@@ -104,16 +109,23 @@ async function runWorkerLoop(trainingDb, processor) {
         continue;
       }
 
-      // Fetch next queued job
-      const job = await trainingDb.fetchNextQueued();
+      pollCount++;
+      // Log every 10 polls (5 minutes) to show we're alive
+      if (pollCount % 10 === 0) {
+        logger.info(`[VastAIWorker] Still polling for ${WORKER_ENVIRONMENT} jobs... (poll #${pollCount})`);
+      }
+
+      // Fetch next queued job matching our environment
+      const job = await trainingDb.fetchNextQueued(WORKER_ENVIRONMENT);
 
       if (!job) {
         // No jobs, wait and poll again
+        logger.debug('[VastAIWorker] No queued jobs found, waiting...');
         await sleep(POLL_INTERVAL_MS);
         continue;
       }
 
-      logger.info(`[VastAIWorker] Found queued job: ${job._id} (${job.modelName})`);
+      logger.info(`[VastAIWorker] Found queued job: ${job._id} (${job.modelName}) retryCount=${job.retryCount || 0}`);
 
       // Attempt to claim the job (atomic)
       const claimedJob = await trainingDb.claimJob(job._id);

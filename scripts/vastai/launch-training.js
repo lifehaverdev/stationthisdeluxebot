@@ -93,8 +93,9 @@ const OpenAIService = require('../../src/core/services/openai/openaiService');
 // Cloudflare R2 integration (for private models)
 const StorageService = require('../../src/core/services/storageService');
 
-// Default ai-toolkit config template (correct ai-toolkit format)
+// Default ai-toolkit config templates
 const DEFAULT_TEMPLATE = path.resolve(__dirname, '../../src/core/services/vastai/configs/flux-lora-24gb-aitoolkit.yaml');
+const KONTEXT_TEMPLATE = path.resolve(__dirname, '../../src/core/services/vastai/configs/flux-kontext-24gb-aitoolkit.yaml');
 
 // Default Docker image with ai-toolkit pre-installed (10.2GB, saves ~15min setup)
 // Note: Docker image is "ostris/aitoolkit" (no hyphen), GitHub repo is "ai-toolkit" (hyphen)
@@ -107,6 +108,9 @@ const LOCAL_JOBS_BASE = process.env.TRAINING_JOBS_DIR
 const args = minimist(process.argv.slice(2), {
   string: [
     'datasetDir',
+    'controlDir',    // KONTEXT concept mode: directory with control images
+    'trainingMode',  // KONTEXT: 'style_subject' or 'concept'
+    'baseModel',     // Model type: 'FLUX', 'KONTEXT', etc.
     'job',
     'template',
     'configOutput',
@@ -869,6 +873,8 @@ async function main() {
         description: args.description,  // User-provided description (optional)
         hfOrg,
         trainingConfig,
+        baseModel: args.baseModel,  // 'FLUX', 'KONTEXT', 'SDXL', etc.
+        trainingMode: args.trainingMode,  // 'style_subject' or 'concept' for KONTEXT
       });
 
       samplePrompts = cardResult.samplePrompts;
@@ -899,7 +905,14 @@ async function main() {
           - "${triggerWord}, artistic composition, high quality"`;
   }
 
-  const templatePath = path.resolve(expandHome(args.template || DEFAULT_TEMPLATE));
+  // Select template based on baseModel
+  let defaultTemplate = DEFAULT_TEMPLATE;
+  if (args.baseModel === 'KONTEXT') {
+    defaultTemplate = KONTEXT_TEMPLATE;
+    log(`Using KONTEXT template for training mode: ${args.trainingMode || 'style_subject'}`);
+  }
+
+  const templatePath = path.resolve(expandHome(args.template || defaultTemplate));
   const configOutputPath = path.resolve(
     expandHome(args.configOutput || path.join(localJobRoot, 'config', path.basename(templatePath)))
   );
@@ -907,6 +920,13 @@ async function main() {
   // Sample at the final step (steps - 1 for 0-indexed training)
   // With skip_first_sample: true, this ensures samples only at the trained model
   const sampleEvery = Math.max(1, steps - 1);
+
+  // For KONTEXT concept mode, include control_path line
+  let controlPathLine = '#          control_path: ""  # Not used for style_subject mode';
+  if (args.baseModel === 'KONTEXT' && args.trainingMode === 'concept' && args.controlDir) {
+    controlPathLine = `          control_path: "${remoteDir}/control"`;
+    log(`KONTEXT concept mode: control images will be at ${remoteDir}/control`);
+  }
 
   await renderConfig({
     templatePath,
@@ -919,7 +939,8 @@ async function main() {
       MODEL_NAME: modelName,
       TRAIN_STEPS: String(steps),
       SAMPLE_EVERY: String(sampleEvery),
-      SAMPLE_PROMPTS: samplePromptsYaml
+      SAMPLE_PROMPTS: samplePromptsYaml,
+      CONTROL_PATH_LINE: controlPathLine
     }
   });
 
@@ -968,6 +989,35 @@ async function main() {
   await ssh.exec(
     `cd ${remoteDir} && rm -rf dataset && mkdir -p dataset && tar -xzf dataset.tar.gz -C dataset && rm -f dataset.tar.gz`
   );
+
+  // Upload control images for KONTEXT concept mode
+  if (args.baseModel === 'KONTEXT' && args.trainingMode === 'concept' && args.controlDir) {
+    const fsp = require('fs').promises;
+    const controlExists = await fsp.access(args.controlDir).then(() => true).catch(() => false);
+
+    if (controlExists) {
+      log('Packing control images for KONTEXT concept mode...');
+      const { archivePath: controlArchivePath } = await packer.pack({
+        jobId: `${jobId}-control`,
+        datasetDir: args.controlDir,
+        outputDir: transferDir,
+        archiveName: 'control.tar.gz',
+        manifestName: 'control_manifest.json'
+      });
+
+      log('Uploading control images...');
+      const remoteControlArchivePath = `${remoteDir}/control.tar.gz`;
+      await ssh.upload(controlArchivePath, remoteControlArchivePath);
+
+      log('Extracting control images on remote...');
+      await ssh.exec(
+        `cd ${remoteDir} && rm -rf control && mkdir -p control && tar -xzf control.tar.gz -C control && rm -f control.tar.gz`
+      );
+      log('Control images uploaded successfully');
+    } else {
+      log(`Warning: Control directory not found at ${args.controlDir}`);
+    }
+  }
 
   log('Uploading config...');
   const remoteConfigPath = `${remoteDir}/config/${path.basename(configOutputPath)}`;

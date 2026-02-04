@@ -9,7 +9,7 @@ class DatasetPacker {
     this.logger = logger || console;
   }
 
-  async pack({ jobId, dataset, datasetDir, outputDir }) {
+  async pack({ jobId, dataset, datasetDir, outputDir, archiveName = 'dataset.tar.gz', manifestName = 'dataset_manifest.json' }) {
     if (!jobId) {
       throw new Error('DatasetPacker.pack requires a jobId');
     }
@@ -27,9 +27,9 @@ class DatasetPacker {
     await fsp.mkdir(transferDir, { recursive: true });
 
     const manifest = await this.buildManifest(dataset, absDatasetDir);
-    const manifestPath = path.join(transferDir, 'dataset_manifest.json');
+    const manifestPath = path.join(transferDir, manifestName);
 
-    const archivePath = path.join(transferDir, 'dataset.tar.gz');
+    const archivePath = path.join(transferDir, archiveName);
     await this.createTarball(absDatasetDir, archivePath);
     const stats = await fsp.stat(archivePath);
     const sha256 = await this.computeSha256(archivePath);

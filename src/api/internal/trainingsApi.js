@@ -77,7 +77,8 @@ function createTrainingsApi(dependencies) {
       triggerWords,
       // KONTEXT-specific fields
       trainingMode,
-      controlDatasetId
+      controlDatasetId,
+      controlSetId
     } = req.body;
 
     logger.info(`[TrainingsAPI] POST / - Creating new training with name "${name}" for MAID ${masterAccountId}`);
@@ -163,7 +164,10 @@ function createTrainingsApi(dependencies) {
         costPoints: parseInt(costPoints) || 0,
         // KONTEXT-specific fields
         trainingMode: trainingMode || null, // 'style_subject' or 'concept' for KONTEXT
-        controlDatasetId: controlDatasetId || null, // Required for concept mode
+        controlDatasetId: controlDatasetId || null, // Required for concept mode (legacy)
+        controlSetId: controlSetId || null, // Embellishment ID for concept mode control images
+        // Environment tag for dev/prod worker separation
+        environment: process.env.TRAINING_ENVIRONMENT || 'production',
         // status: 'draft', // createTrainingSession in trainingDb.js sets this default
         // ownedBy: masterAccountId, // createTrainingSession in trainingDb.js sets this default
       };
@@ -358,15 +362,21 @@ function createTrainingsApi(dependencies) {
       }
 
       // Reset status to QUEUED and clear error fields
+      // Also clear instance info from previous attempt so worker starts fresh
       await db.loraTrainings.setStatus(trainingId, 'QUEUED', {
         error: null,
         errorMessage: null,
         retryCount: (existingTraining.retryCount || 0) + 1,
         progress: 0,
-        currentStep: 0
+        currentStep: 0,
+        vastaiInstanceId: null,
+        vastaiOfferId: null,
+        startedAt: null,
+        completedAt: null
       });
 
       const updatedTraining = await db.loraTrainings.findTrainingById(trainingId);
+      logger.info(`[TrainingsAPI] Retry complete - job ${trainingId} now has status: ${updatedTraining.status}, retryCount: ${updatedTraining.retryCount}`);
       res.json({ success: true, training: updatedTraining });
     } catch (error) {
       logger.error(`[TrainingsAPI] Error retrying training ${trainingId}:`, error);

@@ -44,7 +44,7 @@ import torch
 from diffusers import FluxPipeline
 
 pipe = FluxPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-dev",
+    "{{BASE_MODEL}}",
     torch_dtype=torch.bfloat16
 )
 pipe.load_lora_weights("{{HF_REPO_ID}}")

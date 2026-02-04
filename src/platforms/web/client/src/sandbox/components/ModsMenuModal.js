@@ -190,10 +190,16 @@ export default class ModsMenuModal {
           this.fetchWizardCaptionSets(this.state.wizardDatasetId);
         }
 
-        // Wizard awareness: refresh datasets when control embellishment completes (for step 2 control dataset selection)
+        // Wizard awareness: refresh wizard control sets when on step 3 (KONTEXT concept mode) and this is a control embellishment
+        const isKontextConcept = this.state.wizardModelType === 'KONTEXT' && this.state.wizardTrainingMode === 'concept';
+        if (embellishmentType === 'control' && this.state.wizardStep === 3 && isKontextConcept && normalizedDatasetId === this.normalizeId(this.state.wizardDatasetId)) {
+          this.fetchWizardControlSets(this.state.wizardDatasetId);
+        }
+
+        // Wizard awareness: refresh datasets when control embellishment completes (for general UI updates)
         if (embellishmentType === 'control' && status === 'completed') {
           this.fetchDatasets().then(() => {
-            if (this.state.wizardStep === 2) {
+            if (this.state.wizardStep === 2 || this.state.wizardStep === 3) {
               this.render();
             }
           });
@@ -1206,12 +1212,29 @@ export default class ModsMenuModal {
       };
     });
 
+    // Step 3: Control set selection (for KONTEXT concept mode)
+    this.modalElement.querySelectorAll('.wizard-control-set-card').forEach(card => {
+      card.onclick = () => {
+        const id = card.getAttribute('data-control-id');
+        this.wizardSelectControlSet(id);
+      };
+    });
+
     // Step 3: Generate Captions button
     const genCapBtn = this.modalElement.querySelector('.wizard-generate-captions-btn');
     if (genCapBtn) {
       genCapBtn.onclick = () => {
         const dsId = genCapBtn.getAttribute('data-dataset-id');
         this.generateCaptionSet(dsId);
+      };
+    }
+
+    // Step 3: Generate Control Images button (in wizard)
+    const wizGenCtrlBtn = this.modalElement.querySelector('.wizard-generate-control-btn');
+    if (wizGenCtrlBtn) {
+      wizGenCtrlBtn.onclick = () => {
+        const dsId = wizGenCtrlBtn.getAttribute('data-dataset-id');
+        this.generateControlImages(dsId);
       };
     }
 
@@ -1408,15 +1431,18 @@ export default class ModsMenuModal {
       wizardTrainingMode: null,
       wizardControlDatasetId: null,
       wizardCaptionSetId: null,
+      wizardControlSetId: null,
       wizardFormValues: {},
       wizardCaptionSets: [],
+      wizardControlSets: [],
       wizardLoadingCaptions: false,
+      wizardLoadingControlSets: false,
       formMode: null, // clear any existing form
     });
   }
 
   wizardNext() {
-    const { wizardStep, wizardDatasetId, wizardModelType, wizardTrainingMode, wizardControlDatasetId, wizardCaptionSetId } = this.state;
+    const { wizardStep, wizardDatasetId, wizardModelType, wizardTrainingMode, wizardControlDatasetId, wizardCaptionSetId, wizardControlSetId } = this.state;
     if (wizardStep === 1) {
       if (!wizardDatasetId) { alert('Please select a dataset.'); return; }
       this.fetchWizardCaptionSets(wizardDatasetId);
@@ -1426,13 +1452,12 @@ export default class ModsMenuModal {
       // KONTEXT requires training mode selection
       if (wizardModelType === 'KONTEXT') {
         if (!wizardTrainingMode) { alert('Please select a training mode for KONTEXT.'); return; }
-        // Concept mode requires control dataset
-        if (wizardTrainingMode === 'concept' && !wizardControlDatasetId) {
-          alert('Please select a control dataset for concept training.');
-          return;
-        }
       }
       const defaults = this.getModelDefaults(wizardModelType, wizardTrainingMode);
+      // For KONTEXT concept mode, fetch control sets for step 3
+      if (wizardModelType === 'KONTEXT' && wizardTrainingMode === 'concept') {
+        this.fetchWizardControlSets(wizardDatasetId);
+      }
       this.setState({
         wizardStep: 3,
         wizardFormValues: {
@@ -1445,7 +1470,13 @@ export default class ModsMenuModal {
         },
       });
     } else if (wizardStep === 3) {
-      if (!wizardCaptionSetId) { alert('Please select a caption set.'); return; }
+      // For KONTEXT concept mode, require control set instead of caption set
+      const isKontextConcept = wizardModelType === 'KONTEXT' && wizardTrainingMode === 'concept';
+      if (isKontextConcept) {
+        if (!wizardControlSetId) { alert('Please select a control set.'); return; }
+      } else {
+        if (!wizardCaptionSetId) { alert('Please select a caption set.'); return; }
+      }
       // Auto-calculate cost for review step
       this.setState({ wizardStep: 4 });
       this.calculateWizardCost();
@@ -1467,9 +1498,12 @@ export default class ModsMenuModal {
       wizardTrainingMode: null,
       wizardControlDatasetId: null,
       wizardCaptionSetId: null,
+      wizardControlSetId: null,
       wizardFormValues: {},
       wizardCaptionSets: [],
+      wizardControlSets: [],
       wizardLoadingCaptions: false,
+      wizardLoadingControlSets: false,
     });
   }
 
@@ -1509,6 +1543,10 @@ export default class ModsMenuModal {
 
   wizardSelectCaptionSet(id) {
     this.setState({ wizardCaptionSetId: id });
+  }
+
+  wizardSelectControlSet(id) {
+    this.setState({ wizardControlSetId: id });
   }
 
   /**
@@ -1659,6 +1697,34 @@ export default class ModsMenuModal {
     } catch (err) {
       console.warn('[ModsMenuModal] fetchWizardCaptionSets error', err);
       this.setState({ wizardLoadingCaptions: false, wizardCaptionSets: [] });
+    }
+  }
+
+  async fetchWizardControlSets(datasetId) {
+    if (!datasetId) return;
+    this.setState({ wizardLoadingControlSets: true, wizardControlSets: [] });
+    try {
+      // Get the dataset and extract control embellishments
+      const dataset = this.getDatasetById(datasetId);
+      if (!dataset) {
+        // Fetch from API if not in local state
+        const res = await fetch(`/api/v1/datasets/${encodeURIComponent(datasetId)}`, { credentials: 'include' });
+        if (!res.ok) throw new Error('Failed to fetch dataset');
+        const payload = await res.json();
+        const ds = payload?.data || payload;
+        const controlEmbellishments = (ds.embellishments || []).filter(
+          e => e.type === 'control' && e.status === 'completed'
+        );
+        this.setState({ wizardControlSets: controlEmbellishments, wizardLoadingControlSets: false });
+      } else {
+        const controlEmbellishments = (dataset.embellishments || []).filter(
+          e => e.type === 'control' && e.status === 'completed'
+        );
+        this.setState({ wizardControlSets: controlEmbellishments, wizardLoadingControlSets: false });
+      }
+    } catch (err) {
+      console.warn('[ModsMenuModal] fetchWizardControlSets error', err);
+      this.setState({ wizardLoadingControlSets: false, wizardControlSets: [] });
     }
   }
 
@@ -1813,42 +1879,10 @@ export default class ModsMenuModal {
         </div>
         ${wizardTrainingMode === 'concept' ? `
           <div class="wizard-control-section" style="margin-top:24px;">
-            <h4 style="margin-bottom:8px;">Control Dataset</h4>
-            <p style="color:#aaa;margin-bottom:12px;font-size:13px;">Select a dataset with control images (before images) to pair with your result dataset.</p>
-            ${selectedHasControl ? `
-              <div class="wizard-control-info" style="background:#2a3a2a;border:1px solid #3a5a3a;padding:12px;border-radius:8px;margin-bottom:12px;">
-                <strong style="color:#8f8;">Use this dataset's control images</strong>
-                <p style="color:#aaa;font-size:12px;margin:4px 0 0;">Your selected dataset has control images. You can use these as the "before" images.</p>
-                <label style="margin-top:8px;display:flex;align-items:center;cursor:pointer;">
-                  <input type="checkbox" class="wizard-use-self-control" ${wizardControlDatasetId === wizardDatasetId ? 'checked' : ''} style="margin-right:8px;" />
-                  Use control images from this dataset
-                </label>
-              </div>
-            ` : ''}
-            ${controlDatasets.length > 0 ? `
-              <div class="wizard-control-grid">
-                ${controlDatasets.map(ds => {
-                  const dsId = this.normalizeId(ds._id);
-                  const sel = this.normalizeId(wizardControlDatasetId) === dsId ? ' selected' : '';
-                  const imgCount = (ds.images || []).length;
-                  return `<div class="wizard-control-dataset-card${sel}" data-id="${dsId}">
-                    <div class="dataset-preview">
-                      ${(ds.images || []).slice(0, 4).map(img => `<img src="${img}" class="preview-thumb" />`).join('')}
-                    </div>
-                    <h4>${ds.name || 'Unnamed Dataset'}</h4>
-                    <span class="wizard-card-meta">${imgCount} control images</span>
-                  </div>`;
-                }).join('')}
-              </div>
-            ` : (!selectedHasControl ? `
-              <div class="empty-message" style="text-align:center;padding:20px;">
-                <p style="color:#aaa;">No datasets with control images found.</p>
-                <p style="color:#888;font-size:12px;margin-top:8px;">Generate control images on your dataset first.</p>
-                <button class="btn-secondary wizard-generate-control-btn" data-dataset-id="${this.normalizeId(wizardDatasetId)}" style="margin-top:12px;">
-                  Generate Control Images
-                </button>
-              </div>
-            ` : '')}
+            <div class="wizard-control-info" style="background:#2a3a2a;border:1px solid #3a5a3a;padding:12px;border-radius:8px;">
+              <strong style="color:#8f8;">Concept Training Selected</strong>
+              <p style="color:#aaa;font-size:12px;margin:4px 0 0;">In the next step, you'll select which control image set to use. The transformation prompt from that set will be used for all training captions.</p>
+            </div>
           </div>
         ` : ''}
       ` : ''}
@@ -1856,14 +1890,49 @@ export default class ModsMenuModal {
   }
 
   renderWizardStep3() {
-    const { wizardCaptionSets, wizardCaptionSetId, wizardLoadingCaptions, wizardModelType, wizardTrainingMode, wizardDatasetId } = this.state;
+    const {
+      wizardCaptionSets, wizardCaptionSetId, wizardLoadingCaptions,
+      wizardControlSets, wizardControlSetId, wizardLoadingControlSets,
+      wizardModelType, wizardTrainingMode, wizardDatasetId
+    } = this.state;
+
+    // For KONTEXT concept mode, show control set selection instead of captions
+    const isKontextConcept = wizardModelType === 'KONTEXT' && wizardTrainingMode === 'concept';
+
+    if (isKontextConcept) {
+      // Control set selection for concept training
+      if (wizardLoadingControlSets) {
+        return `<div class="wizard-body"><div class="loading-spinner">Loading control sets...</div></div>`;
+      }
+
+      return `<div class="wizard-body">
+        <h3>Select Control Set</h3>
+        <p class="wizard-caption-recommendation">Choose the control image set to use for concept training. The transformation prompt from this set will be used for all training captions.</p>
+        ${wizardControlSets.length ? `<div class="wizard-caption-grid">
+          ${wizardControlSets.map(cs => {
+            const csId = this.normalizeId(cs._id);
+            const sel = this.normalizeId(wizardControlSetId) === csId ? ' selected' : '';
+            const count = cs.results?.filter(r => r && r.value)?.length || 0;
+            const date = new Date(cs.createdAt || cs.created || Date.now()).toLocaleDateString();
+            const prompt = cs.config?.prompt || 'Unknown prompt';
+            const promptPreview = prompt.length > 80 ? prompt.slice(0, 80) + '...' : prompt;
+            return `<div class="wizard-control-set-card${sel}" data-control-id="${csId}">
+              <div class="wizard-caption-method">${cs.method || 'Control'}</div>
+              <div class="wizard-control-prompt" style="font-size:12px;color:#aaa;margin:4px 0;font-style:italic;">"${promptPreview}"</div>
+              <div class="wizard-caption-meta">${count} image${count !== 1 ? 's' : ''} &middot; ${date}</div>
+            </div>`;
+          }).join('')}
+        </div>` : `<div class="empty-message">No control sets found for this dataset. Generate control images first.</div>`}
+        <button class="btn-primary wizard-generate-control-btn" data-dataset-id="${this.normalizeId(wizardDatasetId)}">Generate Control Images</button>
+      </div>`;
+    }
+
+    // Caption selection for all other modes
     let recommendation = 'SDXL models work well with tag-style and short captions.';
     if (wizardModelType === 'FLUX') {
       recommendation = 'FLUX models work best with detailed, natural language captions.';
     } else if (wizardModelType === 'KONTEXT') {
-      recommendation = wizardTrainingMode === 'concept'
-        ? 'For concept training, captions should describe the transformation or desired output.'
-        : 'KONTEXT works well with detailed captions describing the subject or style.';
+      recommendation = 'KONTEXT works well with detailed captions describing the subject or style.';
     }
 
     if (wizardLoadingCaptions) {
@@ -1889,9 +1958,10 @@ export default class ModsMenuModal {
   }
 
   renderWizardStep4() {
-    const { wizardFormValues, wizardDatasetId, wizardModelType, wizardTrainingMode, wizardControlDatasetId, wizardCaptionSetId, estimatedCost, datasets } = this.state;
+    const { wizardFormValues, wizardDatasetId, wizardModelType, wizardTrainingMode, wizardControlDatasetId, wizardCaptionSetId, wizardControlSetId, estimatedCost, datasets } = this.state;
     const dataset = this.getDatasetById(wizardDatasetId);
     const captionSet = this.state.wizardCaptionSets.find(cs => this.normalizeId(cs._id) === this.normalizeId(wizardCaptionSetId));
+    const controlSet = this.state.wizardControlSets.find(cs => this.normalizeId(cs._id) === this.normalizeId(wizardControlSetId));
     const controlDataset = wizardControlDatasetId ? (datasets || []).find(ds => this.normalizeId(ds._id) === this.normalizeId(wizardControlDatasetId)) : null;
     const fv = wizardFormValues;
 
@@ -1899,6 +1969,13 @@ export default class ModsMenuModal {
     const trainingModeDisplay = wizardTrainingMode === 'style_subject' ? 'Style / Subject'
       : wizardTrainingMode === 'concept' ? 'Concept'
       : null;
+
+    const isKontextConcept = wizardModelType === 'KONTEXT' && wizardTrainingMode === 'concept';
+
+    // Get control set info for display
+    const controlSetCount = controlSet?.results?.filter(r => r && r.value)?.length || 0;
+    const controlSetPrompt = controlSet?.config?.prompt || '';
+    const controlSetPromptPreview = controlSetPrompt.length > 60 ? controlSetPrompt.slice(0, 60) + '...' : controlSetPrompt;
 
     return `<div class="wizard-body">
       <h3>Review &amp; Start Training</h3>
@@ -1911,7 +1988,12 @@ export default class ModsMenuModal {
         ${controlDataset ? `
           <div class="wizard-summary-row"><span class="label">Control Dataset:</span> <span class="value">${controlDataset.name || 'Unknown'}${this.normalizeId(wizardControlDatasetId) === this.normalizeId(wizardDatasetId) ? ' (same dataset)' : ''}</span></div>
         ` : ''}
-        <div class="wizard-summary-row"><span class="label">Captions:</span> <span class="value">${captionSet?.method || 'Unknown'} (${captionSet?.captions?.length || 0})</span></div>
+        ${isKontextConcept && controlSet ? `
+          <div class="wizard-summary-row"><span class="label">Control Set:</span> <span class="value">${controlSet.method || 'Control'} (${controlSetCount} images)</span></div>
+          <div class="wizard-summary-row"><span class="label">Prompt:</span> <span class="value" style="font-style:italic;">"${controlSetPromptPreview}"</span></div>
+        ` : `
+          <div class="wizard-summary-row"><span class="label">Captions:</span> <span class="value">${captionSet?.method || 'Unknown'} (${captionSet?.captions?.length || 0})</span></div>
+        `}
         <div class="wizard-summary-row"><span class="label">Steps:</span> <span class="value">${fv.steps || '—'}</span></div>
         <div class="wizard-summary-row"><span class="label">Learning Rate:</span> <span class="value">${fv.learningRate || '—'}</span></div>
         <div class="wizard-summary-row"><span class="label">LoRA Rank:</span> <span class="value">${fv.loraRank || '—'}</span></div>
@@ -1961,7 +2043,7 @@ export default class ModsMenuModal {
   /* ====================== WIZARD SUBMISSION ====================== */
 
   async submitWizard() {
-    const { wizardDatasetId, wizardModelType, wizardTrainingMode, wizardControlDatasetId, wizardCaptionSetId, wizardFormValues } = this.state;
+    const { wizardDatasetId, wizardModelType, wizardTrainingMode, wizardControlDatasetId, wizardCaptionSetId, wizardControlSetId, wizardFormValues } = this.state;
     // Read latest input values from DOM before submitting
     const nameInput = this.modalElement.querySelector('[name="wizardName"]');
     const descInput = this.modalElement.querySelector('[name="wizardDescription"]');
@@ -1970,13 +2052,16 @@ export default class ModsMenuModal {
 
     if (!name) { alert('Please enter a training name.'); return; }
 
+    const isKontextConcept = wizardModelType === 'KONTEXT' && wizardTrainingMode === 'concept';
+
     const payload = {
       name,
       description,
       datasetId: wizardDatasetId,
       modelType: wizardModelType,
       baseModel: wizardModelType,
-      captionSetId: wizardCaptionSetId,
+      // For KONTEXT concept mode, don't send captionSetId (we use control set's prompt instead)
+      captionSetId: isKontextConcept ? null : wizardCaptionSetId,
       triggerWords: name, // name becomes trigger word
       steps: wizardFormValues.steps,
       learningRate: wizardFormValues.learningRate,
@@ -1990,8 +2075,9 @@ export default class ModsMenuModal {
     // Add KONTEXT-specific fields
     if (wizardModelType === 'KONTEXT') {
       payload.trainingMode = wizardTrainingMode;
-      if (wizardTrainingMode === 'concept' && wizardControlDatasetId) {
-        payload.controlDatasetId = wizardControlDatasetId;
+      if (isKontextConcept) {
+        // For concept mode, send the control set (embellishment) ID
+        payload.controlSetId = wizardControlSetId;
       }
     }
 

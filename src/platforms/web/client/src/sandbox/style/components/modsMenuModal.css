@@ -2000,6 +2000,58 @@
   margin-top: 8px;
 }
 
+.wizard-generate-control-btn {
+  margin-top: 8px;
+}
+
+/* Control Set Cards (for KONTEXT concept mode) */
+.wizard-control-set-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid #333;
+  border-radius: 8px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wizard-control-set-card:hover {
+  border-color: #9c27b0;
+  background: rgba(156, 39, 176, 0.08);
+}
+
+.wizard-control-set-card.selected {
+  border-color: #9c27b0;
+  background: rgba(156, 39, 176, 0.12);
+  box-shadow: 0 0 8px rgba(156, 39, 176, 0.3);
+}
+
+.wizard-control-set-card.selected::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #9c27b0;
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+
+.wizard-control-set-card {
+  position: relative;
+}
+
+.wizard-control-prompt {
+  color: #aaa;
+  font-size: 12px;
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Step 4: Summary Card */
 .wizard-summary-card {
   background: rgba(255, 255, 255, 0.05);

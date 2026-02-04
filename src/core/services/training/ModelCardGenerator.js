@@ -32,6 +32,13 @@ const DEFAULTS = {
   RESOLUTION: '512, 768, 1024',
 };
 
+// Map of model types to HuggingFace base model IDs
+const BASE_MODEL_MAP = {
+  'FLUX': 'black-forest-labs/FLUX.1-dev',
+  'KONTEXT': 'black-forest-labs/FLUX.1-Kontext-dev',
+  'SDXL': 'stabilityai/stable-diffusion-xl-base-1.0',
+};
+
 class ModelCardGenerator {
   /**
    * @param {object} options
@@ -53,9 +60,11 @@ class ModelCardGenerator {
    * @param {string[]} params.captions - Array of dataset captions
    * @param {string} [params.description] - User-provided description (skips OpenAI if provided)
    * @param {string} [params.hfOrg] - HuggingFace organization
+   * @param {string} [params.baseModel] - Base model type: 'FLUX', 'KONTEXT', 'SDXL'
+   * @param {string} [params.trainingMode] - Training mode for KONTEXT: 'style_subject' or 'concept'
    * @returns {Promise<{readme: string, description: string, samplePrompts: string[]}>}
    */
-  async generate({ modelName, triggerWord, trainingSteps, captions, description: userDescription, hfOrg = DEFAULTS.HF_ORG, trainingConfig = {} }) {
+  async generate({ modelName, triggerWord, trainingSteps, captions, description: userDescription, hfOrg = DEFAULTS.HF_ORG, trainingConfig = {}, baseModel = 'FLUX', trainingMode = null }) {
     this.logger.info(`[ModelCardGenerator] Generating model card for ${modelName}`);
 
     let description;
@@ -94,6 +103,8 @@ class ModelCardGenerator {
       examplePrompts,
       hfOrg,
       trainingConfig,
+      baseModel,
+      trainingMode,
     });
 
     return {
@@ -215,7 +226,7 @@ Write ONLY the description, no headers.`;
   /**
    * Build the final README from template
    */
-  _buildReadme({ modelName, triggerWord, trainingSteps, description, samplePrompts, examplePrompts, hfOrg, trainingConfig = {} }) {
+  _buildReadme({ modelName, triggerWord, trainingSteps, description, samplePrompts, examplePrompts, hfOrg, trainingConfig = {}, baseModel = 'FLUX', trainingMode = null }) {
     let template;
     try {
       template = fs.readFileSync(TEMPLATE_PATH, 'utf-8');
@@ -225,6 +236,9 @@ Write ONLY the description, no headers.`;
     }
 
     const hfRepoId = `${hfOrg}/${modelName}`;
+
+    // Determine HuggingFace base model ID based on model type
+    const hfBaseModel = BASE_MODEL_MAP[baseModel] || BASE_MODEL_MAP['FLUX'] || DEFAULTS.BASE_MODEL;
 
     // Build sample images grid (placeholders - will be uploaded later)
     const sampleGrid = this._buildSampleGrid(samplePrompts);
@@ -238,10 +252,15 @@ Write ONLY the description, no headers.`;
     // Simple short prompt for code example
     const examplePromptShort = 'portrait, soft lighting, detailed';
 
+    // Build training mode info for KONTEXT
+    const trainingModeInfo = baseModel === 'KONTEXT' && trainingMode
+      ? `\n- **Training Mode**: ${trainingMode === 'concept' ? 'Concept (paired before/after)' : 'Style/Subject'}`
+      : '';
+
     // Replace all placeholders — trainingConfig values override defaults
     const replacements = {
       '{{LICENSE}}': DEFAULTS.LICENSE,
-      '{{BASE_MODEL}}': DEFAULTS.BASE_MODEL,
+      '{{BASE_MODEL}}': hfBaseModel,
       '{{MODEL_NAME}}': modelName,
       '{{TRIGGER_WORD}}': triggerWord,
       '{{HF_REPO_ID}}': hfRepoId,

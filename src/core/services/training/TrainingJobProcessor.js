@@ -297,11 +297,18 @@ class TrainingJobProcessor {
     await this.trainingDb.setStatus(jobId, 'PROVISIONING');
 
     // Start download in background (will write .ready marker when done)
+    // For KONTEXT concept mode, control images will be downloaded from embellishments
+    const downloadOptions = {};
+    if (job.controlSetId) {
+      // If a specific control set (embellishment) ID was specified, use it
+      downloadOptions.controlSetId = job.controlSetId;
+    }
     const downloadPromise = this.datasetDownloader.download(
       job.datasetId.toString(),
-      jobId
+      jobId,
+      downloadOptions
     ).then(result => {
-      this.logger.info(`[JobProcessor] Dataset download complete: ${result.imageCount} images, ${result.captionCount} captions`);
+      this.logger.info(`[JobProcessor] Dataset download complete: ${result.imageCount} images, ${result.captionCount} captions, hasControlImages: ${result.hasControlImages}`);
       return result;
     }).catch(err => {
       this.logger.error(`[JobProcessor] Dataset download failed: ${err.message}`);
@@ -310,6 +317,11 @@ class TrainingJobProcessor {
 
     // Run training - launch-training.js will wait for .ready marker before uploading
     const self = this;
+
+    // Pre-compute control directory path for KONTEXT concept mode
+    // The actual download will create this directory if control images exist
+    const controlDir = path.join(baseDir, jobId, 'control');
+
     return new Promise((resolve) => {
       // Build command arguments
       const args = [
@@ -324,6 +336,21 @@ class TrainingJobProcessor {
       // Add optional description if user provided one
       if (job.description && job.description.trim()) {
         args.push('--description', job.description.trim());
+      }
+
+      // Add KONTEXT-specific arguments for concept mode
+      if (job.baseModel === 'KONTEXT') {
+        args.push('--baseModel', 'KONTEXT');
+
+        if (job.trainingMode) {
+          args.push('--trainingMode', job.trainingMode);
+
+          // For concept mode, pass control dir path - script will check if it exists
+          if (job.trainingMode === 'concept') {
+            args.push('--controlDir', controlDir);
+            this.logger.info(`[JobProcessor] KONTEXT concept mode: control dir will be ${controlDir}`);
+          }
+        }
       }
 
       this.logger.info(`[JobProcessor] Spawning: node ${args.join(' ')}`);
