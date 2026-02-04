@@ -53,7 +53,29 @@ class DatasetPacker {
 
   async buildManifest(dataset = {}, datasetDir) {
     const files = await fsp.readdir(datasetDir);
-    const images = files.filter((file) => this.isImageFile(file)).sort();
+    const imageFiles = files.filter((file) => this.isImageFile(file)).sort();
+
+    // Build images array with captions from .txt files
+    const images = [];
+    for (const imageFile of imageFiles) {
+      const baseName = imageFile.replace(/\.[^.]+$/, '');
+      const captionFile = `${baseName}.txt`;
+      let caption = null;
+
+      if (files.includes(captionFile)) {
+        try {
+          const captionContent = await fsp.readFile(path.join(datasetDir, captionFile), 'utf-8');
+          caption = captionContent.trim() || null;
+        } catch (err) {
+          // Skip unreadable caption files
+        }
+      }
+
+      images.push({
+        filename: imageFile,
+        caption
+      });
+    }
 
     const manifest = {
       datasetId: dataset?._id ? String(dataset._id) : null,
@@ -62,9 +84,10 @@ class DatasetPacker {
       imageCount: images.length,
       createdAt: new Date().toISOString(),
       source: 'stationthis-local-pack',
+      images,  // Now includes filename + caption for each image
       files: {
         datasetDir: datasetDir,
-        images,
+        images: imageFiles,
         datasetInfo: files.find((file) => file === 'dataset_info.json') ? 'dataset_info.json' : null
       },
       tags: dataset?.tags || []

@@ -129,15 +129,73 @@ function createDatasetsApi(dependencies) {
   // GET /internal/v1/data/datasets/:datasetId - Get a specific dataset by ID
   router.get('/:datasetId', async (req, res, next) => {
     const { datasetId } = req.params;
-    
+
     logger.info(`[DatasetsAPI] GET /${datasetId} - Fetching dataset by ID`);
-    
+
     try {
       const dataset = await datasetDb.findOne({ _id: new ObjectId(datasetId) });
       if (!dataset) {
         return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Dataset not found' } });
       }
-      
+
+      // Enrich control embellishments with extracted prompts if config.prompt is empty
+      if (dataset.embellishments) {
+        if (!db.generationOutputs) {
+          logger.warn('[DatasetsAPI] Cannot enrich control embellishments: db.generationOutputs not available');
+        }
+      }
+      if (dataset.embellishments && db.generationOutputs) {
+        for (const emb of dataset.embellishments) {
+          if (emb.type === 'control') {
+            logger.info(`[DatasetsAPI] Found control embellishment ${emb._id}, config.prompt=${emb.config?.prompt || 'EMPTY'}, results=${emb.results?.length || 0}`);
+
+            if (!emb.config?.prompt && emb.results?.length > 0) {
+              // Find first result with a generationOutputId
+              const firstResultWithGen = emb.results.find(r => r?.generationOutputId);
+
+              // Debug: log first few results structure
+              const sampleResults = emb.results.slice(0, 3).map(r => ({
+                hasGenId: !!r?.generationOutputId,
+                genIdType: r?.generationOutputId ? typeof r.generationOutputId : 'N/A',
+                keys: r ? Object.keys(r) : []
+              }));
+              logger.info(`[DatasetsAPI] Sample results structure: ${JSON.stringify(sampleResults)}`);
+              logger.info(`[DatasetsAPI] First result with genId: ${firstResultWithGen?.generationOutputId || 'NONE'}`);
+
+              if (firstResultWithGen) {
+                try {
+                  // Handle both string and ObjectId for generationOutputId
+                  const genIdRaw = firstResultWithGen.generationOutputId;
+                  const genId = typeof genIdRaw === 'string' ? new ObjectId(genIdRaw) : genIdRaw;
+
+                  const genOutput = await db.generationOutputs.findGenerationById(genId);
+                  logger.info(`[DatasetsAPI] GenOutput found: ${!!genOutput}, requestPayload keys: ${genOutput?.requestPayload ? Object.keys(genOutput.requestPayload).join(', ') : 'NONE'}`);
+
+                  if (genOutput?.requestPayload) {
+                    const extractedPrompt =
+                      genOutput.requestPayload.input_prompt ||
+                      genOutput.requestPayload.prompt ||
+                      genOutput.requestPayload.input_text ||
+                      genOutput.requestPayload.text ||
+                      null;
+                    logger.info(`[DatasetsAPI] Extracted prompt: ${extractedPrompt ? extractedPrompt.substring(0, 50) + '...' : 'NONE'}`);
+
+                    if (extractedPrompt) {
+                      // Add to config for client use (not persisted to DB)
+                      emb.config = emb.config || {};
+                      emb.config.prompt = extractedPrompt;
+                      logger.info(`[DatasetsAPI] Enriched control embellishment ${emb._id} with extracted prompt`);
+                    }
+                  }
+                } catch (err) {
+                  logger.warn(`[DatasetsAPI] Failed to extract prompt for embellishment: ${err.message}`);
+                }
+              }
+            }
+          }
+        }
+      }
+
       res.json({ success: true, data: dataset });
     } catch (error) {
       if (error.message && error.message.toLowerCase().includes('objectid')) {

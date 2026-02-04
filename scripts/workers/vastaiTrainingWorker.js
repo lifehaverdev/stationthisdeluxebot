@@ -25,6 +25,7 @@ const { initializeDatabase } = require('../../src/core/initDB');
 const { createLogger } = require('../../src/utils/logger');
 const TrainingDB = require('../../src/core/services/db/trainingDb');
 const DatasetDB = require('../../src/core/services/db/datasetDb');
+const GenerationOutputsDB = require('../../src/core/services/db/generationOutputsDb');
 const PointsService = require('../../src/core/services/points');
 const CreditLedgerDB = require('../../src/core/services/db/alchemy/creditLedgerDb');
 const VastAIService = require('../../src/core/services/vastai/VastAIService');
@@ -260,6 +261,7 @@ module.exports = {
     // Initialize services
     const trainingDb = new TrainingDB(logger);
     const datasetDb = new DatasetDB(logger);
+    const generationOutputsDb = new GenerationOutputsDB(logger);
     const creditLedgerDb = new CreditLedgerDB(logger);
 
     const pointsService = new PointsService({
@@ -307,6 +309,7 @@ module.exports = {
       logger,
       trainingDb,
       datasetDb,
+      generationOutputsDb,
       pointsService,
       vastaiService,
       refreshLoraCache,

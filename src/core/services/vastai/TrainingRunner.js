@@ -387,14 +387,15 @@ class TrainingRunner {
   }
 
   /**
-   * Pre-flight GPU check - verifies CUDA and GPU are working before training
-   * This catches bad VastAI instances early (driver issues, CUDA problems)
+   * Pre-flight GPU check - verifies CUDA, GPU, and Accelerate are working before training
+   * This catches bad VastAI instances early (driver issues, CUDA problems, accelerate issues)
    *
    * @returns {Promise<{ok: boolean, gpuName: string, cudaVersion: string, error: string}>}
    */
   async preflightGpuCheck() {
     this.logger.info('[TrainingRunner] Running pre-flight GPU check...');
 
+    // Test PyTorch CUDA AND accelerate library (which ai-toolkit uses)
     const checkScript = `python3 -c "
 import torch
 import sys
@@ -412,9 +413,15 @@ try:
 
     gpu_name = torch.cuda.get_device_name(0)
     cuda_ver = torch.version.cuda
+
+    # Also test accelerate library (ai-toolkit uses this)
+    from accelerate import Accelerator
+    acc = Accelerator()
+    del acc
+
     print(f'OK: {gpu_name} | CUDA {cuda_ver}')
 except Exception as e:
-    print(f'ERROR: GPU test failed - {e}')
+    print(f'ERROR: {e}')
     sys.exit(1)
 "`;
 

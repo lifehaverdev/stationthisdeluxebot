@@ -375,6 +375,32 @@ function createEmbellishmentTaskService(deps) {
         generationOutputId: generationId,
         value: extractedValue,
       });
+
+      // For control type embellishments, extract and store the prompt from the first completed item
+      // This ensures the training wizard can display the prompt without refetching generation outputs
+      if (type === 'control' && generationOutput?.requestPayload) {
+        const controlPrompt =
+          generationOutput.requestPayload.input_prompt ||
+          generationOutput.requestPayload.prompt ||
+          generationOutput.requestPayload.input_text ||
+          generationOutput.requestPayload.text ||
+          null;
+
+        if (controlPrompt) {
+          // Check if prompt is already stored in config
+          const dataset = await datasetDb.findOne({ _id: new ObjectId(datasetId) });
+          const embellishment = dataset?.embellishments?.find(
+            e => e._id.toString() === task.embellishmentId.toString()
+          );
+
+          if (!embellishment?.config?.prompt) {
+            logger.info(`[EmbellishmentTaskService] Storing control prompt in embellishment config: "${controlPrompt.substring(0, 50)}..."`);
+            await datasetDb.updateEmbellishmentConfig(datasetId, task.embellishmentId, {
+              prompt: controlPrompt
+            });
+          }
+        }
+      }
     }
 
     // Remove from active set

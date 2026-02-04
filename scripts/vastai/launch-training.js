@@ -300,7 +300,7 @@ async function checkStatus() {
     logFile: `${jobRoot}/logs/training.log`,
     pidFile: `${jobRoot}/training.pid`,
     statusFile: `${jobRoot}/training_status.json`,
-    tailLines: 50
+    tailLines: 100
   });
 
   console.log('\n' + '═'.repeat(60));
@@ -639,7 +639,7 @@ async function main() {
     triedOfferIds.add(offer.id);
 
     log(`\n[Attempt ${retry + 1}/${maxFullRetries}] Trying offer ${offer.id}:`);
-    log(`  GPU: ${offer.gpuType} | VRAM: ${offer.vramGb}GB | Fraction: ${offer.gpuFrac} | Price: $${offer.hourlyUsd}/hr | Region: ${offer.region || 'unknown'}`);
+    log(`  GPU: ${offer.gpuType} | VRAM: ${offer.vramGb}GB | CUDA: ${offer.cudaVersion || '?'} | Reliability: ${offer.reliability ? (offer.reliability * 100).toFixed(0) + '%' : '?'} | Price: $${offer.hourlyUsd}/hr`);
 
     try {
       // Provision instance
@@ -1169,7 +1169,7 @@ async function main() {
         logFile: bgInfo.logFile,
         pidFile: bgInfo.pidFile,
         statusFile: bgInfo.statusFile,
-        tailLines: 50
+        tailLines: 100
       });
 
       if (earlyStatus.statusData?.completed && earlyStatus.statusData.exitCode === 0) {
@@ -1207,7 +1207,7 @@ async function main() {
           logFile: bgInfo.logFile,
           pidFile: bgInfo.pidFile,
           statusFile: bgInfo.statusFile,
-          tailLines: 50
+          tailLines: 100
         });
       } catch (pollErr) {
         log(`Poll #${pollCount} failed (${pollErr.message}), will retry...`);
@@ -1418,6 +1418,18 @@ async function main() {
           const uploaded = [modelName + '.safetensors'];
           if (uploadedSampleCount > 0) uploaded.push(`${uploadedSampleCount} samples`);
 
+          // Upload training config for reproducibility
+          try {
+            log('Uploading training config to HuggingFace...');
+            const remoteConfigFile = `${remoteDir}/config/${path.basename(remoteConfigPath)}`;
+            const uploadConfigCmd = `export HF_TOKEN="${extraEnv.HF_TOKEN}" && huggingface-cli upload ${hfRepoId} "${remoteConfigFile}" "training_config.yaml" --commit-message "Upload training config"`;
+            await ssh.exec(uploadConfigCmd, { timeout: 60000 });
+            uploaded.push('config');
+            log('Training config uploaded');
+          } catch (configErr) {
+            log(`Warning: Config upload failed: ${configErr.message}`);
+          }
+
           log(`Uploaded to HuggingFace: ${uploaded.join(', ')}`);
 
           console.log('\n' + '═'.repeat(60));
@@ -1603,7 +1615,7 @@ async function main() {
       modelName,
       triggerWord,
       steps: parseInt(args.steps) || 2000,
-      baseModel: 'black-forest-labs/FLUX.1-dev',
+      baseModel: args.baseModel || 'FLUX',  // Model type: 'FLUX', 'KONTEXT', 'SDXL', etc.
 
       // Upload destinations
       hfRepoId: hfRepoId || null,

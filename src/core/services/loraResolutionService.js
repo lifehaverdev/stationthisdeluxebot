@@ -237,10 +237,16 @@ async function resolveLoraTriggers(promptString, masterAccountId, toolBaseModel,
             lora.checkpoint && lora.checkpoint.toUpperCase() === 'SD1.5'
           );
         } else if (upperCaseToolBaseModel === 'FLUX') {
-          // FLUX models can have variations like FLUX.1, FLUX1-D etc.
+          // FLUX models only use FLUX LoRAs
           potentialLoras = potentialLoras.filter(lora =>
             lora.checkpoint && lora.checkpoint.toUpperCase().startsWith('FLUX')
           );
+        } else if (upperCaseToolBaseModel === 'KONTEXT') {
+          // KONTEXT prefers KONTEXT LoRAs, but can use FLUX LoRAs (less effective)
+          potentialLoras = potentialLoras.filter(lora => {
+            const cp = lora.checkpoint?.toUpperCase() || '';
+            return cp === 'KONTEXT' || cp.startsWith('FLUX');
+          });
         } else {
           // For other models (e.g., SD3), require an exact match.
           potentialLoras = potentialLoras.filter(lora =>

@@ -251,7 +251,9 @@ class LoRAModelsDB extends BaseDB {
     let checkpoint = 'FLUX'; // Default for our training
     if (baseModel) {
       const lowerBase = baseModel.toLowerCase();
-      if (lowerBase.includes('flux')) checkpoint = 'FLUX';
+      // Check KONTEXT first since it also contains 'flux' in full name (FLUX.1-Kontext-dev)
+      if (lowerBase.includes('kontext')) checkpoint = 'KONTEXT';
+      else if (lowerBase.includes('flux')) checkpoint = 'FLUX';
       else if (lowerBase.includes('sdxl')) checkpoint = 'SDXL';
       else if (lowerBase.includes('sd1.5') || lowerBase.includes('sd 1.5')) checkpoint = 'SD1.5';
       else if (lowerBase.includes('sd3') || lowerBase.includes('sd 3')) checkpoint = 'SD3';

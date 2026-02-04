@@ -36,6 +36,7 @@ class TrainingJobProcessor {
    * @param {Object} options.logger - Logger instance
    * @param {Object} options.trainingDb - TrainingDB instance
    * @param {Object} options.datasetDb - DatasetDB instance for downloading datasets
+   * @param {Object} options.generationOutputsDb - GenerationOutputsDB for extracting per-image prompts
    * @param {Object} options.pointsService - PointsService for billing
    * @param {Object} options.vastaiService - VastAIService for instance management
    * @param {Function} options.refreshLoraCache - Function to refresh LoRA cache
@@ -46,6 +47,7 @@ class TrainingJobProcessor {
     this.logger = options.logger || console;
     this.trainingDb = options.trainingDb;
     this.datasetDb = options.datasetDb;
+    this.generationOutputsDb = options.generationOutputsDb;
     this.pointsService = options.pointsService;
     this.vastaiService = options.vastaiService;
     this.refreshLoraCache = options.refreshLoraCache;
@@ -69,6 +71,7 @@ class TrainingJobProcessor {
     this.datasetDownloader = new DatasetDownloader({
       logger: this.logger,
       datasetDb: this.datasetDb,
+      generationOutputsDb: this.generationOutputsDb,
     });
 
     // Path to launch-training.js
@@ -338,10 +341,12 @@ class TrainingJobProcessor {
         args.push('--description', job.description.trim());
       }
 
-      // Add KONTEXT-specific arguments for concept mode
-      if (job.baseModel === 'KONTEXT') {
-        args.push('--baseModel', 'KONTEXT');
+      // Always pass baseModel for correct checkpoint tagging
+      const baseModel = job.baseModel || 'FLUX';
+      args.push('--baseModel', baseModel);
 
+      // Add KONTEXT-specific arguments for concept mode
+      if (baseModel === 'KONTEXT') {
         if (job.trainingMode) {
           args.push('--trainingMode', job.trainingMode);
 

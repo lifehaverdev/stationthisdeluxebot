@@ -292,30 +292,33 @@ Write ONLY the description, no headers.`;
   /**
    * Build sample images grid markdown
    * Images will be uploaded later, this creates the structure
+   * Always creates 2x2 grid structure even without captions (samples will exist)
    */
   _buildSampleGrid(samplePrompts) {
-    if (!samplePrompts || samplePrompts.length === 0) {
-      return '*Sample images will be added after training completes.*';
-    }
-
     // Truncate captions for display
     const truncate = (s, len = 60) => s.length > len ? s.slice(0, len) + '...' : s;
+
+    // Always create 2x2 grid - samples will be uploaded after training
+    // Use prompts if available, otherwise show generic captions
+    const prompts = samplePrompts && samplePrompts.length > 0
+      ? samplePrompts
+      : ['Sample 1', 'Sample 2', 'Sample 3', 'Sample 4'];
 
     // Build 2x2 grid
     const rows = [];
     rows.push('| | |');
     rows.push('|:---:|:---:|');
 
-    for (let i = 0; i < samplePrompts.length; i += 2) {
+    for (let i = 0; i < Math.min(prompts.length, 4); i += 2) {
       // ai-toolkit generates JPG samples
       const img1 = `![Sample ${i + 1}](samples/sample_${String(i).padStart(3, '0')}.jpg)`;
-      const img2 = samplePrompts[i + 1]
+      const img2 = prompts[i + 1]
         ? `![Sample ${i + 2}](samples/sample_${String(i + 1).padStart(3, '0')}.jpg)`
         : '';
       rows.push(`| ${img1} | ${img2} |`);
 
-      const cap1 = `*${truncate(samplePrompts[i])}*`;
-      const cap2 = samplePrompts[i + 1] ? `*${truncate(samplePrompts[i + 1])}*` : '';
+      const cap1 = `*${truncate(prompts[i])}*`;
+      const cap2 = prompts[i + 1] ? `*${truncate(prompts[i + 1])}*` : '';
       rows.push(`| ${cap1} | ${cap2} |`);
     }
 
@@ -325,14 +328,15 @@ Write ONLY the description, no headers.`;
   /**
    * Build widget YAML for HuggingFace model card preview.
    * Uses the first sample prompt as the text and the first sample image as the output.
+   * Always includes sample image reference even without captions.
    */
   _buildWidgetYaml(samplePrompts, modelName) {
-    if (!samplePrompts || samplePrompts.length === 0) {
-      return '  - text: "' + modelName + '"';
-    }
+    // Use first sample prompt if available, otherwise use model name
+    const promptText = (samplePrompts && samplePrompts.length > 0)
+      ? samplePrompts[0].replace(/"/g, '\\"')
+      : modelName;
 
-    // Use first sample prompt. Escape double quotes for YAML safety.
-    const promptText = samplePrompts[0].replace(/"/g, '\\"');
+    // Always reference sample image - it will be uploaded after training
     const lines = [
       `  - text: "${promptText}"`,
       `    output:`,

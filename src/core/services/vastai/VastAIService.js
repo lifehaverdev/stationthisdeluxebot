@@ -112,6 +112,19 @@ class VastAIService extends ComputeProvider {
       q.gpu_frac = { gte: 1.0 };
     }
 
+    // Minimum reliability score (0-1, default 0.95 = 95%)
+    // Low reliability hosts often have driver/CUDA issues
+    const minReliability = criteria.minReliability ?? 0.95;
+    if (minReliability > 0) {
+      q.reliability = { gte: minReliability };
+    }
+
+    // Minimum CUDA version (default 12.0 for modern training)
+    const minCuda = criteria.minCudaVersion ?? 12.0;
+    if (minCuda > 0) {
+      q.cuda_max_good = { gte: minCuda };
+    }
+
     if (criteria.extra && typeof criteria.extra === 'object') {
       Object.assign(q, criteria.extra);
     }
@@ -137,6 +150,10 @@ class VastAIService extends ComputeProvider {
       gpuFrac: rawOffer.gpu_frac ?? 1.0,  // Fraction of GPU (1.0 = full GPU)
       region: rawOffer.region || rawOffer.country || rawOffer.geolocation,
       reliability: rawOffer.reliability || rawOffer.host_score,
+      cudaVersion: rawOffer.cuda_max_good,
+      driverVersion: rawOffer.driver_version,
+      cpuCores: rawOffer.cpu_cores,
+      cpuRam: rawOffer.cpu_ram,  // System RAM in GB
       templateId: rawOffer.template_id,
       raw: rawOffer
     };

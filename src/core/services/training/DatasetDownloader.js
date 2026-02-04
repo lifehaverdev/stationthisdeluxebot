@@ -20,9 +20,10 @@ const http = require('http');
 const { ObjectId } = require('mongodb');
 
 class DatasetDownloader {
-  constructor({ logger, datasetDb } = {}) {
+  constructor({ logger, datasetDb, generationOutputsDb } = {}) {
     this.logger = logger || console;
     this.datasetDb = datasetDb;
+    this.generationOutputsDb = generationOutputsDb;
   }
 
   /**
@@ -92,10 +93,16 @@ class DatasetDownloader {
       await this._downloadControlFromEmbellishment(controlEmbellishment.results, imageResults, controlDir);
       hasControlImages = true;
 
-      // Extract concept prompt from embellishment config for KONTEXT concept training
-      conceptPrompt = controlEmbellishment.config?.prompt || null;
-      if (conceptPrompt) {
-        this.logger.info(`[DatasetDownloader] Found concept prompt from control embellishment: "${conceptPrompt}"`);
+      // Extract concept prompt from first generation output (preferred) or fall back to embellishment config
+      // All control images use the same transformation prompt, so we just need one valid example
+      conceptPrompt = await this._extractControlPromptFromGenerationOutputs(controlEmbellishment.results);
+
+      if (!conceptPrompt) {
+        // Fall back to global concept prompt from embellishment config
+        conceptPrompt = controlEmbellishment.config?.prompt || null;
+        if (conceptPrompt) {
+          this.logger.info(`[DatasetDownloader] Using concept prompt from embellishment config: "${conceptPrompt.substring(0, 100)}..."`);
+        }
       }
 
       const controlCount = controlEmbellishment.results.filter(r => r && r.value).length;
@@ -112,10 +119,11 @@ class DatasetDownloader {
       this.logger.info(`[DatasetDownloader] Downloaded ${dataset.controlImages.length} control images to ${controlDir}`);
     }
 
-    // Write captions - for concept mode with control images, use concept prompt instead of captions
+    // Write captions - for concept mode use the transformation prompt, otherwise use caption sets
     let captionCount;
+
     if (hasControlImages && conceptPrompt) {
-      // KONTEXT concept mode: use the transformation prompt for all images
+      // KONTEXT concept mode: use the global transformation prompt for all images
       captionCount = await this._writeConceptCaptions(imageResults, datasetDir, conceptPrompt);
       this.logger.info(`[DatasetDownloader] Wrote concept prompt to ${captionCount} caption files for KONTEXT concept training`);
     } else {
@@ -198,6 +206,52 @@ class DatasetDownloader {
     }
 
     return writtenCount;
+  }
+
+  /**
+   * Extract the control prompt from the first generation output that has one
+   * All control images in a set use the same transformation prompt, so we only
+   * need to find one valid example. This also handles cases where some images
+   * were manually swapped without going through the generation system.
+   * @private
+   */
+  async _extractControlPromptFromGenerationOutputs(results) {
+    if (!this.generationOutputsDb) {
+      this.logger.warn('[DatasetDownloader] No generationOutputsDb available, cannot extract control prompt');
+      return null;
+    }
+
+    // Find the first result with a generationOutputId
+    for (const result of results) {
+      if (!result?.generationOutputId) {
+        continue;
+      }
+
+      try {
+        const genOutput = await this.generationOutputsDb.findGenerationById(
+          new ObjectId(result.generationOutputId)
+        );
+
+        if (genOutput?.requestPayload) {
+          // Try multiple locations for the prompt
+          const prompt =
+            genOutput.requestPayload.input_prompt ||
+            genOutput.requestPayload.prompt ||
+            genOutput.requestPayload.text ||
+            null;
+
+          if (prompt) {
+            this.logger.info(`[DatasetDownloader] Extracted control prompt from generation output: "${prompt.substring(0, 100)}..."`);
+            return prompt;
+          }
+        }
+      } catch (err) {
+        this.logger.warn(`[DatasetDownloader] Failed to fetch generation output ${result.generationOutputId}: ${err.message}`);
+        // Continue to next result
+      }
+    }
+
+    return null;
   }
 
   /**

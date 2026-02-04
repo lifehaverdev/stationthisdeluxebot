@@ -366,6 +366,28 @@ class DatasetDB extends BaseDB {
   }
 
   /**
+   * Update embellishment config fields
+   * @param {string} datasetId
+   * @param {string} embellishmentId
+   * @param {Object} configUpdates - Fields to merge into config (e.g., { prompt: '...' })
+   */
+  async updateEmbellishmentConfig(datasetId, embellishmentId, configUpdates) {
+    const setPayload = { updatedAt: new Date() };
+
+    for (const [key, value] of Object.entries(configUpdates)) {
+      if (value !== undefined) {
+        setPayload[`embellishments.$[emb].config.${key}`] = value;
+      }
+    }
+
+    return this.updateOne(
+      { _id: new ObjectId(datasetId) },
+      { $set: setPayload },
+      { arrayFilters: [{ 'emb._id': new ObjectId(embellishmentId) }] }
+    );
+  }
+
+  /**
    * Remove an embellishment
    * @param {string} datasetId
    * @param {string} embellishmentId
