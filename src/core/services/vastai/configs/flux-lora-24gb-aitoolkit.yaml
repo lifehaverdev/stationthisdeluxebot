@@ -19,7 +19,7 @@ config:
         linear_alpha: 32
       save:
         dtype: float16 # precision to save
-        save_every: 250 # save every this many steps
+        save_every: {{SAVE_EVERY}} # save every this many steps (min of 250 or total steps)
         max_step_saves_to_keep: 2 # how many intermittent saves to keep
         push_to_hub: false #change this to True to push your trained model to Hugging Face.
         # You can either set up a HF_TOKEN env variable or you'll be prompted to log-in         

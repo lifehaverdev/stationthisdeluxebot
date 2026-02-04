@@ -1,0 +1,65 @@
+---
+# KONTEXT CONCEPT MODE
+# Uses paired dataset: control images (input) + output images with captions
+# Samples show the learned transformation applied to control images
+job: extension
+config:
+  name: "{{MODEL_NAME}}"
+  process:
+    - type: 'sd_trainer'
+      training_folder: "{{OUTPUT_DIR}}"
+      device: cuda:0
+      trigger_word: "{{TRIGGER_WORD}}"
+      network:
+        type: "lora"
+        linear: 16
+        linear_alpha: 16
+      save:
+        dtype: float16
+        save_every: {{SAVE_EVERY}}
+        max_step_saves_to_keep: 4
+        push_to_hub: false
+      datasets:
+        - folder_path: "{{DATASET_PATH}}"
+          # Control images are the INPUT images that get transformed
+          control_path: "{{CONTROL_PATH}}"
+          caption_ext: "txt"
+          caption_dropout_rate: 0.05
+          shuffle_tokens: false
+          cache_latents_to_disk: true
+          # Kontext runs at 2x latent size. 512x768 is safe for 24GB VRAM.
+          resolution: [ 512, 768 ]
+      train:
+        batch_size: 1
+        steps: {{TRAIN_STEPS}}
+        gradient_accumulation_steps: 1
+        train_unet: true
+        train_text_encoder: false
+        gradient_checkpointing: true
+        noise_scheduler: "flowmatch"
+        optimizer: "adamw8bit"
+        lr: 1e-4
+        timestep_type: "weighted"
+        skip_first_sample: true
+        dtype: bf16
+      model:
+        name_or_path: "black-forest-labs/FLUX.1-Kontext-dev"
+        arch: "flux_kontext"
+        quantize: true
+      sample:
+        sampler: "flowmatch"
+        sample_every: {{SAMPLE_EVERY}}
+        # Sample at training resolution to avoid OOM
+        width: 512
+        height: 768
+        prompts:
+          # Concept mode: prompts include --ctrl_img to show transformation
+{{SAMPLE_PROMPTS}}
+        neg: ""
+        seed: 42
+        walk_seed: true
+        guidance_scale: 4
+        sample_steps: 20
+meta:
+  name: "[name]"
+  version: '1.0'

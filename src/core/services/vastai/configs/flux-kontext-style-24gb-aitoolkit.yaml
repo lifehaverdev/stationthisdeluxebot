@@ -1,39 +1,36 @@
 ---
+# KONTEXT STYLE/SUBJECT MODE
+# Uses standard dataset: images with captions (no control images)
+# Samples are pure text-to-image generations using the learned style/subject
 job: extension
 config:
-  # this name will be the folder and filename name
   name: "{{MODEL_NAME}}"
   process:
     - type: 'sd_trainer'
-      # root folder to save training sessions/samples/weights
       training_folder: "{{OUTPUT_DIR}}"
       device: cuda:0
-      # if a trigger word is specified, it will be added to captions of training data if it does not already exist
       trigger_word: "{{TRIGGER_WORD}}"
       network:
         type: "lora"
         linear: 16
         linear_alpha: 16
       save:
-        dtype: float16 # precision to save
-        save_every: 250 # save every this many steps
-        max_step_saves_to_keep: 4 # how many intermittent saves to keep
+        dtype: float16
+        save_every: {{SAVE_EVERY}}
+        max_step_saves_to_keep: 4
         push_to_hub: false
       datasets:
-        # datasets are a folder of images. captions need to be txt files with the same name as the image
         - folder_path: "{{DATASET_PATH}}"
-          # control path is the input images for kontext for a paired dataset (concept mode)
-          # Comment this out for style_subject mode training
-{{CONTROL_PATH_LINE}}
+          # No control_path for style/subject mode - pure text-to-image training
           caption_ext: "txt"
-          caption_dropout_rate: 0.05  # will drop out the caption 5% of time
-          shuffle_tokens: false  # shuffle caption order, split by commas
-          cache_latents_to_disk: true  # leave this true unless you know what you're doing
-          # Kontext runs images in at 2x the latent size. May OOM at 1024 with 24GB vram.
+          caption_dropout_rate: 0.05
+          shuffle_tokens: false
+          cache_latents_to_disk: true
+          # Kontext runs at 2x latent size. 512x768 is safe for 24GB VRAM.
           resolution: [ 512, 768 ]
       train:
         batch_size: 1
-        steps: {{TRAIN_STEPS}}  # total number of steps to train
+        steps: {{TRAIN_STEPS}}
         gradient_accumulation_steps: 1
         train_unet: true
         train_text_encoder: false
@@ -51,9 +48,11 @@ config:
       sample:
         sampler: "flowmatch"
         sample_every: {{SAMPLE_EVERY}}
-        width: 1024
-        height: 1024
+        # Sample at training resolution to avoid OOM
+        width: 512
+        height: 768
         prompts:
+          # Style/subject mode: pure text-to-image prompts
 {{SAMPLE_PROMPTS}}
         neg: ""
         seed: 42

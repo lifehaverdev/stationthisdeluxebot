@@ -97,7 +97,11 @@ async function alertUser(userId, severity, message) {
  * Main worker loop
  */
 async function runWorkerLoop(trainingDb, processor) {
-  logger.info(`[VastAIWorker] Starting worker loop for environment: ${WORKER_ENVIRONMENT}`);
+  logger.info('═'.repeat(60));
+  logger.info(`[VastAIWorker] STARTING WORKER`);
+  logger.info(`[VastAIWorker] Environment filter: ${WORKER_ENVIRONMENT}`);
+  logger.info(`[VastAIWorker] Only jobs with environment="${WORKER_ENVIRONMENT}" will be picked up`);
+  logger.info('═'.repeat(60));
   let pollCount = 0;
 
   while (isRunning) {
@@ -125,7 +129,7 @@ async function runWorkerLoop(trainingDb, processor) {
         continue;
       }
 
-      logger.info(`[VastAIWorker] Found queued job: ${job._id} (${job.modelName}) retryCount=${job.retryCount || 0}`);
+      logger.info(`[VastAIWorker] Found queued job: ${job._id} (${job.modelName}) env=${job.environment || 'UNSET'} retryCount=${job.retryCount || 0}`);
 
       // Attempt to claim the job (atomic)
       const claimedJob = await trainingDb.claimJob(job._id);

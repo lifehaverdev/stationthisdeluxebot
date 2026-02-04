@@ -363,6 +363,10 @@ function createTrainingsApi(dependencies) {
 
       // Reset status to QUEUED and clear error fields
       // Also clear instance info from previous attempt so worker starts fresh
+      // IMPORTANT: Set environment to match current server so the right worker picks it up
+      const currentEnvironment = process.env.TRAINING_ENVIRONMENT || 'production';
+      logger.info(`[TrainingsAPI] Retry will tag job with environment: ${currentEnvironment}`);
+
       await db.loraTrainings.setStatus(trainingId, 'QUEUED', {
         error: null,
         errorMessage: null,
@@ -372,7 +376,9 @@ function createTrainingsApi(dependencies) {
         vastaiInstanceId: null,
         vastaiOfferId: null,
         startedAt: null,
-        completedAt: null
+        completedAt: null,
+        // Tag with current environment so the right worker picks it up
+        environment: currentEnvironment
       });
 
       const updatedTraining = await db.loraTrainings.findTrainingById(trainingId);

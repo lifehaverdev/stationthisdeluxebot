@@ -95,7 +95,8 @@ const StorageService = require('../../src/core/services/storageService');
 
 // Default ai-toolkit config templates
 const DEFAULT_TEMPLATE = path.resolve(__dirname, '../../src/core/services/vastai/configs/flux-lora-24gb-aitoolkit.yaml');
-const KONTEXT_TEMPLATE = path.resolve(__dirname, '../../src/core/services/vastai/configs/flux-kontext-24gb-aitoolkit.yaml');
+const KONTEXT_CONCEPT_TEMPLATE = path.resolve(__dirname, '../../src/core/services/vastai/configs/flux-kontext-concept-24gb-aitoolkit.yaml');
+const KONTEXT_STYLE_TEMPLATE = path.resolve(__dirname, '../../src/core/services/vastai/configs/flux-kontext-style-24gb-aitoolkit.yaml');
 
 // Default Docker image with ai-toolkit pre-installed (10.2GB, saves ~15min setup)
 // Note: Docker image is "ostris/aitoolkit" (no hyphen), GitHub repo is "ai-toolkit" (hyphen)
@@ -895,21 +896,66 @@ async function main() {
     }
   }
 
-  // Build sample prompts YAML for config injection
-  let samplePromptsYaml = '';
-  if (samplePrompts.length > 0) {
-    samplePromptsYaml = samplePrompts.map(p => `          - "${p.replace(/"/g, '\\"')}"`).join('\n');
-  } else {
-    // Fallback prompts if no captions available
-    samplePromptsYaml = `          - "${triggerWord}, portrait, soft lighting, detailed"
-          - "${triggerWord}, artistic composition, high quality"`;
+  // Select template based on baseModel and trainingMode
+  let defaultTemplate = DEFAULT_TEMPLATE;
+  const isKontextConcept = args.baseModel === 'KONTEXT' && args.trainingMode === 'concept';
+  const isKontextStyle = args.baseModel === 'KONTEXT' && args.trainingMode !== 'concept';
+
+  if (isKontextConcept) {
+    defaultTemplate = KONTEXT_CONCEPT_TEMPLATE;
+    log(`Using KONTEXT CONCEPT template (paired dataset with control images)`);
+  } else if (isKontextStyle) {
+    defaultTemplate = KONTEXT_STYLE_TEMPLATE;
+    log(`Using KONTEXT STYLE/SUBJECT template (text-to-image)`);
   }
 
-  // Select template based on baseModel
-  let defaultTemplate = DEFAULT_TEMPLATE;
-  if (args.baseModel === 'KONTEXT') {
-    defaultTemplate = KONTEXT_TEMPLATE;
-    log(`Using KONTEXT template for training mode: ${args.trainingMode || 'style_subject'}`);
+  // Build sample prompts YAML for config injection
+  // For KONTEXT concept mode: pair captions with control images using --ctrl_img
+  // For style/subject mode: use captions as-is for text-to-image
+  let samplePromptsYaml = '';
+  let controlImageNames = [];
+
+  if (isKontextConcept && args.controlDir) {
+    // List control images to pair with prompts
+    try {
+      const controlFiles = await fsp.readdir(args.controlDir);
+      controlImageNames = controlFiles.filter(f =>
+        /\.(jpg|jpeg|png|webp)$/i.test(f)
+      );
+      log(`Found ${controlImageNames.length} control images for sampling`);
+    } catch (err) {
+      log(`Warning: Could not read control directory: ${err.message}`);
+    }
+  }
+
+  if (samplePrompts.length > 0) {
+    if (isKontextConcept && controlImageNames.length > 0) {
+      // Concept mode: pair each prompt with a control image
+      // Use the captions paired with their corresponding control images
+      const conceptPrompts = [];
+      for (let i = 0; i < Math.min(samplePrompts.length, 5); i++) {
+        // Pick control image (cycle through if fewer images than prompts)
+        const ctrlImg = controlImageNames[i % controlImageNames.length];
+        const prompt = samplePrompts[i].replace(/"/g, '\\"');
+        conceptPrompts.push(`          - "${prompt}  --ctrl_img ${remoteDir}/control/${ctrlImg}"`);
+      }
+      samplePromptsYaml = conceptPrompts.join('\n');
+      log(`Generated ${conceptPrompts.length} concept sample prompts with --ctrl_img`);
+    } else {
+      // Style/subject mode: pure text-to-image prompts
+      samplePromptsYaml = samplePrompts.slice(0, 5).map(p =>
+        `          - "${p.replace(/"/g, '\\"')}"`
+      ).join('\n');
+    }
+  } else {
+    // Fallback prompts if no captions available
+    if (isKontextConcept && controlImageNames.length > 0) {
+      const ctrlImg = controlImageNames[0];
+      samplePromptsYaml = `          - "${triggerWord}, detailed, high quality  --ctrl_img ${remoteDir}/control/${ctrlImg}"`;
+    } else {
+      samplePromptsYaml = `          - "${triggerWord}, portrait, soft lighting, detailed"
+          - "${triggerWord}, artistic composition, high quality"`;
+    }
   }
 
   const templatePath = path.resolve(expandHome(args.template || defaultTemplate));
@@ -921,12 +967,13 @@ async function main() {
   // With skip_first_sample: true, this ensures samples only at the trained model
   const sampleEvery = Math.max(1, steps - 1);
 
-  // For KONTEXT concept mode, include control_path line
-  let controlPathLine = '#          control_path: ""  # Not used for style_subject mode';
-  if (args.baseModel === 'KONTEXT' && args.trainingMode === 'concept' && args.controlDir) {
-    controlPathLine = `          control_path: "${remoteDir}/control"`;
-    log(`KONTEXT concept mode: control images will be at ${remoteDir}/control`);
-  }
+  // Save checkpoint at least once before the final sample/completion
+  // For short runs (<250 steps), save at halfway point to ensure we have a checkpoint
+  // before any potential OOM during final sampling
+  const saveEvery = steps < 250 ? Math.max(50, Math.floor(steps / 2)) : 250;
+
+  // Control path for KONTEXT concept mode
+  const controlPath = isKontextConcept ? `${remoteDir}/control` : '';
 
   await renderConfig({
     templatePath,
@@ -935,12 +982,13 @@ async function main() {
       JOB_ROOT: remoteDir,
       OUTPUT_DIR: `${remoteDir}/output`,
       DATASET_PATH: `${remoteDir}/dataset`,
+      CONTROL_PATH: controlPath,
       TRIGGER_WORD: triggerWord,
       MODEL_NAME: modelName,
       TRAIN_STEPS: String(steps),
+      SAVE_EVERY: String(saveEvery),
       SAMPLE_EVERY: String(sampleEvery),
-      SAMPLE_PROMPTS: samplePromptsYaml,
-      CONTROL_PATH_LINE: controlPathLine
+      SAMPLE_PROMPTS: samplePromptsYaml
     }
   });
 
@@ -1054,6 +1102,24 @@ async function main() {
   }
 
   const runner = new TrainingRunner({ ssh, logger: console });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // PRE-FLIGHT CHECK: Verify GPU/CUDA before training
+  // Catches bad VastAI instances early (driver issues, CUDA problems)
+  // ────────────────────────────────────────────────────────────────────────────
+  log('Running pre-flight GPU check...');
+  const gpuCheck = await runner.preflightGpuCheck();
+  if (!gpuCheck.ok) {
+    console.error('\n' + '═'.repeat(60));
+    console.error('  ❌ GPU PRE-FLIGHT CHECK FAILED');
+    console.error('═'.repeat(60));
+    console.error(`  Error: ${gpuCheck.error}`);
+    console.error('');
+    console.error('  This instance has GPU/CUDA issues. Will terminate and retry.');
+    console.error('═'.repeat(60) + '\n');
+    throw new Error(`GPU pre-flight check failed: ${gpuCheck.error}`);
+  }
+  log(`GPU OK: ${gpuCheck.gpuName} | CUDA ${gpuCheck.cudaVersion}`);
 
   if (args.background) {
     // Start in background mode
@@ -1416,9 +1482,87 @@ async function main() {
       }
     }
 
+    // ────────────────────────────────────────────────────────────────────────────
+    // PHASE 5C: Emergency checkpoint recovery (when training fails but checkpoints exist)
+    // Uploads the latest checkpoint so progress isn't completely lost
+    // ────────────────────────────────────────────────────────────────────────────
+    if (!result.success && checkpoints.length > 0 && (hfRepoId || args.r2Upload)) {
+      console.log('\n' + '═'.repeat(60));
+      console.log('  ⚠️  EMERGENCY CHECKPOINT RECOVERY');
+      console.log('═'.repeat(60));
+      console.log(`  Training failed at step ${result.parsed.lastStep || '?'}/${result.parsed.totalSteps || steps}`);
+      console.log(`  Found ${checkpoints.length} checkpoint(s) to recover`);
+      console.log('═'.repeat(60) + '\n');
+
+      // Find the latest checkpoint (highest step number)
+      const latestCheckpoint = checkpoints[checkpoints.length - 1];
+      log(`Attempting emergency upload of: ${latestCheckpoint.name} (${latestCheckpoint.sizeFormatted})`);
+
+      try {
+        if (hfRepoId) {
+          // Upload to HuggingFace with clear "partial" naming
+          const remoteCheckpointPath = latestCheckpoint.path;
+          const recoveryFilename = latestCheckpoint.name.replace('.safetensors', '_PARTIAL.safetensors');
+
+          log(`Emergency upload to HuggingFace: ${recoveryFilename}`);
+          const uploadCmd = `export HF_TOKEN="${extraEnv.HF_TOKEN}" && huggingface-cli upload ${hfRepoId} "${remoteCheckpointPath}" "${recoveryFilename}" --commit-message "Emergency recovery: training failed at step ${result.parsed.lastStep || '?'}"`;
+          await ssh.exec(uploadCmd, { timeout: 300000 });
+
+          hfModelUrl = `https://huggingface.co/${hfRepoId}`;
+          log(`✓ Emergency checkpoint uploaded to HuggingFace`);
+
+          console.log('\n' + '═'.repeat(60));
+          console.log('  EMERGENCY RECOVERY COMPLETE');
+          console.log('═'.repeat(60));
+          console.log(`  Recovered:  ${recoveryFilename}`);
+          console.log(`  From step:  ${latestCheckpoint.name.match(/_(\d+)\.safetensors/)?.[1] || 'unknown'}`);
+          console.log(`  URL:        ${hfModelUrl}`);
+          console.log('  ⚠️  This is a PARTIAL checkpoint - training did not complete');
+          console.log('═'.repeat(60) + '\n');
+
+        } else if (args.r2Upload) {
+          // Upload to R2 with clear "partial" naming
+          const storageService = new StorageService(console);
+          const remoteCheckpointPath = latestCheckpoint.path;
+          const recoveryFilename = latestCheckpoint.name.replace('.safetensors', '_PARTIAL.safetensors');
+
+          log(`Emergency upload to R2: ${recoveryFilename}`);
+          const { signedUrl, permanentUrl } = await storageService.generateSignedUploadUrl(
+            'training',
+            recoveryFilename,
+            'application/octet-stream'
+          );
+
+          const uploadCmd = `curl -X PUT -H "Content-Type: application/octet-stream" --upload-file "${remoteCheckpointPath}" "${signedUrl}"`;
+          await ssh.exec(uploadCmd, { timeout: 600000 });
+
+          r2ModelUrl = permanentUrl;
+          log(`✓ Emergency checkpoint uploaded to R2`);
+
+          console.log('\n' + '═'.repeat(60));
+          console.log('  EMERGENCY RECOVERY COMPLETE');
+          console.log('═'.repeat(60));
+          console.log(`  Recovered:  ${recoveryFilename}`);
+          console.log(`  From step:  ${latestCheckpoint.name.match(/_(\d+)\.safetensors/)?.[1] || 'unknown'}`);
+          console.log(`  URL:        ${r2ModelUrl}`);
+          console.log('  ⚠️  This is a PARTIAL checkpoint - training did not complete');
+          console.log('═'.repeat(60) + '\n');
+        }
+      } catch (recoveryErr) {
+        log(`Emergency recovery upload failed: ${recoveryErr.message}`);
+        log('Checkpoint remains on instance - manual recovery may be possible');
+      }
+    }
+
     // Terminate instance if training succeeded and not in noTerminate mode
-    if (!args.noTerminate && result.success) {
-      log('Terminating instance...');
+    // Also terminate after failed training IF we successfully recovered the checkpoint
+    const shouldTerminate = !args.noTerminate && (
+      result.success ||
+      (!result.success && (hfModelUrl || r2ModelUrl))  // Failed but recovered checkpoint
+    );
+
+    if (shouldTerminate) {
+      log(result.success ? 'Terminating instance...' : 'Terminating instance after emergency recovery...');
       try {
         await service.terminateInstance(readyInstance.instanceId);
         log('Instance terminated successfully');
@@ -1438,19 +1582,24 @@ async function main() {
       _provisionedInstanceId = null; // Clear - intentionally leaving
     }
 
+    // Determine if this was a partial recovery
+    const isPartialRecovery = !result.success && (hfModelUrl || r2ModelUrl);
+
     // Final result with model URL
-    if (hfModelUrl) {
-      console.log('\n🎉 Training complete! Model available at:');
-      console.log(`   ${hfModelUrl}\n`);
-    } else if (r2ModelUrl) {
-      console.log('\n🎉 Training complete! Model uploaded to R2:');
-      console.log(`   ${r2ModelUrl}\n`);
+    if (hfModelUrl || r2ModelUrl) {
+      if (isPartialRecovery) {
+        console.log('\n⚠️  Training failed but checkpoint was recovered:');
+      } else {
+        console.log('\n🎉 Training complete! Model available at:');
+      }
+      console.log(`   ${hfModelUrl || r2ModelUrl}\n`);
     }
 
     // Output structured result for programmatic use (e.g., by TrainingFinalizationService)
     // This JSON block can be parsed by the worker/caller
     const trainingResult = {
       success: result.success,
+      partialRecovery: isPartialRecovery,  // True if training failed but we recovered a checkpoint
       modelName,
       triggerWord,
       steps: parseInt(args.steps) || 2000,
@@ -1471,6 +1620,7 @@ async function main() {
       finalStep: result.parsed.lastStep,
       totalSteps: result.parsed.totalSteps,
       finalLoss: result.parsed.lastLoss,
+      recoveredCheckpointStep: isPartialRecovery ? (checkpoints[checkpoints.length - 1]?.name.match(/_(\d+)\.safetensors/)?.[1] || null) : null,
 
       // Instance info
       instanceId: readyInstance.instanceId,

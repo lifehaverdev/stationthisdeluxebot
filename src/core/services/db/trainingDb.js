@@ -155,9 +155,20 @@ class TrainingDB extends BaseDB {
 
   async fetchQueued(limit = 3, environment = null) {
     const filter = { status: 'QUEUED' };
-    if (environment) {
-      filter.environment = environment;
+
+    if (environment === 'development') {
+      // Development worker: ONLY pick up explicitly tagged development jobs
+      filter.environment = 'development';
+    } else if (environment === 'production') {
+      // Production worker: pick up production jobs OR jobs with no environment tag (default/legacy)
+      filter.$or = [
+        { environment: 'production' },
+        { environment: { $exists: false } },
+        { environment: null }
+      ];
     }
+    // If environment is null/undefined, no filter (pick up any - not recommended)
+
     const jobs = await this.findMany(filter, { limit, sort: { createdAt: 1 } });
     if (jobs.length > 0) {
       this.logger.info(`[TrainingDB] fetchQueued found ${jobs.length} job(s) for env=${environment || 'any'}: ${jobs.map(j => j._id).join(', ')}`);

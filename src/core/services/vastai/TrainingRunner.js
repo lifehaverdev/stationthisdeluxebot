@@ -386,6 +386,71 @@ class TrainingRunner {
     return `${envPrefix}PYTHONUNBUFFERED=1 ${this.config.trainCommand} "${configPath}" 2>&1 | tee "${logPath}"`;
   }
 
+  /**
+   * Pre-flight GPU check - verifies CUDA and GPU are working before training
+   * This catches bad VastAI instances early (driver issues, CUDA problems)
+   *
+   * @returns {Promise<{ok: boolean, gpuName: string, cudaVersion: string, error: string}>}
+   */
+  async preflightGpuCheck() {
+    this.logger.info('[TrainingRunner] Running pre-flight GPU check...');
+
+    const checkScript = `python3 -c "
+import torch
+import sys
+
+if not torch.cuda.is_available():
+    print('ERROR: CUDA not available')
+    sys.exit(1)
+
+try:
+    # Quick GPU test - allocate and free small tensor
+    device = torch.device('cuda:0')
+    x = torch.zeros(1000, 1000, device=device)
+    del x
+    torch.cuda.empty_cache()
+
+    gpu_name = torch.cuda.get_device_name(0)
+    cuda_ver = torch.version.cuda
+    print(f'OK: {gpu_name} | CUDA {cuda_ver}')
+except Exception as e:
+    print(f'ERROR: GPU test failed - {e}')
+    sys.exit(1)
+"`;
+
+    try {
+      const result = await this.ssh.exec(checkScript, { timeout: 30000 });
+      const output = result.trim();
+
+      if (output.startsWith('OK:')) {
+        const match = output.match(/OK: (.+) \| CUDA (.+)/);
+        this.logger.info(`[TrainingRunner] GPU check passed: ${output}`);
+        return {
+          ok: true,
+          gpuName: match?.[1] || 'unknown',
+          cudaVersion: match?.[2] || 'unknown',
+          error: null
+        };
+      } else {
+        this.logger.error(`[TrainingRunner] GPU check failed: ${output}`);
+        return {
+          ok: false,
+          gpuName: null,
+          cudaVersion: null,
+          error: output
+        };
+      }
+    } catch (err) {
+      this.logger.error(`[TrainingRunner] GPU check error: ${err.message}`);
+      return {
+        ok: false,
+        gpuName: null,
+        cudaVersion: null,
+        error: err.message
+      };
+    }
+  }
+
   _buildBackgroundCommand(configPath, logPath, pidPath, jobRoot, extraEnv = {}) {
     // Build command that:
     // 1. Creates a wrapper script
