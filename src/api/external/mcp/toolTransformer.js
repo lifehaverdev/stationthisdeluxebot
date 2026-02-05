@@ -5,6 +5,22 @@
  */
 
 /**
+ * Explicit aliases for common tool names.
+ * Maps user-friendly aliases to partial matches on tool properties.
+ * Used when the auto-generated commandName doesn't match user expectations.
+ */
+const TOOL_ALIASES = {
+  'make': { matchDisplayName: /flux.*general|fluxgeneral/i, priority: 'text-to-image' },
+  'flux': { matchDisplayName: /flux.*general|fluxgeneral/i, priority: 'text-to-image' },
+  'flux-dev': { matchDisplayName: /flux.*dev/i, priority: 'text-to-image' },
+  'flux-schnell': { matchDisplayName: /flux.*schnell/i, priority: 'text-to-image' },
+  'sdxl': { matchDisplayName: /sdxl/i, priority: 'text-to-image' },
+  'kontext': { matchDisplayName: /kontext/i, priority: 'text-to-image' },
+  'upscale': { matchDisplayName: /upscale|esrgan/i, priority: 'upscale' },
+  'caption': { matchDisplayName: /caption|joycaption/i, priority: 'image-to-text' },
+};
+
+/**
  * Maps NOEMA input types to JSON Schema types
  * @param {string} noemaType - NOEMA input type
  * @returns {string} JSON Schema type
@@ -28,6 +44,26 @@ function mapTypeToJsonSchema(noemaType) {
     'checkpoint': 'string'
   };
   return typeMap[noemaType] || 'string';
+}
+
+/**
+ * Gets a human-readable name for a tool to use in MCP.
+ * Priority: commandName (without /) > displayName > toolId
+ * @param {Object} tool - NOEMA ToolDefinition
+ * @returns {string} Human-readable tool name
+ */
+function getHumanReadableName(tool) {
+  // Prefer commandName without the leading slash (e.g., "/make" -> "make")
+  if (tool.commandName) {
+    return tool.commandName.replace(/^\//, '');
+  }
+  // Fall back to displayName, sanitized for use as identifier
+  if (tool.displayName) {
+    // Convert to lowercase, replace spaces with hyphens
+    return tool.displayName.toLowerCase().replace(/\s+/g, '-');
+  }
+  // Last resort: use toolId
+  return tool.toolId;
 }
 
 /**
@@ -69,14 +105,19 @@ function transformToolToMcp(tool) {
     }
   }
 
+  // Use human-readable name instead of hash-based toolId
+  const mcpName = getHumanReadableName(tool);
+
   return {
-    name: tool.toolId,
+    name: mcpName,
     description: buildToolDescription(tool),
     inputSchema: {
       type: 'object',
       properties,
       required: required.length > 0 ? required : undefined
-    }
+    },
+    // Include toolId in metadata for debugging/reference
+    _toolId: tool.toolId
   };
 }
 

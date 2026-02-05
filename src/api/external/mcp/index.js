@@ -481,14 +481,54 @@ async function forwardToApi(method, path, params, apiKey, internalApiClient) {
 }
 
 /**
+ * Explicit aliases for common tool names.
+ * Maps user-friendly aliases to patterns that match tool displayNames.
+ */
+const TOOL_ALIASES = {
+  'make': { matchDisplayName: /flux.*general|fluxgeneral/i, fallbackCategory: 'text-to-image' },
+  'flux': { matchDisplayName: /flux.*general|fluxgeneral/i, fallbackCategory: 'text-to-image' },
+  'flux-dev': { matchDisplayName: /flux.*dev/i, fallbackCategory: 'text-to-image' },
+  'flux-schnell': { matchDisplayName: /flux.*schnell/i, fallbackCategory: 'text-to-image' },
+  'sdxl': { matchDisplayName: /sdxl/i, fallbackCategory: 'text-to-image' },
+  'kontext': { matchDisplayName: /kontext/i, fallbackCategory: 'text-to-image' },
+  'upscale': { matchDisplayName: /upscale|esrgan/i, fallbackCategory: 'upscale' },
+  'caption': { matchDisplayName: /caption|joycaption/i, fallbackCategory: 'image-to-text' },
+};
+
+/**
  * Resolve a tool name/alias to an actual toolId using the registry.
- * Supports lookups by: exact toolId, commandName (with or without /), displayName (case-insensitive).
+ * Supports lookups by: explicit aliases, exact toolId, commandName (with or without /), displayName.
  * @param {string} nameOrAlias - The name, alias, or toolId provided by the user
  * @param {Object} toolRegistry - The tool registry instance
  * @returns {string|null} The resolved toolId, or null if not found
  */
 function resolveToolAlias(nameOrAlias, toolRegistry) {
   if (!nameOrAlias || !toolRegistry) return nameOrAlias;
+
+  const allTools = toolRegistry.getAllTools();
+  const lowerName = nameOrAlias.toLowerCase();
+
+  // 0. Check explicit alias map first (for well-known names like "make")
+  const explicitAlias = TOOL_ALIASES[lowerName];
+  if (explicitAlias) {
+    // Find tool matching the displayName pattern
+    const matchedTool = allTools.find(t => {
+      if (!t.displayName) return false;
+      return explicitAlias.matchDisplayName.test(t.displayName);
+    });
+    if (matchedTool) {
+      logger.info(`[MCP] Resolved explicit alias "${nameOrAlias}" to toolId "${matchedTool.toolId}" (displayName: ${matchedTool.displayName})`);
+      return matchedTool.toolId;
+    }
+    // If pattern doesn't match, try fallback by category
+    if (explicitAlias.fallbackCategory) {
+      const categoryMatch = allTools.find(t => t.category === explicitAlias.fallbackCategory);
+      if (categoryMatch) {
+        logger.info(`[MCP] Resolved alias "${nameOrAlias}" to toolId "${categoryMatch.toolId}" via category fallback`);
+        return categoryMatch.toolId;
+      }
+    }
+  }
 
   // 1. Try exact match by toolId
   const exactMatch = toolRegistry.getToolById(nameOrAlias);
@@ -510,8 +550,6 @@ function resolveToolAlias(nameOrAlias, toolRegistry) {
   }
 
   // 4. Try case-insensitive displayName search
-  const allTools = toolRegistry.getAllTools();
-  const lowerName = nameOrAlias.toLowerCase();
   const caseInsensitiveMatch = allTools.find(t =>
     t.displayName && t.displayName.toLowerCase() === lowerName
   );
@@ -531,7 +569,17 @@ function resolveToolAlias(nameOrAlias, toolRegistry) {
     return partialCommandMatch.toolId;
   }
 
+  // 6. Try partial displayName match (contains)
+  const partialDisplayMatch = allTools.find(t =>
+    t.displayName && t.displayName.toLowerCase().includes(lowerName)
+  );
+  if (partialDisplayMatch) {
+    logger.info(`[MCP] Resolved alias "${nameOrAlias}" to toolId "${partialDisplayMatch.toolId}" via partial displayName match`);
+    return partialDisplayMatch.toolId;
+  }
+
   // No match found, return original (will likely fail with "tool not found")
+  logger.warn(`[MCP] Could not resolve tool alias "${nameOrAlias}". Available tools: ${allTools.slice(0, 5).map(t => t.commandName || t.displayName).join(', ')}...`);
   return nameOrAlias;
 }
 

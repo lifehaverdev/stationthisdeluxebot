@@ -60,9 +60,35 @@ module.exports = function generationExecutionApi(dependencies) {
     try {
       // 2. --- Tool Lookup & Validation ---
       logger.info(`[Execute] Received request for toolId: ${toolId}`);
-      const tool = await toolRegistry.getToolById(toolId);
+
+      // Try direct lookup first, then resolve alias if not found
+      let tool = await toolRegistry.getToolById(toolId);
+      let resolvedToolId = toolId;
+
       if (!tool) {
-        return res.status(404).json({ error: { code: 'TOOL_NOT_FOUND', message: `Tool '${toolId}' not found.` } });
+        // Try alias resolution: commandName (with or without /), displayName
+        const commandName = toolId.startsWith('/') ? toolId : `/${toolId}`;
+        tool = toolRegistry.findByCommand(commandName);
+
+        if (!tool) {
+          // Try by displayName (case-insensitive)
+          const allTools = toolRegistry.getAllTools();
+          const lowerName = toolId.toLowerCase();
+          tool = allTools.find(t =>
+            (t.displayName && t.displayName.toLowerCase() === lowerName) ||
+            (t.commandName && t.commandName.replace(/^\//, '').toLowerCase() === lowerName)
+          );
+        }
+
+        if (tool) {
+          resolvedToolId = tool.toolId;
+          logger.info(`[Execute] Resolved alias "${toolId}" to toolId "${resolvedToolId}"`);
+        }
+      }
+
+      if (!tool) {
+        logger.warn(`[Execute] Tool not found: "${toolId}". Available tools: ${toolRegistry.getAllTools().slice(0, 5).map(t => t.commandName || t.displayName).join(', ')}...`);
+        return res.status(404).json({ error: { code: 'TOOL_NOT_FOUND', message: `Tool '${toolId}' not found. Use tools/list to see available tools.` } });
       }
 
       // 3. --- Pre-Execution Credit Check ---
