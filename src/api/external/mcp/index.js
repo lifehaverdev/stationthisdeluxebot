@@ -95,10 +95,15 @@ function createMcpRouter(dependencies) {
     const { method, params, id } = message;
     const apiKey = req.headers['x-api-key'];
 
+    // Construct base URL from request for dynamic pollUrl generation
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+    const host = req.headers['x-forwarded-host'] || req.headers.host || 'noema.art';
+    const baseUrl = `${protocol}://${host}`;
+
     logger.info(`[MCP] ${method}`, { id, hasApiKey: !!apiKey });
 
     try {
-      const result = await handleMethod(method, params, { apiKey, toolRegistry, internalApiClient });
+      const result = await handleMethod(method, params, { apiKey, toolRegistry, internalApiClient, baseUrl });
       res.json({ jsonrpc: '2.0', result, id });
     } catch (error) {
       logger.error(`[MCP] Error in ${method}:`, error.message);
@@ -121,7 +126,7 @@ function createMcpRouter(dependencies) {
  * Handle MCP JSON-RPC methods
  */
 async function handleMethod(method, params, context) {
-  const { apiKey, toolRegistry, internalApiClient } = context;
+  const { apiKey, toolRegistry, internalApiClient, baseUrl } = context;
 
   switch (method) {
     // ============================================
@@ -159,7 +164,7 @@ async function handleMethod(method, params, context) {
         error.code = -32001;
         throw error;
       }
-      return await executeToolCall(params, apiKey, internalApiClient);
+      return await executeToolCall(params, apiKey, internalApiClient, baseUrl);
 
     // ============================================
     // Resources (LoRAs)
@@ -231,20 +236,35 @@ async function handleMethod(method, params, context) {
 
     case 'spells/cast':
       requireApiKey(apiKey);
+      // Validate required parameters
+      const spellIdentifier = params.slug || params.spellId;
+      if (!spellIdentifier) {
+        const err = new Error('Missing required parameter: slug or spellId');
+        err.code = -32602;
+        throw err;
+      }
       // Resolve user from API key to get masterAccountId
       const userInfo = await resolveUserFromApiKey(apiKey, internalApiClient);
       // Transform params to match internal API expectations
+      // Support both 'context' and 'parameters' for flexibility
       const castParams = {
-        slug: params.slug || params.spellId,
+        slug: spellIdentifier,
         context: {
           ...(params.context || params.parameters || {}),
-          masterAccountId: userInfo.masterAccountId
+          masterAccountId: userInfo.masterAccountId,
+          platform: 'mcp'
         }
       };
+      logger.info('[MCP] spells/cast', { slug: spellIdentifier, masterAccountId: userInfo.masterAccountId });
       return await forwardToApi('POST', '/api/v1/spells/cast', castParams, apiKey, internalApiClient);
 
     case 'spells/status':
       requireApiKey(apiKey);
+      if (!params.castId) {
+        const err = new Error('Missing required parameter: castId');
+        err.code = -32602;
+        throw err;
+      }
       return await forwardToApi('GET', `/api/v1/spells/casts/${params.castId}`, null, apiKey, internalApiClient);
 
     case 'spells/create':
@@ -276,7 +296,13 @@ async function handleMethod(method, params, context) {
 
     case 'collections/create':
       requireApiKey(apiKey);
-      return await forwardToApi('POST', '/api/v1/collections', params, apiKey, internalApiClient);
+      // Resolve user to inject userId required by collections API
+      const collectionUserInfo = await resolveUserFromApiKey(apiKey, internalApiClient);
+      const collectionParams = {
+        ...params,
+        userId: collectionUserInfo.masterAccountId
+      };
+      return await forwardToApi('POST', '/api/v1/collections', collectionParams, apiKey, internalApiClient);
 
     case 'collections/update':
       requireApiKey(apiKey);
@@ -311,15 +337,49 @@ async function handleMethod(method, params, context) {
       return await forwardToApi('POST', `/api/v1/collections/${params.id}/export`, params, apiKey, internalApiClient);
 
     // ============================================
-    // Trainings (forwarded to external API)
+    // Trainings (forwarded to internal API with user resolution)
     // ============================================
     case 'trainings/list':
       requireApiKey(apiKey);
-      return await forwardToApi('GET', '/api/v1/trainings', params, apiKey, internalApiClient);
+      // Resolve user to get owner ID for trainings list
+      const trainingsUserInfo = await resolveUserFromApiKey(apiKey, internalApiClient);
+      try {
+        const trainingsResponse = await internalApiClient.get(
+          `/internal/v1/data/trainings/owner/${encodeURIComponent(trainingsUserInfo.masterAccountId)}`
+        );
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({ trainings: trainingsResponse.data }, null, 2)
+          }]
+        };
+      } catch (error) {
+        const msg = error.response?.data?.error?.message || error.message;
+        logger.error('[MCP] trainings/list error:', msg);
+        const err = new Error(msg);
+        err.code = error.response?.status === 404 ? -32004 : -32603;
+        throw err;
+      }
 
     case 'trainings/get':
       requireApiKey(apiKey);
-      return await forwardToApi('GET', `/api/v1/trainings/${params.id}`, null, apiKey, internalApiClient);
+      try {
+        const trainingResponse = await internalApiClient.get(
+          `/internal/v1/data/trainings/${encodeURIComponent(params.id)}`
+        );
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify(trainingResponse.data, null, 2)
+          }]
+        };
+      } catch (error) {
+        const msg = error.response?.data?.error?.message || error.message;
+        logger.error('[MCP] trainings/get error:', msg);
+        const err = new Error(msg);
+        err.code = error.response?.status === 404 ? -32004 : -32603;
+        throw err;
+      }
 
     case 'trainings/create':
       requireApiKey(apiKey);
@@ -423,37 +483,43 @@ async function forwardToApi(method, path, params, apiKey, internalApiClient) {
 /**
  * Execute a tool call
  */
-async function executeToolCall(params, apiKey, internalApiClient) {
+async function executeToolCall(params, apiKey, internalApiClient, baseUrl) {
   const { name, arguments: args } = params;
 
   try {
+    // First resolve user from API key
+    const userInfo = await resolveUserFromApiKey(apiKey, internalApiClient);
+
+    // Execute via internal API with proper payload format
     const response = await internalApiClient.post(
-      '/internal/v1/generation/cast',
+      '/internal/v1/data/execute',
       {
         toolId: name,
-        parameters: args || {},
-        deliveryMode: 'async'
-      },
-      {
-        headers: { 'X-Forwarded-API-Key': apiKey }
+        inputs: args || {},
+        user: {
+          masterAccountId: userInfo.masterAccountId,
+          platform: 'mcp'
+        }
       }
     );
 
     const result = response.data;
+    const generationId = result.generationId || result._id;
 
     return {
       content: [{
         type: 'text',
         text: JSON.stringify({
           success: true,
-          generationId: result.generationId,
+          generationId,
           status: result.status || 'pending',
-          pollUrl: `https://noema.art/api/v1/generation/status/${result.generationId}`
+          pollUrl: `${baseUrl || 'https://noema.art'}/api/v1/generation/status/${generationId}`
         })
       }]
     };
   } catch (error) {
     const msg = error.response?.data?.error?.message || error.message;
+    logger.error(`[MCP] executeToolCall error for ${name}:`, msg);
     return {
       content: [{ type: 'text', text: JSON.stringify({ error: msg }) }],
       isError: true

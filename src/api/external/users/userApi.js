@@ -284,6 +284,100 @@ function createUserApi(dependencies) {
     }
   });
 
+  /* -------------------------------------------------------
+   * API Keys Management
+   * -----------------------------------------------------*/
+
+  /**
+   * GET /apikeys
+   * Lists all API keys for the authenticated user (masked, prefix only).
+   */
+  router.get('/apikeys', async (req, res) => {
+    try {
+      const userId = req.user && (req.user.userId || req.user.id || req.user._id);
+      if (!userId) {
+        return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User not authenticated.' } });
+      }
+
+      const response = await internalApiClient.get(`/internal/v1/data/users/${userId}/apikeys`);
+      res.status(200).json(response.data);
+    } catch (error) {
+      logger.error('[UserApi] GET /apikeys failed:', {
+        errorMessage: error.message,
+        responseData: error.response?.data,
+        responseStatus: error.response?.status
+      });
+      if (error.response) {
+        return res.status(error.response.status).json(error.response.data);
+      }
+      res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'Failed to fetch API keys.' } });
+    }
+  });
+
+  /**
+   * POST /apikeys
+   * Creates a new API key for the authenticated user.
+   * Body: { name: string }
+   * Returns the full API key (shown only once).
+   */
+  router.post('/apikeys', async (req, res) => {
+    try {
+      const userId = req.user && (req.user.userId || req.user.id || req.user._id);
+      if (!userId) {
+        return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User not authenticated.' } });
+      }
+
+      const { name } = req.body || {};
+      if (!name || typeof name !== 'string' || name.trim() === '') {
+        return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Name is required.' } });
+      }
+
+      const response = await internalApiClient.post(`/internal/v1/data/users/${userId}/apikeys`, { name: name.trim() });
+      res.status(201).json(response.data);
+    } catch (error) {
+      logger.error('[UserApi] POST /apikeys failed:', {
+        errorMessage: error.message,
+        responseData: error.response?.data,
+        responseStatus: error.response?.status
+      });
+      if (error.response) {
+        return res.status(error.response.status).json(error.response.data);
+      }
+      res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create API key.' } });
+    }
+  });
+
+  /**
+   * DELETE /apikeys/:keyPrefix
+   * Deletes an API key by its prefix.
+   */
+  router.delete('/apikeys/:keyPrefix', async (req, res) => {
+    try {
+      const userId = req.user && (req.user.userId || req.user.id || req.user._id);
+      if (!userId) {
+        return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User not authenticated.' } });
+      }
+
+      const { keyPrefix } = req.params;
+      if (!keyPrefix) {
+        return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Key prefix is required.' } });
+      }
+
+      await internalApiClient.delete(`/internal/v1/data/users/${userId}/apikeys/${keyPrefix}`);
+      res.status(204).send();
+    } catch (error) {
+      logger.error('[UserApi] DELETE /apikeys failed:', {
+        errorMessage: error.message,
+        responseData: error.response?.data,
+        responseStatus: error.response?.status
+      });
+      if (error.response) {
+        return res.status(error.response.status).json(error.response.data);
+      }
+      res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'Failed to delete API key.' } });
+    }
+  });
+
   return router;
 }
 

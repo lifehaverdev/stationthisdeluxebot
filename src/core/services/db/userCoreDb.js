@@ -416,35 +416,39 @@ class UserCoreDB extends BaseDB {
 
   /**
    * Updates the lastUsedAt timestamp for a specific API key.
+   * This is a fire-and-forget operation that uses super.updateOne directly
+   * to properly support arrayFilters for targeting specific array elements.
    * @param {ObjectId | string} masterAccountId - The masterAccountId of the user.
    * @param {string} keyPrefix - The prefix of the API key to update.
-   * @returns {Promise<Object|null>} The updated userCore document or null if not found/key not found.
+   * @returns {Promise<Object>} The MongoDB update result.
    */
   async updateApiKeyLastUsed(masterAccountId, keyPrefix) {
     const id = typeof masterAccountId === 'string' ? new ObjectId(masterAccountId) : masterAccountId;
     const now = new Date();
 
     // Use arrayFilters to target the specific API key in the array
-    const updateOperation = {
-      $set: { 'apiKeys.$.lastUsedAt': now }
+    // Call super.updateOne directly to ensure arrayFilters are passed correctly
+    const filter = { _id: id };
+    const update = {
+      $set: {
+        'apiKeys.$[elem].lastUsedAt': now,
+        updatedAt: now, // Also update main document timestamp
+      }
     };
     const options = {
-      arrayFilters: [{ 'elem.keyPrefix': keyPrefix, 'elem.status': 'active' }], // Ensure key is active to update lastUsedAt
+      arrayFilters: [{ 'elem.keyPrefix': keyPrefix, 'elem.status': 'active' }],
     };
 
-    // We call super.updateOne directly if we don't need the full document returned by updateUserCore's findOne call.
-    // However, updateUserCore handles the main updatedAt timestamp and returns the document, which is convenient.
-    // For consistency and to ensure `updatedAt` on the main document is also refreshed, we use updateUserCore.
-    // The update operation will be merged with {$set: {updatedAt: new Date()}} by updateUserCore.
-    
-    // First, check if the key exists to avoid an update operation that does nothing and returns a potentially misleading user document.
-    const userWithKey = await this.findOne({ _id: id, 'apiKeys.keyPrefix': keyPrefix, 'apiKeys.status': 'active' });
-    if (!userWithKey) {
-      this.logger.warn(`[UserCoreDB] updateApiKeyLastUsed: API key with prefix ${keyPrefix} not found or not active for user ${id}.`);
-      return null;
+    try {
+      const result = await super.updateOne(filter, update, options, false, PRIORITY.HIGH);
+      if (result.matchedCount === 0) {
+        this.logger.warn(`[UserCoreDB] updateApiKeyLastUsed: User ${id} not found or no matching active API key with prefix ${keyPrefix}.`);
+      }
+      return result;
+    } catch (error) {
+      this.logger.error(`[UserCoreDB] updateApiKeyLastUsed error for user ${id}, keyPrefix ${keyPrefix}:`, error.message);
+      throw error;
     }
-
-    return this.updateUserCore(id, updateOperation, options);
   }
 
   /**

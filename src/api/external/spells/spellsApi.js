@@ -19,13 +19,14 @@ function createSpellsApi(dependencies) {
         : dualAuth; // Fallback to dualAuth if guestAuthService not available
 
     // --- PUBLIC: Marketplace/Discovery Endpoint ---
-    router.get('/marketplace', async (req, res) => {
+    // Shared handler for both /marketplace and /public routes
+    async function handlePublicSpellsList(req, res) {
         try {
             const { tag, search } = req.query;
             const params = new URLSearchParams();
             if (tag) params.append('tag', tag);
             if (search) params.append('search', search);
-            
+
             const url = `/internal/v1/data/spells/public${params.toString() ? '?' + params.toString() : ''}`;
             const response = await internalApiClient.get(url);
             const raw = response.data;
@@ -45,6 +46,23 @@ function createSpellsApi(dependencies) {
         } catch (error) {
             logger.error('Failed to fetch public spells for marketplace:', error);
             res.status(502).json({ error: { code: 'BAD_GATEWAY', message: 'Unable to fetch public spells.' } });
+        }
+    }
+
+    router.get('/marketplace', handlePublicSpellsList);
+    router.get('/public', handlePublicSpellsList);  // Alias for MCP compatibility
+
+    // --- PUBLIC: Fetch a specific public spell by slug (for MCP spells/get) ---
+    router.get('/public/:slug', async (req, res) => {
+        const { slug } = req.params;
+        try {
+            const response = await internalApiClient.get(`/internal/v1/data/spells/public/${slug}`);
+            res.status(response.status).json(response.data);
+        } catch (error) {
+            logger.error(`[externalSpellsApi] Failed to fetch public spell ${slug}:`, error);
+            const statusCode = error.response ? error.response.status : 502;
+            const errorData = error.response ? error.response.data : { message: 'Unable to fetch spell.' };
+            res.status(statusCode).json({ error: { code: 'BAD_GATEWAY', ...errorData } });
         }
     });
 

@@ -2,6 +2,7 @@
 // Boilerplate for Account/Profile dropdown component
 
 import HistoryModal from './historyModal.js';
+import ApiKeysModal from './apiKeysModal.js';
 
 export default class AccountDropdown {
     constructor(container) {
@@ -106,6 +107,7 @@ export default class AccountDropdown {
                         ` : ''}
                         <div class="dropdown-actions">
                             <a href="#" class="action-btn" data-action="history">History</a>
+                            <a href="#" class="action-btn" data-action="apikeys">API Keys</a>
                             <a href="#" class="action-btn" data-action="settings">Settings</a>
                             <a href="#" class="action-btn" data-action="logout">Logout</a>
                         </div>
@@ -167,6 +169,15 @@ export default class AccountDropdown {
                 e.preventDefault();
                 this.closeDropdown();
                 const modal = new HistoryModal();
+                modal.show();
+            });
+        }
+        const apikeysBtn = this.container.querySelector('[data-action="apikeys"]');
+        if (apikeysBtn) {
+            apikeysBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.closeDropdown();
+                const modal = new ApiKeysModal();
                 modal.show();
             });
         }

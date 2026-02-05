@@ -15,6 +15,7 @@ const { createAdminApi: createAdminVaultApi } = require('./admin/adminApi');
 const { createAuthApi } = require('./auth');
 const { createUserApi } = require('./users');
 const createModelsApiRouter = require('./models');
+const createLorasApi = require('./loras');
 const { authenticateUser, authenticateUserOrApiKey } = require('../../platforms/web/middleware/auth');
 const { createPointsApi, createRatesApi } = require('./economy');
 const createSpellsApi = require('./spells');
@@ -476,6 +477,15 @@ function initializeExternalApi(dependencies) {
       externalApiRouter.use('/trainings', dualAuth, trRouter);
       logger.info('External Trainings API router mounted at /trainings.');
     }
+  }
+
+  // Mount LoRAs API (Public - discovery endpoints)
+  const lorasRouter = createLorasApi({ internalApiClient, logger });
+  if (lorasRouter) {
+    externalApiRouter.use('/loras', lorasRouter);
+    logger.info('External LoRAs API router mounted at /loras. (Public discovery)');
+  } else {
+    logger.warn('External LoRAs API router not mounted due to missing dependencies.');
   }
 
   // --- END public route ---

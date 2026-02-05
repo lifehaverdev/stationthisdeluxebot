@@ -182,7 +182,7 @@ async function authenticateUserOrApiKey(req, res, next) {
   if (apiKey) {
     try {
       // Validate API key via internal API
-      const internalApiClient = require('../../utils/internalApiClient');
+      const internalApiClient = require('../../../utils/internalApiClient');
       internalApiClient.post('/internal/v1/data/auth/validate-key', { apiKey })
         .then(response => {
           req.user = response.data.user;

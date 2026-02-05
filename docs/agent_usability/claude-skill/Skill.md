@@ -572,7 +572,7 @@ Headers: X-API-Key: {user_api_key}
 
 **Via REST API:**
 ```
-POST https://noema.art/api/v1/generation/cast
+POST https://noema.art/api/v1/generation/execute
 Headers:
   X-API-Key: {user_api_key}
   Content-Type: application/json
@@ -580,15 +580,16 @@ Headers:
 Body:
 {
   "toolId": "flux-dev",
-  "parameters": {
+  "inputs": {
     "prompt": "your crafted prompt here",
     "negative_prompt": "blurry, low quality, distorted",
     "width": 1024,
     "height": 1024
-  },
-  "deliveryMode": "webhook" | "immediate"
+  }
 }
 ```
+
+**Note:** `/api/v1/generation/cast` is also available as an alias for backward compatibility. The `toolId` should match the tool name from `/api/v1/tools/registry` or MCP `tools/list` response.
 
 ### Step 6: Handle Results
 
@@ -1425,8 +1426,11 @@ Claude's Process:
 | `/api/v1/mcp` | MCP protocol (preferred for agents) |
 | `/api/v1/tools/registry` | REST: List all tools |
 | `/api/v1/loras/list` | REST: List/search LoRAs |
-| `/api/v1/generation/cast` | REST: Execute generation |
+| `/api/v1/generation/execute` | REST: Execute generation (primary) |
+| `/api/v1/generation/cast` | REST: Execute generation (alias) |
 | `/api/v1/generation/status/{id}` | REST: Poll for results |
+| `/api/v1/points` | REST: Get credit balance |
+| `/api/v1/points/balance` | REST: Get credit balance (alias) |
 | `/api/v1/spells/public` | REST: List available spells |
 | `/api/v1/spells/cast` | REST: Execute spell |
 | `/api/v1/spells/casts/{id}` | REST: Spell status |

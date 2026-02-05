@@ -6,6 +6,7 @@
 @import './sandbox/style/components/modal.css';
 @import './sandbox/style/components/accountDropdown.css';
 @import './sandbox/style/components/historyModal.css';
+@import './sandbox/style/components/apiKeysModal.css';
 @import './sandbox/components/BuyPointsModal/buyPointsModal.css';
 @import './sandbox/style/components/spellsMenuModal.css';
 @import './sandbox/style/components/imageOverlay.css';

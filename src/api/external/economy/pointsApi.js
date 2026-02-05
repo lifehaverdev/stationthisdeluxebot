@@ -8,6 +8,69 @@ function createPointsApi(dependencies) {
     const { internalApiClient, logger } = dependencies;
 
     /**
+     * @route GET /api/v1/points
+     * @route GET /api/v1/points/balance
+     * @description Returns the user's credit balance (points).
+     * @access Private (JWT or API Key)
+     */
+    async function getBalanceHandler(req, res) {
+        try {
+            const user = req.user;
+            if (!user || (!user.masterAccountId && !user.userId && !user.id)) {
+                return res.status(401).json({
+                    error: { code: 'UNAUTHORIZED', message: 'User context missing or invalid.' }
+                });
+            }
+
+            const userId = user.masterAccountId || user.userId || user.id;
+            logger.info(`[pointsApi-external] /balance fetching for user ${userId}`);
+
+            // First get user's wallet address
+            const userResponse = await internalApiClient.get(`/internal/v1/data/users/${userId}`);
+            const userCore = userResponse.data;
+
+            if (!userCore || !userCore.wallets || userCore.wallets.length === 0) {
+                // User has no wallet, return 0 balance
+                return res.json({
+                    balance: 0,
+                    currency: 'points'
+                });
+            }
+
+            // Get primary wallet or first wallet
+            const primaryWallet = userCore.wallets.find(w => w.isPrimary);
+            const walletAddress = primaryWallet ? primaryWallet.address : userCore.wallets[0].address;
+
+            // Get points balance for the wallet
+            const pointsResponse = await internalApiClient.get(`/internal/v1/data/ledger/points/by-wallet/${walletAddress}`);
+            const points = pointsResponse.data.points || 0;
+
+            res.json({
+                balance: points,
+                currency: 'points',
+                walletAddress: walletAddress
+            });
+        } catch (error) {
+            logger.error('[pointsApi-external] /balance error', {
+                error: error.message,
+                status: error.response?.status
+            });
+            if (error.response) {
+                return res.status(error.response.status).json(error.response.data);
+            }
+            res.status(500).json({
+                error: { code: 'BALANCE_ERROR', message: 'Failed to fetch balance.' }
+            });
+        }
+    }
+
+    // GET / - Returns balance (matches documented GET /api/v1/points)
+    router.get('/', getBalanceHandler);
+
+    // GET /balance - Explicit balance endpoint
+    router.get('/balance', getBalanceHandler);
+
+    /**
      * @route GET /api/external/points/supported-assets
      * @description Fetches the list of all tokens and NFTs that can be deposited.
      * @access Private (JWT or API Key)

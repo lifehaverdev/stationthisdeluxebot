@@ -269,11 +269,11 @@ async function generateOpenApiSpec(toolRegistry, internalApiClient) {
           }
         }
       },
-      '/api/v1/generation/cast': {
+      '/api/v1/generation/execute': {
         post: {
           operationId: 'executeGeneration',
           summary: 'Execute a generation',
-          description: 'Run a generation tool. Include LoRA trigger words in the prompt to apply styles.',
+          description: 'Run a generation tool. Also available at /api/v1/generation/cast for backward compatibility. Tool IDs are obtained from /api/v1/tools/registry or MCP tools/list. Include LoRA trigger words in the prompt to apply styles.',
           tags: ['Generation'],
           security: [{ apiKey: [] }],
           requestBody: {
@@ -312,6 +312,33 @@ async function generateOpenApiSpec(toolRegistry, internalApiClient) {
           }
         }
       },
+      '/api/v1/generation/cast': {
+        post: {
+          operationId: 'executeGenerationAlias',
+          summary: 'Execute a generation (alias)',
+          description: 'Alias for /api/v1/generation/execute. Provided for backward compatibility with documentation.',
+          tags: ['Generation'],
+          security: [{ apiKey: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/GenerationRequest' }
+              }
+            }
+          },
+          responses: {
+            '200': {
+              description: 'Generation started',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/GenerationResponse' }
+                }
+              }
+            }
+          }
+        }
+      },
       '/api/v1/generation/status/{generationId}': {
         get: {
           operationId: 'getGenerationStatus',
@@ -324,7 +351,7 @@ async function generateOpenApiSpec(toolRegistry, internalApiClient) {
               name: 'generationId',
               in: 'path',
               required: true,
-              description: 'Generation ID from cast response',
+              description: 'Generation ID from execute/cast response',
               schema: { type: 'string' }
             }
           ],
@@ -344,7 +371,7 @@ async function generateOpenApiSpec(toolRegistry, internalApiClient) {
         get: {
           operationId: 'getCredits',
           summary: 'Get credit balance',
-          description: 'Check available credits for generation.',
+          description: 'Check available credits (points) for generation. Also available at /api/v1/points/balance.',
           tags: ['User'],
           security: [{ apiKey: [] }],
           responses: {
