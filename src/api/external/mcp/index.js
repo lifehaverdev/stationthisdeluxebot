@@ -164,7 +164,7 @@ async function handleMethod(method, params, context) {
         error.code = -32001;
         throw error;
       }
-      return await executeToolCall(params, apiKey, internalApiClient, baseUrl);
+      return await executeToolCall(params, apiKey, internalApiClient, baseUrl, toolRegistry);
 
     // ============================================
     // Resources (LoRAs)
@@ -481,12 +481,71 @@ async function forwardToApi(method, path, params, apiKey, internalApiClient) {
 }
 
 /**
+ * Resolve a tool name/alias to an actual toolId using the registry.
+ * Supports lookups by: exact toolId, commandName (with or without /), displayName (case-insensitive).
+ * @param {string} nameOrAlias - The name, alias, or toolId provided by the user
+ * @param {Object} toolRegistry - The tool registry instance
+ * @returns {string|null} The resolved toolId, or null if not found
+ */
+function resolveToolAlias(nameOrAlias, toolRegistry) {
+  if (!nameOrAlias || !toolRegistry) return nameOrAlias;
+
+  // 1. Try exact match by toolId
+  const exactMatch = toolRegistry.getToolById(nameOrAlias);
+  if (exactMatch) return nameOrAlias;
+
+  // 2. Try by commandName (add / prefix if not present)
+  const commandName = nameOrAlias.startsWith('/') ? nameOrAlias : `/${nameOrAlias}`;
+  const byCommand = toolRegistry.findByCommand(commandName);
+  if (byCommand) {
+    logger.info(`[MCP] Resolved alias "${nameOrAlias}" to toolId "${byCommand.toolId}" via commandName`);
+    return byCommand.toolId;
+  }
+
+  // 3. Try by displayName (case-insensitive search)
+  const byDisplayName = toolRegistry.findByDisplayName(nameOrAlias);
+  if (byDisplayName) {
+    logger.info(`[MCP] Resolved alias "${nameOrAlias}" to toolId "${byDisplayName.toolId}" via displayName`);
+    return byDisplayName.toolId;
+  }
+
+  // 4. Try case-insensitive displayName search
+  const allTools = toolRegistry.getAllTools();
+  const lowerName = nameOrAlias.toLowerCase();
+  const caseInsensitiveMatch = allTools.find(t =>
+    t.displayName && t.displayName.toLowerCase() === lowerName
+  );
+  if (caseInsensitiveMatch) {
+    logger.info(`[MCP] Resolved alias "${nameOrAlias}" to toolId "${caseInsensitiveMatch.toolId}" via case-insensitive displayName`);
+    return caseInsensitiveMatch.toolId;
+  }
+
+  // 5. Try partial match on commandName (without / prefix in the tool's commandName)
+  const partialCommandMatch = allTools.find(t => {
+    if (!t.commandName) return false;
+    const cmdWithoutSlash = t.commandName.replace(/^\//, '').toLowerCase();
+    return cmdWithoutSlash === lowerName;
+  });
+  if (partialCommandMatch) {
+    logger.info(`[MCP] Resolved alias "${nameOrAlias}" to toolId "${partialCommandMatch.toolId}" via partial commandName match`);
+    return partialCommandMatch.toolId;
+  }
+
+  // No match found, return original (will likely fail with "tool not found")
+  return nameOrAlias;
+}
+
+/**
  * Execute a tool call
  */
-async function executeToolCall(params, apiKey, internalApiClient, baseUrl) {
+async function executeToolCall(params, apiKey, internalApiClient, baseUrl, toolRegistry) {
   const { name, arguments: args } = params;
 
   try {
+    // Resolve tool alias to actual toolId
+    const resolvedToolId = resolveToolAlias(name, toolRegistry);
+    logger.info(`[MCP] tools/call: name="${name}" resolved to toolId="${resolvedToolId}"`);
+
     // First resolve user from API key
     const userInfo = await resolveUserFromApiKey(apiKey, internalApiClient);
 
@@ -494,7 +553,7 @@ async function executeToolCall(params, apiKey, internalApiClient, baseUrl) {
     const response = await internalApiClient.post(
       '/internal/v1/data/execute',
       {
-        toolId: name,
+        toolId: resolvedToolId,
         inputs: args || {},
         user: {
           masterAccountId: userInfo.masterAccountId,

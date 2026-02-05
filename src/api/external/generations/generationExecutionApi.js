@@ -1,10 +1,57 @@
 const express = require('express');
 const { createLogger } = require('../../../utils/logger');
+const { ToolRegistry } = require('../../../core/tools/ToolRegistry');
+
+/**
+ * Resolve a tool name/alias to an actual toolId using the registry.
+ * Supports lookups by: exact toolId, commandName (with or without /), displayName (case-insensitive).
+ */
+function resolveToolAlias(nameOrAlias, toolRegistry, logger) {
+    if (!nameOrAlias || !toolRegistry) return nameOrAlias;
+
+    // 1. Try exact match by toolId
+    const exactMatch = toolRegistry.getToolById(nameOrAlias);
+    if (exactMatch) return nameOrAlias;
+
+    // 2. Try by commandName (add / prefix if not present)
+    const commandName = nameOrAlias.startsWith('/') ? nameOrAlias : `/${nameOrAlias}`;
+    const byCommand = toolRegistry.findByCommand(commandName);
+    if (byCommand) {
+        logger.info(`[GenerationExecutionApi] Resolved alias "${nameOrAlias}" to toolId "${byCommand.toolId}" via commandName`);
+        return byCommand.toolId;
+    }
+
+    // 3. Try by displayName (case-insensitive search)
+    const allTools = toolRegistry.getAllTools();
+    const lowerName = nameOrAlias.toLowerCase();
+    const caseInsensitiveMatch = allTools.find(t =>
+        t.displayName && t.displayName.toLowerCase() === lowerName
+    );
+    if (caseInsensitiveMatch) {
+        logger.info(`[GenerationExecutionApi] Resolved alias "${nameOrAlias}" to toolId "${caseInsensitiveMatch.toolId}" via displayName`);
+        return caseInsensitiveMatch.toolId;
+    }
+
+    // 4. Try partial match on commandName
+    const partialCommandMatch = allTools.find(t => {
+        if (!t.commandName) return false;
+        const cmdWithoutSlash = t.commandName.replace(/^\//, '').toLowerCase();
+        return cmdWithoutSlash === lowerName;
+    });
+    if (partialCommandMatch) {
+        logger.info(`[GenerationExecutionApi] Resolved alias "${nameOrAlias}" to toolId "${partialCommandMatch.toolId}" via partial commandName`);
+        return partialCommandMatch.toolId;
+    }
+
+    // No match found, return original
+    return nameOrAlias;
+}
 
 // External Generation Execution API
 function createGenerationExecutionApi(dependencies) {
     const { logger, internalApiClient } = dependencies;
     const router = express.Router();
+    const toolRegistry = ToolRegistry.getInstance();
 
     /**
      * Shared handler for generation execution
@@ -40,13 +87,19 @@ function createGenerationExecutionApi(dependencies) {
                 return res.status(internalResponse.status).json(internalResponse.data);
             }
 
+            // Resolve tool alias to actual toolId
+            const resolvedToolId = resolveToolAlias(toolId, toolRegistry, logger);
+            if (resolvedToolId !== toolId) {
+                logger.info(`[ExternalGenerationExecutionApi] Resolved toolId "${toolId}" to "${resolvedToolId}"`);
+            }
+
             // Ensure browser-originated requests are tagged with the correct platform for notifications
             const userForPayload = {
                 ...user,
                 platform: user.platform || 'web-sandbox',
                 masterAccountId: user.masterAccountId || user.userId
             };
-            const payload = { toolId, inputs: finalInputs, user: userForPayload, sessionId, eventId, metadata };
+            const payload = { toolId: resolvedToolId, inputs: finalInputs, user: userForPayload, sessionId, eventId, metadata };
 
             // Proxy to internal endpoint
             const internalResponse = await internalApiClient.post('/internal/v1/data/execute', payload);

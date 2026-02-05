@@ -136,7 +136,7 @@ User wants to create something
 3. Execute generation
 4. Return result
 
-**Best tools:** `dall-e-3` (best prompt following), `flux-schnell` (fast)
+**Best tools:** `dall-e-3` (best prompt following), `make` (default image generator)
 
 **Example:**
 ```
@@ -376,7 +376,7 @@ User: "Yes please"
   "steps": [
     {
       "stepId": 1,
-      "toolIdentifier": "flux-dev",
+      "toolIdentifier": "make",
       "parameters": { "width": 1024, "height": 1024 }
     },
     {
@@ -414,7 +414,7 @@ User: "Yes please"
 ```json
 {
   "stepId": 1,                    // Unique ID within spell
-  "toolIdentifier": "flux-dev",   // Tool from tools/list
+  "toolIdentifier": "make",   // Tool from tools/list
   "parameters": { ... }           // Default parameters for this step
 }
 ```
@@ -492,12 +492,18 @@ GET https://noema.art/api/v1/tools/registry
 ```
 
 Response includes tools with:
-- `toolId`: Identifier for execution
-- `displayName`: Human-readable name
+- `toolId`: Primary identifier for execution (may be a hash like `comfy-abc123...`)
+- `displayName`: Human-readable name (e.g., "FLUX Dev")
+- `commandName`: Alias usable for execution (e.g., "/make", "/fluxdev")
 - `description`: What the tool does
 - `inputSchema`: Required and optional parameters
 - `costingModel`: Price information
 - `metadata.baseModel`: Checkpoint compatibility (important for LoRA matching)
+
+**Tool Aliases:** When calling `tools/call`, you can use any of these to identify a tool:
+- The exact `toolId` (hash-based IDs like `comfy-abc123...`)
+- The `commandName` with or without leading `/` (e.g., "make" or "/make")
+- The `displayName` (case-insensitive, e.g., "FLUX Dev")
 
 Select a tool based on:
 1. Output type (image vs video)
@@ -567,8 +573,10 @@ ethereal atmosphere, detailed fur, studio lighting"
 POST https://noema.art/api/v1/mcp
 Headers: X-API-Key: {user_api_key}
 
-{"jsonrpc":"2.0","method":"tools/call","params":{"name":"flux-dev","arguments":{"prompt":"your crafted prompt","width":1024,"height":1024}},"id":1}
+{"jsonrpc":"2.0","method":"tools/call","params":{"name":"make","arguments":{"prompt":"your crafted prompt","width":1024,"height":1024}},"id":1}
 ```
+
+**Note:** The `name` parameter accepts tool aliases. Use "make" for the default image generator, or get the exact tool name from `tools/list`. You can use commandNames (like "make", "fluxdev"), displayNames, or the full toolId.
 
 **Via REST API:**
 ```
@@ -579,7 +587,7 @@ Headers:
 
 Body:
 {
-  "toolId": "flux-dev",
+  "toolId": "make",
   "inputs": {
     "prompt": "your crafted prompt here",
     "negative_prompt": "blurry, low quality, distorted",
@@ -589,7 +597,7 @@ Body:
 }
 ```
 
-**Note:** `/api/v1/generation/cast` is also available as an alias for backward compatibility. The `toolId` should match the tool name from `/api/v1/tools/registry` or MCP `tools/list` response.
+**Note:** `/api/v1/generation/cast` is also available as an alias for backward compatibility. The `toolId` accepts aliases like "make" (the default image generator), commandNames, displayNames, or the exact toolId from `tools/list`.
 
 ### Step 6: Handle Results
 
@@ -1090,7 +1098,7 @@ GET https://noema.art/api/v1/spells/public
   "steps": [
     {
       "stepId": 1,
-      "toolIdentifier": "flux-dev",
+      "toolIdentifier": "make",
       "parameters": { "width": 1024, "height": 1024 }
     },
     {
@@ -1280,7 +1288,7 @@ Claude's Process:
 1. Create collection with:
    - name: "Cyberpunk Cats"
    - targetCount: 50
-   - toolId: "flux-dev" (good for detailed art)
+   - toolId: "make" (the default image generator)
    - promptTemplate with cyberpunk elements
 2. Start cook → Generation begins
 3. Periodically check status via collections/get
