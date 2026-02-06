@@ -1,24 +1,10 @@
 /**
  * Tool Transformer
  *
- * Converts NOEMA ToolDefinition format to MCP tool format
+ * Converts NOEMA ToolDefinition format to MCP tool format.
+ * Uses commandName as the primary identifier, mirroring how Telegram
+ * dynamic commands work - ensuring consistency across platforms.
  */
-
-/**
- * Explicit aliases for common tool names.
- * Maps user-friendly aliases to partial matches on tool properties.
- * Used when the auto-generated commandName doesn't match user expectations.
- */
-const TOOL_ALIASES = {
-  'make': { matchDisplayName: /flux.*general|fluxgeneral/i, priority: 'text-to-image' },
-  'flux': { matchDisplayName: /flux.*general|fluxgeneral/i, priority: 'text-to-image' },
-  'flux-dev': { matchDisplayName: /flux.*dev/i, priority: 'text-to-image' },
-  'flux-schnell': { matchDisplayName: /flux.*schnell/i, priority: 'text-to-image' },
-  'sdxl': { matchDisplayName: /sdxl/i, priority: 'text-to-image' },
-  'kontext': { matchDisplayName: /kontext/i, priority: 'text-to-image' },
-  'upscale': { matchDisplayName: /upscale|esrgan/i, priority: 'upscale' },
-  'caption': { matchDisplayName: /caption|joycaption/i, priority: 'image-to-text' },
-};
 
 /**
  * Maps NOEMA input types to JSON Schema types

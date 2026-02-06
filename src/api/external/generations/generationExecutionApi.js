@@ -3,48 +3,38 @@ const { createLogger } = require('../../../utils/logger');
 const { ToolRegistry } = require('../../../core/tools/ToolRegistry');
 
 /**
- * Resolve a tool name/alias to an actual toolId using the registry.
- * Supports lookups by: exact toolId, commandName (with or without /), displayName (case-insensitive).
+ * Resolve a tool name to its toolId using the registry.
+ * Uses the same lookup pattern as Telegram dynamic commands.
+ * Priority: commandName > toolId > displayName
  */
-function resolveToolAlias(nameOrAlias, toolRegistry, logger) {
-    if (!nameOrAlias || !toolRegistry) return nameOrAlias;
+function resolveToolName(name, toolRegistry, logger) {
+    if (!name || !toolRegistry) return name;
 
-    // 1. Try exact match by toolId
-    const exactMatch = toolRegistry.getToolById(nameOrAlias);
-    if (exactMatch) return nameOrAlias;
-
-    // 2. Try by commandName (add / prefix if not present)
-    const commandName = nameOrAlias.startsWith('/') ? nameOrAlias : `/${nameOrAlias}`;
+    // 1. Try by commandName first (this is how tools are exposed)
+    const commandName = name.startsWith('/') ? name : `/${name}`;
     const byCommand = toolRegistry.findByCommand(commandName);
     if (byCommand) {
-        logger.info(`[GenerationExecutionApi] Resolved alias "${nameOrAlias}" to toolId "${byCommand.toolId}" via commandName`);
+        logger.info(`[GenerationExecutionApi] Resolved "${name}" to toolId "${byCommand.toolId}" via commandName`);
         return byCommand.toolId;
     }
 
-    // 3. Try by displayName (case-insensitive search)
+    // 2. Try exact match by toolId (for raw IDs)
+    const exactMatch = toolRegistry.getToolById(name);
+    if (exactMatch) return name;
+
+    // 3. Try by displayName (case-insensitive)
     const allTools = toolRegistry.getAllTools();
-    const lowerName = nameOrAlias.toLowerCase();
-    const caseInsensitiveMatch = allTools.find(t =>
+    const lowerName = name.toLowerCase();
+    const byDisplayName = allTools.find(t =>
         t.displayName && t.displayName.toLowerCase() === lowerName
     );
-    if (caseInsensitiveMatch) {
-        logger.info(`[GenerationExecutionApi] Resolved alias "${nameOrAlias}" to toolId "${caseInsensitiveMatch.toolId}" via displayName`);
-        return caseInsensitiveMatch.toolId;
-    }
-
-    // 4. Try partial match on commandName
-    const partialCommandMatch = allTools.find(t => {
-        if (!t.commandName) return false;
-        const cmdWithoutSlash = t.commandName.replace(/^\//, '').toLowerCase();
-        return cmdWithoutSlash === lowerName;
-    });
-    if (partialCommandMatch) {
-        logger.info(`[GenerationExecutionApi] Resolved alias "${nameOrAlias}" to toolId "${partialCommandMatch.toolId}" via partial commandName`);
-        return partialCommandMatch.toolId;
+    if (byDisplayName) {
+        logger.info(`[GenerationExecutionApi] Resolved "${name}" to toolId "${byDisplayName.toolId}" via displayName`);
+        return byDisplayName.toolId;
     }
 
     // No match found, return original
-    return nameOrAlias;
+    return name;
 }
 
 // External Generation Execution API
@@ -87,8 +77,8 @@ function createGenerationExecutionApi(dependencies) {
                 return res.status(internalResponse.status).json(internalResponse.data);
             }
 
-            // Resolve tool alias to actual toolId
-            const resolvedToolId = resolveToolAlias(toolId, toolRegistry, logger);
+            // Resolve tool name to actual toolId (same pattern as Telegram commands)
+            const resolvedToolId = resolveToolName(toolId, toolRegistry, logger);
             if (resolvedToolId !== toolId) {
                 logger.info(`[ExternalGenerationExecutionApi] Resolved toolId "${toolId}" to "${resolvedToolId}"`);
             }
