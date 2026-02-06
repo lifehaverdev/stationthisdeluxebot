@@ -793,6 +793,9 @@ export default class CollectionWindow extends BaseWindow {
     console.log('[CollectionWindow] rendering review generation', gen, outputData);
     renderResultContent(resultDiv, outputData, { disableFeedback: true });
 
+    // Render trait and prompt info panel
+    this._renderReviewInfoPanel(body, gen);
+
     const btnRow = document.createElement('div');
     const acceptBtn = document.createElement('button');
     const rejectBtn = document.createElement('button');
@@ -927,6 +930,8 @@ export default class CollectionWindow extends BaseWindow {
     this._reviveResultEl.innerHTML = '';
     const normalized = this._normaliseReviewOutput(gen);
     renderResultContent(this._reviveResultEl, normalized, { disableFeedback: true });
+    // Add trait and prompt info panel
+    this._renderReviewInfoPanel(this._reviveResultEl, gen);
     if (this._reviveEmptyEl) this._reviveEmptyEl.textContent = '';
   }
 
@@ -1042,6 +1047,94 @@ export default class CollectionWindow extends BaseWindow {
       return { type: 'spell', steps: outputs.steps, generationId: gen._id };
     }
     return { type: 'unknown', generationId: gen._id, ...outputs };
+  }
+
+  /**
+   * Render trait info and expandable prompt panel for review UI
+   * @param {HTMLElement} container - Container to append the info panel to
+   * @param {Object} gen - Generation object with metadata and requestPayload
+   */
+  _renderReviewInfoPanel(container, gen) {
+    if (!gen) return;
+
+    const infoPanel = document.createElement('div');
+    infoPanel.className = 'review-info-panel';
+    infoPanel.style.cssText = 'margin: 12px 0; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 12px;';
+
+    // Extract traits from metadata
+    const traits = gen.metadata?.selectedTraits || gen.metadata?.traitSel || {};
+    const hasTraits = Object.keys(traits).length > 0;
+
+    // Extract prompt from requestPayload
+    const requestPayload = gen.requestPayload || {};
+    const prompt = requestPayload.input_prompt || requestPayload.prompt || requestPayload.user_prompt || gen.metadata?.prompt || gen.metadata?.userInputPrompt || '';
+
+    // Render traits section
+    if (hasTraits) {
+      const traitsSection = document.createElement('div');
+      traitsSection.className = 'review-traits-section';
+      traitsSection.style.cssText = 'margin-bottom: 8px;';
+
+      const traitsLabel = document.createElement('div');
+      traitsLabel.style.cssText = 'color: #9ac899; font-weight: 600; margin-bottom: 4px;';
+      traitsLabel.textContent = 'Traits:';
+      traitsSection.appendChild(traitsLabel);
+
+      const traitsList = document.createElement('div');
+      traitsList.style.cssText = 'display: flex; flex-wrap: wrap; gap: 4px;';
+
+      for (const [category, value] of Object.entries(traits)) {
+        const traitChip = document.createElement('span');
+        traitChip.style.cssText = 'background: rgba(154,200,153,0.2); color: #d0d0d0; padding: 2px 8px; border-radius: 4px; font-size: 11px;';
+        traitChip.textContent = `${category}: ${value}`;
+        traitsList.appendChild(traitChip);
+      }
+
+      traitsSection.appendChild(traitsList);
+      infoPanel.appendChild(traitsSection);
+    }
+
+    // Render prompt section with expandable overlay
+    if (prompt) {
+      const promptSection = document.createElement('div');
+      promptSection.className = 'review-prompt-section';
+
+      const promptLabel = document.createElement('div');
+      promptLabel.style.cssText = 'color: #9ac899; font-weight: 600; margin-bottom: 4px;';
+      promptLabel.textContent = 'Prompt:';
+      promptSection.appendChild(promptLabel);
+
+      const promptRow = document.createElement('div');
+      promptRow.style.cssText = 'display: flex; align-items: center; gap: 8px;';
+
+      const promptPreview = document.createElement('span');
+      promptPreview.style.cssText = 'color: #d0d0d0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;';
+      const truncatedPrompt = prompt.length > 80 ? prompt.substring(0, 80) + '...' : prompt;
+      promptPreview.textContent = truncatedPrompt;
+      promptRow.appendChild(promptPreview);
+
+      if (prompt.length > 80) {
+        const viewFullBtn = document.createElement('button');
+        viewFullBtn.style.cssText = 'background: rgba(154,200,153,0.3); border: none; color: #9ac899; padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 11px;';
+        viewFullBtn.textContent = 'View Full';
+        viewFullBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          showTextOverlay(prompt, () => {
+            // Read-only for review, no save action needed
+          });
+        };
+        promptRow.appendChild(viewFullBtn);
+      }
+
+      promptSection.appendChild(promptRow);
+      infoPanel.appendChild(promptSection);
+    }
+
+    // Only append if we have content
+    if (hasTraits || prompt) {
+      container.appendChild(infoPanel);
+    }
   }
 
   _bufferReviewDecision(queueId, generationId, outcome) {

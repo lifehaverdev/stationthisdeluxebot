@@ -126,16 +126,33 @@ function createGenerationExecutionApi(dependencies) {
             // Add result data if completed
             if (gen.status === 'completed' && gen.responsePayload) {
                 result.result = {};
-                // Extract image/video URLs from responsePayload
+                const allImages = [];
+                const allVideos = [];
+
+                // Extract all image/video URLs from responsePayload
                 if (Array.isArray(gen.responsePayload)) {
                     for (const output of gen.responsePayload) {
-                        if (output.data?.images?.[0]?.url) {
-                            result.result.image = output.data.images[0].url;
+                        // Collect all images from this output
+                        if (output.data?.images && Array.isArray(output.data.images)) {
+                            for (const img of output.data.images) {
+                                if (img?.url) allImages.push(img.url);
+                            }
                         }
+                        // Collect video if present
                         if (output.data?.video?.url) {
-                            result.result.video = output.data.video.url;
+                            allVideos.push(output.data.video.url);
                         }
                     }
+                }
+
+                // Return arrays for batches, plus singular for backward compatibility
+                if (allImages.length > 0) {
+                    result.result.image = allImages[0];  // Backward compat
+                    result.result.images = allImages;    // Full array
+                }
+                if (allVideos.length > 0) {
+                    result.result.video = allVideos[0];  // Backward compat
+                    result.result.videos = allVideos;    // Full array
                 }
             }
 

@@ -190,8 +190,8 @@ function createCookApiRouter(deps = {}) {
   router.post('/collections/:id/cook/start', async (req, res) => {
     try {
       const id = req.params.id;
-      // Body may contain explicit toolId/traitTree/paramOverrides/totalSupply; if not, we rely on server-side defaults
-      const { toolId, spellId, traitTree, paramOverrides, totalSupply } = req.body || {};
+      // Body may contain explicit toolId/traitTree/paramOverrides/batchSize; if not, we rely on server-side defaults
+      const { toolId, spellId, traitTree, paramOverrides, batchSize } = req.body || {};
       const userId = req.user?.userId || req.user?.id || req.body?.userId;
       const payload = {
         collectionId: id,
@@ -200,7 +200,7 @@ function createCookApiRouter(deps = {}) {
         spellId,
         traitTree: traitTree || undefined,
         paramOverrides: paramOverrides || undefined,
-        totalSupply: Number.isFinite(totalSupply) ? totalSupply : undefined,
+        batchSize: Number.isFinite(batchSize) ? batchSize : undefined,
       };
       const { data } = await internalApiClient.post('/internal/v1/data/cook/start', payload);
       return res.json(data);
@@ -215,7 +215,7 @@ function createCookApiRouter(deps = {}) {
   router.post('/collections/:id/cook/resume', async (req, res) => {
     try {
       const id = req.params.id;
-      const { toolId, spellId, traitTree, paramOverrides, totalSupply } = req.body || {};
+      const { toolId, spellId, traitTree, paramOverrides, batchSize } = req.body || {};
       const userId = req.user?.userId || req.user?.id || req.body?.userId;
       const payload = {
         userId,
@@ -223,7 +223,7 @@ function createCookApiRouter(deps = {}) {
         spellId,
         traitTree: traitTree || undefined,
         paramOverrides: paramOverrides || undefined,
-        totalSupply: Number.isFinite(totalSupply) ? totalSupply : undefined,
+        batchSize: Number.isFinite(batchSize) ? batchSize : undefined,
       };
       const { data } = await internalApiClient.post(`/internal/v1/data/collections/${encodeURIComponent(id)}/resume`, payload);
       return res.json(data);

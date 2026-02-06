@@ -557,7 +557,8 @@ function createCookApi(deps = {}) {
             requestTimestamp: 1,
             createdAt: 1,
             status: 1,
-            deliveryStrategy: 1
+            deliveryStrategy: 1,
+            requestPayload: 1 // For prompt display in review UI
           }
         }
       );
