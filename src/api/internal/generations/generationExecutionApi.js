@@ -38,7 +38,7 @@ module.exports = function generationExecutionApi(dependencies) {
 
   // POST / - Executes a generation based on a toolId and inputs
   router.post('/', async (req, res) => {
-    const { toolId, inputs, user, sessionId, eventId, metadata } = req.body;
+    const { toolId, inputs, user, sessionId, eventId, metadata = {} } = req.body;
     let costRateInfo = null; // Defined here to be in scope for the whole request
     // Variables needed across validation and execution phases
     let estimatedSeconds = 30;
@@ -538,8 +538,8 @@ module.exports = function generationExecutionApi(dependencies) {
             serviceName: tool.service,
             toolId: tool.toolId,
             toolDisplayName: tool.displayName || tool.name || tool.toolId,
-            ...(metadata.castId && { castId: metadata.castId }),
-            ...(metadata.cookId && { cookId: metadata.cookId }),
+            ...(metadata?.castId && { castId: metadata.castId }),
+            ...(metadata?.cookId && { cookId: metadata.cookId }),
             requestPayload: finalInputs,
             status: 'pending',
             deliveryStatus: initialDeliveryStatus,
@@ -606,8 +606,8 @@ module.exports = function generationExecutionApi(dependencies) {
             service: 'static',
             toolId: tool.toolId,
             toolDisplayName: tool.displayName || tool.name || tool.toolId,
-            castId: metadata.castId || null,
-            cookId: metadata.cookId || null,
+            castId: metadata?.castId || null,
+            cookId: metadata?.cookId || null,
             pointsSpent: defaultPoints,
             protocolNetPoints: defaultPoints,
             deliveryStatus: initialDeliveryStatus,
@@ -662,8 +662,8 @@ module.exports = function generationExecutionApi(dependencies) {
             serviceName: tool.service,
             toolId: tool.toolId,
             toolDisplayName: tool.displayName || tool.name || tool.toolId,
-            ...(metadata.castId && { castId: metadata.castId }),
-            ...(metadata.cookId && { cookId: metadata.cookId }),
+            ...(metadata?.castId && { castId: metadata.castId }),
+            ...(metadata?.cookId && { cookId: metadata.cookId }),
             requestPayload: inputs,
             status: 'processing',
             deliveryStatus: initialDeliveryStatus,
@@ -742,7 +742,7 @@ module.exports = function generationExecutionApi(dependencies) {
                 outputs: { text: resultStr },
                 service: tool.service,
                 toolId: tool.toolId,
-                castId: metadata.castId || null,
+                castId: metadata?.castId || null,
               }
             });
           }
@@ -765,7 +765,7 @@ module.exports = function generationExecutionApi(dependencies) {
             service: tool.service,
             toolId: tool.toolId,
             response: resultStr,
-            castId: metadata.castId || null,
+            castId: metadata?.castId || null,
             message: 'String operation completed successfully.'
           });
         }
