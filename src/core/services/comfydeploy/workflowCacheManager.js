@@ -1079,17 +1079,22 @@ class WorkflowCacheManager {
     }
   
     // BEGIN ADDITION: Detect MultiLoraLoader
-    let hasLoraLoader = false;
-    if (workflowJson && workflowJson.nodes && Array.isArray(workflowJson.nodes)) {
+    // Use structureInfo first (handles both array and object node formats via Object.entries),
+    // then fall back to manual array-only detection for redundancy.
+    let hasLoraLoader = structureInfo?.hasLoraLoader || false;
+    if (!hasLoraLoader && workflowJson && workflowJson.nodes && Array.isArray(workflowJson.nodes)) {
       for (const node of workflowJson.nodes) {
         if (node && node.type && typeof node.type === 'string' && node.type.startsWith('MultiLoraLoader')) {
           hasLoraLoader = true;
           if (DEBUG_LOGGING_ENABLED_MULTILORA) {
-            this.logger.info(`[WorkflowCacheManager] MultiLoraLoader node detected in workflow ${toolDefinition.toolId}.`);
+            this.logger.info(`[WorkflowCacheManager] MultiLoraLoader node detected in workflow ${toolDefinition.toolId} (manual fallback).`);
           }
-          break; 
+          break;
         }
       }
+    }
+    if (DEBUG_LOGGING_ENABLED_MULTILORA) {
+      this.logger.info(`[WorkflowCacheManager] hasLoraLoader for ${toolDefinition.toolId}: ${hasLoraLoader}`);
     }
     // END ADDITION
   
@@ -1141,48 +1146,41 @@ class WorkflowCacheManager {
   
     // === Metadata and Hints ===
     let detectedBaseModel = 'unknown'; // Default
-    if (workflowJson && workflowJson.nodes && Array.isArray(workflowJson.nodes)) {
+
+    // Display name-based detection works regardless of workflow JSON format
+    const displayNameLower = toolDefinition.displayName?.toLowerCase() || "";
+    if (displayNameLower.includes('chromake')) {
+      detectedBaseModel = 'FLUX';
+    } else if (displayNameLower.includes('kontext')) {
+      detectedBaseModel = 'KONTEXT';
+    } else if (displayNameLower.includes('wan') || displayNameLower === 'wan') {
+      detectedBaseModel = 'WAN';
+    }
+
+    // Node-type heuristic fallback (requires nodes as array for direct iteration)
+    if (detectedBaseModel === 'unknown' && workflowJson && workflowJson.nodes && Array.isArray(workflowJson.nodes)) {
       const nodeTypes = new Set(workflowJson.nodes.map(node => node && node.type).filter(Boolean));
-      
-      // Simple detection logic (NEEDS ACTUAL NODE TYPES FROM YOU)
-      // Order of checks can matter if a workflow could have ambiguous nodes.
-      // Prioritize more specific model types first.
-      // --- Custom DisplayName / NodeType based overrides ---
-      const displayNameLower = toolDefinition.displayName?.toLowerCase() || "";
 
-      // Explicit overrides using display name keywords
-      if (displayNameLower.includes('chromake')) {
+      if (nodeTypes.has('FLUXCheckpointLoaderSimple') || /* other FLUX specific nodes */
+          Array.from(nodeTypes).some(type => type.toLowerCase().includes('flux'))) {
         detectedBaseModel = 'FLUX';
-      } else if (displayNameLower.includes('kontext')) {
-        detectedBaseModel = 'KONTEXT';
-      } else if (displayNameLower.includes('wan') || displayNameLower === 'wan') {
+      } else if (nodeTypes.has('CheckpointLoaderSimpleSDXL') || /* other SDXL specific nodes */
+                 nodeTypes.has('CLIPTextEncodeSDXL') ||
+                 Array.from(nodeTypes).some(type => type.toLowerCase().includes('sdxl'))) {
+        detectedBaseModel = 'SDXL';
+      } else if (Array.from(nodeTypes).some(type => type.toLowerCase().includes('wan'))) {
         detectedBaseModel = 'WAN';
-      }
-
-      // Fallback to node-type heuristics if no explicit display-name match above.
-      if (detectedBaseModel === 'unknown') {
-        if (nodeTypes.has('FLUXCheckpointLoaderSimple') || /* other FLUX specific nodes */ 
-            Array.from(nodeTypes).some(type => type.toLowerCase().includes('flux'))) {
-          detectedBaseModel = 'FLUX';
-        } else if (nodeTypes.has('CheckpointLoaderSimpleSDXL') || /* other SDXL specific nodes */ 
-                   nodeTypes.has('CLIPTextEncodeSDXL') || 
-                   Array.from(nodeTypes).some(type => type.toLowerCase().includes('sdxl'))) {
-          detectedBaseModel = 'SDXL';
-        } else if (Array.from(nodeTypes).some(type => type.toLowerCase().includes('wan'))) {
-          detectedBaseModel = 'WAN';
-        } else if (nodeTypes.has('CheckpointLoaderSimple') && 
-                   !Array.from(nodeTypes).some(type => type.toLowerCase().includes('sdxl') || type.toLowerCase().includes('flux'))) {
-          // Generic loader, and no SDXL/FLUX nodes detected, assume SD1.5 or similar.
-          const displayName = toolDefinition.displayName?.toLowerCase() || '';
-          if (displayName.includes('quick')) {
-            detectedBaseModel = 'SD1.5-XL';
-          } else {
-            detectedBaseModel = 'SD1.5-XL'; // Changed from 'SD1.5' to 'SD1.5-XL'
-          }
+      } else if (nodeTypes.has('CheckpointLoaderSimple') &&
+                 !Array.from(nodeTypes).some(type => type.toLowerCase().includes('sdxl') || type.toLowerCase().includes('flux'))) {
+        // Generic loader, and no SDXL/FLUX nodes detected, assume SD1.5 or similar.
+        const displayName = toolDefinition.displayName?.toLowerCase() || '';
+        if (displayName.includes('quick')) {
+          detectedBaseModel = 'SD1.5-XL';
+        } else {
+          detectedBaseModel = 'SD1.5-XL'; // Changed from 'SD1.5' to 'SD1.5-XL'
         }
       }
       // Add checks for SD3, BAGEL, etc. here with their specific node types
-      // else if (nodeTypes.has('SomeSD3Node')) { detectedBaseModel = 'SD3'; }
 
       // Override based on checkpoint name if detection is weak (SD1.5)
       if (detectedBaseModel === 'SD1.5') {
@@ -1197,8 +1195,20 @@ class WorkflowCacheManager {
         }
       }
 
-      if (DEBUG_LOGGING_ENABLED_MULTILORA) { // Re-use existing debug flag for related features
+      if (DEBUG_LOGGING_ENABLED_MULTILORA) {
         this.logger.info(`[WorkflowCacheManager] Base model detection for ${toolDefinition.toolId}: Found node types: [${Array.from(nodeTypes).join(', ')}]. Detected base model: ${detectedBaseModel}`);
+      }
+    }
+
+    // Also try structureInfo nodeTypes for base model detection when nodes weren't an array
+    if (detectedBaseModel === 'unknown' && structureInfo?.nodeTypes?.length > 0) {
+      const nodeTypes = new Set(structureInfo.nodeTypes);
+      if (Array.from(nodeTypes).some(type => type.toLowerCase().includes('flux'))) {
+        detectedBaseModel = 'FLUX';
+      } else if (Array.from(nodeTypes).some(type => type.toLowerCase().includes('sdxl'))) {
+        detectedBaseModel = 'SDXL';
+      } else if (Array.from(nodeTypes).some(type => type.toLowerCase().includes('wan'))) {
+        detectedBaseModel = 'WAN';
       }
     }
 

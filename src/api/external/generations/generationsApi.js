@@ -111,15 +111,16 @@ function createGenerationsApi(dependencies) {
             
             // Start with preferences, then overwrite with explicit inputs from the API call
             const finalInputs = { ...userPreferences, ...inputs };
-            const rawPrompt = finalInputs[tool.metadata?.telegramPromptInputKey]; // Assuming same key for now
-            
+            const promptInputKey = tool.metadata?.telegramPromptInputKey || 'input_prompt';
+            const rawPrompt = finalInputs[promptInputKey];
+
             // 5. LoRA Resolution
             if (tool.metadata.hasLoraLoader && rawPrompt) {
                 if (loraResolutionService) {
                     const { modifiedPrompt, appliedLoras } = await loraResolutionService.resolveLoraTriggers(
                         rawPrompt, user.masterAccountId, tool.metadata.baseModel, dependencies
                     );
-                    finalInputs[tool.metadata.telegramPromptInputKey] = modifiedPrompt;
+                    finalInputs[promptInputKey] = modifiedPrompt;
                     if (appliedLoras && appliedLoras.length > 0) {
                         internalClient.put(`/internal/v1/data/generations/${generationRecord._id}`, {
                             'metadata.appliedLoras': appliedLoras,

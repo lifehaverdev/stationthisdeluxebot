@@ -8,7 +8,7 @@ const { ObjectId } = require('../../../core/services/db/BaseDB');
 const logger = console; // Placeholder logger
 const loRAModelsDb = new LoRAModelsDB(logger);
 
-const SUPPORTED_CHECKPOINTS = ['SDXL', 'SD1.5', 'FLUX', 'SD3'];
+const SUPPORTED_CHECKPOINTS = ['SDXL', 'SD1.5', 'FLUX', 'SD3', 'KONTEXT'];
 const DISALLOWED_DOWNLOAD_HOSTS = ['r2.dev']; // Added for URL policy
 
 /**
@@ -23,6 +23,8 @@ function mapBaseModelToCheckpoint(baseModelString) {
   if (lowerBaseModel.includes('sdxl')) return 'SDXL';
   if (lowerBaseModel.includes('sd 3') || lowerBaseModel.includes('sd3')) return 'SD3'; // Order matters, SD3 before SD1.5
   if (lowerBaseModel.includes('sd 1.5') || lowerBaseModel.includes('sd1.5')) return 'SD1.5';
+  // Check KONTEXT before FLUX since KONTEXT base model strings may contain 'flux' (e.g. "Flux.1 Kontext")
+  if (lowerBaseModel.includes('kontext')) return 'KONTEXT';
   if (lowerBaseModel.includes('flux')) return 'FLUX'; // Covers FLUX.1-dev, FLUX.1-schnell
   // Add other specific mappings as needed
 
