@@ -71,7 +71,7 @@ class MongoService {
       };
       
       await this.trainingDb.setStatus(jobId, status, extra);
-      this.logger.info(`Updated job ${jobId} status to ${status}`);
+      this.logger.debug(`Updated job ${jobId} status to ${status}`);
     } catch (error) {
       this.logger.error(`Failed to update job ${jobId} status:`, error);
       throw error;
@@ -119,7 +119,7 @@ class MongoService {
   async createLoRAModel(modelData) {
     try {
       const model = await this.loraModelDb.createLoRAModel(modelData);
-      this.logger.info(`Created LoRA model: ${model.name} (${model.slug})`);
+      this.logger.debug(`Created LoRA model: ${model.name} (${model.slug})`);
       return model;
     } catch (error) {
       this.logger.error('Failed to create LoRA model:', error);
@@ -135,7 +135,7 @@ class MongoService {
   async updateLoRAModel(modelId, updateData) {
     try {
       await this.loraModelDb.updateModel(modelId, updateData);
-      this.logger.info(`Updated LoRA model ${modelId}`);
+      this.logger.debug(`Updated LoRA model ${modelId}`);
     } catch (error) {
       this.logger.error(`Failed to update LoRA model ${modelId}:`, error);
       throw error;
@@ -150,7 +150,7 @@ class MongoService {
   async linkTrainingToDataset(datasetId, trainingId) {
     try {
       await this.datasetDb.linkTraining(datasetId, trainingId);
-      this.logger.info(`Linked training ${trainingId} to dataset ${datasetId}`);
+      this.logger.debug(`Linked training ${trainingId} to dataset ${datasetId}`);
     } catch (error) {
       this.logger.error(`Failed to link training to dataset:`, error);
       throw error;
@@ -277,7 +277,7 @@ class MongoService {
         completedAt: { $lt: cutoffDate }
       });
       
-      this.logger.info(`Cleaned up ${result.deletedCount} old training jobs`);
+      this.logger.debug(`Cleaned up ${result.deletedCount} old training jobs`);
       return result.deletedCount;
     } catch (error) {
       this.logger.error('Failed to cleanup old jobs:', error);

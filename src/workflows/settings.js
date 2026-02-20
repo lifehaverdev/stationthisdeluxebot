@@ -120,7 +120,7 @@ function createSettingsWorkflow(services = {}) {
         checkpoint: userSession.checkpoint || "default"
       };
       
-      logger.info(`Retrieved settings for user ${userId}`);
+      logger.debug(`Retrieved settings for user ${userId}`);
       
       return {
         success: true,
@@ -317,7 +317,7 @@ function createSettingsWorkflow(services = {}) {
       // Get the updated settings
       const updatedSettings = getAllSettings(userId).settings;
       
-      logger.info(`Updated setting ${setting} for user ${userId}`);
+      logger.debug(`Updated setting ${setting} for user ${userId}`);
       
       return {
         success: true,
@@ -410,7 +410,7 @@ function createSettingsWorkflow(services = {}) {
         session.setValue(userId, setting, value);
       }
       
-      logger.info(`Reset settings for user ${userId}`);
+      logger.debug(`Reset settings for user ${userId}`);
       
       return {
         success: true,
@@ -456,7 +456,7 @@ function createSettingsWorkflow(services = {}) {
       session.setValue(userId, 'input_width', widthInt);
       session.setValue(userId, 'input_height', heightInt);
       
-      logger.info(`Set size to ${widthInt}x${heightInt} for user ${userId}`);
+      logger.debug(`Set size to ${widthInt}x${heightInt} for user ${userId}`);
       
       const updatedSettings = getAllSettings(userId).settings;
       

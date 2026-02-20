@@ -41,7 +41,7 @@ function createLorasApi(dependencies) {
             if (category) params.category = category;
             if (tag) params.tag = tag;
 
-            logger.info('[LorasApi-External] GET /list', { params });
+            logger.debug('[LorasApi-External] GET /list', { params });
 
             const response = await internalApiClient.get('/internal/v1/data/loras/list', { params });
             res.json(response.data);
@@ -61,7 +61,7 @@ function createLorasApi(dependencies) {
      */
     router.get('/categories', async (req, res) => {
         try {
-            logger.info('[LorasApi-External] GET /categories');
+            logger.debug('[LorasApi-External] GET /categories');
             const response = await internalApiClient.get('/internal/v1/data/loras/categories');
             res.json(response.data);
         } catch (error) {
@@ -81,7 +81,7 @@ function createLorasApi(dependencies) {
     router.get('/:loraIdentifier', async (req, res) => {
         try {
             const { loraIdentifier } = req.params;
-            logger.info('[LorasApi-External] GET /:loraIdentifier', { loraIdentifier });
+            logger.debug('[LorasApi-External] GET /:loraIdentifier', { loraIdentifier });
 
             const response = await internalApiClient.get(`/internal/v1/data/loras/${encodeURIComponent(loraIdentifier)}`);
             res.json(response.data);

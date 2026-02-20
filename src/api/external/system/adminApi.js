@@ -25,16 +25,16 @@ function createAdminApi(dependencies) {
         logger.error('[Admin DAU] Failed to get Db object for BOT_NAME from mongoClient.');
         return res.status(500).json({ error: 'Database connection failed for DAU count (db object).'});
       }
-      logger.info(`[Admin DAU] Successfully connected to DB: ${db.databaseName}`);
+      logger.debug(`[Admin DAU] Successfully connected to DB: ${db.databaseName}`);
 
       const userCoreCollection = db.collection('users_core');
       const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      logger.info(`[Admin DAU] Querying for records with lastTouch >= ${twentyFourHoursAgo.toISOString()}`);
+      logger.debug(`[Admin DAU] Querying for records with lastTouch >= ${twentyFourHoursAgo.toISOString()}`);
       
       const dauCount = await userCoreCollection.countDocuments({
         lastTouch: { $gte: twentyFourHoursAgo }
       });
-      logger.info(`[Admin DAU] Found ${dauCount} active users.`);
+      logger.debug(`[Admin DAU] Found ${dauCount} active users.`);
 
       res.json({ dau: dauCount });
     } catch (error) {
@@ -56,16 +56,16 @@ function createAdminApi(dependencies) {
         logger.error('[Admin RecentGens] Failed to get Db object for BOT_NAME');
         return res.status(500).json({ error: 'Database connection failed (db object).' });
       }
-      logger.info(`[Admin RecentGens] Successfully connected to DB: ${db.databaseName}`);
+      logger.debug(`[Admin RecentGens] Successfully connected to DB: ${db.databaseName}`);
 
       const gensCollection = db.collection('gens');
       const twentyFourHoursAgoDateObj = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      logger.info(`[Admin RecentGens] Querying for records with timestamp (BSON Date) >= ${twentyFourHoursAgoDateObj.toISOString()}`);
+      logger.debug(`[Admin RecentGens] Querying for records with timestamp (BSON Date) >= ${twentyFourHoursAgoDateObj.toISOString()}`);
 
       const countLast24h = await gensCollection.countDocuments({
         timestamp: { $gte: twentyFourHoursAgoDateObj }
       });
-      logger.info(`[Admin RecentGens] Found ${countLast24h} records in the last 24 hours using BSON Date 'timestamp' field.`);
+      logger.debug(`[Admin RecentGens] Found ${countLast24h} records in the last 24 hours using BSON Date 'timestamp' field.`);
 
       const recentRecords = await gensCollection.find({
         timestamp: { $gte: twentyFourHoursAgoDateObj }
@@ -94,16 +94,16 @@ function createAdminApi(dependencies) {
         logger.error('[Admin RecentHistory] Failed to get Db object for BOT_NAME');
         return res.status(500).json({ error: 'Database connection failed (db object).' });
       }
-      logger.info(`[Admin RecentHistory] Successfully connected to DB: ${db.databaseName}`);
+      logger.debug(`[Admin RecentHistory] Successfully connected to DB: ${db.databaseName}`);
 
       const historyCollection = db.collection('history');
       const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      logger.info(`[Admin RecentHistory] Querying for records with timestamp >= ${twentyFourHoursAgo.toISOString()}`);
+      logger.debug(`[Admin RecentHistory] Querying for records with timestamp >= ${twentyFourHoursAgo.toISOString()}`);
 
       const countLast24h = await historyCollection.countDocuments({
         timestamp: { $gte: twentyFourHoursAgo }
       });
-      logger.info(`[Admin RecentHistory] Found ${countLast24h} records in the last 24 hours using 'timestamp' field.`);
+      logger.debug(`[Admin RecentHistory] Found ${countLast24h} records in the last 24 hours using 'timestamp' field.`);
 
       const recentRecords = await historyCollection.find({
         timestamp: { $gte: twentyFourHoursAgo }
@@ -132,7 +132,7 @@ function createAdminApi(dependencies) {
         logger.error('[Admin GensDuration] Failed to get Db object for BOT_NAME');
         return res.status(500).json({ error: 'Database connection failed (db object).' });
       }
-      logger.info(`[Admin GensDuration] Successfully connected to DB: ${db.databaseName}`);
+      logger.debug(`[Admin GensDuration] Successfully connected to DB: ${db.databaseName}`);
 
       const gensCollection = db.collection('gens');
       const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -204,7 +204,7 @@ function createAdminApi(dependencies) {
       const overallStatsData = aggregationResult[0]?.overallStats[0] || { totalGenerations: 0, totalDurationMs: 0, averageDurationMs: 0 };
       const durationPerUserData = aggregationResult[0]?.durationPerUser || [];
 
-      logger.info(`[Admin GensDuration] Processed ${overallStatsData.totalGenerations} gens, total duration ${overallStatsData.totalDurationMs}ms`);
+      logger.debug(`[Admin GensDuration] Processed ${overallStatsData.totalGenerations} gens, total duration ${overallStatsData.totalDurationMs}ms`);
 
       res.json({
         timeRange: {

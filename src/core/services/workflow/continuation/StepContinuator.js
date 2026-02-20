@@ -39,7 +39,7 @@ class StepContinuator {
             return; // Don't continue to next step
         }
 
-        this.logger.info(`[StepContinuator] Continuing spell "${spell.name}". Finished step ${stepIndex + 1}.`);
+        this.logger.debug(`[StepContinuator] Continuing spell "${spell.name}". Finished step ${stepIndex + 1}.`);
 
         // Check for duplicate execution (must happen BEFORE updating cast)
         const { castId } = completedGeneration.metadata;
@@ -85,7 +85,7 @@ class StepContinuator {
             pipelineContext,
             completedGeneration._id.toString()
         );
-        this.logger.info(`[StepContinuator] Accumulated step generation IDs for spell "${spell.name}": ${stepGenerationIds.length} steps.`);
+        this.logger.debug(`[StepContinuator] Accumulated step generation IDs for spell "${spell.name}": ${stepGenerationIds.length} steps.`);
 
         // Build next pipeline context
         const nextPipelineContext = pipelineContextBuilder.buildNextPipelineContext(
@@ -171,7 +171,7 @@ class StepContinuator {
      * @private
      */
     async _executeNextStep(spell, nextStepIndex, nextPipelineContext, stepGenerationIds, castId, originalContext) {
-        this.logger.info(`[StepContinuator] Proceeding to step ${nextStepIndex + 1} of "${spell.name}".`);
+        this.logger.debug(`[StepContinuator] Proceeding to step ${nextStepIndex + 1} of "${spell.name}".`);
 
         // Propagate castId and stepGenerationIds to the next step
         const PipelineContextBuilder = require('./PipelineContextBuilder');

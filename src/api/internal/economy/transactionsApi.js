@@ -16,7 +16,7 @@ module.exports = function transactionsApi(dependencies) {
     };
   }
 
-  logger.info('[transactionsApi] Initializing Transactions API routes...');
+  logger.debug('[transactionsApi] Initializing Transactions API routes...');
 
   // Middleware for validating ObjectId in path parameters
   const validateObjectId = (paramName) => (req, res, next) => {
@@ -56,7 +56,7 @@ module.exports = function transactionsApi(dependencies) {
     // This route is only for user-specific listing. If no masterAccountId, it's a bad request.
     if (!masterAccountId) return;
 
-    logger.info(`[transactionsApi] GET / (user list) for masterAccountId ${masterAccountId.toString()} with query:`, req.query);
+    logger.debug(`[transactionsApi] GET / (user list) for masterAccountId ${masterAccountId.toString()} with query:`, req.query);
     
     const { startDate, endDate, transactionType, limit, offset } = req.query;
 
@@ -146,7 +146,7 @@ module.exports = function transactionsApi(dependencies) {
     }
 
     const { transactionId } = req.locals; // Get the validated ObjectId
-    logger.info(`[transactionsApi] GET /transactions/${transactionId} - Received request`);
+    logger.debug(`[transactionsApi] GET /transactions/${transactionId} - Received request`);
 
     try {
       // Use the findTransactionById method from transactionsDb service
@@ -160,7 +160,7 @@ module.exports = function transactionsApi(dependencies) {
         });
       }
 
-      logger.info(`[transactionsApi] GET /transactions/${transactionId}: Transaction found.`);
+      logger.debug(`[transactionsApi] GET /transactions/${transactionId}: Transaction found.`);
       res.status(200).json(transaction); // ADR: Response: TransactionObject
 
     } catch (error) {
@@ -173,6 +173,6 @@ module.exports = function transactionsApi(dependencies) {
 
   // Other transaction-specific endpoints (if any) would go here.
 
-  logger.info('[transactionsApi] Transactions API routes initialized.');
+  logger.debug('[transactionsApi] Transactions API routes initialized.');
   return router;
 }; 

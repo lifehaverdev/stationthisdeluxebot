@@ -171,7 +171,7 @@ class TrainingDB extends BaseDB {
 
     const jobs = await this.findMany(filter, { limit, sort: { createdAt: 1 } });
     if (jobs.length > 0) {
-      this.logger.info(`[TrainingDB] fetchQueued found ${jobs.length} job(s) for env=${environment || 'any'}: ${jobs.map(j => j._id).join(', ')}`);
+      this.logger.debug(`[TrainingDB] fetchQueued found ${jobs.length} job(s) for env=${environment || 'any'}: ${jobs.map(j => j._id).join(', ')}`);
     }
     return jobs;
   }

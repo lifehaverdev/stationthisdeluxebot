@@ -98,7 +98,7 @@ class CreditService {
       ? disableWebhookActionsConfig
       : disableWebhookActionsEnv;
     if (this.disableWebhookActions) {
-      this.logger.warn('[CreditService] Webhook-dependent credit actions are DISABLED for this environment.');
+      this.logger.debug('[CreditService] Webhook-dependent credit actions are DISABLED for this environment.');
     }
     if (!foundationAddress || !foundationAbi) {
       throw new Error('CreditService: Missing contract address or ABI in config.');
@@ -108,8 +108,8 @@ class CreditService {
     // Initialize extracted services
     this._initializeServices();
 
-    this.logger.info(`[CreditService] Configured to use Foundation at address: ${this.contractConfig.address}`);
-    this.logger.info('[CreditService] Initialized (refactored facade).');
+    this.logger.debug(`[CreditService] Configured to use Foundation at address: ${this.contractConfig.address}`);
+    this.logger.debug('[CreditService] Initialized (refactored facade).');
   }
 
   /**
@@ -234,7 +234,7 @@ class CreditService {
       );
     } else {
       this.eventWebhookProcessor = null;
-      this.logger.info('[CreditService] Event webhook processor not initialized (disabled).');
+      this.logger.debug('[CreditService] Event webhook processor not initialized (disabled).');
     }
 
     // 14. Webhook Event Queue (MongoDB-backed job queue)
@@ -249,7 +249,7 @@ class CreditService {
       );
     } else {
       this.creditWorker = null;
-      this.logger.info('[CreditService] Credit worker not initialized (webhook actions disabled).');
+      this.logger.debug('[CreditService] Credit worker not initialized (webhook actions disabled).');
     }
   }
 
@@ -498,7 +498,7 @@ class CreditService {
         received_at: new Date().toISOString()
       });
 
-      this.logger.info(`[CreditService] Webhook enqueued for processing: ${result.insertedId}`);
+      this.logger.debug(`[CreditService] Webhook enqueued for processing: ${result.insertedId}`);
 
       // Immediately trigger processing (event-driven, no polling)
       if (this.creditWorker) {
@@ -540,7 +540,7 @@ class CreditService {
         received_at: new Date().toISOString()
       });
 
-      this.logger.info(`[CreditService] Withdrawal webhook enqueued: ${result.insertedId}`);
+      this.logger.debug(`[CreditService] Withdrawal webhook enqueued: ${result.insertedId}`);
 
       // Immediately trigger processing (event-driven, no polling)
       if (this.creditWorker) {
@@ -564,16 +564,16 @@ class CreditService {
    * Processes all deposits that are in a 'PENDING_CONFIRMATION' or 'ERROR' state.
    */
   async processPendingConfirmations() {
-    this.logger.info(`[CreditService] Checking for deposits pending confirmation or in error state...`);
+    this.logger.debug(`[CreditService] Checking for deposits pending confirmation or in error state...`);
     const pendingDepositsAll = await this.creditLedgerDb.findProcessableEntries();
     const pendingDeposits = pendingDepositsAll.filter(d => d.deposit_type !== 'TOKEN_DONATION');
 
     if (pendingDeposits.length === 0) {
-      this.logger.info('[CreditService] No deposits are pending confirmation or in error state.');
+      this.logger.debug('[CreditService] No deposits are pending confirmation or in error state.');
       return;
     }
 
-    this.logger.info(`[CreditService] Found ${pendingDeposits.length} total deposits to process. Grouping by user and token...`);
+    this.logger.debug(`[CreditService] Found ${pendingDeposits.length} total deposits to process. Grouping by user and token...`);
 
     // Group deposits by a composite key of user address and token address.
     const groupedDeposits = new Map();
@@ -585,12 +585,12 @@ class CreditService {
       groupedDeposits.get(key).push(deposit);
     }
 
-    this.logger.info(`[CreditService] Processing ${groupedDeposits.size} unique user-token groups.`);
+    this.logger.debug(`[CreditService] Processing ${groupedDeposits.size} unique user-token groups.`);
 
     for (const [groupKey, deposits] of groupedDeposits.entries()) {
-      this.logger.info(`[CreditService] >>> Processing group: ${groupKey}`);
+      this.logger.debug(`[CreditService] >>> Processing group: ${groupKey}`);
       await this.depositConfirmationService.confirmDepositGroup(deposits);
-      this.logger.info(`[CreditService] <<< Finished processing group: ${groupKey}`);
+      this.logger.debug(`[CreditService] <<< Finished processing group: ${groupKey}`);
     }
   }
 
@@ -609,7 +609,7 @@ class CreditService {
       this.logger.warn('[CreditService] Ignoring withdrawal webhook because webhook-driven actions are disabled.');
       return { success: false, message: 'Webhook actions disabled in this environment.' };
     }
-    this.logger.info('[CreditService] Processing withdrawal request webhook...');
+    this.logger.debug('[CreditService] Processing withdrawal request webhook...');
 
     const eventPayload = webhookPayload.payload || webhookPayload;
 
@@ -640,7 +640,7 @@ class CreditService {
       try {
         const existingRequest = await this.creditLedgerDb.findWithdrawalRequestByTxHash(transactionHash);
         if (existingRequest) {
-          this.logger.info(`[CreditService] Withdrawal request ${transactionHash} already processed`);
+          this.logger.debug(`[CreditService] Withdrawal request ${transactionHash} already processed`);
           continue;
         }
 

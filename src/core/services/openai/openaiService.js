@@ -40,7 +40,7 @@ class OpenAIService {
       this.openai = null;
     } else {
       this.openai = new OpenAI({ apiKey });
-      this.logger.info('OpenAIService initialized successfully.');
+      this.logger.debug('OpenAIService initialized successfully.');
     }
   }
 

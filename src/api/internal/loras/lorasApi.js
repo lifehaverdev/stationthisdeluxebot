@@ -24,7 +24,7 @@ const userPreferencesDb = new UserPreferencesDB(logger);
  * @returns {Promise<Object|null>} - The transformed model data or null.
  */
 async function getCivitaiModelData(url) {
-    logger.info(`[LorasApi] Fetching Civitai data for URL: ${url}`);
+    logger.debug(`[LorasApi] Fetching Civitai data for URL: ${url}`);
     
     const modelVersionIdMatch = url.match(/modelVersionId=(\d+)/);
     const modelIdMatch = url.match(/models\/(\d+)/);
@@ -77,11 +77,11 @@ async function getCivitaiModelData(url) {
     
     let trainedWords = versionJson.trainedWords || [];
     if (trainedWords.length === 0) {
-        logger.info(`[LorasApi] No trigger words found for Civitai model '${modelJson.name}'. Generating a hash-based trigger.`);
+        logger.debug(`[LorasApi] No trigger words found for Civitai model '${modelJson.name}'. Generating a hash-based trigger.`);
         const hash = crypto.createHash('sha256').update(modelJson.name).digest('hex');
         const generatedTrigger = `lorahash_${hash.substring(0, 16)}`;
         trainedWords.push(generatedTrigger);
-        logger.info(`[LorasApi] Generated trigger for '${modelJson.name}': ${generatedTrigger}`);
+        logger.debug(`[LorasApi] Generated trigger for '${modelJson.name}': ${generatedTrigger}`);
     }
     
     const modelData = {
@@ -117,7 +117,7 @@ router.post('/import', async (req, res) => {
         return res.status(400).json({ message: 'URL and userId are required.' });
     }
 
-    logger.info(`[LorasApi] POST /import called for URL: ${url} by UserID: ${userId}`);
+    logger.debug(`[LorasApi] POST /import called for URL: ${url} by UserID: ${userId}`);
 
     try {
         let MAID;
@@ -206,7 +206,7 @@ router.get('/list', async (req, res) => {
     const page = parseInt(req.query.page || '1', 10);
     const limit = parseInt(req.query.limit || '10', 10);
 
-    logger.info(`[LorasApi] GET /list called with filters: ${JSON.stringify(req.query)}`);
+    logger.debug(`[LorasApi] GET /list called with filters: ${JSON.stringify(req.query)}`);
 
     let dbQuery = {}; // Base query
     let sortOptions = {};
@@ -551,7 +551,7 @@ router.post('/:loraIdentifier/admin-approve', async (req, res) => {
   // const adminMasterAccountId = req.user?.masterAccountId; // Assuming auth middleware might provide admin MAID
   const adminActor = 'ADMIN_ACTION'; // Placeholder for who performed the action
 
-  logger.info(`[LorasApi] Admin approval requested for LoRA: ${loraIdentifier}`);
+  logger.debug(`[LorasApi] Admin approval requested for LoRA: ${loraIdentifier}`);
 
   try {
     let lora = await loRAModelsDb.findOne({ slug: loraIdentifier });
@@ -617,15 +617,15 @@ router.post('/:loraIdentifier/admin-approve', async (req, res) => {
         filename: filename,
         download_link: lora.importedFrom.modelFileUrl
       };
-      logger.info(`[LorasApi] Deploying LoRA with unknown source '${source}' using 'link' method.`);
+      logger.debug(`[LorasApi] Deploying LoRA with unknown source '${source}' using 'link' method.`);
     }
 
     const comfyDeployUrl = 'https://api.comfydeploy.com/api/volume/model';
-    logger.info(`[LorasApi] --- Attempting ComfyUI Deployment for Public Approval ---`);
-    logger.info(`[LorasApi] LoRA Name: ${lora.name} (Filename: ${filename})`);
-    logger.info(`[LorasApi] Target Endpoint: POST ${comfyDeployUrl}`);
-    logger.info(`[LorasApi] Payload:\n${JSON.stringify(deployPayload, null, 2)}`);
-    logger.info(`[LorasApi] --- End ComfyUI Deployment Details ---`);
+    logger.debug(`[LorasApi] --- Attempting ComfyUI Deployment for Public Approval ---`);
+    logger.debug(`[LorasApi] LoRA Name: ${lora.name} (Filename: ${filename})`);
+    logger.debug(`[LorasApi] Target Endpoint: POST ${comfyDeployUrl}`);
+    logger.debug(`[LorasApi] Payload:\n${JSON.stringify(deployPayload, null, 2)}`);
+    logger.debug(`[LorasApi] --- End ComfyUI Deployment Details ---`);
 
     try {
       const deployResponse = await axios.post(comfyDeployUrl, deployPayload, {
@@ -636,7 +636,7 @@ router.post('/:loraIdentifier/admin-approve', async (req, res) => {
       });
       // ComfyDeploy API seems to return 200 for success based on typical API patterns
       // Or check specific success conditions from deployResponse.data if available
-      logger.info(`[LorasApi] ComfyUI Deploy API response Status: ${deployResponse.status}, Data: ${JSON.stringify(deployResponse.data)}`);
+      logger.debug(`[LorasApi] ComfyUI Deploy API response Status: ${deployResponse.status}, Data: ${JSON.stringify(deployResponse.data)}`);
       if (deployResponse.status !== 200 && deployResponse.status !== 201) { // Adjust if other success codes are used by ComfyDeploy
          throw new Error(`ComfyUI deployment failed with status ${deployResponse.status}. Response: ${JSON.stringify(deployResponse.data)}`);
       }
@@ -713,7 +713,7 @@ router.post('/:loraIdentifier/admin-approve-private', async (req, res) => {
   const { loraIdentifier } = req.params;
   const adminActor = 'ADMIN_ACTION_PRIVATE_APPROVAL'; // Placeholder for who performed the action
 
-  logger.info(`[LorasApi] Admin private approval requested for LoRA: ${loraIdentifier}`);
+  logger.debug(`[LorasApi] Admin private approval requested for LoRA: ${loraIdentifier}`);
 
   try {
     let lora = await loRAModelsDb.findOne({ slug: loraIdentifier });
@@ -779,21 +779,21 @@ router.post('/:loraIdentifier/admin-approve-private', async (req, res) => {
         filename: filename,
         download_link: lora.importedFrom.modelFileUrl
       };
-      logger.info(`[LorasApi] Deploying LoRA with unknown source '${source}' using 'link' method for private approval.`);
+      logger.debug(`[LorasApi] Deploying LoRA with unknown source '${source}' using 'link' method for private approval.`);
     }
     const comfyDeployUrl = 'https://api.comfydeploy.com/api/volume/model';
 
-    logger.info(`[LorasApi] --- Attempting ComfyUI Deployment for Private Approval ---`);
-    logger.info(`[LorasApi] LoRA Name: ${lora.name} (Filename: ${filename})`);
-    logger.info(`[LorasApi] Target Endpoint: POST ${comfyDeployUrl}`);
-    logger.info(`[LorasApi] Payload:\n${JSON.stringify(deployPayload, null, 2)}`);
-    logger.info(`[LorasApi] --- End ComfyUI Deployment Details ---`);
+    logger.debug(`[LorasApi] --- Attempting ComfyUI Deployment for Private Approval ---`);
+    logger.debug(`[LorasApi] LoRA Name: ${lora.name} (Filename: ${filename})`);
+    logger.debug(`[LorasApi] Target Endpoint: POST ${comfyDeployUrl}`);
+    logger.debug(`[LorasApi] Payload:\n${JSON.stringify(deployPayload, null, 2)}`);
+    logger.debug(`[LorasApi] --- End ComfyUI Deployment Details ---`);
 
     try {
       const deployResponse = await axios.post(comfyDeployUrl, deployPayload, {
         headers: { 'Authorization': `Bearer ${comfyDeployApiKey}`, 'Content-Type': 'application/json' }
       });
-      logger.info(`[LorasApi] ComfyUI Deploy API response Status: ${deployResponse.status}, Data: ${JSON.stringify(deployResponse.data)}`);
+      logger.debug(`[LorasApi] ComfyUI Deploy API response Status: ${deployResponse.status}, Data: ${JSON.stringify(deployResponse.data)}`);
       if (deployResponse.status !== 200 && deployResponse.status !== 201) {
          throw new Error(`ComfyUI deployment failed with status ${deployResponse.status}. Response: ${JSON.stringify(deployResponse.data)}`);
       }
@@ -833,7 +833,7 @@ router.post('/:loraIdentifier/admin-approve-private', async (req, res) => {
         const loraIdStr = lora._id.toString();
         const existingPermission = await loRAPermissionsDb.hasAccess(ownerIdStr, loraIdStr);
         if (!existingPermission) {
-            logger.info(`[LorasApi] Granting private access to owner ${ownerIdStr} for LoRA ${loraIdStr}`);
+            logger.debug(`[LorasApi] Granting private access to owner ${ownerIdStr} for LoRA ${loraIdStr}`);
             await loRAPermissionsDb.grantAccess({
                 loraId: lora._id,
                 userId: lora.ownedBy,
@@ -893,7 +893,7 @@ router.post('/:loraIdentifier/admin-reject', async (req, res) => {
   // const adminMasterAccountId = req.user?.masterAccountId; // Assuming auth middleware
   const adminActor = 'ADMIN_ACTION'; // Placeholder
 
-  logger.info(`[LorasApi] Admin rejection requested for LoRA: ${loraIdentifier}`);
+  logger.debug(`[LorasApi] Admin rejection requested for LoRA: ${loraIdentifier}`);
 
   try {
     let lora = await loRAModelsDb.findOne({ slug: loraIdentifier });
@@ -954,7 +954,7 @@ router.delete('/:loraIdentifier', async (req, res) => {
     const { loraIdentifier } = req.params;
     const adminActor = 'ADMIN_DELETE_ACTION';
 
-    logger.info(`[LorasApi] Admin DELETION requested for LoRA: ${loraIdentifier}`);
+    logger.debug(`[LorasApi] Admin DELETION requested for LoRA: ${loraIdentifier}`);
     
     try {
         const loraId = new ObjectId(loraIdentifier);
@@ -993,7 +993,7 @@ router.delete('/:loraIdentifier', async (req, res) => {
  */
 async function triggerMapRefresh() {
     try {
-        logger.info('[LorasApi] Triggering LoRA trigger map refresh...');
+        logger.debug('[LorasApi] Triggering LoRA trigger map refresh...');
         // This is an async function, but we don't await it.
         // The API response shouldn't be blocked by this.
         loraTriggerMapApi.refreshPublicLoraCache();
@@ -1024,7 +1024,7 @@ router.get('/store/list', async (req, res) => {
     const page = parseInt(req.query.page || '1', 10);
     const limit = parseInt(req.query.limit || '5', 10); // Default to 5 for store view
 
-    logger.info(`[LorasApi] GET /store/list called with filters: ${JSON.stringify(req.query)}`);
+    logger.debug(`[LorasApi] GET /store/list called with filters: ${JSON.stringify(req.query)}`);
 
     if (!userId) {
       return res.status(400).json({ error: 'userId is required to browse the LoRA store.' });
@@ -1161,7 +1161,7 @@ router.post('/:loraId/checkpoint', async (req, res) => {
         return res.status(400).json({ message: 'Invalid loraId format.' });
     }
     
-    logger.info(`[LorasApi] Admin updating checkpoint for LoRA ID ${loraId} to ${checkpoint}`);
+    logger.debug(`[LorasApi] Admin updating checkpoint for LoRA ID ${loraId} to ${checkpoint}`);
 
     try {
         const result = await loRAModelsDb.updateModel(loraObjectId, { checkpoint: checkpoint });
@@ -1172,7 +1172,7 @@ router.post('/:loraId/checkpoint', async (req, res) => {
 
         // Invalidate the cache since a core property has changed.
         loraTriggerMapApi.refreshPublicLoraCache();
-        logger.info(`[LorasApi] LoRA Trigger Map cache cleared due to checkpoint update for ${loraId}.`);
+        logger.debug(`[LorasApi] LoRA Trigger Map cache cleared due to checkpoint update for ${loraId}.`);
 
         res.status(200).json({ message: `Checkpoint for LoRA ${loraId} updated to ${checkpoint}` });
     } catch (error) {
@@ -1192,7 +1192,7 @@ router.post('/:loraId/grant-owner-access', async (req, res) => {
 
     // TODO: Add robust admin authentication/authorization middleware
     
-    logger.info(`[LorasApi] Admin request to grant owner access for LoRA ID ${loraId}`);
+    logger.debug(`[LorasApi] Admin request to grant owner access for LoRA ID ${loraId}`);
 
     try {
         const loraObjectId = new ObjectId(loraId);

@@ -76,7 +76,7 @@ function createUserToolsApiRouter(dependencies) {
     }
   );
 
-  (depLogger || logger).info('[UserToolsApi] User Tools API routes initialized (with mergeParams).');
+  (depLogger || logger).debug('[UserToolsApi] User Tools API routes initialized (with mergeParams).');
   return router;
 }
 

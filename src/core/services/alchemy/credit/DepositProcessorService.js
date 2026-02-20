@@ -43,7 +43,7 @@ class DepositProcessorService {
     try {
       const response = await this.internalApiClient.get(`/internal/v1/data/ledger/entries/${normalizedTxHash}`);
       if (response.data.entry) {
-        this.logger.info(`[DepositProcessorService] Skipping deposit event for tx ${normalizedTxHash} as it's already acknowledged.`);
+        this.logger.debug(`[DepositProcessorService] Skipping deposit event for tx ${normalizedTxHash} as it's already acknowledged.`);
         return;
       }
     } catch (error) {
@@ -57,7 +57,7 @@ class DepositProcessorService {
     if (this.magicAmountLinkingService) {
       const wasHandledByLinking = await this.magicAmountLinkingService.checkMagicAmount(user, token, amount.toString());
       if (wasHandledByLinking) {
-        this.logger.info(`[DepositProcessorService] Deposit from tx ${normalizedTxHash} was a magic amount and has been fully processed.`);
+        this.logger.debug(`[DepositProcessorService] Deposit from tx ${normalizedTxHash} was a magic amount and has been fully processed.`);
         return;
       }
     }
@@ -84,7 +84,7 @@ class DepositProcessorService {
       this.eventDeduplicationService.markProcessed(normalizedTxHash);
     }
 
-    this.logger.info(`[DepositProcessorService] Successfully acknowledged new deposit from webhook: ${normalizedTxHash}`);
+    this.logger.debug(`[DepositProcessorService] Successfully acknowledged new deposit from webhook: ${normalizedTxHash}`);
   }
 
   /**

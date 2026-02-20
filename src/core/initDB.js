@@ -14,11 +14,10 @@ let connectionPromise = null;
  */
 async function initializeDatabase() {
   if (!connectionPromise) {
-    console.log('Initializing database connection...');
     connectionPromise = getCachedClient()
       .then((client) => {
         if (client) {
-          console.log('[initDB] Database connection successfully established via getCachedClient.');
+          // connection established; getCachedClient already logs at info level
           // The client is cached by queue.js, no need to store it here again.
           // The main purpose here is to ensure the connection is attempted at startup.
         } else {
@@ -41,7 +40,7 @@ async function initializeDatabase() {
  * For applications that need explicit disconnect, queue.js might need a shutdown mechanism.
  */
 async function closeDatabaseConnection() {
-    console.log('closeDatabaseConnection called. Note: getCachedClient does not offer a direct disconnect for the shared client.');
+    // getCachedClient does not offer a direct disconnect for the shared client
     // If you implement a specific shutdown in queue.js that closes cachedClient, call it here.
     // For now, this is a conceptual placeholder.
 }

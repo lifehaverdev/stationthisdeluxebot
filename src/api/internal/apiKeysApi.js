@@ -25,7 +25,7 @@ module.exports = function initializeApiKeysApi(dependencies) {
     return { managementRouter, performApiKeyValidation: failingValidator };
   }
 
-  logger.info('[userApiKeysApi] Initializing User API Keys API routes and validation function...');
+  logger.debug('[userApiKeysApi] Initializing User API Keys API routes and validation function...');
 
   // Helper function for API key validation logic (not an HTTP endpoint itself here)
   async function performApiKeyValidation(fullApiKey) {
@@ -423,6 +423,6 @@ module.exports = function initializeApiKeysApi(dependencies) {
   });
 
 
-  logger.info('[userApiKeysApi] User API Keys management router initialized.');
+  logger.debug('[userApiKeysApi] User API Keys management router initialized.');
   return { managementRouter, performApiKeyValidation };
 };

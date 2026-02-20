@@ -820,7 +820,7 @@ function registerHandlers(dispatcherInstances, dependencies) {
     const dashboardCallbackHandler = (bot, query, masterAccountId) => handleDashboardCallback(bot, query, masterAccountId, dependencies);
     callbackQueryDispatcher.register('dash', dashboardCallbackHandler);
     
-    logger.info('[DashboardMenuManager] All handlers registered.');
+    logger.debug('[DashboardMenuManager] All handlers registered.');
 }
 
 

@@ -201,7 +201,7 @@ module.exports = function spellsApi(dependencies) {
       let spells;
 
       // Add logging for incoming query
-      logger.info(`[spellsApi] GET /spells query:`, req.query);
+      logger.debug(`[spellsApi] GET /spells query:`, req.query);
 
       if (ownedBy) {
         if (!ObjectId.isValid(ownedBy)) {
@@ -214,15 +214,15 @@ module.exports = function spellsApi(dependencies) {
         } else {
           spells = await spellsDb.findSpellsByOwner(ownedBy);
         }
-        logger.info(`[spellsApi] findSpellsByOwner(${ownedBy}) returned ${spells.length} spells.`);
+        logger.debug(`[spellsApi] findSpellsByOwner(${ownedBy}) returned ${spells.length} spells.`);
         if (spells.length > 0) {
-          logger.info(`[spellsApi] Sample spell:`, JSON.stringify(spells[0], null, 2));
+          logger.debug(`[spellsApi] Sample spell:`, JSON.stringify(spells[0], null, 2));
         }
       } else {
         // TODO: Add pagination, additional filtering, sorting from query params
         const filter = tag ? { tags: tag } : {};
         spells = await spellsDb.findPublicSpells(filter);
-        logger.info(`[spellsApi] findPublicSpells() returned ${spells.length} spells.`);
+        logger.debug(`[spellsApi] findPublicSpells() returned ${spells.length} spells.`);
       }
       
       res.status(200).json({ spells: spells || [] });
@@ -598,6 +598,6 @@ module.exports = function spellsApi(dependencies) {
 
   // (The public route is defined earlier to avoid being shadowed)
 
-  logger.info('[spellsApi] Spells API routes initialized.');
+  logger.debug('[spellsApi] Spells API routes initialized.');
   return router;
 }; 

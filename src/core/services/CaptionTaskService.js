@@ -362,7 +362,7 @@ function createCaptionTaskService(deps) {
     }
   });
 
-  logger.info('[CaptionTaskService] Listener attached.');
+  logger.debug('[CaptionTaskService] Listener attached.');
 }
 
 module.exports = createCaptionTaskService;

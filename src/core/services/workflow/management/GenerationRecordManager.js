@@ -20,7 +20,7 @@ class GenerationRecordManager {
     async createGenerationRecord(generationParams) {
         const genResponse = await this.internalApiClient.post('/internal/v1/data/generations', generationParams);
         const generationId = genResponse.data._id;
-        this.logger.info(`[GenerationRecordManager] Created generation record ${generationId}`);
+        this.logger.debug(`[GenerationRecordManager] Created generation record ${generationId}`);
         return { generationId };
     }
 
@@ -32,7 +32,7 @@ class GenerationRecordManager {
      */
     async updateGenerationRecord(generationId, updatePayload) {
         await this.internalApiClient.put(`/internal/v1/data/generations/${generationId}`, updatePayload);
-        this.logger.info(`[GenerationRecordManager] Updated generation ${generationId}`);
+        this.logger.debug(`[GenerationRecordManager] Updated generation ${generationId}`);
     }
 
     /**

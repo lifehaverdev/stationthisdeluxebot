@@ -23,7 +23,7 @@ module.exports = function userPreferencesApi(dependencies) {
     };
   }
 
-  logger.info('[userPreferencesApi] Initializing User Preferences API routes...');
+  logger.debug('[userPreferencesApi] Initializing User Preferences API routes...');
 
   // Helper function to get masterAccountId (already validated by parent router, but check anyway)
   const getMasterAccountId = (req, res) => {
@@ -46,7 +46,7 @@ module.exports = function userPreferencesApi(dependencies) {
     const masterAccountId = getMasterAccountId(req, res);
     if (!masterAccountId) return;
 
-    logger.info(`[userPreferencesApi] GET /users/${masterAccountId}/preferences - Received request`);
+    logger.debug(`[userPreferencesApi] GET /users/${masterAccountId}/preferences - Received request`);
 
     try {
       const allPreferences = await db.userPreferences.getAllPreferences(masterAccountId);
@@ -54,11 +54,11 @@ module.exports = function userPreferencesApi(dependencies) {
       if (allPreferences === null) {
         // This means the user document or the preferences field itself wasn't found.
         // Return empty object as per convention? Or 404? Let's return {} for GET all.
-        logger.info(`[userPreferencesApi] GET /users/${masterAccountId}/preferences: No preferences found, returning empty object.`);
+        logger.debug(`[userPreferencesApi] GET /users/${masterAccountId}/preferences: No preferences found, returning empty object.`);
         return res.status(200).json({}); 
       }
 
-      logger.info(`[userPreferencesApi] GET /users/${masterAccountId}/preferences: Preferences found.`);
+      logger.debug(`[userPreferencesApi] GET /users/${masterAccountId}/preferences: Preferences found.`);
       res.status(200).json(allPreferences);
 
     } catch (error) {
@@ -72,7 +72,7 @@ module.exports = function userPreferencesApi(dependencies) {
     const masterAccountId = getMasterAccountId(req, res);
     if (!masterAccountId) return;
 
-    logger.info(`[userPreferencesApi] PUT /users/${masterAccountId}/preferences - Received request`, { body: req.body });
+    logger.debug(`[userPreferencesApi] PUT /users/${masterAccountId}/preferences - Received request`, { body: req.body });
 
     // ADR specifies body as { preferences: object }
     const { preferences } = req.body;
@@ -98,7 +98,7 @@ module.exports = function userPreferencesApi(dependencies) {
       // Fetch the newly updated/inserted preferences to return
       const updatedPreferences = await db.userPreferences.getAllPreferences(masterAccountId);
 
-      logger.info(`[userPreferencesApi] PUT /users/${masterAccountId}/preferences: Preferences updated/created successfully.`);
+      logger.debug(`[userPreferencesApi] PUT /users/${masterAccountId}/preferences: Preferences updated/created successfully.`);
       res.status(200).json(updatedPreferences || {}); // Return updated prefs, or {} if somehow null
 
     } catch (error) {
@@ -123,7 +123,7 @@ module.exports = function userPreferencesApi(dependencies) {
     }
     const scopeKey = preferenceScope.trim();
 
-    logger.info(`[userPreferencesApi] GET /users/${masterAccountId}/preferences/${scopeKey} - Received request`);
+    logger.debug(`[userPreferencesApi] GET /users/${masterAccountId}/preferences/${scopeKey} - Received request`);
 
     try {
       const scopedPreferences = await db.userPreferences.getPreferenceByKey(masterAccountId, scopeKey);
@@ -136,7 +136,7 @@ module.exports = function userPreferencesApi(dependencies) {
         });
       }
 
-      logger.info(`[userPreferencesApi] GET .../${scopeKey}: Preferences scope found.`);
+      logger.debug(`[userPreferencesApi] GET .../${scopeKey}: Preferences scope found.`);
       res.status(200).json(scopedPreferences);
 
     } catch (error) {
@@ -173,7 +173,7 @@ module.exports = function userPreferencesApi(dependencies) {
       });
     }
 
-    logger.info(`[userPreferencesApi] PUT /users/${masterAccountId}/preferences/${toolIdentifier} - Received request`, { body: preferencesToSave });
+    logger.debug(`[userPreferencesApi] PUT /users/${masterAccountId}/preferences/${toolIdentifier} - Received request`, { body: preferencesToSave });
 
     // Validate preferences using UserSettingsService with the canonical toolId
     const validationResult = userSettingsService.validatePreferences(canonicalToolId, preferencesToSave);
@@ -218,7 +218,7 @@ module.exports = function userPreferencesApi(dependencies) {
       // Fetch the updated scope to return it
       const updatedScope = await db.userPreferences.getPreferenceByKey(masterAccountId, toolIdentifier);
 
-      logger.info(`[userPreferencesApi] PUT .../${toolIdentifier}: Preferences scope updated successfully.`);
+      logger.debug(`[userPreferencesApi] PUT .../${toolIdentifier}: Preferences scope updated successfully.`);
       res.status(200).json(updatedScope || {}); // Return updated scope, or {} if somehow null
 
     } catch (error) {
@@ -238,7 +238,7 @@ module.exports = function userPreferencesApi(dependencies) {
     }
     const toolId = preferenceScope.trim();
 
-    logger.info(`[userPreferencesApi] DELETE /users/${masterAccountId}/preferences/${toolId} - Received request`);
+    logger.debug(`[userPreferencesApi] DELETE /users/${masterAccountId}/preferences/${toolId} - Received request`);
 
     try {
       const deleteResult = await db.userPreferences.deletePreferenceKey(masterAccountId, toolId);
@@ -253,7 +253,7 @@ module.exports = function userPreferencesApi(dependencies) {
         });
       }
 
-      logger.info(`[userPreferencesApi] DELETE .../${toolId}: Preferences scope deleted successfully.`);
+      logger.debug(`[userPreferencesApi] DELETE .../${toolId}: Preferences scope deleted successfully.`);
       res.status(204).send(); // 204 No Content for successful deletion
 
     } catch (error) {
@@ -274,7 +274,7 @@ module.exports = function userPreferencesApi(dependencies) {
     try {
       const MAID = new ObjectId(masterAccountId);
       const favoriteLoraIds = await userPreferencesDb.getLoraFavoriteIds(MAID);
-      logger.info(`[UserPreferencesApi-LoraFav] GET / for MAID ${masterAccountId} - Found ${favoriteLoraIds.length} favorites.`);
+      logger.debug(`[UserPreferencesApi-LoraFav] GET / for MAID ${masterAccountId} - Found ${favoriteLoraIds.length} favorites.`);
       res.status(200).json({ loraFavoriteIds });
     } catch (error) {
       logger.error(`[UserPreferencesApi-LoraFav] Error getting favorites for MAID ${masterAccountId}:`, error);
@@ -309,7 +309,7 @@ module.exports = function userPreferencesApi(dependencies) {
 
       const success = await userPreferencesDb.addLoraFavorite(MAID, loraId);
       
-      logger.info(`[UserPreferencesApi-LoraFav] POST / for MAID ${masterAccountId}, LoRA ${loraId}. Success: ${success}`);
+      logger.debug(`[UserPreferencesApi-LoraFav] POST / for MAID ${masterAccountId}, LoRA ${loraId}. Success: ${success}`);
       if (success) {
         // To determine if it was newly added vs already existed, getLoraFavoriteIds could be checked before add,
         // or addLoraFavorite could return more detailed info. For now, 201 for simplicity if 'success' is true.
@@ -348,7 +348,7 @@ module.exports = function userPreferencesApi(dependencies) {
       const MAID = new ObjectId(masterAccountId);
       const success = await userPreferencesDb.removeLoraFavorite(MAID, loraId);
       
-      logger.info(`[UserPreferencesApi-LoraFav] DELETE /${loraId} for MAID ${masterAccountId}. Success: ${success}`);
+      logger.debug(`[UserPreferencesApi-LoraFav] DELETE /${loraId} for MAID ${masterAccountId}. Success: ${success}`);
       if (success) {
         res.status(204).send(); // Successfully removed or was not present
       } else {
@@ -428,6 +428,6 @@ module.exports = function userPreferencesApi(dependencies) {
   // Mount the model favourites sub-router
   router.use('/model-favorites', modelFavoritesRouter);
 
-  logger.info('[userPreferencesApi] User Preferences API routes initialized.');
+  logger.debug('[userPreferencesApi] User Preferences API routes initialized.');
   return router;
 }; 

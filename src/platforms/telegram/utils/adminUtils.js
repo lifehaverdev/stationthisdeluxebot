@@ -24,14 +24,10 @@ async function isAdmin(telegramId, internalApiClient) {
       platformId: telegramId.toString(),
     });
     const masterAccountId = userResponse.data.masterAccountId;
-    console.log(`[isAdmin] Found masterAccountId: ${masterAccountId} for telegramId: ${telegramId}`);
 
     // Check admin flag in userCore
     const userCoreResponse = await internalApiClient.get(`/internal/v1/data/users/${masterAccountId}`);
-    console.log(`[isAdmin] UserCore response:`, userCoreResponse.data);
-    
     const isAdminUser = userCoreResponse.data?.isAdmin === true;
-    console.log(`[isAdmin] Is admin user? ${isAdminUser}`);
     return isAdminUser;
   } catch (err) {
     console.error(`[isAdmin] Error checking admin status:`, err);
@@ -78,7 +74,6 @@ async function deleteAllScopedCommands(bot) {
     await bot.deleteMyCommands({ scope: { type: 'default' }, language_code: '' });
     await bot.setMyCommands([], { scope: { type: 'default' }, language_code: '' });
     
-    console.log('[adminUtils] Cleared default scope commands');
   } catch (err) {
     console.warn('[adminUtils] Error clearing default scope:', err.message);
   }
@@ -87,7 +82,6 @@ async function deleteAllScopedCommands(bot) {
   try {
     await bot.deleteMyCommands();
     await bot.setMyCommands([]);
-    console.log('[adminUtils] Cleared no-scope commands');
   } catch (err) {
     console.warn('[adminUtils] Error clearing no-scope commands:', err.message);
   }
@@ -108,7 +102,6 @@ async function deleteAllScopedCommands(bot) {
       scope: { type: 'all_private_chats' },
       language_code: ''
     });
-    console.log('[adminUtils] Set new commands in private_chats scope');
   } catch (err) {
     console.warn('[adminUtils] Error setting private chat commands:', err.message);
   }
@@ -130,7 +123,6 @@ async function getAllScopedCommands(bot) {
     try {
       const commands = await bot.getMyCommands({ scope });
       results[scope.type] = commands;
-      console.log(`[adminUtils] Commands for scope ${scope.type}:`, commands);
     } catch (err) {
       console.warn(`[adminUtils] Error getting commands for scope ${scope.type}:`, err.message);
     }
@@ -140,32 +132,20 @@ async function getAllScopedCommands(bot) {
 
 async function updateBotCommands(bot, commands, scope = { type: 'default' }) {
   try {
-    console.log('[adminUtils] Starting command update process...');
-    
-    // First, get all current commands to see what we're dealing with
-    console.log('[adminUtils] Current commands across all scopes:');
     await getAllScopedCommands(bot);
-
-    // Delete commands from all scopes
-    console.log('[adminUtils] Deleting commands from all scopes...');
     await deleteAllScopedCommands(bot);
 
     // Wait a moment for deletions to take effect
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     // Set new commands for specified scope
-    console.log(`[adminUtils] Setting new commands for scope: ${scope.type}`);
     if (scope.type === 'default') {
       await bot.setMyCommands(commands);
     } else {
       await bot.setMyCommands(commands, { scope });
     }
 
-    // Verify the update
-    console.log('[adminUtils] Verifying command update...');
     const finalCommands = await getAllScopedCommands(bot);
-    
-    console.log(`[adminUtils] Command update complete for scope: ${scope.type}`);
     return finalCommands;
   } catch (err) {
     console.error('[adminUtils] Error updating bot commands:', err);
@@ -184,7 +164,6 @@ async function resetChatState(bot, chatId) {
     await removeKeyboard(bot, chatId, 'Resetting chat state...');
     
     // Could add more reset operations here as needed
-    console.log(`[adminUtils] Successfully reset chat state for chat: ${chatId}`);
   } catch (err) {
     console.error('[adminUtils] Error resetting chat state:', err);
     throw err;

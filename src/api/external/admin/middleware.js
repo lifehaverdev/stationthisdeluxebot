@@ -47,7 +47,7 @@ function createAdminVerificationMiddleware(dependencies) {
     creditService: legacyCredit
   } = dependencies;
   
-  logger.info(`[AdminMiddleware] Initializing with dependencies:`, {
+  logger.debug(`[AdminMiddleware] Initializing with dependencies:`, {
     hasEthereumServices: !!ethereumServices,
     ethereumServicesKeys: Object.keys(ethereumServices || {}),
     hasLegacyEth: !!legacyEth,
@@ -82,7 +82,7 @@ function createAdminVerificationMiddleware(dependencies) {
   return async (req, res, next) => {
     const walletAddress = req.query.wallet || req.body.wallet || req.headers['x-wallet-address'];
     
-    logger.info(`[AdminMiddleware] Verifying admin for wallet: ${walletAddress}, path: ${req.path}, query:`, req.query);
+    logger.debug(`[AdminMiddleware] Verifying admin for wallet: ${walletAddress}, path: ${req.path}, query:`, req.query);
     
     if (!walletAddress) {
       logger.warn(`[AdminMiddleware] No wallet address provided in request. Query:`, req.query, 'Body:', req.body, 'Headers:', req.headers);

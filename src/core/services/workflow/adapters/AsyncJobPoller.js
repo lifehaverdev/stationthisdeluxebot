@@ -37,7 +37,7 @@ class AsyncJobPoller {
      * @private
      */
     _pollInBackground(generationId, runId, adapter, maxAttempts, pollInterval, normalizeOutput) {
-        this.logger.info(`[AsyncJobPoller] Starting background polling for generation ${generationId}, runId ${runId}`);
+        this.logger.debug(`[AsyncJobPoller] Starting background polling for generation ${generationId}, runId ${runId}`);
         (async () => {
             try {
                 let attempts = 0;

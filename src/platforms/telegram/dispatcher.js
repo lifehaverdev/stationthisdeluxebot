@@ -26,7 +26,7 @@ class CallbackQueryDispatcher {
     if (this.handlers.has(prefix)) {
       this.logger.warn(`[CallbackQueryDispatcher] Overwriting handler for prefix: ${prefix}`);
     }
-    this.logger.info(`[CallbackQueryDispatcher] Registering handler for prefix: ${prefix}`);
+    this.logger.debug(`[CallbackQueryDispatcher] Registering handler for prefix: ${prefix}`);
     this.handlers.set(prefix, handler);
   }
 
@@ -90,7 +90,7 @@ class MessageReplyDispatcher {
     if (this.handlers.has(contextType)) {
       this.logger.warn(`[MessageReplyDispatcher] Overwriting handler for context: ${contextType}`);
     }
-    this.logger.info(`[MessageReplyDispatcher] Registering handler for context: ${contextType}`);
+    this.logger.debug(`[MessageReplyDispatcher] Registering handler for context: ${contextType}`);
     this.handlers.set(contextType, handler);
   }
 

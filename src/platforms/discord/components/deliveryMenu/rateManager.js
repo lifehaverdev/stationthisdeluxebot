@@ -82,7 +82,7 @@ function registerHandlers(dispatchers, dependencies) {
 
     buttonInteractionDispatcher.register('rate_gen:', handleRateGenCallback);
 
-    logger.info('[RateManager] Handler registered for "rate_gen:" interactions.');
+    logger.debug('[RateManager] Handler registered for "rate_gen:" interactions.');
 }
 
 module.exports = {

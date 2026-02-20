@@ -199,7 +199,7 @@ function registerHandlers(dispatcherInstances, dependencies) {
     // Register button handlers (all buy buttons start with 'buy:')
     buttonInteractionDispatcher.register('buy:', handleBuyPointsButton);
 
-    logger.info('[BuyPoints] Handlers registered.');
+    logger.debug('[BuyPoints] Handlers registered.');
 }
 
 module.exports = {

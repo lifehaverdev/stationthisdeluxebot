@@ -49,26 +49,22 @@ const { ToolRegistry } = require('./src/core/tools/ToolRegistry.js');
  */
 async function startApp() {
   try {
-    logger.info('===================================================');
-    logger.info('===| Initializing StationThis Bot Application |====');
-    logger.info('===================================================');
-    logger.info('===================================================');
-    logger.info('===================================================');
-    logger.info('===================================================');
-    logger.info('===================================================');
+    logger.debug('===| Initializing StationThis Bot Application |====');
     // Initialize Database Connection FIRST
+    logger.info('[app] calling initializeDatabase...');
     await initializeDatabase();
-    logger.info('Database connection initialized.');
+    logger.info('[app] initializeDatabase done');
     
     // Initialize core services, passing the WebSocketService instance
     const exportProcessingEnabled = process.env.COLLECTION_EXPORT_PROCESSING_ENABLED !== 'false';
+    logger.info('[app] calling initializeServices...');
     const services = await initializeServices({
       logger: logger,
       webSocketService: websocketServer,
       collectionExportProcessingEnabled: exportProcessingEnabled
     });
+    logger.info('[app] initializeServices returned');
     _services = services; // Store for graceful shutdown
-    logger.info('Core services initialized.');
     /*
     ] [app]: services (shallow): {
       "session": "object",
@@ -91,7 +87,7 @@ async function startApp() {
 
     // Explicitly initialize WorkflowsService and wait for it
     if (services.workflows && typeof services.workflows.initialize === 'function') {
-      logger.info('Initializing WorkflowsService cache in background...');
+      logger.debug('Initializing WorkflowsService cache in background...');
       services.workflows.initialize().catch(err => logger.error('Background workflow cache init failed', err));
     } else {
       logger.warn('WorkflowsService not found or does not have an initialize method.');
@@ -104,37 +100,19 @@ async function startApp() {
     });
     
     // Run system initialization
-    logger.info('\nStarting system initialization sequence...');
+    logger.debug('Starting system initialization sequence...');
     const initResults = await initialize(services, logger); // Pass logger here too
     
     // Log initialization results
     if (initResults.status === 'success') {
-      logger.info('\nInitialization Results: SUCCESS');
+      logger.info('Initialization Results: SUCCESS');
     } else if (initResults.status === 'partial') {
-      logger.warn('\nInitialization Results: PARTIAL - Some components failed to initialize');
+      logger.warn('Initialization Results: PARTIAL - Some components failed to initialize');
       logger.warn('Error:', initResults.error);
-      logger.info('Continuing with available components...');
     } else {
-      logger.error('\nInitialization Results: FAILED');
+      logger.error('Initialization Results: FAILED');
       logger.error('Error:', initResults.error);
-      logger.info('Attempting to continue with critical services only...');
     }
-    
-    // Log data availability regardless of status
-    logger.info(`- Burns data records: ${initResults.data.burns}`);
-    logger.info(`- Rooms/Groups: ${initResults.data.rooms}`);
-    logger.info(`- Workflows: ${initResults.data.workflows}`);
-    logger.info(`- Lora Triggers: ${initResults.data.loras}`);
-    logger.info(`- ComfyUI API: ${initResults.data.comfyUI.connected ? 'Connected' : 'Failed'}`);
-    
-    if (initResults.data.comfyUI.connected) {
-      logger.info(`  - Available workflows: ${JSON.stringify(initResults.data.comfyUI.workflows)}`);
-      logger.info(`  - Available deployments: ${JSON.stringify(initResults.data.comfyUI.deployments)}`);
-      logger.info(`  - Available machines: ${JSON.stringify(initResults.data.comfyUI.machines)}`);
-      logger.info(`  - Ready machines: ${JSON.stringify(initResults.data.comfyUI.readyMachines)}`);
-    }
-    
-    logger.info('\nProceeding to platform initialization...\n');
     
     // Create the canonical dependencies object as defined in ADR-001
     // Note: commandRegistry is NOT shared - each platform creates its own instance
@@ -154,16 +132,10 @@ async function startApp() {
     }
     dependencies.internal.client = dependencies.internalApiClient;
     // geniusoverhaul: Add a log to verify dependencies.toolRegistry
-    logger.info('[App] Canonical dependencies object created. Checking toolRegistry...');
-    if (dependencies.toolRegistry && typeof dependencies.toolRegistry.getToolById === 'function') {
-        logger.info('[App] dependencies.toolRegistry appears to be a valid ToolRegistry instance.');
-    } else {
+    if (!dependencies.toolRegistry || typeof dependencies.toolRegistry.getToolById !== 'function') {
         logger.warn('[App] dependencies.toolRegistry is MISSING or INVALID!', { registry: dependencies.toolRegistry });
     }
-    // End verification log
-    
-    // Initialize platforms with the canonical dependencies object
-    logger.info('Initializing platform adapters...');
+
     const platforms = initializePlatforms(dependencies, {
       enableTelegram: true,
       enableDiscord: true,
@@ -172,7 +144,6 @@ async function startApp() {
         staticPath: path.join(__dirname, 'public')
       }
     });
-    logger.info('Platform adapters initialized');
 
     // --- Build Platform Notifiers Map (needed for both NotificationDispatcher and Internal API) ---
     const platformNotifiersMap = {};
@@ -180,14 +151,14 @@ async function startApp() {
     // --- Telegram Notifier ---
     if (platforms.telegram && platforms.telegram.bot) {
       try {
-        logger.info('[App] Initializing TelegramNotifier...');
+        logger.debug('[App] Initializing TelegramNotifier...');
         const telegramNotifierInstance = new TelegramNotifier(platforms.telegram.bot, services.logger);
         platformNotifiersMap.telegram = telegramNotifierInstance;
       } catch (telegramErr) {
         logger.error('[App] Failed to initialize TelegramNotifier:', telegramErr.message);
       }
     } else {
-      logger.info('[App] Telegram platform not available. TelegramNotifier not registered.');
+      logger.debug('[App] Telegram platform not available. TelegramNotifier not registered.');
     }
 
     // --- Web Sandbox Notifier ---
@@ -195,7 +166,7 @@ async function startApp() {
       if (websocketServer) {
         const webSandboxNotifierInstance = new WebSandboxNotifier(websocketServer, services.logger);
         platformNotifiersMap['web-sandbox'] = webSandboxNotifierInstance;
-        logger.info('[App] WebSandboxNotifier initialized and registered.');
+        logger.debug('[App] WebSandboxNotifier initialized and registered.');
       } else {
         logger.warn('[App] WebSocketService not available. WebSandboxNotifier will not be registered.');
       }
@@ -206,13 +177,13 @@ async function startApp() {
     // --- Discord Notifier ---
     if (platforms.discord && (platforms.discord.client || platforms.discord.bot)) {
       try {
-        logger.info('[App] Initializing DiscordNotifier...');
+        logger.debug('[App] Initializing DiscordNotifier...');
         const DiscordNotifier = require('./src/platforms/discord/discordNotifier');
         const discordClient = platforms.discord.client || platforms.discord.bot?.client;
         if (discordClient) {
           const discordNotifierInstance = new DiscordNotifier(discordClient, services.logger);
           platformNotifiersMap.discord = discordNotifierInstance;
-          logger.info('[App] DiscordNotifier initialized and registered.');
+          logger.debug('[App] DiscordNotifier initialized and registered.');
         } else {
           logger.warn('[App] Discord client not available. DiscordNotifier will not be registered.');
         }
@@ -220,18 +191,18 @@ async function startApp() {
         logger.error('[App] Failed to initialize DiscordNotifier:', discordErr.message);
       }
     } else {
-      logger.info('[App] Discord platform not available. DiscordNotifier not registered.');
+      logger.debug('[App] Discord platform not available. DiscordNotifier not registered.');
     }
 
     // --- Webhook Notifier ---
     try {
-      logger.info('[App] Initializing WebhookNotifier...');
+      logger.debug('[App] Initializing WebhookNotifier...');
       // WebhookNotifier needs internalApiClient for fetching cast records
       const internalApiClient = services.internal?.client;
       if (internalApiClient) {
         const webhookNotifierInstance = new WebhookNotifier(services.logger, internalApiClient);
         platformNotifiersMap.webhook = webhookNotifierInstance;
-        logger.info('[App] WebhookNotifier initialized and registered.');
+        logger.debug('[App] WebhookNotifier initialized and registered.');
       } else {
         logger.warn('[App] Internal API client not available. WebhookNotifier will not be registered.');
       }
@@ -246,7 +217,7 @@ async function startApp() {
     // Update internal API dependencies with platform notifiers
     if (services.internal && typeof services.internal.updateDependencies === 'function') {
       services.internal.updateDependencies({ platformNotifiers: platformNotifiersMap });
-      logger.info('[App] Updated internal API dependencies with platform notifiers.');
+      logger.debug('[App] Updated internal API dependencies with platform notifiers.');
     } else {
       logger.warn('[App] Internal API updateDependencies method not available. Notifications may not work.');
     }
@@ -254,7 +225,7 @@ async function startApp() {
     // --- Initialize and Start Notification Dispatcher ---
     if (services.internal?.client && services.logger) {
       try {
-        logger.info('[App] Initializing NotificationDispatcher...');
+        logger.debug('[App] Initializing NotificationDispatcher...');
         const notificationDispatcher = new NotificationDispatcher(
           {
             internalApiClient: services.internal.client,
@@ -265,7 +236,7 @@ async function startApp() {
           { /* Optional: pollingIntervalMs, etc. */ }
         );
         await notificationDispatcher.start();
-        logger.info('[App] NotificationDispatcher started.');
+        logger.debug('[App] NotificationDispatcher started.');
       } catch (dispatcherError) {
         logger.error('[App] Failed to initialize or start NotificationDispatcher:', dispatcherError.message, { stack: dispatcherError.stack });
         // Decide if this is a fatal error or if the app can run without it
@@ -322,7 +293,7 @@ async function startApp() {
       // Apply the auth middleware specifically to the /internal path of the web app
       platforms.web.app.use('/internal', internalApiAuthMiddleware);
       platforms.web.app.use('/internal', services.internal.router);
-      logger.info('Internal API authentication middleware and router mounted at /internal');
+      logger.debug('Internal API authentication middleware and router mounted at /internal');
     } else {
       logger.warn('Internal API router or web app instance not available for mounting. Internal API might not be accessible or secured.');
     }
@@ -331,7 +302,7 @@ async function startApp() {
     if (services.external && services.external.router && platforms.web && platforms.web.app) {
       platforms.web.app.use('/api/v1', services.external.router);
       platforms.web.app.use('/api/external', services.external.router); // legacy path compatibility
-      logger.info('External API router mounted at /api/v1 and /api/external');
+      logger.debug('External API router mounted at /api/v1 and /api/external');
     } else {
       logger.warn('External API router or web app instance not available for mounting. External API will not be accessible.');
     }
@@ -341,10 +312,10 @@ async function startApp() {
       try {
         // Ensure the web platform exposes its app instance and its own initializeRoutes method
         if (platforms.web.app && typeof platforms.web.initializeRoutes === 'function') {
-          logger.info('Initializing Web platform routes (API, static, SPA)...');
+          logger.debug('Initializing Web platform routes (API, static, SPA)...');
           // This single call will handle API routes, static files, and SPA fallback internally.
           await platforms.web.initializeRoutes(); 
-          logger.info('Web platform routes (API, static, SPA) initialized.');
+          logger.debug('Web platform routes (API, static, SPA) initialized.');
         } else {
           logger.warn('Web platform app instance or its initializeRoutes method not available.');
         }
@@ -356,14 +327,14 @@ async function startApp() {
         logger.info(`Web platform running on port ${port}`);
 
         // Initialize the WebSocket service by attaching it to the running HTTP server
-        logger.info('Initializing WebSocket service...');
+        logger.debug('Initializing WebSocket service...');
         websocketServer.initialize(httpServer);
         // Set ethereumServices for admin verification
         if (services.ethereumService) {
           websocketServer.setEthereumServices(services.ethereumService);
-          logger.info('WebSocket service ethereumServices configured for admin verification.');
+          logger.debug('WebSocket service ethereumServices configured for admin verification.');
         }
-        logger.info('WebSocket service initialized.');
+        logger.debug('WebSocket service initialized.');
         
         // --- Credit Service Startup ---
         // This is now started AFTER the web platform is running to ensure
@@ -386,7 +357,7 @@ async function startApp() {
                 }
             }
             if (chainIds.length > 0) {
-                logger.info('CreditService startup invoked for all configured chains.');
+                logger.debug('CreditService startup invoked for all configured chains.');
             }
         } else {
             logger.warn('CreditService not found or not initialized. On-chain deposit features will not be reconciled.');
@@ -395,7 +366,7 @@ async function startApp() {
         // Now setup Telegram commands AFTER web routes are initialized
         if (platforms.telegram) {
           try {
-            logger.info('Setting up Telegram dynamic commands...');
+            logger.debug('Setting up Telegram dynamic commands...');
             // Truncate descriptions before setting up commands
             const allTools = dependencies.toolRegistry.getAllTools();
             allTools.forEach(tool => {
@@ -405,7 +376,7 @@ async function startApp() {
                 }
             });
             await platforms.telegram.setupCommands();
-            logger.info('Telegram dynamic commands configured');
+            logger.debug('Telegram dynamic commands configured');
           } catch (telegramError) {
             logger.error('Failed to setup Telegram commands:', telegramError.message);
           }

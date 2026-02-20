@@ -76,7 +76,7 @@ class TrainingFinalizationService {
     let charged = null;
     let cacheRefreshed = false;
 
-    this.logger.info(`[TrainingFinalizationService] Starting finalization for ${trainingResult.modelName} (user: ${masterAccountId})`);
+    this.logger.debug(`[TrainingFinalizationService] Starting finalization for ${trainingResult.modelName} (user: ${masterAccountId})`);
 
     // Validate required fields
     if (!trainingResult.success) {
@@ -115,7 +115,7 @@ class TrainingFinalizationService {
     // STEP 1: Create LoRA model record in database
     // ─────────────────────────────────────────────────────────────────────────
     try {
-      this.logger.info('[TrainingFinalizationService] Creating LoRA model record...');
+      this.logger.debug('[TrainingFinalizationService] Creating LoRA model record...');
 
       loraModel = await this.loraModelsDb.createTrainedLoRAModel({
         modelName: trainingResult.modelName,
@@ -133,7 +133,7 @@ class TrainingFinalizationService {
       }, masterAccountId);
 
       if (loraModel) {
-        this.logger.info(`[TrainingFinalizationService] LoRA model created: ${loraModel.slug} (ID: ${loraModel._id})`);
+        this.logger.debug(`[TrainingFinalizationService] LoRA model created: ${loraModel.slug} (ID: ${loraModel._id})`);
       } else {
         errors.push('Failed to create LoRA model record');
         this.logger.error('[TrainingFinalizationService] createTrainedLoRAModel returned null');
@@ -148,10 +148,10 @@ class TrainingFinalizationService {
     // ─────────────────────────────────────────────────────────────────────────
     if (loraModel && this.refreshLoraCache) {
       try {
-        this.logger.info('[TrainingFinalizationService] Refreshing LoRA trigger map cache...');
+        this.logger.debug('[TrainingFinalizationService] Refreshing LoRA trigger map cache...');
         await this.refreshLoraCache();
         cacheRefreshed = true;
-        this.logger.info('[TrainingFinalizationService] LoRA cache refreshed successfully');
+        this.logger.debug('[TrainingFinalizationService] LoRA cache refreshed successfully');
       } catch (err) {
         errors.push(`Cache refresh failed: ${err.message}`);
         this.logger.error('[TrainingFinalizationService] Error refreshing LoRA cache:', err);
@@ -166,11 +166,11 @@ class TrainingFinalizationService {
     let comfyDeployResult = null;
     if (loraModel && options.uploadToComfyDeploy !== false) {
       try {
-        this.logger.info('[TrainingFinalizationService] Uploading to ComfyUI Deploy...');
+        this.logger.debug('[TrainingFinalizationService] Uploading to ComfyUI Deploy...');
         comfyDeployResult = await this.uploadToComfyDeploy(loraModel);
 
         if (comfyDeployResult.success) {
-          this.logger.info(`[TrainingFinalizationService] ComfyUI Deploy upload successful`);
+          this.logger.debug(`[TrainingFinalizationService] ComfyUI Deploy upload successful`);
         } else {
           // ComfyDeploy is non-critical - model is already on HuggingFace
           // Don't add to errors array, just warn. Result is tracked in comfyDeployResult.
@@ -181,7 +181,7 @@ class TrainingFinalizationService {
         this.logger.error('[TrainingFinalizationService] ComfyUI Deploy upload error:', err);
       }
     } else if (options.uploadToComfyDeploy === false) {
-      this.logger.info('[TrainingFinalizationService] ComfyUI Deploy upload skipped (disabled via options)');
+      this.logger.debug('[TrainingFinalizationService] ComfyUI Deploy upload skipped (disabled via options)');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -189,7 +189,7 @@ class TrainingFinalizationService {
     // ─────────────────────────────────────────────────────────────────────────
     if (this.pointsService && trainingResult.trainingCost > 0) {
       try {
-        this.logger.info('[TrainingFinalizationService] Calculating training charge...');
+        this.logger.debug('[TrainingFinalizationService] Calculating training charge...');
 
         // Calculate total cost with platform fee
         const gpuCostUsd = trainingResult.trainingCost;
@@ -199,7 +199,7 @@ class TrainingFinalizationService {
         // Convert to points
         const pointsToCharge = Math.ceil(totalCostUsd * this.usdToPointsMultiplier);
 
-        this.logger.info(`[TrainingFinalizationService] Cost breakdown: GPU=$${gpuCostUsd.toFixed(4)}, Fee=$${platformFeeUsd.toFixed(4)}, Total=$${totalCostUsd.toFixed(4)}, Points=${pointsToCharge}`);
+        this.logger.debug(`[TrainingFinalizationService] Cost breakdown: GPU=$${gpuCostUsd.toFixed(4)}, Fee=$${platformFeeUsd.toFixed(4)}, Total=$${totalCostUsd.toFixed(4)}, Points=${pointsToCharge}`);
 
         // Deduct points using the credit ledger
         const deductionResult = await this.pointsService.deductPointsForTraining({
@@ -230,7 +230,7 @@ class TrainingFinalizationService {
           newBalance: deductionResult.newBalance
         };
 
-        this.logger.info(`[TrainingFinalizationService] Training charge completed: ${pointsToCharge} points ($${totalCostUsd.toFixed(4)} USD) via ${deductionResult.source}`);
+        this.logger.debug(`[TrainingFinalizationService] Training charge completed: ${pointsToCharge} points ($${totalCostUsd.toFixed(4)} USD) via ${deductionResult.source}`);
       } catch (err) {
         errors.push(`Billing failed: ${err.message}`);
         this.logger.error('[TrainingFinalizationService] Error processing training charge:', err);
@@ -252,7 +252,7 @@ class TrainingFinalizationService {
     } else if (!this.pointsService) {
       this.logger.warn('[TrainingFinalizationService] No pointsService provided, skipping billing');
     } else if (trainingResult.trainingCost <= 0) {
-      this.logger.info('[TrainingFinalizationService] Training cost is zero, skipping billing');
+      this.logger.debug('[TrainingFinalizationService] Training cost is zero, skipping billing');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -275,7 +275,7 @@ class TrainingFinalizationService {
       errors: errors.length > 0 ? errors : null
     };
 
-    this.logger.info(`[TrainingFinalizationService] Finalization complete. Success: ${success}, Errors: ${errors.length}`);
+    this.logger.debug(`[TrainingFinalizationService] Finalization complete. Success: ${success}, Errors: ${errors.length}`);
 
     return result;
   }
@@ -316,7 +316,7 @@ class TrainingFinalizationService {
         filename,
         downloadLink: directUrl
       };
-      this.logger.info(`[TrainingFinalizationService] Uploading to ComfyDeploy via direct link: ${directUrl}`);
+      this.logger.debug(`[TrainingFinalizationService] Uploading to ComfyDeploy via direct link: ${directUrl}`);
     } else if (cloudflareUrl || modelFileUrl) {
       // Use direct link source for R2 or other URLs
       const downloadUrl = cloudflareUrl || modelFileUrl;
@@ -326,14 +326,14 @@ class TrainingFinalizationService {
         filename,
         downloadLink: downloadUrl
       };
-      this.logger.info(`[TrainingFinalizationService] Uploading to ComfyDeploy via direct link: ${downloadUrl}`);
+      this.logger.debug(`[TrainingFinalizationService] Uploading to ComfyDeploy via direct link: ${downloadUrl}`);
     } else {
       return { success: false, error: 'No download URL available' };
     }
 
     try {
-      this.logger.info(`[TrainingFinalizationService] POST ${COMFY_DEPLOY_API_URL}`);
-      this.logger.info(`[TrainingFinalizationService] Payload: ${JSON.stringify(payload)}`);
+      this.logger.debug(`[TrainingFinalizationService] POST ${COMFY_DEPLOY_API_URL}`);
+      this.logger.debug(`[TrainingFinalizationService] Payload: ${JSON.stringify(payload)}`);
 
       const response = await axios.post(COMFY_DEPLOY_API_URL, payload, {
         headers: {
@@ -344,7 +344,7 @@ class TrainingFinalizationService {
       });
 
       if (response.status === 200 || response.status === 201) {
-        this.logger.info(`[TrainingFinalizationService] ComfyDeploy upload success: ${JSON.stringify(response.data)}`);
+        this.logger.debug(`[TrainingFinalizationService] ComfyDeploy upload success: ${JSON.stringify(response.data)}`);
 
         // Update the model record with ComfyDeploy info
         if (response.data?.id || response.data?.fileId) {

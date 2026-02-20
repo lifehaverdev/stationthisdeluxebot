@@ -39,7 +39,6 @@ function addContext(sentMessage, context, ttl = 3600000) {
     setTimeout(() => {
         if (pendingReplyContexts.has(key)) {
             pendingReplyContexts.delete(key);
-            console.log(`[Discord ReplyContextManager] Expired and removed context for key: ${key}`);
         }
     }, ttl);
 }

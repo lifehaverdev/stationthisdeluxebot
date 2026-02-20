@@ -35,7 +35,7 @@ class DonationProcessorService {
     try {
       const resp = await this.internalApiClient.get(`/internal/v1/data/ledger/entries/${transactionHash}`);
       if (resp.data.entry) {
-        this.logger.info(`[DonationProcessorService] Skipping donation event for tx ${transactionHash}; already processed.`);
+        this.logger.debug(`[DonationProcessorService] Skipping donation event for tx ${transactionHash}; already processed.`);
         return;
       }
     } catch (err) {
@@ -90,7 +90,7 @@ class DonationProcessorService {
     // Use centralized decimal service for consistent token handling
     const grossDepositUsd = tokenDecimalService.calculateUsdValue(amount, token, priceInUsd);
 
-    this.logger.info(`[DonationProcessorService] Donation processing for token ${token}:`, {
+    this.logger.debug(`[DonationProcessorService] Donation processing for token ${token}:`, {
       amount: amount.toString(),
       priceInUsd,
       grossDepositUsd,

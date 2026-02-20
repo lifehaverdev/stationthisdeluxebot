@@ -263,11 +263,19 @@ class WorkflowsService {
 
     try {
       // Get directly from the API
-      const response = await fetch(`${this.apiUrl}/deployment/${deploymentId}`, {
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`
-        }
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+      let response;
+      try {
+        response = await fetch(`${this.apiUrl}/deployment/${deploymentId}`, {
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`
+          },
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       if (!response.ok) {
         if (response.status === 404) {
@@ -345,11 +353,19 @@ class WorkflowsService {
     }
     
     try {
-      const response = await fetch(`${this.apiUrl}/workflow/${versionId}`, {
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`
-        }
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+      let response;
+      try {
+        response = await fetch(`${this.apiUrl}/workflow/${versionId}`, {
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`
+          },
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
       
       if (!response.ok) {
         if (response.status === 404) {

@@ -32,7 +32,7 @@ class ReferralVaultService {
    * @returns {Promise<{vaultAddress: string, salt: string}>}
    */
   async createVault(ownerAddress) {
-    this.logger.info(`[ReferralVaultService] Creating referral vault for owner ${ownerAddress}`);
+    this.logger.debug(`[ReferralVaultService] Creating referral vault for owner ${ownerAddress}`);
 
     // SECURITY: Acquire lock to prevent concurrent vault creation for same user
     const vaultKey = `vault-creation-${ownerAddress.toLowerCase()}`;
@@ -44,7 +44,7 @@ class ReferralVaultService {
       try {
         const response = await this.internalApiClient.get(`/internal/v1/data/wallets/lookup?address=${ownerAddress}`);
         masterAccountId = response.data.masterAccountId;
-        this.logger.info(`[ReferralVaultService] Found user account ${masterAccountId} for wallet ${ownerAddress}`);
+        this.logger.debug(`[ReferralVaultService] Found user account ${masterAccountId} for wallet ${ownerAddress}`);
       } catch (error) {
         if (error.response?.status === 404) {
           throw new Error('No user account found for this wallet address. The wallet must be linked to a user account first.');
@@ -58,7 +58,7 @@ class ReferralVaultService {
 
       // 3. Get a pre-mined salt that will generate a vanity address
       const { salt, predictedAddress } = await this.saltMiningService.getSalt(ownerAddress);
-      this.logger.info(`[ReferralVaultService] Found valid salt for vanity address ${predictedAddress}`);
+      this.logger.debug(`[ReferralVaultService] Found valid salt for vanity address ${predictedAddress}`);
 
       // 4. Create the vault account using the mined salt
       const txResponse = await this.ethereumService.write(
@@ -130,15 +130,15 @@ class ReferralVaultService {
    * @returns {Promise<Object>} The newly created vault document
    */
   async deployVault(details) {
-    this.logger.info('[ReferralVaultService] Initiating on-chain referral vault deployment with details:', { details });
+    this.logger.debug('[ReferralVaultService] Initiating on-chain referral vault deployment with details:', { details });
     const { masterAccountId, ownerAddress, vaultName, salt, predictedAddress } = details;
 
     try {
       // DEBUG: Log the actual signer address being used
       const signerAddress = this.ethereumService.getSigner().address;
-      this.logger.info('[ReferralVaultService] DEBUG: EthereumService signer address:', signerAddress);
+      this.logger.debug('[ReferralVaultService] EthereumService signer address:', signerAddress);
       
-      this.logger.info('[ReferralVaultService] Sending transaction to ethereumService.write with params:', {
+      this.logger.debug('[ReferralVaultService] Sending transaction to ethereumService.write with params:', {
         contractAddress: this.contractConfig.address,
         functionName: 'charterFund',
         ownerAddress,
@@ -197,7 +197,7 @@ class ReferralVaultService {
         salt
       );
 
-      this.logger.info(`[ReferralVaultService] Vault deployment transaction sent successfully. Hash: ${txResponse.hash}`, {
+      this.logger.debug(`[ReferralVaultService] Vault deployment transaction sent. Hash: ${txResponse.hash}`, {
         txHash: txResponse.hash,
         owner: ownerAddress,
         predictedAddress: predictedAddress,
@@ -217,7 +217,7 @@ class ReferralVaultService {
 
       const savedVault = await this.creditLedgerDb.createReferralVault(newVaultData);
 
-      this.logger.info('[ReferralVaultService] Vault record created with pending status.', { savedVault });
+      this.logger.debug('[ReferralVaultService] Vault record created with pending status.', { savedVault });
 
       // We don't wait for confirmation here. A separate process will listen for the
       // `VaultCreated` event and update the status to 'ACTIVE'.
@@ -243,7 +243,7 @@ class ReferralVaultService {
    * @param {string} vaultAddress - The actual address of the created vault from the event
    */
   async finalizeDeployment(txHash, vaultAddress) {
-    this.logger.info(`[ReferralVaultService] Finalizing vault deployment for tx: ${txHash}`);
+    this.logger.debug(`[ReferralVaultService] Finalizing vault deployment for tx: ${txHash}`);
 
     const vault = await this.creditLedgerDb.findReferralVaultByTxHash(txHash);
 
@@ -295,7 +295,7 @@ class ReferralVaultService {
         }
       });
       if (sent) {
-        this.logger.info(`[ReferralVaultService] Sent referralVaultUpdate WebSocket notification to user ${vault.master_account_id}`);
+        this.logger.debug(`[ReferralVaultService] Sent referralVaultUpdate WebSocket notification to user ${vault.master_account_id}`);
       } else {
         this.logger.warn(`[ReferralVaultService] Failed to send referralVaultUpdate notification to user ${vault.master_account_id} - user may be offline`);
       }

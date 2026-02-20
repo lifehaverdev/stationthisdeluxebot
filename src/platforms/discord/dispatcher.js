@@ -29,7 +29,7 @@ class ButtonInteractionDispatcher {
     if (this.handlers.has(prefix)) {
       this.logger.warn(`[ButtonInteractionDispatcher] Overwriting handler for prefix: ${prefix}`);
     }
-    this.logger.info(`[ButtonInteractionDispatcher] Registering handler for prefix: ${prefix}`);
+    this.logger.debug(`[ButtonInteractionDispatcher] Registering handler for prefix: ${prefix}`);
     this.handlers.set(prefix, handler);
   }
 
@@ -112,7 +112,7 @@ class SelectMenuInteractionDispatcher {
     if (this.handlers.has(prefix)) {
       this.logger.warn(`[SelectMenuInteractionDispatcher] Overwriting handler for prefix: ${prefix}`);
     }
-    this.logger.info(`[SelectMenuInteractionDispatcher] Registering handler for prefix: ${prefix}`);
+    this.logger.debug(`[SelectMenuInteractionDispatcher] Registering handler for prefix: ${prefix}`);
     this.handlers.set(prefix, handler);
   }
 
@@ -195,7 +195,7 @@ class CommandDispatcher {
     if (this.handlers.has(commandName)) {
       this.logger.warn(`[CommandDispatcher] Overwriting handler for command: ${commandName}`);
     }
-    this.logger.info(`[CommandDispatcher] Registering command handler for: ${commandName}`);
+    this.logger.debug(`[CommandDispatcher] Registering command handler for: ${commandName}`);
     this.handlers.set(commandName, handler);
   }
 

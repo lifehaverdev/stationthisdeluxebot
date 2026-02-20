@@ -84,7 +84,7 @@ function invalidateWorkflowCache(serviceInstance, name) {
 
   if (name && cache.byName.has(standardName)) {
     const workflow = cache.byName.get(standardName);
-    logger.info(`[invalidateWorkflowCache] Found workflow in cache to invalidate: ${workflow.name} (ID: ${workflow.id})`);
+    logger.debug(`[invalidateWorkflowCache] Found workflow in cache to invalidate: ${workflow.name} (ID: ${workflow.id})`);
 
     // Remove from byName index
     const deletedByName = cache.byName.delete(standardName);
@@ -112,7 +112,7 @@ function invalidateWorkflowCache(serviceInstance, name) {
     } else {
         logger.debug(`[invalidateWorkflowCache] No deployment IDs found on workflow object to remove from byDeploymentId cache.`);
     }
-    logger.info(`[invalidateWorkflowCache] Cache invalidated for workflow: ${name}`);
+    logger.debug(`[invalidateWorkflowCache] Cache invalidated for workflow: ${name}`);
 
   } else {
     logger.warn(`[invalidateWorkflowCache] Workflow named "${name}" (Standard: "${standardName}") not found in byName cache. Cannot invalidate.`);
@@ -195,7 +195,7 @@ async function uploadWorkflow(serviceInstance, options = {}) {
  * @returns {Promise<Array>} - Updated list of workflows
  */
 async function reloadWorkflows(serviceInstance) {
-  serviceInstance.logger.info('[reloadWorkflows] Forcing reload...');
+  serviceInstance.logger.debug('[reloadWorkflows] Forcing reload...');
   // Call internal methods on the instance
   serviceInstance._clearCache(); 
   // Note: _fetchAndProcessDeployments now only fetches deployments.

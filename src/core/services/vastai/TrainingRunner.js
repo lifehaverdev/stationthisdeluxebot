@@ -102,9 +102,9 @@ class TrainingRunner {
     const effectiveTimeout = timeout || this.config.defaultTimeout;
     const logPath = logFile || `${jobRoot}/logs/training.log`;
 
-    this.logger.info(`[TrainingRunner] Starting training with config: ${configPath}`);
-    this.logger.info(`[TrainingRunner] Job root: ${jobRoot}`);
-    this.logger.info(`[TrainingRunner] Log file: ${logPath}`);
+    this.logger.debug(`[TrainingRunner] Starting training with config: ${configPath}`);
+    this.logger.debug(`[TrainingRunner] Job root: ${jobRoot}`);
+    this.logger.debug(`[TrainingRunner] Log file: ${logPath}`);
 
     // Ensure log directory exists
     await this.ssh.exec(`mkdir -p ${jobRoot}/logs`);
@@ -115,7 +115,7 @@ class TrainingRunner {
     // - Set PYTHONUNBUFFERED for real-time output
     const trainCmd = this._buildTrainCommand(configPath, logPath, extraEnv);
 
-    this.logger.info(`[TrainingRunner] Executing: ${trainCmd}`);
+    this.logger.debug(`[TrainingRunner] Executing: ${trainCmd}`);
 
     const startTime = Date.now();
     let output = '';
@@ -179,7 +179,7 @@ class TrainingRunner {
     const logPath = logFile || `${jobRoot}/logs/training.log`;
     const pidPath = pidFile || `${jobRoot}/training.pid`;
 
-    this.logger.info(`[TrainingRunner] Starting background training with config: ${configPath}`);
+    this.logger.debug(`[TrainingRunner] Starting background training with config: ${configPath}`);
 
     // Ensure directories exist
     await this.ssh.exec(`mkdir -p ${jobRoot}/logs`);
@@ -191,7 +191,7 @@ class TrainingRunner {
     // 4. Creates a status file that gets updated
     const trainCmd = this._buildBackgroundCommand(configPath, logPath, pidPath, jobRoot, extraEnv);
 
-    this.logger.info(`[TrainingRunner] Executing background command`);
+    this.logger.debug(`[TrainingRunner] Executing background command`);
 
     // SSH may not return even with nohup/disown due to inherited file descriptors.
     // Use a timeout as a safety net - if SSH doesn't return in 15s, the script
@@ -200,7 +200,7 @@ class TrainingRunner {
       await this.ssh.exec(trainCmd, { timeout: 15000 });
     } catch (err) {
       if (err.message && err.message.includes('timed out')) {
-        this.logger.info('[TrainingRunner] SSH channel held open (expected for background tasks), proceeding...');
+        this.logger.debug('[TrainingRunner] SSH channel held open (expected for background tasks), proceeding...');
       } else {
         throw err;
       }

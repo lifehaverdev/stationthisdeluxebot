@@ -19,7 +19,7 @@ class ImmediateStrategy extends ExecutionStrategy {
         const { tool, spell, stepIndex, originalContext, loraResolutionData } = executionContext;
         const { internalApiClient, eventId } = dependencies;
 
-        this.logger.info(`[ImmediateStrategy] Executing immediate tool ${tool.toolId}`);
+        this.logger.debug(`[ImmediateStrategy] Executing immediate tool ${tool.toolId}`);
 
         const executionPayload = {
             toolId: tool.toolId,
@@ -54,7 +54,7 @@ class ImmediateStrategy extends ExecutionStrategy {
 
         try {
             const executionResponse = await internalApiClient.post('/internal/v1/data/execute', executionPayload);
-            this.logger.info(`[ImmediateStrategy] Step ${stepIndex + 1} submitted via centralized execution endpoint. GenID: ${executionResponse.data.generationId}, RunID: ${executionResponse.data.runId}`);
+            this.logger.debug(`[ImmediateStrategy] Step ${stepIndex + 1} submitted via centralized execution endpoint. GenID: ${executionResponse.data.generationId}, RunID: ${executionResponse.data.runId}`);
 
             return {
                 generationId: executionResponse.data.generationId,
@@ -86,7 +86,7 @@ class ImmediateStrategy extends ExecutionStrategy {
             return; // No response to handle
         }
 
-        this.logger.info(`[ImmediateStrategy] Handling immediate tool response for step ${stepIndex + 1}`);
+        this.logger.debug(`[ImmediateStrategy] Handling immediate tool response for step ${stepIndex + 1}`);
 
         // Validate generationId exists (required for spell continuation)
         if (!executionResponse.generationId) {
@@ -100,7 +100,7 @@ class ImmediateStrategy extends ExecutionStrategy {
                 responsePayload: { result: executionResponse.response },
                 status: 'completed'
             });
-            this.logger.info(`[ImmediateStrategy] Updated generation ${executionResponse.generationId} with responsePayload`);
+            this.logger.debug(`[ImmediateStrategy] Updated generation ${executionResponse.generationId} with responsePayload`);
         } catch (err) {
             this.logger.error('[ImmediateStrategy] Failed to update generation with immediate response:', err.message);
             // Don't throw - centralized endpoint already emitted event, continuation should still work

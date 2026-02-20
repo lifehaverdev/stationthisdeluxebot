@@ -56,7 +56,7 @@ class WebhookEventQueueDb extends BaseDB {
     };
 
     const result = await this.insertOne(event, false, PRIORITY.CRITICAL);
-    this.logger.info(`[WebhookEventQueueDb] Enqueued event ${result.insertedId} of type ${eventType}`);
+    this.logger.debug(`[WebhookEventQueueDb] Enqueued event ${result.insertedId} of type ${eventType}`);
     return result;
   }
 
@@ -101,7 +101,7 @@ class WebhookEventQueueDb extends BaseDB {
     );
 
     if (result) {
-      this.logger.info(`[WebhookEventQueueDb] Worker ${workerId} claimed event ${result._id} (attempt ${result.attempts})`);
+      this.logger.debug(`[WebhookEventQueueDb] Worker ${workerId} claimed event ${result._id} (attempt ${result.attempts})`);
     }
 
     return result;
@@ -136,7 +136,7 @@ class WebhookEventQueueDb extends BaseDB {
       }
     );
 
-    this.logger.info(`[WebhookEventQueueDb] Event ${eventId} marked as completed`);
+    this.logger.debug(`[WebhookEventQueueDb] Event ${eventId} marked as completed`);
     return updateResult;
   }
 
@@ -235,7 +235,7 @@ class WebhookEventQueueDb extends BaseDB {
       }
     }
 
-    this.logger.info(`[WebhookEventQueueDb] Requeued ${requeued} stuck events`);
+    this.logger.debug(`[WebhookEventQueueDb] Requeued ${requeued} stuck events`);
     return { requeued };
   }
 
@@ -287,7 +287,7 @@ class WebhookEventQueueDb extends BaseDB {
     });
 
     if (result.deletedCount > 0) {
-      this.logger.info(`[WebhookEventQueueDb] Cleaned up ${result.deletedCount} old events`);
+      this.logger.debug(`[WebhookEventQueueDb] Cleaned up ${result.deletedCount} old events`);
     }
 
     return { deleted: result.deletedCount };

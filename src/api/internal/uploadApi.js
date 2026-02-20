@@ -36,7 +36,7 @@ function createUploadApi(dependencies) {
       // Generate signed URL for datasets bucket
       const { signedUrl, permanentUrl } = await storageService.generateSignedUploadUrl(userId, fileName, contentType, 'datasets');
       
-      logger.info(`[UploadAPI] Generated signed URL for image: ${fileName}`);
+      logger.debug(`[UploadAPI] Generated signed URL for image: ${fileName}`);
 
       res.json({
         success: true,
@@ -89,7 +89,7 @@ function createUploadApi(dependencies) {
 
       const results = await Promise.all(uploadPromises);
       
-      logger.info(`[UploadAPI] Generated ${results.length} signed URLs for batch upload`);
+      logger.debug(`[UploadAPI] Generated ${results.length} signed URLs for batch upload`);
 
       res.json({
         success: true,

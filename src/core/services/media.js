@@ -394,7 +394,7 @@ class MediaService {
       
       // If cache is enabled and a cached thumbnail exists, use it
       if (useCache && cachedThumbnailExists) {
-        this.logger.info(`Using cached video thumbnail: ${cachedThumbnailPath}`);
+        this.logger.debug(`Using cached video thumbnail: ${cachedThumbnailPath}`);
         return {
           url: `/media/cache/thumbnails/video/${cacheKey}.jpg`,
           path: cachedThumbnailPath,

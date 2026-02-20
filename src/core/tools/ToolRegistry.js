@@ -58,7 +58,7 @@ class ToolRegistry {
           // Basic validation to ensure it looks like a tool
           if (toolDefinition && toolDefinition.toolId && toolDefinition.service) {
             this.registerTool(toolDefinition);
-            console.log(`ToolRegistry: Registered static tool '${toolDefinition.displayName}' from ${file}`);
+            // registered silently — visible via GET /tools
           } else {
             console.warn(`ToolRegistry: Invalid tool definition in ${file}. Missing toolId or service.`);
           }

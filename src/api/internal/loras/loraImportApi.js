@@ -44,7 +44,7 @@ router.post('/import-from-url', async (req, res) => {
     return res.status(400).json({ error: 'Missing loraUrl or masterAccountId.' });
   }
 
-  logger.info(`[LoraImportApi] Received import request for URL: ${loraUrl} by MAID: ${masterAccountId}`);
+  logger.debug(`[LoraImportApi] Received import request for URL: ${loraUrl} by MAID: ${masterAccountId}`);
 
   let source = null;
   let extractedMetadata = null;
@@ -124,7 +124,7 @@ router.post('/import-from-url', async (req, res) => {
     // }
 
     // --- ComfyUI Deploy Interaction Placeholder ---
-    logger.info(`[LoraImportApi] TODO: Initiate ComfyUI deployment for model file: ${importDetails.modelFileUrl}`);
+    logger.debug(`[LoraImportApi] TODO: Initiate ComfyUI deployment for model file: ${importDetails.modelFileUrl}`);
     // This is where you would call your comfyui-deploy API.
     // Example (conceptual):
     // const deployPayload = {

@@ -122,7 +122,7 @@ function createDiscordBot(dependencies, token, options = {}) {
       logger
     });
     commandDispatcher.register('status', handleStatusCommand);
-    logger.info('[Discord Bot] Registered status command handler');
+    logger.debug('[Discord Bot] Registered status command handler');
 
     const handleAccountCommand = createAccountCommandHandler({
       logger,
@@ -130,24 +130,24 @@ function createDiscordBot(dependencies, token, options = {}) {
       internal: dependencies.internal
     });
     commandDispatcher.register('account', handleAccountCommand);
-    logger.info('[Discord Bot] Registered account command handler');
+    logger.debug('[Discord Bot] Registered account command handler');
 
     const handleCastCommand = createCastCommandHandler({
       ...dependencies,
       client
     });
     commandDispatcher.register('cast', handleCastCommand);
-    logger.info('[Discord Bot] Registered cast command handler');
+    logger.debug('[Discord Bot] Registered cast command handler');
     
     const handleTestMessageReferenceCommand = createTestMessageReferenceCommandHandler({
       logger
     });
     commandDispatcher.register('testmessageref', handleTestMessageReferenceCommand);
-    logger.info('[Discord Bot] Registered testmessageref command handler');
+    logger.debug('[Discord Bot] Registered testmessageref command handler');
     
     // Link command is registered via linkManager.registerHandlers above
 
-    logger.info('[Discord Bot] All feature handlers registered with dispatchers.');
+    logger.debug('[Discord Bot] All feature handlers registered with dispatchers.');
   }
 
   registerAllHandlers();
@@ -583,7 +583,7 @@ function createDiscordBot(dependencies, token, options = {}) {
               });
             
             if (!needsUpdate) {
-              logger.info(`[CHECK] ✅ All ${allCommands.length} commands are already registered and up-to-date!`);
+              logger.debug(`[CHECK] ✅ All ${allCommands.length} commands are already registered and up-to-date!`);
               logger.info(`[CHECK] Skipping registration to avoid rate limits.`);
               return; // No need to register
             }
@@ -717,13 +717,13 @@ function createDiscordBot(dependencies, token, options = {}) {
             const duration = Date.now() - startTime;
           
             logger.info(`[TIMING] Discord API call completed in ${duration}ms`);
-            logger.info(`✅ Successfully registered ${allCommands.length} application commands`);
+            logger.debug(`✅ Successfully registered ${allCommands.length} application commands`);
           logger.info(`   - ${commands.length} static commands`);
             logger.info(`   - ${filteredDynamicCommands.length} dynamic commands`);
             
           if (result && Array.isArray(result)) {
-            logger.info(`Discord API returned ${result.length} registered commands`);
-              logger.info(`Registered command names: ${result.map(c => c.name).join(', ')}`);
+            logger.debug(`Discord API returned ${result.length} registered commands`);
+              logger.debug(`Registered command names: ${result.map(c => c.name).join(', ')}`);
               
               // Check if all commands were registered
               if (result.length !== allCommands.length) {
@@ -735,7 +735,7 @@ function createDiscordBot(dependencies, token, options = {}) {
                   logger.warn(`Missing commands: ${missing.join(', ')}`);
                 }
               } else {
-                logger.info(`✅ All ${allCommands.length} commands successfully registered!`);
+                logger.debug(`✅ All ${allCommands.length} commands successfully registered!`);
               }
             } else {
               logger.warn(`⚠️ Discord API returned unexpected result type: ${typeof result}`);
@@ -1081,7 +1081,7 @@ function createDiscordBot(dependencies, token, options = {}) {
   // Login to Discord
   client.login(token);
   
-  logger.info('[Discord Bot] Discord bot configured and ready with dispatcher architecture.');
+  logger.debug('[Discord Bot] Discord bot configured and ready with dispatcher architecture.');
   
   // Return client and bot object for compatibility
   return {

@@ -32,7 +32,7 @@ function registerHandlers(dispatchers, dependencies) {
 
     callbackQueryDispatcher.register('hide_menu', handleHideMenuCallback);
 
-    logger.info('[GlobalMenuManager] Handlers registered for global callbacks.');
+    logger.debug('[GlobalMenuManager] Handlers registered for global callbacks.');
 }
 
 module.exports = {

@@ -18,7 +18,7 @@ module.exports = function userApiKeysApi(dependencies) {
     };
   }
 
-  logger.info('[userApiKeysApi] Initializing User API Keys API routes...');
+  logger.debug('[userApiKeysApi] Initializing User API Keys API routes...');
 
   // Helper function to get masterAccountId (already validated by parent router, but check anyway)
   const getMasterAccountId = (req, res) => {
@@ -331,6 +331,6 @@ module.exports = function userApiKeysApi(dependencies) {
 
   // Note: Catch-all for malformed DELETE requests under /users/:masterAccountId/apikeys/* should remain in userCoreApi.js
 
-  logger.info('[userApiKeysApi] User API Keys API routes initialized.');
+  logger.debug('[userApiKeysApi] User API Keys API routes initialized.');
   return router;
 }; 

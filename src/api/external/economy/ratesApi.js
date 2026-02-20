@@ -45,7 +45,7 @@ function createRatesApi(dependencies) {
         return { ...DEFAULT_RATES };
       }
 
-      logger.info('[ratesApi-external] Fetching real-time exchange rates from PriceFeedService');
+      logger.debug('[ratesApi-external] Fetching real-time exchange rates from PriceFeedService');
       
       // Fetch real-time prices for MS2 and CULT tokens
       const [ms2PriceUsd, cultPriceUsd] = await Promise.allSettled([
@@ -63,9 +63,9 @@ function createRatesApi(dependencies) {
       // Process MS2 price
       if (ms2PriceUsd.status === 'fulfilled' && ms2PriceUsd.value > 0) {
         rates.MS2_per_USD = 1 / ms2PriceUsd.value;
-        logger.info('[ratesApi-external] MS2 real-time price fetched', { 
-          priceUsd: ms2PriceUsd.value, 
-          ms2PerUsd: rates.MS2_per_USD 
+        logger.debug('[ratesApi-external] MS2 real-time price fetched', {
+          priceUsd: ms2PriceUsd.value,
+          ms2PerUsd: rates.MS2_per_USD
         });
       } else {
         logger.warn('[ratesApi-external] Failed to fetch MS2 price, using default', { 
@@ -76,9 +76,9 @@ function createRatesApi(dependencies) {
       // Process CULT price
       if (cultPriceUsd.status === 'fulfilled' && cultPriceUsd.value > 0) {
         rates.CULT_per_USD = 1 / cultPriceUsd.value;
-        logger.info('[ratesApi-external] CULT real-time price fetched', { 
-          priceUsd: cultPriceUsd.value, 
-          cultPerUsd: rates.CULT_per_USD 
+        logger.debug('[ratesApi-external] CULT real-time price fetched', {
+          priceUsd: cultPriceUsd.value,
+          cultPerUsd: rates.CULT_per_USD
         });
       } else {
         logger.warn('[ratesApi-external] Failed to fetch CULT price, using default', { 
@@ -86,7 +86,7 @@ function createRatesApi(dependencies) {
         });
       }
       
-      logger.info('[ratesApi-external] Final exchange rates calculated', { rates });
+      logger.debug('[ratesApi-external] Final exchange rates calculated', { rates });
       return rates;
     } catch (error) {
       logger.error('[ratesApi-external] Error fetching exchange rates, using defaults', { error: error.message });
@@ -101,7 +101,7 @@ function createRatesApi(dependencies) {
     const now = Date.now();
     
     if (now - ratesCache.lastUpdated > ratesCache.ttl) {
-      logger.info('[ratesApi-external] Cache expired, fetching fresh rates');
+      logger.debug('[ratesApi-external] Cache expired, fetching fresh rates');
       ratesCache.data = await fetchCurrentRates();
       ratesCache.lastUpdated = now;
     }
@@ -118,7 +118,7 @@ function createRatesApi(dependencies) {
     const requestId = req.headers['x-request-id'] || 'unknown';
     
     try {
-      logger.info(`[ratesApi-external] GET /rates - RequestId: ${requestId}`);
+      logger.debug(`[ratesApi-external] GET /rates - RequestId: ${requestId}`);
       
       // Get real-time rates with caching
       const rates = await getRates();
@@ -163,7 +163,7 @@ function createRatesApi(dependencies) {
   router.get('/rates', async (req, res, next) => {
     const requestId = req.headers['x-request-id'] || 'unknown';
     try {
-      logger.info(`[ratesApi-external] GET /rates (compat) - RequestId: ${requestId}`);
+      logger.debug(`[ratesApi-external] GET /rates (compat) - RequestId: ${requestId}`);
       const rates = await getRates();
       res.status(200).json({
         success: true,

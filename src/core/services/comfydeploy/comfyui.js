@@ -143,24 +143,29 @@ class ComfyUIService {
       //loggerInstance.info(`[ComfyUIService STATIC .initialize_IIFE_START]`);
       try {
         const instanceData = getInstanceDataFn(); // Get data (apiKey, etc.) from the triggering instance
-        
+        const _t0 = Date.now();
+
         // Fetch machines
         const machines = await resourceFetcher.getMachines(instanceData);
+        loggerInstance.info(`[ComfyUIService STATIC init] getMachines took ${Date.now() - _t0}ms (${machines.length} machines)`);
         ComfyUIService.S_MACHINES_CACHE = machines.reduce((acc, machine) => {
           if (machine && machine.id) {
             acc[machine.id] = machine;
-            if (!machine.gpu) { 
-              loggerInstance.warn(`[ComfyUIService STATIC Cache] Machine ID ${machine.id} ('${machine.name}') fetched from API is missing expected 'gpu' field used for costing. Full object: ${JSON.stringify(machine)}`);
+            const isServerless = machine.type === 'comfy-deploy-serverless';
+            if (!machine.gpu && !isServerless) {
+              loggerInstance.warn(`[ComfyUIService STATIC Cache] Machine ID ${machine.id} ('${machine.name}') is missing expected 'gpu' field used for costing.`);
             }
           } else {
             loggerInstance.warn(`[ComfyUIService STATIC Cache] Machine fetched from API is missing 'id'. Full object: ${JSON.stringify(machine)}`);
           }
           return acc;
         }, {});
-        loggerInstance.info(`[ComfyUIService STATIC Cache] Cached ${Object.keys(ComfyUIService.S_MACHINES_CACHE).length} machines.`);
+        loggerInstance.debug(`[ComfyUIService STATIC Cache] Cached ${Object.keys(ComfyUIService.S_MACHINES_CACHE).length} machines.`);
 
         // Fetch deployments
+        const _t1 = Date.now();
         const deployments = await resourceFetcher.getDeployments(instanceData);
+        loggerInstance.info(`[ComfyUIService STATIC init] getDeployments took ${Date.now() - _t1}ms (${deployments.length} deployments)`);
         ComfyUIService.S_DEPLOYMENTS_CACHE = deployments.reduce((acc, deployment) => {
           if (deployment.id) {
             acc[deployment.id] = deployment;
@@ -172,21 +177,21 @@ class ComfyUIService {
           }
           return acc;
         }, {});
-        loggerInstance.info(`[ComfyUIService STATIC Cache] Cached ${Object.keys(ComfyUIService.S_DEPLOYMENTS_CACHE).length} deployments.`);
+        loggerInstance.debug(`[ComfyUIService STATIC Cache] Cached ${Object.keys(ComfyUIService.S_DEPLOYMENTS_CACHE).length} deployments.`);
 
         ComfyUIService.S_IS_INITIALIZED = true;
         //loggerInstance.info(`[ComfyUIService STATIC .initialize_IIFE_SUCCESS] Set S_IS_INITIALIZED: ${ComfyUIService.S_IS_INITIALIZED}. Static Initialization complete.`);
       } catch (error) {
         loggerInstance.error(`[ComfyUIService STATIC .initialize_IIFE_ERROR] Failed to initialize statically: `, error.message);
         ComfyUIService.S_IS_INITIALIZED = false; // Explicitly set to false on error
-        loggerInstance.info(`[ComfyUIService STATIC .initialize_IIFE_ERROR_STATUS] Set S_IS_INITIALIZED: ${ComfyUIService.S_IS_INITIALIZED} due to error.`);
+        loggerInstance.debug(`[ComfyUIService STATIC .initialize_IIFE_ERROR_STATUS] Set S_IS_INITIALIZED: ${ComfyUIService.S_IS_INITIALIZED} due to error.`);
       } finally {
         ComfyUIService.S_INITIALIZATION_IN_PROGRESS = false;
-        loggerInstance.info(`[ComfyUIService STATIC .initialize_IIFE_FINALLY] Set S_INITIALIZATION_IN_PROGRESS: ${ComfyUIService.S_INITIALIZATION_IN_PROGRESS}. Active static promise exists: ${!!ComfyUIService.S_ACTIVE_INITIALIZE_PROMISE}`);
+        loggerInstance.debug(`[ComfyUIService STATIC .initialize_IIFE_FINALLY] Initialization complete. S_INITIALIZATION_IN_PROGRESS: ${ComfyUIService.S_INITIALIZATION_IN_PROGRESS}`);
       }
     })();
     
-    loggerInstance.info(`[ComfyUIService STATIC .initialize_EXIT] Returning S_ACTIVE_INITIALIZE_PROMISE (exists: ${!!ComfyUIService.S_ACTIVE_INITIALIZE_PROMISE})`);
+    loggerInstance.debug(`[ComfyUIService STATIC .initialize_EXIT] Returning S_ACTIVE_INITIALIZE_PROMISE (exists: ${!!ComfyUIService.S_ACTIVE_INITIALIZE_PROMISE})`);
     return ComfyUIService.S_ACTIVE_INITIALIZE_PROMISE;
   }
 
@@ -218,7 +223,7 @@ class ComfyUIService {
       return "error: service static caches not initialized";
     }
 
-    this.logger.info(`[ComfyUIService INSTANCE ${this.instanceId} .getCostRateForDeployment] Getting cost rate for deployment ID: ${deploymentId}`);
+    this.logger.debug(`[ComfyUIService INSTANCE ${this.instanceId} .getCostRateForDeployment] Getting cost rate for deployment ID: ${deploymentId}`);
 
     try {
       // 1. Find the deployment object in the static cache
@@ -260,7 +265,7 @@ class ComfyUIService {
         return `error: cost rate unknown for GPU ${gpuIdentifier}`;
       }
 
-      this.logger.info(`[ComfyUIService INSTANCE ${this.instanceId} .getCostRateForDeployment] Determined cost rate for deployment ${deploymentId} (Machine: ${machine.name}, GPU: ${gpuIdentifier}): ${JSON.stringify(costRate)}`);
+      this.logger.debug(`[ComfyUIService INSTANCE ${this.instanceId} .getCostRateForDeployment] Determined cost rate for deployment ${deploymentId} (Machine: ${machine.name}, GPU: ${gpuIdentifier}): ${JSON.stringify(costRate)}`);
       return costRate; // Return the rate object { amount, currency, unit }
 
     } catch (error) {
@@ -291,16 +296,14 @@ class ComfyUIService {
     };
 
     let finalWebhookUrl = this.webhookUrl;
-    this.logger.info(`[ComfyUIService] Initial this.webhookUrl: "${this.webhookUrl}"`);
+    this.logger.debug(`[ComfyUIService] Initial this.webhookUrl: "${this.webhookUrl}"`);
 
     if (finalWebhookUrl && typeof finalWebhookUrl === 'string') {
       // Trim leading/trailing whitespace as a defensive measure
       finalWebhookUrl = finalWebhookUrl.trim();
-      this.logger.info(`[ComfyUIService] After trim: "${finalWebhookUrl}"`);
 
       // Normalize: remove trailing slash if present
       const baseWebhookUrl = finalWebhookUrl.endsWith('/') ? finalWebhookUrl.slice(0, -1) : finalWebhookUrl;
-      this.logger.info(`[ComfyUIService] baseWebhookUrl (no trailing slash): "${baseWebhookUrl}"`);
 
       // Ensure it ends with the correct, new path
       const correctPath = '/api/v1/webhook/comfydeploy';
@@ -316,28 +319,19 @@ class ComfyUIService {
           }
         }
         finalWebhookUrl = urlToAppendTo + correctPath;
-        this.logger.info(`[ComfyUIService] Appended ${correctPath}: "${finalWebhookUrl}"`);
-      } else {
-        this.logger.info(`[ComfyUIService] Webhook URL already ends with ${correctPath}. No change: "${finalWebhookUrl}"`);
       }
 
-      this.logger.info(`[ComfyUIService] Before http check, finalWebhookUrl: "${finalWebhookUrl}"`);
       const startsWithHttp = finalWebhookUrl.startsWith('http://');
       const startsWithHttps = finalWebhookUrl.startsWith('https://');
-      this.logger.info(`[ComfyUIService] Current finalWebhookUrl startsWithHttp: ${startsWithHttp}, startsWithHttps: ${startsWithHttps}`);
 
       if (!startsWithHttp && !startsWithHttps) {
-        this.logger.info(`[ComfyUIService] Prepending https:// to "${finalWebhookUrl}"`);
         finalWebhookUrl = `https://${finalWebhookUrl}`;
-        this.logger.info(`[ComfyUIService] After prepending https://: "${finalWebhookUrl}"`);
-      } else {
-        this.logger.info(`[ComfyUIService] Scheme (http/https) already present, not prepending.`);
       }
     } else {
       this.logger.warn(`[ComfyUIService] this.webhookUrl is not a valid string or is empty: "${this.webhookUrl}"`);
     }
-    
-    this.logger.info(`[ComfyUIService] FINAL finalWebhookUrl for runManagerOptions: "${finalWebhookUrl}"`);
+
+    this.logger.debug(`[ComfyUIService] Final webhook URL: "${finalWebhookUrl}"`);
 
     const runManagerOptions = {
       ...options, // Spread the original options (deploymentId, inputs, workflowName)
@@ -611,7 +605,7 @@ class ComfyUIService {
         if (attempt < this.maxRetries) {
           // Exponential backoff with jitter
           const delay = this.retryDelay * Math.pow(2, attempt - 1) * (0.5 + Math.random() * 0.5);
-          console.warn(`Request to ${url} failed, retrying in ${Math.round(delay)}ms (attempt ${attempt}/${this.maxRetries})`);
+          this.logger.debug(`Request to ${url} failed, retrying in ${Math.round(delay)}ms (attempt ${attempt}/${this.maxRetries})`);
           await new Promise(resolve => setTimeout(resolve, delay));
         }
       }

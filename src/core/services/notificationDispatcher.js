@@ -24,7 +24,7 @@ class NotificationDispatcher {
     this.isListening = false;
     this.boundProcessRecord = this._processRecord.bind(this); // Bind once for adding/removing listener
 
-    this.logger.info(`[NotificationDispatcher] Initialized. Ready to listen for events.`);
+    this.logger.debug(`[NotificationDispatcher] Initialized. Ready to listen for events.`);
   }
 
   start() {
@@ -120,7 +120,7 @@ class NotificationDispatcher {
 
   async _handleSpellStep(record) {
     const recordId = record._id;
-    this.logger.info(`[NotificationDispatcher] Handling completed spell step for generationId: ${recordId}`);
+    this.logger.debug(`[NotificationDispatcher] Handling completed spell step for generationId: ${recordId}`);
 
     // CRITICAL: Idempotency check - skip if already processed
     if (record.deliveryStatus === 'sent' || record.deliveryStatus === 'failed' || record.deliveryStatus === 'processing') {
@@ -199,7 +199,7 @@ class NotificationDispatcher {
 
               // Send websocket update for this completed step
               await webSandboxNotifier.sendNotification(notificationContext, '', fullRecord);
-              this.logger.info(`[NotificationDispatcher] Sent websocket update for spell step GenID ${recordId} to web-sandbox.`);
+              this.logger.debug(`[NotificationDispatcher] Sent websocket update for spell step GenID ${recordId} to web-sandbox.`);
             } catch (wsErr) {
               // Log but don't fail - continuation should still proceed
               this.logger.warn(`[NotificationDispatcher] Failed to send websocket update for spell step GenID ${recordId}: ${wsErr.message}`);
@@ -250,7 +250,7 @@ class NotificationDispatcher {
 
   async _dispatchNotification(record) {
     const recordId = record._id;
-    this.logger.info(`[NotificationDispatcher] Attempting to dispatch notification for generationId: ${recordId}, platform: ${record.notificationPlatform}`);
+    this.logger.debug(`[NotificationDispatcher] Attempting to dispatch notification for generationId: ${recordId}, platform: ${record.notificationPlatform}`);
 
     const notifier = this.platformNotifiers[record.notificationPlatform];
     if (!notifier || typeof notifier.sendNotification !== 'function') {

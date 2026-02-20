@@ -13,7 +13,7 @@ module.exports = function userEventsApi(dependencies) {
     };
   }
 
-  logger.info('[userEventsApi] Initializing User Events API routes...');
+  logger.debug('[userEventsApi] Initializing User Events API routes...');
 
   // Middleware for validating ObjectId in path parameters
   const validateObjectId = (paramName) => (req, res, next) => {
@@ -35,7 +35,7 @@ module.exports = function userEventsApi(dependencies) {
 
   // POST /events - Log a new event
   router.post('/', async (req, res, next) => {
-    logger.info('[userEventsApi] POST /events - Received request', { body: req.body });
+    logger.debug('[userEventsApi] POST /events - Received request', { body: req.body });
 
     const { masterAccountId, sessionId, eventType, eventData, sourcePlatform, timestamp } = req.body;
 
@@ -78,7 +78,7 @@ module.exports = function userEventsApi(dependencies) {
         return res.status(500).json({ error: { code: 'DATABASE_ERROR', message: 'Failed to log event due to a database service error.' } });
       }
 
-      logger.info(`[userEventsApi] POST /events: Event logged successfully. EventId: ${newEvent._id}`);
+      logger.debug(`[userEventsApi] POST /events: Event logged successfully. EventId: ${newEvent._id}`);
       res.status(201).json(newEvent); // ADR: Response: UserEventObject
 
     } catch (error) {
@@ -90,7 +90,7 @@ module.exports = function userEventsApi(dependencies) {
   // GET /events/{eventId} - Retrieve a specific event
   router.get('/:eventId', validateObjectId('eventId'), async (req, res, next) => {
     const { eventId } = req.locals;
-    logger.info(`[userEventsApi] GET /events/${eventId} - Received request`);
+    logger.debug(`[userEventsApi] GET /events/${eventId} - Received request`);
 
     try {
       const event = await db.userEvents.findEventById(eventId);
@@ -102,7 +102,7 @@ module.exports = function userEventsApi(dependencies) {
         });
       }
 
-      logger.info(`[userEventsApi] GET /events/${eventId}: Event found.`);
+      logger.debug(`[userEventsApi] GET /events/${eventId}: Event found.`);
       res.status(200).json(event);
 
     } catch (error) {
@@ -141,6 +141,6 @@ module.exports = function userEventsApi(dependencies) {
   // --- ROUTE MOVED --- 
   /* router.get(...) */
 
-  logger.info('[userEventsApi] User Events API routes initialized (pending route moves).');
+  logger.debug('[userEventsApi] User Events API routes initialized (pending route moves).');
   return router;
 }; 

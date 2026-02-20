@@ -41,7 +41,7 @@ class EventWebhookProcessor {
    * @returns {Promise<{success: boolean, message: string, detail: object|null}>}
    */
   async processWebhook(webhookPayload) {
-    this.logger.info('[EventWebhookProcessor] Processing incoming Alchemy webhook...');
+    this.logger.debug('[EventWebhookProcessor] Processing incoming Alchemy webhook...');
 
     // Handle cases where the relevant data might be nested inside a 'payload' property
     const eventPayload = webhookPayload.payload || webhookPayload;
@@ -52,7 +52,7 @@ class EventWebhookProcessor {
     }
 
     const logs = eventPayload.event.data.block.logs;
-    this.logger.info(`[EventWebhookProcessor] Webhook contains ${logs.length} event logs to process.`);
+    this.logger.debug(`[EventWebhookProcessor] Webhook contains ${logs.length} event logs to process.`);
 
     // Get event fragments for all events we're interested in
     const depositEventFragment = this.ethereumService.getEventFragment('ContributionRecorded', this.contractConfig.abi);
@@ -85,7 +85,7 @@ class EventWebhookProcessor {
 
       // Check for duplicates
       if (this.eventDeduplicationService && this.eventDeduplicationService.isDuplicate(normalizedTxHash)) {
-        this.logger.info(`[EventWebhookProcessor] Skipping duplicate webhook event for tx ${normalizedTxHash} (recently processed)`);
+        this.logger.debug(`[EventWebhookProcessor] Skipping duplicate webhook event for tx ${normalizedTxHash} (recently processed)`);
         continue;
       }
 
@@ -119,7 +119,7 @@ class EventWebhookProcessor {
 
     // If any deposits were processed, trigger the processing pipeline
     if (processedDeposits > 0) {
-      this.logger.info(`[EventWebhookProcessor] Triggering processing of pending deposits...`);
+      this.logger.debug(`[EventWebhookProcessor] Triggering processing of pending deposits...`);
       await this.processPendingConfirmations();
     }
 
@@ -145,11 +145,11 @@ class EventWebhookProcessor {
     const pendingDeposits = pendingDepositsAll.filter(d => d.deposit_type !== 'TOKEN_DONATION');
 
     if (pendingDeposits.length === 0) {
-      this.logger.info('[EventWebhookProcessor] No pending deposits found after webhook processing.');
+      this.logger.debug('[EventWebhookProcessor] No pending deposits found after webhook processing.');
       return { processed: 0, failed: 0, skipped: 0 };
     }
 
-    this.logger.info(`[EventWebhookProcessor] Found ${pendingDeposits.length} pending deposits to confirm.`);
+    this.logger.debug(`[EventWebhookProcessor] Found ${pendingDeposits.length} pending deposits to confirm.`);
 
     // Group deposits by user and token
     const groupedDeposits = new Map();
@@ -178,7 +178,7 @@ class EventWebhookProcessor {
       }
 
       try {
-        this.logger.info(`[EventWebhookProcessor] Processing deposit group: ${groupKey} (${deposits.length} deposits, attempt ${attempts + 1})`);
+        this.logger.debug(`[EventWebhookProcessor] Processing deposit group: ${groupKey} (${deposits.length} deposits, attempt ${attempts + 1})`);
         await this.depositConfirmationService.confirmDepositGroup(deposits);
         processed += deposits.length;
         // Clear retry counter on success
@@ -221,7 +221,7 @@ class EventWebhookProcessor {
    * @returns {Promise<{reconciled: number, stillStuck: number}>}
    */
   async reconcileStuckDeposits() {
-    this.logger.info('[EventWebhookProcessor] Starting reconciliation of stuck deposits...');
+    this.logger.debug('[EventWebhookProcessor] Starting reconciliation of stuck deposits...');
     const creditLedgerDb = this.depositConfirmationService.creditLedgerDb;
 
     const pendingDepositsAll = await creditLedgerDb.findProcessableEntries();
@@ -235,7 +235,7 @@ class EventWebhookProcessor {
     });
 
     if (stuckDeposits.length === 0) {
-      this.logger.info('[EventWebhookProcessor] No stuck deposits found during reconciliation.');
+      this.logger.debug('[EventWebhookProcessor] No stuck deposits found during reconciliation.');
       return { reconciled: 0, stillStuck: 0 };
     }
 
@@ -244,7 +244,7 @@ class EventWebhookProcessor {
     // Log details of stuck deposits for debugging
     for (const deposit of stuckDeposits) {
       const age = Math.round((now - new Date(deposit.createdAt).getTime()) / 1000);
-      this.logger.info(`[EventWebhookProcessor] Stuck deposit: ${deposit.deposit_tx_hash} (${deposit.token_address}), age: ${age}s, status: ${deposit.status}`);
+      this.logger.debug(`[EventWebhookProcessor] Stuck deposit: ${deposit.deposit_tx_hash} (${deposit.token_address}), age: ${age}s, status: ${deposit.status}`);
     }
 
     // Reset retry counters for stuck deposits (they've been stuck long enough to warrant a fresh try)
@@ -268,7 +268,7 @@ class EventWebhookProcessor {
 
     for (const [groupKey, deposits] of groupedDeposits.entries()) {
       try {
-        this.logger.info(`[EventWebhookProcessor] Reconciling stuck group: ${groupKey} (${deposits.length} deposits)`);
+        this.logger.debug(`[EventWebhookProcessor] Reconciling stuck group: ${groupKey} (${deposits.length} deposits)`);
         await this.depositConfirmationService.confirmDepositGroup(deposits);
         reconciled += deposits.length;
       } catch (error) {

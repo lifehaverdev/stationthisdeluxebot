@@ -394,7 +394,7 @@ function registerHandlers(dispatcherInstances, dependencies) {
     // Register select menu handlers
     selectMenuInteractionDispatcher.register('tool_select', handleToolsSelectMenuInteraction);
     
-    logger.info('[ToolsMenuManager] All handlers registered.');
+    logger.debug('[ToolsMenuManager] All handlers registered.');
 }
 
 module.exports = {

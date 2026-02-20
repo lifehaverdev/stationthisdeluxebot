@@ -8,6 +8,22 @@ const winston = require('winston');
 const config = require('../config');
 const util = require('util'); // Import the 'util' module
 
+const registry = new Map(); // module → logger instance
+
+function getRegistry() {
+  return registry;
+}
+
+function setLevel(module, level) {
+  if (module === '*') {
+    for (const logger of registry.values()) logger.level = level;
+  } else {
+    const logger = registry.get(module);
+    if (logger) logger.level = level;
+    else throw new Error(`Unknown module: ${module}`);
+  }
+}
+
 /**
  * Create a configured logger instance for a specific module
  * @param {string} module - Module name for the logger
@@ -107,9 +123,12 @@ function createLogger(module) {
     );
   }
   
+  registry.set(module, logger);
   return logger;
 }
 
 module.exports = {
-  createLogger
+  createLogger,
+  getRegistry,
+  setLevel,
 }; 

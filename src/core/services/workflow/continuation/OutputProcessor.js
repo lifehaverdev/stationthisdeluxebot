@@ -83,7 +83,7 @@ class OutputProcessor {
             if (!outputMappings || !outputMappings.images) {
                 const imageUrl = stepOutput.images[0].url;
                 next_inputs.input_image = imageUrl;
-                this.logger.info(`[OutputProcessor] Mapped "images" output to "input_image" via default convention with URL: ${imageUrl}`);
+                this.logger.debug(`[OutputProcessor] Mapped "images" output to "input_image" via default convention with URL: ${imageUrl}`);
             }
         }
 
@@ -100,12 +100,12 @@ class OutputProcessor {
             if (outputMappings && outputMappings[outputKey]) {
                 const inputKey = outputMappings[outputKey];
                 next_inputs[inputKey] = stepOutput[outputKey];
-                this.logger.info(`[OutputProcessor] Mapped output "${outputKey}" to input "${inputKey}".`);
+                this.logger.debug(`[OutputProcessor] Mapped output "${outputKey}" to input "${inputKey}".`);
             // 2. Fallback to the prefix convention if no explicit mapping exists
             } else if (outputKey.startsWith('output_')) {
                 const inputKey = 'input_' + outputKey.substring('output_'.length);
                 next_inputs[inputKey] = stepOutput[outputKey];
-                this.logger.info(`[OutputProcessor] Mapped output "${outputKey}" to input "${inputKey}" via default convention.`);
+                this.logger.debug(`[OutputProcessor] Mapped output "${outputKey}" to input "${inputKey}" via default convention.`);
             } else {
                 // 3. Carry over any other fields that don't match
                 // Avoid overwriting a more specific mapping (like input_image) with a broader one (like the images array)

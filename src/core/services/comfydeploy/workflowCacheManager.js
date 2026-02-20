@@ -211,11 +211,23 @@ class WorkflowCacheManager {
           self.logger.debug(`[WorkflowCacheManager:_makeApiRequest] ${options.method || 'GET'} ${url}`);
         }
 
-        return fetch(url, {
-          ...options,
-          headers,
-          timeout: self.timeout
-        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s per request
+        try {
+          const res = await fetch(url, {
+            ...options,
+            headers,
+            signal: controller.signal
+          });
+          clearTimeout(timeoutId);
+          return res;
+        } catch (err) {
+          clearTimeout(timeoutId);
+          if (err.name === 'AbortError') {
+            self.logger.warn(`[WorkflowCacheManager:_makeApiRequest] Request timed out after 15s: ${url}`);
+          }
+          throw err;
+        }
       }
     };
   }
@@ -272,31 +284,35 @@ class WorkflowCacheManager {
   async _fetchAndProcessDeployments() {
     // Renamed from original in WorkflowsService, only fetches now
     try {
-      if (DEBUG_LOGGING_ENABLED) this.logger.info('[WorkflowCacheManager] Fetching deployments from ComfyUI Deploy API...');
-      
       const url = `${this.apiUrl}${API_ENDPOINTS.DEPLOYMENTS}`;
-      if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager] Using API URL for deployments: ${url}`);
-      
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Accept': 'application/json'
-        },
-        timeout: this.timeout // Use timeout stored in constructor
-      });
-      
+      const _t = Date.now();
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+      let response;
+      try {
+        response = await fetch(url, {
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Accept': 'application/json'
+          },
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`[WorkflowCacheManager] Failed to fetch deployments (${response.status}): ${errorText}`);
       }
-      
+
       const deployments = await response.json();
-      if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager] Fetched ${deployments.length} deployments successfully`);
-      
+
       // Store raw deployments in the cache managed by this instance
       this.cache.deployments = deployments;
       this.cache.lastUpdated = Date.now(); // Update timestamp after successful fetch
-      
+
       // Return the raw deployments
       return deployments;
     } catch (error) {
@@ -313,26 +329,30 @@ class WorkflowCacheManager {
    */
   async _fetchMachines() {
     try {
-      if (DEBUG_LOGGING_ENABLED) this.logger.info('[WorkflowCacheManager] Fetching machines from ComfyUI Deploy API...');
-      
       const url = `${this.apiUrl}${API_ENDPOINTS.MACHINES}`;
-      if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager] Using API URL for machines: ${url}`);
-      
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Accept': 'application/json'
-        },
-         timeout: this.timeout // Use timeout stored in constructor
-      });
-      
+      const _t = Date.now();
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+      let response;
+      try {
+        response = await fetch(url, {
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Accept': 'application/json'
+          },
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`[WorkflowCacheManager] Failed to fetch machines (${response.status}): ${errorText}`);
       }
-      
+
       const rawMachines = await response.json();
-      if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager] Fetched ${rawMachines.length} raw machines successfully`);
       
       // Process machines to add cost information
       const processedMachines = rawMachines.map(machine => {
@@ -381,25 +401,33 @@ class WorkflowCacheManager {
    * @private
    */
   async _fetchWorkflows() {
-    if (DEBUG_LOGGING_ENABLED) this.logger.info('[WorkflowCacheManager] Fetching workflows list...');
-    
+    this.logger.debug('[WorkflowCacheManager] Fetching workflows list...');
+    const _tFetch = Date.now();
+
     let workflowsList = [];
     try {
-        const response = await fetch(`${this.apiUrl}${API_ENDPOINTS.WORKFLOWS}`, {
-          headers: {
-            'Authorization': `Bearer ${this.apiKey}`,
-            'Accept': 'application/json'
-          },
-          timeout: this.timeout
-        });
-        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+        let response;
+        try {
+          response = await fetch(`${this.apiUrl}${API_ENDPOINTS.WORKFLOWS}`, {
+            headers: {
+              'Authorization': `Bearer ${this.apiKey}`,
+              'Accept': 'application/json'
+            },
+            signal: controller.signal
+          });
+        } finally {
+          clearTimeout(timeoutId);
+        }
+
         if (!response.ok) {
           const errorText = await response.text();
           throw new Error(`[WorkflowCacheManager] Failed to fetch workflows list: ${response.status} - ${errorText}`);
         }
-        
+
         workflowsList = await response.json();
-        if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager] Fetched ${workflowsList.length} workflow summaries.`);
+        this.logger.debug(`[WorkflowCacheManager] Fetched ${workflowsList.length} workflow summaries in ${Date.now() - _tFetch}ms`);
 
     } catch (error) {
       this.logger.error(`[WorkflowCacheManager] Error fetching workflow list: ${error.message}`);
@@ -464,22 +492,18 @@ class WorkflowCacheManager {
       });
 
       const skippedCount = originalCount - filteredWorkflowsList.length;
-      if (skippedCount > 0) {
-        this.logger.info(`[WorkflowCacheManager] Filtered out ${skippedCount} workflows without active deployments (${filteredWorkflowsList.length} remaining)`);
-      }
+      this.logger.debug(`[WorkflowCacheManager] Filter: ${originalCount} total → ${filteredWorkflowsList.length} active (${skippedCount} skipped)`);
 
       // Process workflows in parallel batches to speed up initialization
       // WORKFLOW_FETCH_BATCH_SIZE controls concurrency to avoid overwhelming the API
-      this.logger.info(`[WorkflowCacheManager] Processing ${filteredWorkflowsList.length} active workflows in batches of ${WORKFLOW_FETCH_BATCH_SIZE}...`);
+      const _tBatchStart = Date.now();
+      this.logger.debug(`[WorkflowCacheManager] Processing ${filteredWorkflowsList.length} active workflows in batches of ${WORKFLOW_FETCH_BATCH_SIZE}...`);
 
       for (let i = 0; i < filteredWorkflowsList.length; i += WORKFLOW_FETCH_BATCH_SIZE) {
         const batch = filteredWorkflowsList.slice(i, i + WORKFLOW_FETCH_BATCH_SIZE);
         const batchNumber = Math.floor(i / WORKFLOW_FETCH_BATCH_SIZE) + 1;
         const totalBatches = Math.ceil(filteredWorkflowsList.length / WORKFLOW_FETCH_BATCH_SIZE);
-
-        if (DEBUG_LOGGING_ENABLED) {
-          this.logger.info(`[WorkflowCacheManager] Processing batch ${batchNumber}/${totalBatches} (${batch.length} workflows)`);
-        }
+        const _tBatch = Date.now();
 
         // Process batch in parallel
         const batchResults = await Promise.all(
@@ -492,6 +516,7 @@ class WorkflowCacheManager {
         );
 
         // Collect successful results
+        this.logger.debug(`[WorkflowCacheManager] Batch ${batchNumber}/${totalBatches} took ${Date.now() - _tBatch}ms`);
         for (const result of batchResults) {
           if (result) {
             processedWorkflows.push(result);
@@ -499,7 +524,7 @@ class WorkflowCacheManager {
         }
       }
 
-      this.logger.info(`[WorkflowCacheManager] Finished processing workflows. ${processedWorkflows.length}/${filteredWorkflowsList.length} active workflows succeeded (${skippedCount} inactive skipped).`);
+      this.logger.debug(`[WorkflowCacheManager] Finished processing workflows in ${Date.now() - _tBatchStart}ms total. ${processedWorkflows.length}/${filteredWorkflowsList.length} succeeded.`);
     }
     
     if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager] Processed ${processedWorkflows.length} workflows.`);
@@ -657,22 +682,26 @@ class WorkflowCacheManager {
 
     try {
       // 1. Try resourceFetcher.getWorkflowDetails
-      if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_getWorkflowJsonStructure] Attempting getWorkflowDetails for ID: ${workflowId}`);
+      const _tDetails = Date.now();
       try {
           workflowDetails = await resourceFetcher.getWorkflowDetails(instanceData, workflowId);
           if (workflowDetails && workflowDetails.workflow_json && workflowDetails.workflow_json.nodes) {
-              if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_getWorkflowJsonStructure] Found workflow_json in getWorkflowDetails response for ${workflowId}.`);
               workflowJson = workflowDetails.workflow_json;
+              this.logger.debug(`[WorkflowCacheManager] getWorkflowDetails OK for ${workflowId} in ${Date.now() - _tDetails}ms`);
+          } else {
+              this.logger.debug(`[WorkflowCacheManager] getWorkflowDetails returned no nodes for ${workflowId} in ${Date.now() - _tDetails}ms`);
           }
       } catch (detailsError) {
-           this.logger.warn(`[WorkflowCacheManager:_getWorkflowJsonStructure] Error during getWorkflowDetails for ID ${workflowId}: ${detailsError.message}`);
+           this.logger.warn(`[WorkflowCacheManager] getWorkflowDetails error for ${workflowId} in ${Date.now() - _tDetails}ms: ${detailsError.message}`);
       }
 
       // 2. If no JSON yet, try resourceFetcher.getWorkflowContent
       if (!workflowJson || !workflowJson.nodes) {
-          if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_getWorkflowJsonStructure] No workflow_json yet, attempting getWorkflowContent for ID: ${workflowId}`);
+          this.logger.debug(`[WorkflowCacheManager] getWorkflowDetails missed for ${workflowId}, falling through to getWorkflowContent`);
+          const _tContent = Date.now();
           try {
                const workflowContent = await resourceFetcher.getWorkflowContent(instanceData, workflowId);
+               this.logger.debug(`[WorkflowCacheManager] getWorkflowContent for ${workflowId} took ${Date.now() - _tContent}ms, found: ${!!(workflowContent && workflowContent.nodes)}`);
                if (workflowContent && workflowContent.nodes) {
                   if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_getWorkflowJsonStructure] Found workflow_json via getWorkflowContent for ${workflowId}.`);
                   workflowJson = workflowContent;
@@ -879,18 +908,23 @@ class WorkflowCacheManager {
     this._clearCache();
 
     this.isLoading = true;
-    if (DEBUG_LOGGING_ENABLED) this.logger.info('[WorkflowCacheManager] Initializing cache: Loading data from ComfyUI Deploy...');
+    const _tTotal = Date.now();
 
     try {
       // Perform fetch operations (now methods of this class)
-      await this._fetchAndProcessDeployments(); 
-      await this._fetchMachines(); 
-      
-      // geniusoverhaul: Moved _buildIndexes to be called after deployments are fetched and before workflows are processed,
-      // as workflow processing might rely on the byDeploymentId index (e.g., for costing).
-      this._buildIndexes(); 
-      
+      const _tInit = Date.now();
+      await this._fetchAndProcessDeployments();
+      this.logger.debug(`[WorkflowCacheManager] deployments fetched in ${Date.now() - _tInit}ms`);
+
+      const _tMachines = Date.now();
+      await this._fetchMachines();
+      this.logger.debug(`[WorkflowCacheManager] machines fetched in ${Date.now() - _tMachines}ms`);
+
+      this._buildIndexes();
+
+      const _tWorkflows = Date.now();
       await this._fetchWorkflows(); // Fetches list and processes details for ToolDefinitions
+      this.logger.debug(`[WorkflowCacheManager] workflows fetched in ${Date.now() - _tWorkflows}ms`);
       
       // Re-run _buildIndexes if ToolDefinitions in this.cache.workflows were modified in _fetchWorkflows
       // and indexing byName or other properties of ToolDefinitions is needed.
@@ -907,18 +941,13 @@ class WorkflowCacheManager {
       this._hasInitializedOnce = true; 
       this.cache.lastUpdated = Date.now(); // Ensure timestamp is set after full successful init
 
-      this.logger.info(`[WorkflowCacheManager] Cache initialized successfully. Found ${this.cache.workflows.length} tools (ToolDefinitions), ${this.cache.deployments.length} deployments, ${this.cache.machines.length} machines.`);
-      // Summary Log Added:
-      this.logger.info(`[WorkflowCacheManager-SUMMARY] Initialization complete. Tools registered: ${this.toolRegistry.getAllTools().filter(t => t.service === 'comfyui').length} (ComfyUI). Total tools in registry: ${this.toolRegistry.getAllTools().length}. Deployments: ${this.cache.deployments.length}. Machines: ${this.cache.machines.length}.`);
+      this.logger.info(`[WorkflowCacheManager] Cache initialized in ${Date.now() - _tTotal}ms. ${this.cache.workflows.length} tools, ${this.cache.deployments.length} deployments, ${this.cache.machines.length} machines.`);
 
       return this.cache.workflows; // Return the populated cache data
     } catch (error) {
-      this.logger.error(`[WorkflowCacheManager] Error during cache initialization: ${error.message}`);
+      this.logger.error(`[WorkflowCacheManager] Cache initialization failed after ${Date.now() - _tTotal}ms: ${error.message}`);
       // Reset state flags on error to allow retry
-      this.isInitialized = false; 
-      // Do not clear _hasInitializedOnce, we might want to know if it ever succeeded.
-      // Optionally clear cache on error? Depends on desired behavior.
-      // this._clearCache(); 
+      this.isInitialized = false;
       throw error; // Re-throw error to signal failure
     } finally {
       this.isLoading = false; // Ensure loading flag is reset regardless of outcome

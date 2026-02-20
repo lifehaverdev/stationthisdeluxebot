@@ -35,7 +35,7 @@ function createSkillRouter(dependencies) {
       res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
       res.setHeader('Cache-Control', 'public, max-age=3600');
       res.send(content);
-      logger.info('[SkillRouter] Served ai-skill.md');
+      logger.debug('[SkillRouter] Served ai-skill.md');
     } catch (error) {
       logger.error('[SkillRouter] Error serving skill:', error);
       res.status(404).send('Skill file not found');
@@ -94,7 +94,7 @@ function createSkillRouter(dependencies) {
       res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
       res.setHeader('Cache-Control', 'public, max-age=3600');
       res.send(content);
-      logger.info('[SkillRouter] Served openai-skill.md (alias)');
+      logger.debug('[SkillRouter] Served openai-skill.md (alias)');
     } catch (error) {
       res.status(404).send('Skill file not found');
     }
@@ -129,7 +129,7 @@ function createSkillRouter(dependencies) {
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Cache-Control', 'public, max-age=3600');
     res.json(plugin);
-    logger.info('[SkillRouter] Served ai-plugin.json');
+    logger.debug('[SkillRouter] Served ai-plugin.json');
   });
 
   /**
@@ -142,7 +142,7 @@ function createSkillRouter(dependencies) {
       res.setHeader('Content-Type', 'application/json');
       res.setHeader('Cache-Control', 'public, max-age=300');
       res.json(spec);
-      logger.info('[SkillRouter] Served openapi.json');
+      logger.debug('[SkillRouter] Served openapi.json');
     } catch (error) {
       logger.error('[SkillRouter] Error generating OpenAPI spec:', error);
       res.status(500).json({ error: 'Failed to generate OpenAPI spec' });

@@ -45,7 +45,7 @@ class CreditWorker {
       lastProcessedAt: null
     };
 
-    this.logger.info(`[CreditWorker] Initialized with worker ID: ${this.workerId}`);
+    this.logger.debug(`[CreditWorker] Initialized with worker ID: ${this.workerId}`);
   }
 
   /**

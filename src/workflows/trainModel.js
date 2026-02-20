@@ -44,7 +44,7 @@ async function trainModelWorkflow(deps, params) {
     options = {}
   } = params;
 
-  logger.info(`Starting trainModel workflow for user ${userId}`);
+  logger.debug(`Starting trainModel workflow for user ${userId}`);
 
   try {
     // Step 1: Check if we're creating a new LoRA or modifying an existing one
@@ -64,7 +64,7 @@ async function trainModelWorkflow(deps, params) {
         };
       }
       
-      logger.info(`Found existing LoRA: ${loraData.name} (ID: ${loraId})`);
+      logger.debug(`Found existing LoRA: ${loraData.name} (ID: ${loraId})`);
     } else if (name) {
       // Create a new LoRA
       const newLoraId = generateLoraId();
@@ -87,7 +87,7 @@ async function trainModelWorkflow(deps, params) {
       userSession.loras.push(loraData);
       await sessionService.updateSession(userId, userSession);
       
-      logger.info(`Created new LoRA: ${name} (ID: ${newLoraId})`);
+      logger.debug(`Created new LoRA: ${name} (ID: ${newLoraId})`);
       
       return {
         success: true,
@@ -233,7 +233,7 @@ async function trainModelWorkflow(deps, params) {
 
       try {
         // Start training process
-        logger.info(`Starting LoRA training for user ${userId}, LoRA ${lora.name}`);
+        logger.debug(`Starting LoRA training for user ${userId}, LoRA ${lora.name}`);
         const runId = await comfyuiService.submitRequest({
           workflowId: trainingWorkflow.deploymentIds[0],
           inputs: trainingParams
@@ -247,7 +247,7 @@ async function trainModelWorkflow(deps, params) {
         
         await sessionService.updateSession(userId, userSession);
         
-        logger.info(`Training started for LoRA ${lora.name}, run ID: ${runId}`);
+        logger.debug(`Training started for LoRA ${lora.name}, run ID: ${runId}`);
         
         return {
           success: true,

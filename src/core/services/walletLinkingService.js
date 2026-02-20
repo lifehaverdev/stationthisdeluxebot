@@ -18,7 +18,7 @@ class WalletLinkingService {
     this.walletLinkingRequestDb = walletLinkingRequestDb;
     // Use a simple in-memory Map to temporarily store the raw API key for claiming.
     this.apiKeyClaimCache = new Map();
-    this.logger.info('[WalletLinkingService] Initialized.');
+    this.logger.debug('[WalletLinkingService] Initialized.');
   }
 
   /**
@@ -123,11 +123,11 @@ class WalletLinkingService {
     setTimeout(() => {
       if (this.apiKeyClaimCache.has(claimKey)) {
         this.apiKeyClaimCache.delete(claimKey);
-        this.logger.info(`[WalletLinkingService] Claim key for request ${requestId} expired from cache.`);
+        this.logger.debug(`[WalletLinkingService] Claim key for request ${requestId} expired from cache.`);
       }
     }, 300 * 1000); // 5 minutes
 
-    this.logger.info(`[WalletLinkingService] First API key generated and cached for claiming by masterAccountId ${masterAccountId}.`);
+    this.logger.debug(`[WalletLinkingService] First API key generated and cached for claiming by masterAccountId ${masterAccountId}.`);
   }
 
   /**
@@ -160,7 +160,7 @@ class WalletLinkingService {
         // Mark as delivered in the DB to prevent replay issues
         await this.walletLinkingRequestDb.updateRequestStatus(requestId, 'DELIVERED');
 
-        this.logger.info(`[WalletLinkingService] API key for request ${requestId} has been successfully claimed and marked as DELIVERED.`);
+        this.logger.debug(`[WalletLinkingService] API key for request ${requestId} has been successfully claimed and marked as DELIVERED.`);
         return { status: 'COMPLETED', apiKey: apiKey };
       } else {
         // This is the edge case: the request is complete, but the key isn't in our cache.

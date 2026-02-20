@@ -17,15 +17,15 @@ function createTrainingsApi(dependencies) {
   const { logger, db } = dependencies; // db should now be the object containing loraTrainings directly
 
   // ++ MODIFIED LOGS (adjusted for direct db access) ++
-  logger.info(`[TrainingsAPI Init] Received dependencies. Logger type: ${typeof logger}`);
-  logger.info(`[TrainingsAPI Init] Received dependencies.db type: ${typeof db}`);
+  logger.debug(`[TrainingsAPI Init] Received dependencies. Logger type: ${typeof logger}`);
+  logger.debug(`[TrainingsAPI Init] Received dependencies.db type: ${typeof db}`);
 
   if (db) {
-    logger.info(`[TrainingsAPI Init] dependencies.db keys: ${Object.keys(db).join(', ')}`);
+    logger.debug(`[TrainingsAPI Init] dependencies.db keys: ${Object.keys(db).join(', ')}`);
     // No longer expect db.data, directly check for db.loraTrainings
-    logger.info(`[TrainingsAPI Init] dependencies.db.loraTrainings type: ${typeof db.loraTrainings}`);
+    logger.debug(`[TrainingsAPI Init] dependencies.db.loraTrainings type: ${typeof db.loraTrainings}`);
     if (db.loraTrainings && typeof db.loraTrainings.findTrainingsByUser === 'function') {
-      logger.info(`[TrainingsAPI Init] db.loraTrainings instance appears valid and has findTrainingsByUser method.`);
+      logger.debug(`[TrainingsAPI Init] db.loraTrainings instance appears valid and has findTrainingsByUser method.`);
     } else {
       logger.warn(`[TrainingsAPI Init] db.loraTrainings IS MISSING or INVALID or lacks expected methods.`);
     }
@@ -39,7 +39,7 @@ function createTrainingsApi(dependencies) {
   // GET /internal/v1/data/trainings/owner/:masterAccountId - List trainings by owner
   router.get('/owner/:masterAccountId', async (req, res, next) => {
     const { masterAccountId } = req.params;
-    logger.info(`[TrainingsAPI] GET /owner/${masterAccountId} - Fetching trainings for user.`);
+    logger.debug(`[TrainingsAPI] GET /owner/${masterAccountId} - Fetching trainings for user.`);
     try {
       // Use masterAccountId as userId for the DB query - access db.loraTrainings directly
       const trainings = await db.loraTrainings.findTrainingsByUser(masterAccountId);
@@ -81,7 +81,7 @@ function createTrainingsApi(dependencies) {
       controlSetId
     } = req.body;
 
-    logger.info(`[TrainingsAPI] POST / - Creating new training with name "${name}" for MAID ${masterAccountId}`);
+    logger.debug(`[TrainingsAPI] POST / - Creating new training with name "${name}" for MAID ${masterAccountId}`);
     if (!masterAccountId || !name) {
       return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'masterAccountId and name are required.' } });
     }
@@ -101,7 +101,7 @@ function createTrainingsApi(dependencies) {
           // Find primary wallet, or use first wallet
           const primaryWallet = user.wallets.find(w => w.isPrimary) || user.wallets[0];
           walletAddress = primaryWallet.address;
-          logger.info(`[TrainingsAPI] Found wallet ${walletAddress?.slice(0, 10)}... for user ${masterAccountId}`);
+          logger.debug(`[TrainingsAPI] Found wallet ${walletAddress?.slice(0, 10)}... for user ${masterAccountId}`);
         }
       } catch (userErr) {
         logger.error(`[TrainingsAPI] Failed to fetch user ${masterAccountId}: ${userErr.message}`);
@@ -121,7 +121,7 @@ function createTrainingsApi(dependencies) {
         const dataset = datasetResponse.data?.data || datasetResponse.data;
         if (dataset && dataset.images) {
           datasetImageCount = dataset.images.length;
-          logger.info(`[TrainingsAPI] Dataset ${datasetId} has ${datasetImageCount} images`);
+          logger.debug(`[TrainingsAPI] Dataset ${datasetId} has ${datasetImageCount} images`);
         }
       } catch (datasetErr) {
         logger.warn(`[TrainingsAPI] Failed to fetch dataset ${datasetId}: ${datasetErr.message}`);
@@ -172,7 +172,7 @@ function createTrainingsApi(dependencies) {
         // ownedBy: masterAccountId, // createTrainingSession in trainingDb.js sets this default
       };
 
-      logger.info(`[TrainingsAPI] Training data prepared:`, {
+      logger.debug(`[TrainingsAPI] Training data prepared:`, {
         name: newTrainingData.name,
         modelName: newTrainingData.modelName,
         modelType: newTrainingData.modelType,
@@ -199,7 +199,7 @@ function createTrainingsApi(dependencies) {
   // GET /internal/v1/data/trainings/:trainingId - Get a specific training by ID
   router.get('/:trainingId', async (req, res, next) => {
     const { trainingId } = req.params;
-    logger.info(`[TrainingsAPI] GET /${trainingId} - Fetching training by ID.`);
+    logger.debug(`[TrainingsAPI] GET /${trainingId} - Fetching training by ID.`);
     try {
       // Access db.loraTrainings directly
       const training = await db.loraTrainings.findTrainingById(trainingId);
@@ -248,7 +248,7 @@ function createTrainingsApi(dependencies) {
       triggerWords
     } = req.body;
     
-    logger.info(`[TrainingsAPI] PUT /${trainingId} - Updating training`);
+    logger.debug(`[TrainingsAPI] PUT /${trainingId} - Updating training`);
     
     try {
       // First check if training exists and user owns it
@@ -301,7 +301,7 @@ function createTrainingsApi(dependencies) {
     const { trainingId } = req.params;
     const { masterAccountId } = req.body;
     
-    logger.info(`[TrainingsAPI] DELETE /${trainingId} - Deleting training`);
+    logger.debug(`[TrainingsAPI] DELETE /${trainingId} - Deleting training`);
     
     if (!masterAccountId) {
       return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'masterAccountId is required.' } });
@@ -337,7 +337,7 @@ function createTrainingsApi(dependencies) {
     const { trainingId } = req.params;
     const { masterAccountId } = req.body;
 
-    logger.info(`[TrainingsAPI] POST /${trainingId}/retry - Retrying training`);
+    logger.debug(`[TrainingsAPI] POST /${trainingId}/retry - Retrying training`);
 
     if (!masterAccountId) {
       return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'masterAccountId is required.' } });
@@ -365,7 +365,7 @@ function createTrainingsApi(dependencies) {
       // Also clear instance info from previous attempt so worker starts fresh
       // IMPORTANT: Set environment to match current server so the right worker picks it up
       const currentEnvironment = process.env.TRAINING_ENVIRONMENT || 'production';
-      logger.info(`[TrainingsAPI] Retry will tag job with environment: ${currentEnvironment}`);
+      logger.debug(`[TrainingsAPI] Retry will tag job with environment: ${currentEnvironment}`);
 
       await db.loraTrainings.setStatus(trainingId, 'QUEUED', {
         error: null,
@@ -394,7 +394,7 @@ function createTrainingsApi(dependencies) {
   router.post('/calculate-cost', async (req, res, next) => {
     const { modelType, steps, learningRate, batchSize, resolution, loraRank, loraAlpha, datasetSize } = req.body;
     
-    logger.info(`[TrainingsAPI] POST /calculate-cost - Calculating cost for ${modelType} training`);
+    logger.debug(`[TrainingsAPI] POST /calculate-cost - Calculating cost for ${modelType} training`);
     
     try {
       const cost = await calculateTrainingCost({

@@ -31,6 +31,7 @@ const generationExecutionApi = createGenerationExecutionApi; // from aggregator
 const pointsApi = require('./economy/pointsApi');
 const generationOutputsApi = createGenerationOutputsApi;
 const { createSystemApi, createActionsApi } = require('./system');
+const { createLogsApi } = require('./logs/logsApi');
 const createDatasetsApi = require('./datasetsApi');
 const createCostCalculationApi = require('./costCalculationApi');
 const createAnalyticsApi = require('./analyticsApi');
@@ -48,12 +49,6 @@ const createEmbellishmentApi = require('./embellishmentApi');
 function initializeInternalServices(dependencies = {}) {
   const mainInternalRouter = express.Router();
   const v1DataRouter = express.Router();
-
-  // Diagnostic Middleware: Log all incoming requests to the internal router
-  mainInternalRouter.use((req, res, next) => {
-    console.log(`[INTERNAL ROUTER DIAGNOSTIC] Incoming Request: ${req.method} ${req.originalUrl}`);
-    next();
-  });
 
   const logger = dependencies.logger || console;
 
@@ -160,13 +155,17 @@ function initializeInternalServices(dependencies = {}) {
     logger.warn('[InternalAPI] Status service structure not recognized for automatic routing.');
   }
 
+  // Logs level control API
+  mainInternalRouter.use('/v1/logs', createLogsApi());
+  logger.debug('[InternalAPI] Logs API mounted at /v1/logs');
+
   // --- Initialize and Mount New Data API Services ---
 
   // Auth API Service:
   const authApiRouter = createAuthApi(apiDependencies);
   if (authApiRouter) {
     v1DataRouter.use('/auth', authApiRouter);
-    logger.info('[InternalAPI] Auth API service mounted to /v1/data/auth');
+    logger.debug('[InternalAPI] Auth API service mounted to /v1/data/auth');
   } else {
     logger.error('[InternalAPI] Failed to create Auth API router.');
   }
@@ -177,7 +176,7 @@ function initializeInternalServices(dependencies = {}) {
 
   if (walletsRouter) {
     v1DataRouter.use('/wallets', walletsRouter);
-    logger.info('[InternalAPI] Wallets Lookup API service mounted to /v1/data/wallets');
+    logger.debug('[InternalAPI] Wallets Lookup API service mounted to /v1/data/wallets');
   } else {
     logger.error('[InternalAPI] Failed to create Wallets Lookup API router.');
   }
@@ -193,13 +192,13 @@ function initializeInternalServices(dependencies = {}) {
   const createGroupsApi = require('./groups');
   const groupsApiRouter = createGroupsApi(apiDependencies);
   v1DataRouter.use('/groups', groupsApiRouter);
-  logger.info('[InternalAPI] Groups API service mounted to /v1/data/groups');
+  logger.debug('[InternalAPI] Groups API service mounted to /v1/data/groups');
 
   // User Core API Service:
   const userCoreApiRouter = createUserCoreApi(apiDependencies);
   if (userCoreApiRouter) {
     v1DataRouter.use('/users', userCoreApiRouter);
-    logger.info('[InternalAPI] User Core API service mounted to /v1/data/users');
+    logger.debug('[InternalAPI] User Core API service mounted to /v1/data/users');
   } else {
     logger.error('[InternalAPI] Failed to create User Core API router.');
   }
@@ -208,7 +207,7 @@ function initializeInternalServices(dependencies = {}) {
   const userEventsApiRouter = createUserEventsApi(apiDependencies);
   if (userEventsApiRouter) {
     v1DataRouter.use('/events', userEventsApiRouter);
-    logger.info('[InternalAPI] User Events API service mounted to /v1/data/events');
+    logger.debug('[InternalAPI] User Events API service mounted to /v1/data/events');
   } else {
     logger.error('[InternalAPI] Failed to create User Events API router.');
   }
@@ -217,7 +216,7 @@ function initializeInternalServices(dependencies = {}) {
   const userStatusReportApiRouter = createUserStatusReportApiService(apiDependencies);
   if (userStatusReportApiRouter) {
     v1DataRouter.use('/', userStatusReportApiRouter);
-    logger.info('[InternalAPI] User Status Report API service mounted to /v1/data');
+    logger.debug('[InternalAPI] User Status Report API service mounted to /v1/data');
   } else {
     logger.error('[InternalAPI] Failed to create User Status Report API router.');
   }
@@ -226,7 +225,7 @@ function initializeInternalServices(dependencies = {}) {
   const transactionsApiRouter = createTransactionsApiService(apiDependencies);
   if (transactionsApiRouter) {
     v1DataRouter.use('/transactions', transactionsApiRouter);
-    logger.info('[InternalAPI] Transactions API service mounted to /v1/data/transactions');
+    logger.debug('[InternalAPI] Transactions API service mounted to /v1/data/transactions');
   } else {
     logger.error('[InternalAPI] Failed to create Transactions API router.');
   }
@@ -237,7 +236,7 @@ function initializeInternalServices(dependencies = {}) {
     const costsApiRouter = createCostsApi(apiDependencies, logger);
     if (costsApiRouter) {
       v1DataRouter.use('/costs', costsApiRouter);
-      logger.info('[InternalAPI] Costs API service mounted to /v1/data/costs');
+      logger.debug('[InternalAPI] Costs API service mounted to /v1/data/costs');
     } else {
       logger.error('[InternalAPI] Failed to create Costs API router.');
     }
@@ -249,7 +248,7 @@ function initializeInternalServices(dependencies = {}) {
   const generationOutputsApiRouter = createGenerationOutputsApiService(apiDependencies);
   if (generationOutputsApiRouter) {
     v1DataRouter.use('/generations', generationOutputsApiRouter);
-    logger.info('[InternalAPI] Generation Outputs API service mounted to /v1/data/generations');
+    logger.debug('[InternalAPI] Generation Outputs API service mounted to /v1/data/generations');
   } else {
     logger.error('[InternalAPI] Failed to create Generation Outputs API router.');
   }
@@ -258,7 +257,7 @@ function initializeInternalServices(dependencies = {}) {
   const modelsApiRouter = createModelsApiRouter(apiDependencies);
   if (modelsApiRouter) {
     v1DataRouter.use('/models', modelsApiRouter);
-    logger.info('[InternalAPI] Models API service mounted to /v1/data/models');
+    logger.debug('[InternalAPI] Models API service mounted to /v1/data/models');
   } else {
     logger.error('[InternalAPI] Failed to create Models API router.');
   }
@@ -267,7 +266,7 @@ function initializeInternalServices(dependencies = {}) {
   const storageApiRouter = createStorageApi(apiDependencies);
   if (storageApiRouter) {
     v1DataRouter.use('/storage', storageApiRouter);
-    logger.info('[InternalAPI] Storage API service mounted to /v1/data/storage');
+    logger.debug('[InternalAPI] Storage API service mounted to /v1/data/storage');
   } else {
     logger.error('[InternalAPI] Failed to create Storage API router.');
   }
@@ -276,7 +275,7 @@ function initializeInternalServices(dependencies = {}) {
   const reviewQueueApiRouter = createReviewQueueApi(apiDependencies);
   if (reviewQueueApiRouter) {
     v1DataRouter.use('/review-queue', reviewQueueApiRouter);
-    logger.info('[InternalAPI] Review Queue API service mounted to /v1/data/review-queue');
+    logger.debug('[InternalAPI] Review Queue API service mounted to /v1/data/review-queue');
   } else {
     logger.error('[InternalAPI] Failed to create Review Queue API router.');
   }
@@ -285,7 +284,7 @@ function initializeInternalServices(dependencies = {}) {
   const pointsApiRouter = createPointsApi(apiDependencies);
   if (pointsApiRouter) {
       v1DataRouter.use('/points', pointsApiRouter);
-      logger.info('[InternalAPI] Points API service mounted to /v1/data/points');
+      logger.debug('[InternalAPI] Points API service mounted to /v1/data/points');
   } else {
       logger.error('[InternalAPI] Failed to create Points API router.');
   }
@@ -300,7 +299,7 @@ function initializeInternalServices(dependencies = {}) {
     const userPreferencesRouter = createUserPreferencesApiRouter(apiDependencies);
     if (userPreferencesRouter) {
       v1DataRouter.use('/users/:masterAccountId', userPreferencesRouter);
-      logger.info('[InternalAPI] User Preferences API service (including settings) mounted to /v1/data/users/:masterAccountId');
+      logger.debug('[InternalAPI] User Preferences API service (including settings) mounted to /v1/data/users/:masterAccountId');
     } else {
       logger.error('[InternalAPI] Failed to create User Preferences API router.');
     }
@@ -312,7 +311,7 @@ function initializeInternalServices(dependencies = {}) {
   try {
     if (loraTriggerMapApi && loraTriggerMapApi.router) {
       v1DataRouter.use('/', loraTriggerMapApi.router);
-      logger.info('[InternalAPI] LoRA Trigger Map API service mounted.');
+      logger.debug('[InternalAPI] LoRA Trigger Map API service mounted.');
     } else {
       logger.error('[InternalAPI] LoRA trigger map router not found in ./loraTriggerMapApi');
     }
@@ -326,7 +325,7 @@ function initializeInternalServices(dependencies = {}) {
     toolDefinitionRouter = createToolDefinitionApiRouter(apiDependencies);
     if (toolDefinitionRouter) {
       v1DataRouter.use('/tools', toolDefinitionRouter);
-      logger.info('[InternalAPI] Tool Definition API service mounted to /v1/data/tools');
+      logger.debug('[InternalAPI] Tool Definition API service mounted to /v1/data/tools');
     } else {
       logger.error('[InternalAPI] createToolDefinitionApiRouter did not return a valid router. Value received:', toolDefinitionRouter);
     }
@@ -339,7 +338,7 @@ function initializeInternalServices(dependencies = {}) {
     const spellsApiRouter = createSpellsApi(apiDependencies);
     if (spellsApiRouter) {
       v1DataRouter.use('/spells', spellsApiRouter);
-      logger.info('[InternalAPI] Spells API service mounted to /v1/data/spells');
+      logger.debug('[InternalAPI] Spells API service mounted to /v1/data/spells');
     } else {
       logger.error('[InternalAPI] Failed to create Spells API router.');
     }
@@ -355,7 +354,7 @@ function initializeInternalServices(dependencies = {}) {
       v1DataRouter.use('/collections', cookApiRouter);
       // Legacy mount for backward compatibility (to be removed after migration)
       v1DataRouter.use('/cook', cookApiRouter);
-      logger.info('[InternalAPI] Cook API service mounted to /v1/data/collections and /v1/data/cook (legacy)');
+      logger.debug('[InternalAPI] Cook API service mounted to /v1/data/collections and /v1/data/cook (legacy)');
     } else {
       logger.error('[InternalAPI] Failed to create Cook API router.');
     }
@@ -366,13 +365,13 @@ function initializeInternalServices(dependencies = {}) {
   // Initialize and mount the LLM API within the data router
   const llmRouter = initializeLlmApi(apiDependencies);
   v1DataRouter.use('/llm', llmRouter);
-  logger.info('[InternalAPI] LLM API service mounted to /v1/data/llm');
+  logger.debug('[InternalAPI] LLM API service mounted to /v1/data/llm');
 
   // Economy Rates API Service
   const ratesApiRouter = createRatesApiService(apiDependencies);
   if (ratesApiRouter) {
     v1DataRouter.use('/economy', ratesApiRouter);
-    logger.info('[InternalAPI] Economy Rates API service mounted to /v1/data/economy');
+    logger.debug('[InternalAPI] Economy Rates API service mounted to /v1/data/economy');
   } else {
     logger.error('[InternalAPI] Failed to create Economy Rates API router.');
   }
@@ -384,7 +383,7 @@ function initializeInternalServices(dependencies = {}) {
     const userEconomyApiRouter = createUserEconomyApiService(apiDependencies);
     if (userEconomyApiRouter) {
       mainInternalRouter.use('/users/:masterAccountId/economy', userEconomyApiRouter);
-      logger.info('[internalApiIndex] User Economy API service mounted to /users/:masterAccountId/economy');
+      logger.debug('[internalApiIndex] User Economy API service mounted to /users/:masterAccountId/economy');
     } else {
       logger.error('[internalApiIndex] Failed to create User Economy API router.');
     }
@@ -397,31 +396,13 @@ function initializeInternalServices(dependencies = {}) {
 
   // Mount the consolidated v1DataRouter onto the mainInternalRouter
   mainInternalRouter.use('/v1/data', v1DataRouter);
-  logger.info('[InternalAPI] All /v1/data services mounted.');
-
-  // Diagnostic: Log all registered routes after mounting
-  setTimeout(() => {
-    console.log('[INTERNAL ROUTER DIAGNOSTIC] Registered routes on mainInternalRouter:');
-    mainInternalRouter.stack.forEach(layer => {
-      if (layer.route) { // regular route
-        console.log(`  - ${Object.keys(layer.route.methods).join(', ').toUpperCase()} ${layer.route.path}`);
-      } else if (layer.name === 'router') { // sub-router
-        const path = layer.regexp.toString().replace('/^\\', '').replace('\\/?(?=\\/|$)/i', '');
-        layer.handle.stack.forEach(subLayer => {
-          if (subLayer.route) {
-            console.log(`  - ${Object.keys(subLayer.route.methods).join(', ').toUpperCase()} ${path}${subLayer.route.path}`);
-          }
-        });
-      }
-    });
-  }, 2000); // Timeout to allow all routes to register
 
   // Mount other specific internal APIs
   // Model Import API
   const modelImportRouter = require('./models/modelImportApi')(apiDependencies);
   if (modelImportRouter && typeof modelImportRouter === 'function') {
     v1DataRouter.use('/models', modelImportRouter);
-    logger.info('[InternalAPI] Model Import API mounted at /v1/data/models');
+    logger.debug('[InternalAPI] Model Import API mounted at /v1/data/models');
   }
   // mainInternalRouter.use('/lora-trigger-map', loraTriggerMapRouter); // REVOVED: Redundant mounting, already on v1DataRouter
 
@@ -430,7 +411,7 @@ function initializeInternalServices(dependencies = {}) {
   try {
     if (lorasApiRouter && typeof lorasApiRouter === 'function') {
       v1DataRouter.use('/loras', lorasApiRouter);
-      logger.info('[InternalAPI] LoRAs API service mounted to /v1/data/loras');
+      logger.debug('[InternalAPI] LoRAs API service mounted to /v1/data/loras');
     } else {
       logger.error('[InternalAPI] lorasApiRouter (from ./lorasApi.js) is not a valid router/function. Value received:', lorasApiRouter);
     }
@@ -442,7 +423,7 @@ function initializeInternalServices(dependencies = {}) {
   // Mount LoRA Import API Service
   if (loraImportRouter && typeof loraImportRouter === 'function') {
     v1DataRouter.use('/loras', loraImportRouter);
-    logger.info('[InternalAPI] LoRA Import API service mounted to /v1/data/loras (handling /import-from-url internally)');
+    logger.debug('[InternalAPI] LoRA Import API service mounted to /v1/data/loras (handling /import-from-url internally)');
   } else {
     logger.error('[InternalAPI] Failed to create LoRA Import API router.');
   }
@@ -451,7 +432,7 @@ function initializeInternalServices(dependencies = {}) {
   const trainingsApiRouter = createTrainingsApi(apiDependencies);
   if (trainingsApiRouter) {
     v1DataRouter.use('/trainings', trainingsApiRouter);
-    logger.info('[InternalAPI] Trainings API service mounted to /v1/data/trainings');
+    logger.debug('[InternalAPI] Trainings API service mounted to /v1/data/trainings');
   } else {
     logger.error('[InternalAPI] Failed to create Trainings API router.');
   }
@@ -478,7 +459,7 @@ function initializeInternalServices(dependencies = {}) {
   // Mount LoRA Import API Service
   if (loraImportRouter && typeof loraImportRouter === 'function') {
     v1DataRouter.use('/loras', loraImportRouter);
-    logger.info('[InternalAPI] LoRA Import API service mounted to /v1/data/loras (handling /import-from-url internally)');
+    logger.debug('[InternalAPI] LoRA Import API service mounted to /v1/data/loras (handling /import-from-url internally)');
   } else {
     logger.error('[InternalAPI] Failed to create LoRA Import API router.');
   }
@@ -499,7 +480,7 @@ function initializeInternalServices(dependencies = {}) {
   const actionsApiRouter = createActionsApi(apiDependencies);
   if (actionsApiRouter) {
     v1DataRouter.use('/actions', actionsApiRouter);
-    logger.info('[InternalAPI] Actions API service mounted to /v1/actions');
+    logger.debug('[InternalAPI] Actions API service mounted to /v1/actions');
   } else {
     logger.error('[InternalAPI] Failed to create Actions API router.');
   }
@@ -509,27 +490,23 @@ function initializeInternalServices(dependencies = {}) {
   try {
     const workspacesRouter = createWorkspacesApi(apiDependencies);
     v1DataRouter.use('/workspaces', workspacesRouter);
-    logger.info('[InternalAPI] Workspaces API mounted to /v1/data/workspaces');
+    logger.debug('[InternalAPI] Workspaces API mounted to /v1/data/workspaces');
   } catch(err){ logger.error('[InternalAPI] Failed to init Workspaces API', err); }
 
   // Embellishment API Service (must be mounted BEFORE datasets API to handle /datasets/:id/embellishments routes):
   try {
-    console.log('[InternalAPI] About to create embellishment API...');
-    console.log('[InternalAPI] dbDataServices keys:', dbDataServices ? Object.keys(dbDataServices) : 'null');
     const embellishmentApi = createEmbellishmentApi({
       logger,
       db: dbDataServices,
       embellishmentTaskService: apiDependencies.embellishmentTaskService,
     });
-    console.log('[InternalAPI] embellishmentApi created:', !!embellishmentApi);
     if (embellishmentApi) {
       v1DataRouter.use('/', embellishmentApi);
-      logger.info('[InternalAPI] Embellishment API service mounted to /v1/data (before datasets)');
+      logger.debug('[InternalAPI] Embellishment API service mounted to /v1/data (before datasets)');
     } else {
       logger.error('[InternalAPI] Failed to create Embellishment API router.');
     }
   } catch (err) {
-    console.error('[InternalAPI] Error creating embellishment API:', err);
     logger.error('[InternalAPI] Error creating embellishment API:', err);
   }
 
@@ -537,7 +514,7 @@ function initializeInternalServices(dependencies = {}) {
   const datasetsApi = createDatasetsApi(apiDependencies);
   if (datasetsApi) {
     v1DataRouter.use('/datasets', datasetsApi);
-    logger.info('[InternalAPI] Datasets API service mounted to /v1/data/datasets');
+    logger.debug('[InternalAPI] Datasets API service mounted to /v1/data/datasets');
   } else {
     logger.error('[InternalAPI] Failed to create Datasets API router.');
   }
@@ -546,7 +523,7 @@ function initializeInternalServices(dependencies = {}) {
   const costCalculationApi = createCostCalculationApi(apiDependencies);
   if (costCalculationApi) {
     v1DataRouter.use('/cost', costCalculationApi);
-    logger.info('[InternalAPI] Cost Calculation API service mounted to /v1/data/cost');
+    logger.debug('[InternalAPI] Cost Calculation API service mounted to /v1/data/cost');
   } else {
     logger.error('[InternalAPI] Failed to create Cost Calculation API router.');
   }
@@ -555,7 +532,7 @@ function initializeInternalServices(dependencies = {}) {
   const analyticsApi = createAnalyticsApi(apiDependencies);
   if (analyticsApi) {
     v1DataRouter.use('/analytics', analyticsApi);
-    logger.info('[InternalAPI] Analytics API service mounted to /v1/data/analytics');
+    logger.debug('[InternalAPI] Analytics API service mounted to /v1/data/analytics');
   } else {
     logger.error('[InternalAPI] Failed to create Analytics API router.');
   }
@@ -564,7 +541,7 @@ function initializeInternalServices(dependencies = {}) {
   const marketplaceApi = createMarketplaceApi(apiDependencies);
   if (marketplaceApi) {
     v1DataRouter.use('/marketplace', marketplaceApi);
-    logger.info('[InternalAPI] Marketplace API service mounted to /v1/data/marketplace');
+    logger.debug('[InternalAPI] Marketplace API service mounted to /v1/data/marketplace');
   } else {
     logger.error('[InternalAPI] Failed to create Marketplace API router.');
   }
@@ -573,7 +550,7 @@ function initializeInternalServices(dependencies = {}) {
   const uploadApi = createUploadApi(apiDependencies);
   if (uploadApi) {
     v1DataRouter.use('/upload', uploadApi);
-    logger.info('[InternalAPI] Upload API service mounted to /v1/data/upload');
+    logger.debug('[InternalAPI] Upload API service mounted to /v1/data/upload');
   } else {
     logger.error('[InternalAPI] Failed to create Upload API router.');
   }
@@ -584,7 +561,7 @@ function initializeInternalServices(dependencies = {}) {
     const adminApiRouter = createAdminApi(apiDependencies);
     if (adminApiRouter) {
       v1DataRouter.use('/admin', adminApiRouter);
-      logger.info('[InternalAPI] Admin API service mounted to /v1/data/admin');
+      logger.debug('[InternalAPI] Admin API service mounted to /v1/data/admin');
     } else {
       logger.error('[InternalAPI] Failed to create Admin API router.');
     }
@@ -630,7 +607,7 @@ function initializeInternalServices(dependencies = {}) {
     // Expose apiDependencies so it can be updated after platform initialization
     updateDependencies: (newDeps) => {
       Object.assign(apiDependencies, newDeps);
-      logger.info('[InternalAPI] Updated API dependencies with platform notifiers.');
+      logger.debug('[InternalAPI] Updated API dependencies with platform notifiers.');
     },
     getDependencies: () => apiDependencies
   };

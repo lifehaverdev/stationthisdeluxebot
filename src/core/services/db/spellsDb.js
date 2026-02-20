@@ -124,7 +124,7 @@ class SpellsDB extends BaseDB {
       updatedAt: now,
     };
     
-    this.logger.info(`[SpellsDB] Creating new spell: "${dataToInsert.name}" (Slug: ${dataToInsert.slug}) by User ${dataToInsert.creatorId}`);
+    this.logger.debug(`[SpellsDB] Creating new spell: "${dataToInsert.name}" (Slug: ${dataToInsert.slug}) by User ${dataToInsert.creatorId}`);
     const result = await this.insertOne(dataToInsert);
     return result.insertedId ? { _id: result.insertedId, ...dataToInsert } : null;
   }
@@ -285,7 +285,7 @@ class SpellsDB extends BaseDB {
    * @returns {Promise<object|null>} The updated spell document or null if not found/permission denied.
    */
   async updateStep(spellId, stepId, parameterOverrides, masterAccountId) {
-    this.logger.info(`[SpellsDB] Attempting to update step ${stepId} for spell ${spellId} by user ${masterAccountId}`);
+    this.logger.debug(`[SpellsDB] Attempting to update step ${stepId} for spell ${spellId} by user ${masterAccountId}`);
     const spell = await this.findById(spellId);
 
     if (!spell) {
@@ -313,7 +313,7 @@ class SpellsDB extends BaseDB {
     );
 
     if (result.modifiedCount > 0) {
-        this.logger.info(`[SpellsDB] Successfully updated step ${stepId} in spell ${spellId}`);
+        this.logger.debug(`[SpellsDB] Successfully updated step ${stepId} in spell ${spellId}`);
         return this.findById(spellId); // Return the updated document
     } else {
         const stepExists = spell.steps.some(s => s.stepId === stepId);
@@ -337,7 +337,7 @@ class SpellsDB extends BaseDB {
    * @returns {Promise<object|null>} The updated spell document or null if not found/permission denied.
    */
   async updateStepParameters(spellId, stepId, updates, masterAccountId) {
-    this.logger.info(`[SpellsDB] Partially updating parameters for step ${stepId} in spell ${spellId}`);
+    this.logger.debug(`[SpellsDB] Partially updating parameters for step ${stepId} in spell ${spellId}`);
     
     // First, verify ownership
     const spell = await this.findById(spellId);
@@ -365,7 +365,7 @@ class SpellsDB extends BaseDB {
     );
 
     if (result.modifiedCount > 0) {
-        this.logger.info(`[SpellsDB] Successfully updated parameters for step ${stepId} in spell ${spellId}`);
+        this.logger.debug(`[SpellsDB] Successfully updated parameters for step ${stepId} in spell ${spellId}`);
         return this.findById(spellId); // Return the full updated document
     } else {
         this.logger.warn(`[SpellsDB] Update parameters failed for step ${stepId} in spell ${spellId} (modifiedCount: 0).`);
@@ -375,7 +375,7 @@ class SpellsDB extends BaseDB {
   }
 
   async removeStep(spellId, stepId) {
-    this.logger.info(`[SpellsDB] Removing step ${stepId} from spell ${spellId}`);
+    this.logger.debug(`[SpellsDB] Removing step ${stepId} from spell ${spellId}`);
     // This is more complex. It requires pulling the item, then re-normalizing stepIds.
     // For now, let's just pull it. The stepId ordering might get weird.
     return this.updateOne(

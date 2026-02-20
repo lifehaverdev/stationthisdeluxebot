@@ -116,7 +116,7 @@ function createReviewQueueApi(dependencies = {}) {
               ]
             });
             const cullableCount = await generationOutputsDb.count(filter);
-            logger.info('[reviewQueueApi] Cull fallback diagnostic', {
+            logger.debug('[reviewQueueApi] Cull fallback diagnostic', {
               collectionId,
               baseCount, // pieces with status:completed, no spell_step
               approvedCount, // pieces that passed review
@@ -176,7 +176,7 @@ function createReviewQueueApi(dependencies = {}) {
           status: doc.status,
           mode: doc.mode || normalizedMode
         }));
-        logger.info('[reviewQueueApi] pop result', {
+        logger.debug('[reviewQueueApi] pop result', {
           collectionId,
           mode: normalizedMode,
           requestedLimit: batchLimit,

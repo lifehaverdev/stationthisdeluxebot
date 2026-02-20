@@ -41,7 +41,7 @@ class DatasetDownloader {
     const controlSetId = options.controlSetId || null;
     const datasetDir = path.join(baseDir, jobId, 'dataset');
 
-    this.logger.info(`[DatasetDownloader] Downloading dataset ${datasetId} to ${datasetDir}`);
+    this.logger.debug(`[DatasetDownloader] Downloading dataset ${datasetId} to ${datasetDir}`);
 
     // Fetch dataset from database
     const dataset = await this.datasetDb.findOne({
@@ -101,12 +101,12 @@ class DatasetDownloader {
         // Fall back to global concept prompt from embellishment config
         conceptPrompt = controlEmbellishment.config?.prompt || null;
         if (conceptPrompt) {
-          this.logger.info(`[DatasetDownloader] Using concept prompt from embellishment config: "${conceptPrompt.substring(0, 100)}..."`);
+          this.logger.debug(`[DatasetDownloader] Using concept prompt from embellishment config: "${conceptPrompt.substring(0, 100)}..."`);
         }
       }
 
       const controlCount = controlEmbellishment.results.filter(r => r && r.value).length;
-      this.logger.info(`[DatasetDownloader] Downloaded ${controlCount} control images from embellishment to ${controlDir}`);
+      this.logger.debug(`[DatasetDownloader] Downloaded ${controlCount} control images from embellishment to ${controlDir}`);
     }
     // Fall back to old controlImages format
     else if (dataset.controlImages && dataset.controlImages.length > 0) {
@@ -116,7 +116,7 @@ class DatasetDownloader {
       await this._downloadControlImages(dataset.controlImages, imageResults, controlDir);
       hasControlImages = true;
 
-      this.logger.info(`[DatasetDownloader] Downloaded ${dataset.controlImages.length} control images to ${controlDir}`);
+      this.logger.debug(`[DatasetDownloader] Downloaded ${dataset.controlImages.length} control images to ${controlDir}`);
     }
 
     // Write captions - for concept mode use the transformation prompt, otherwise use caption sets
@@ -125,7 +125,7 @@ class DatasetDownloader {
     if (hasControlImages && conceptPrompt) {
       // KONTEXT concept mode: use the global transformation prompt for all images
       captionCount = await this._writeConceptCaptions(imageResults, datasetDir, conceptPrompt);
-      this.logger.info(`[DatasetDownloader] Wrote concept prompt to ${captionCount} caption files for KONTEXT concept training`);
+      this.logger.debug(`[DatasetDownloader] Wrote concept prompt to ${captionCount} caption files for KONTEXT concept training`);
     } else {
       // Standard mode: use caption set
       captionCount = await this._writeCaptions(dataset, imageResults, datasetDir);
@@ -140,7 +140,7 @@ class DatasetDownloader {
       hasControlImages,
     }), 'utf-8');
 
-    this.logger.info(`[DatasetDownloader] Downloaded ${imageResults.length} images, ${captionCount} captions to ${datasetDir}`);
+    this.logger.debug(`[DatasetDownloader] Downloaded ${imageResults.length} images, ${captionCount} captions to ${datasetDir}`);
 
     const result = {
       datasetDir,
@@ -178,7 +178,7 @@ class DatasetDownloader {
         results.push({ index: i, filename, filepath, url });
 
         if ((i + 1) % 10 === 0 || i === imageUrls.length - 1) {
-          this.logger.info(`[DatasetDownloader] Downloaded ${i + 1}/${imageUrls.length} images`);
+          this.logger.debug(`[DatasetDownloader] Downloaded ${i + 1}/${imageUrls.length} images`);
         }
       } catch (err) {
         this.logger.error(`[DatasetDownloader] Failed to download image ${i}: ${err.message}`);
@@ -241,7 +241,7 @@ class DatasetDownloader {
             null;
 
           if (prompt) {
-            this.logger.info(`[DatasetDownloader] Extracted control prompt from generation output: "${prompt.substring(0, 100)}..."`);
+            this.logger.debug(`[DatasetDownloader] Extracted control prompt from generation output: "${prompt.substring(0, 100)}..."`);
             return prompt;
           }
         }
@@ -275,7 +275,7 @@ class DatasetDownloader {
       return 0;
     }
 
-    this.logger.info(`[DatasetDownloader] Using caption set: ${captionSet.method || 'unknown'} (${captionSet.captions.length} captions)`);
+    this.logger.debug(`[DatasetDownloader] Using caption set: ${captionSet.method || 'unknown'} (${captionSet.captions.length} captions)`);
 
     let writtenCount = 0;
 
@@ -432,7 +432,7 @@ class DatasetDownloader {
   async cleanup(datasetDir) {
     try {
       await fsp.rm(datasetDir, { recursive: true, force: true });
-      this.logger.info(`[DatasetDownloader] Cleaned up ${datasetDir}`);
+      this.logger.debug(`[DatasetDownloader] Cleaned up ${datasetDir}`);
     } catch (err) {
       this.logger.warn(`[DatasetDownloader] Failed to cleanup ${datasetDir}: ${err.message}`);
     }

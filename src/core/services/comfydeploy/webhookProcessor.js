@@ -19,15 +19,8 @@ async function processRunPayload(runPayload, deps){
 async function processComfyDeployWebhook(payload, { internalApiClient, logger, webSocketService: websocketServer }) {
   // Initial check of received dependencies
   // Use a temporary console.log if logger itself might be an issue, but logs show it works.
-  if (logger && typeof logger.info === 'function') {
-    logger.info('[Webhook Processor] Initial check of received dependencies:', {
-      isInternalApiClientPresent: !!internalApiClient,
-      isInternalApiClientGetFunction: typeof internalApiClient?.get === 'function',
-      isLoggerPresent: !!logger,
-      isWsSenderPresent: !!websocketServer,
-    });
-  } else {
-    console.log('[Webhook Processor - Fallback Log] Initial check of received dependencies:', {
+  if (logger && typeof logger.debug === 'function') {
+    logger.debug('[Webhook Processor] Initial check of received dependencies:', {
       isInternalApiClientPresent: !!internalApiClient,
       isInternalApiClientGetFunction: typeof internalApiClient?.get === 'function',
       isLoggerPresent: !!logger,
@@ -35,7 +28,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
     });
   }
 
-  logger.info({payload}, '~~⚡~~ [Webhook Processor] Processing Body:');
+  logger.debug({payload}, '[Webhook Processor] Processing Body:');
 
   const { run_id, status, progress, live_status, outputs, event_type } = payload;
 
@@ -81,15 +74,15 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
     return { success: false, statusCode: 400, error: "Missing required fields in webhook." };
   }
 
-  logger.info(`[Webhook Processor Parsed] Event: ${event_type}, RunID: ${run_id}, Status: ${status}, Progress: ${progress ? (progress * 100).toFixed(1) + '%' : 'N/A'}, Live: ${live_status || 'N/A'}`);
+  logger.debug(`[Webhook Processor Parsed] Event: ${event_type}, RunID: ${run_id}, Status: ${status}, Progress: ${progress ? (progress * 100).toFixed(1) + '%' : 'N/A'}, Live: ${live_status || 'N/A'}`);
 
   if (status === 'running' || status === 'queued' || status === 'started' || status === 'uploading') {
     const now = new Date().toISOString();
     const jobState = activeJobProgress.get(run_id) || {};
 
     if (status === 'running' && !jobState.startTime) {
-      jobState.startTime = now; 
-      logger.info(`[Webhook Processor] Captured startTime for RunID ${run_id}: ${jobState.startTime}`);
+      jobState.startTime = now;
+      logger.debug(`[Webhook Processor] Captured startTime for RunID ${run_id}: ${jobState.startTime}`);
     }
 
     activeJobProgress.set(run_id, { 
@@ -137,7 +130,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
     let telegramChatId; // Still extract, as it's part of record metadata for the dispatcher
 
     try {
-      logger.info(`[Webhook Processor] Attempting to fetch generation record for run_id: ${run_id}. internalApiClient defined: ${!!internalApiClient}, is function: ${typeof internalApiClient?.get === 'function'}`);
+      logger.debug(`[Webhook Processor] Fetching generation record for run_id: ${run_id}`);
       if (!internalApiClient || typeof internalApiClient.get !== 'function') {
         logger.error(`[Webhook Processor] CRITICAL ERROR for run_id ${run_id}: internalApiClient is undefined or not a valid client before GET call. This should not happen. internalApiClient:`, internalApiClient);
         activeJobProgress.delete(run_id); // Clean up job progress
@@ -161,7 +154,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
         if (generationRecord.metadata) {
             costRate = generationRecord.metadata.costRate;
             telegramChatId = generationRecord.metadata.telegramChatId; // Extracted for completeness of record info
-            logger.info(`[Webhook Processor] Extracted costRate from metadata: ${JSON.stringify(costRate)}`);
+            logger.debug(`[Webhook Processor] Extracted costRate from metadata: ${JSON.stringify(costRate)}`);
         } else {
             logger.error(`[Webhook Processor] Generation record for run_id ${run_id} is missing metadata.`);
             return { success: false, statusCode: 500, error: "Generation record metadata missing." };
@@ -172,7 +165,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
         // If this is an intermediate step in a spell, we calculate cost but don't debit the user.
         // The user is charged upfront for the entire spell, but we still need cost data for display.
         if (generationRecord.metadata?.isSpell && generationRecord.deliveryStrategy === 'spell_step') {
-            logger.info(`[Webhook Processor] Detected spell step for generation ${generationId}. Calculating cost but bypassing debit logic.`);
+            logger.debug(`[Webhook Processor] Detected spell step for generation ${generationId}. Calculating cost but bypassing debit logic.`);
             
             // Calculate cost for display purposes (same logic as regular tools)
             let costUsd = null;
@@ -193,7 +186,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
 
               if (costRate.unit.toLowerCase() === 'second' || costRate.unit.toLowerCase() === 'seconds') {
                 costUsd = runDurationSeconds * costRate.amount;
-                logger.info(`[Webhook Processor] Calculated costUsd for spell step: ${costUsd} for generation ${generationId} (Duration: ${runDurationSeconds.toFixed(2)}s, Rate: ${costRate.amount}/${costRate.unit})`);
+                logger.debug(`[Webhook Processor] Calculated costUsd for spell step: ${costUsd} for generation ${generationId} (Duration: ${runDurationSeconds.toFixed(2)}s, Rate: ${costRate.amount}/${costRate.unit})`);
               } else {
                 logger.warn(`[Webhook Processor] Cost calculation skipped for spell step ${generationId}: costRate.unit is '${costRate.unit}', expected 'second'.`);
               }
@@ -211,7 +204,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
                              finalEventTimestamp: ${finalEventTimestamp}`);
               }
             } else {
-              logger.info(`[Webhook Processor] Spell step ${generationId} ended with status ${status}. Cost calculation skipped.`);
+              logger.debug(`[Webhook Processor] Spell step ${generationId} ended with status ${status}. Cost calculation skipped.`);
             }
             
             const spellStepUpdatePayload = {
@@ -227,7 +220,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
             try {
                 const putRequestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
                 await internalApiClient.put(`/internal/v1/data/generations/${generationId}`, spellStepUpdatePayload, putRequestOptions);
-                logger.info(`[Webhook Processor] Successfully updated spell step generation record ${generationId} with cost data.`);
+                logger.debug(`[Webhook Processor] Successfully updated spell step generation record ${generationId} with cost data.`);
                 
                 // Fetch the full, updated record to dispatch it
                 try {
@@ -235,7 +228,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
                     const updatedRecordResponse = await internalApiClient.get(`/internal/v1/data/generations/${generationId}`, getRequestOptions);
                     
                     if (updatedRecordResponse.data) {
-                        logger.info(`[Webhook Processor] Emitting 'generationUpdated' for generationId: ${generationId} with costUsd: ${updatedRecordResponse.data.costUsd}`);
+                        logger.debug(`[Webhook Processor] Emitting 'generationUpdated' for generationId: ${generationId} with costUsd: ${updatedRecordResponse.data.costUsd}`);
                         notificationEvents.emit('generationUpdated', updatedRecordResponse.data);
                     }
                 } catch (getError) {
@@ -256,7 +249,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
             logger.error(`[Webhook Processor] Essential data (generationId) missing from generation record (ID: ${generationRecord._id}) for run_id ${run_id}.`);
             return { success: false, statusCode: 500, error: "Essential data missing from fetched generation record." };
         }
-        logger.info(`[Webhook Processor] Successfully fetched generation record ${generationId} for run_id ${run_id}. ChatID (metadata): ${telegramChatId}`);
+        logger.debug(`[Webhook Processor] Successfully fetched generation record ${generationId} for run_id ${run_id}`);
 
       } else {
         logger.error(`[Webhook Processor] No generation record found for run_id ${run_id}. Response: ${JSON.stringify(response.data)}`);
@@ -287,7 +280,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
 
       if (costRate.unit.toLowerCase() === 'second' || costRate.unit.toLowerCase() === 'seconds') {
         costUsd = runDurationSeconds * costRate.amount;
-        logger.info(`[Webhook Processor] Calculated costUsd: ${costUsd} for run_id ${run_id} (Duration: ${runDurationSeconds.toFixed(2)}s, Rate: ${costRate.amount}/${costRate.unit})`);
+        logger.debug(`[Webhook Processor] Calculated costUsd: ${costUsd} for run_id ${run_id} (Duration: ${runDurationSeconds.toFixed(2)}s, Rate: ${costRate.amount}/${costRate.unit})`);
       } else {
         logger.warn(`[Webhook Processor] Cost calculation skipped for run_id ${run_id}: costRate.unit is '${costRate.unit}', expected 'second'.`);
       }
@@ -297,7 +290,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
                    costRate: ${JSON.stringify(costRate)}, 
                    finalEventTimestamp: ${finalEventTimestamp}`);
     } else {
-      logger.info(`[Webhook Processor] Job ${run_id} ended with status ${status}. Cost calculation skipped.`);
+      logger.debug(`[Webhook Processor] Job ${run_id} ended with status ${status}. Cost calculation skipped.`);
     }
 
     const updatePayload = {
@@ -317,7 +310,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
     if (status === 'success' && outputs) {
       logger.debug(`[Webhook Processor] ComfyUI outputs format: ${JSON.stringify(outputs)}`);
     }
-    logger.info(`[Webhook Processor] Preparing to update generation ${generationId} for run_id ${run_id}. Payload:`, JSON.stringify(updatePayload, null, 2));
+    logger.debug(`[Webhook Processor] Preparing to update generation ${generationId} for run_id ${run_id}. Payload:`, JSON.stringify(updatePayload, null, 2));
     try {
        // Add the X-Internal-Client-Key header for this request
        const putRequestOptions = {
@@ -326,7 +319,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
         }
       };
        await internalApiClient.put(`/internal/v1/data/generations/${generationId}`, updatePayload, putRequestOptions);
-       logger.info(`[Webhook Processor] Successfully updated generation record ${generationId} for run_id ${run_id}.`);
+       logger.debug(`[Webhook Processor] Successfully updated generation record ${generationId} for run_id ${run_id}.`);
 
       // The generationOutputsApi now handles emitting the event on status change.
       // We no longer need to emit from here, preventing duplicate notifications.
@@ -340,7 +333,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
 
     // --- Send Final Update via WebSocket ---
     if (websocketServer && generationRecord) {
-        logger.info(`[Webhook Processor] Sending final WebSocket update for generation ${generationId}.`);
+        logger.debug(`[Webhook Processor] Sending final WebSocket update for generation ${generationId}.`);
         const collectionId = generationRecord.metadata?.collectionId || generationRecord.collectionId || null;
         websocketServer.sendToUser(generationRecord.masterAccountId, {
             type: 'generationUpdate',
@@ -379,7 +372,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
             const groupDoc = groupRes.data;
             if (groupDoc && groupDoc.sponsorMasterAccountId) {
               spenderMasterAccountId = groupDoc.sponsorMasterAccountId.toString();
-              logger.info(`[Webhook Processor] Group ${chatId} is sponsored by ${spenderMasterAccountId}. Charging sponsor.`);
+              logger.debug(`[Webhook Processor] Group ${chatId} is sponsored by ${spenderMasterAccountId}. Charging sponsor.`);
             }
           } catch (e) {
             if (e.response?.status !== 404) {
@@ -428,7 +421,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
 
         const basePointsToSpend = quote.totalPoints;
 
-        logger.info(`[Webhook Processor] Pricing breakdown for gen ${generationId}: computeUsd=$${costUsd.toFixed(4)}, multiplier=${quote.multiplier}x, finalUsd=$${quote.finalCostUsd.toFixed(4)}, points=${basePointsToSpend} (MS2: ${isMs2User})`);
+        logger.debug(`[Webhook Processor] Pricing breakdown for gen ${generationId}: computeUsd=$${costUsd.toFixed(4)}, multiplier=${quote.multiplier}x, finalUsd=$${quote.finalCostUsd.toFixed(4)}, points=${basePointsToSpend} (MS2: ${isMs2User})`);
 
         try {
           // --- New Contributor Reward Logic ---
@@ -436,13 +429,13 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
           const { totalPointsToCharge, totalRewards, rewardBreakdown } = await distributeContributorRewards(generationRecord, basePointsToSpend, { internalApiClient, logger });
           
           const spendPayload = { pointsToSpend: totalPointsToCharge, spendContext: { generationId: generationId.toString(), toolId } };
-          logger.info(`[Webhook Processor] Attempting to spend ${totalPointsToCharge} points for generation ${generationId}, user ${generationRecord.masterAccountId}. (Base: ${basePointsToSpend}, Rewards: ${totalRewards})`);
+          logger.debug(`[Webhook Processor] Attempting to spend ${totalPointsToCharge} points for generation ${generationId}, user ${generationRecord.masterAccountId}. (Base: ${basePointsToSpend}, Rewards: ${totalRewards})`);
           await issueSpend(spenderMasterAccountId, spendPayload, { internalApiClient, logger });
           logger.info(`[Webhook Processor] Spend successful for generation ${generationId}, user ${generationRecord.masterAccountId}.`);
 
           const protocolNetPoints = basePointsToSpend;
           
-          logger.info(`[Webhook Processor] Points accounting for gen ${generationId}: Total Spent: ${totalPointsToCharge}, Contributor Rewards: ${totalRewards}, Protocol Net: ${protocolNetPoints}`);
+          logger.debug(`[Webhook Processor] Points accounting for gen ${generationId}: Total Spent: ${totalPointsToCharge}, Contributor Rewards: ${totalRewards}, Protocol Net: ${protocolNetPoints}`);
           
           // Re-apply the update to the generation record with the new accounting info
           try {
@@ -453,7 +446,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
                 protocolNetPoints: protocolNetPoints,
                 rewardBreakdown: rewardBreakdown
              }, putRequestOptions);
-             logger.info(`[Webhook Processor] Successfully updated generation ${generationId} with final point accounting.`);
+             logger.debug(`[Webhook Processor] Successfully updated generation ${generationId} with final point accounting.`);
           } catch(err) {
             logger.error(`[Webhook Processor] Non-critical error: Failed to update generation ${generationId} with point accounting details after a successful spend.`, err.message);
           }
@@ -468,9 +461,9 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
             const expUpdateEndpoint = `/internal/v1/data/users/${generationRecord.masterAccountId}/economy/exp`;
             const expRequestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
             
-            logger.info(`[Webhook Processor] Attempting EXP update for masterAccountId ${generationRecord.masterAccountId}. Payload:`, JSON.stringify(expPayload));
+            logger.debug(`[Webhook Processor] Attempting EXP update for masterAccountId ${generationRecord.masterAccountId}. Payload:`, JSON.stringify(expPayload));
             await internalApiClient.put(expUpdateEndpoint, expPayload, expRequestOptions);
-            logger.info(`[Webhook Processor] EXP updated for masterAccountId ${generationRecord.masterAccountId}: +${totalPointsToCharge} points`);
+            logger.debug(`[Webhook Processor] EXP updated for masterAccountId ${generationRecord.masterAccountId}: +${totalPointsToCharge} points`);
 
           } catch (expError) {
             logger.warn(`[Webhook Processor] EXP update failed for masterAccountId ${generationRecord.masterAccountId}. This is non-blocking. Error:`, expError.message, expError.stack);
@@ -486,14 +479,14 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
           try {
             const putRequestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
             await internalApiClient.put(`/internal/v1/data/generations/${generationId}`, paymentFailedUpdatePayload, putRequestOptions);
-            logger.info(`[Webhook Processor] Successfully updated generation ${generationId} status to 'payment_failed'.`);
+            logger.debug(`[Webhook Processor] Updated generation ${generationId} status to 'payment_failed'.`);
           } catch (updateError) {
             logger.error(`[Webhook Processor] CRITICAL: Failed to update generation ${generationId} to 'payment_failed' after spend failure. Error:`, updateError.message, updateError.stack);
           }
         }
       }
     } else if (updatePayload.status === 'completed' && (costUsd == null || costUsd <= 0)) {
-      logger.info(`[Webhook Processor] Debit skipped for generation ${generationId}: costUsd is ${costUsd}. Assuming free generation or no cost applicable.`);
+      logger.debug(`[Webhook Processor] Debit skipped for generation ${generationId}: costUsd is ${costUsd}. Assuming free generation or no cost applicable.`);
     }
     // ADR-005: Debit logic ends here
 
@@ -530,7 +523,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
  * @returns {Promise<{totalPointsToCharge: number, totalRewards: number, rewardBreakdown: Array}>}
  */
 async function distributeContributorRewards(generationRecord, basePoints, { internalApiClient, logger }) {
-    logger.info(`[distributeContributorRewards] Calculating rewards for gen ${generationRecord._id} based on ${basePoints} base points.`);
+    logger.debug(`[distributeContributorRewards] Calculating rewards for gen ${generationRecord._id} based on ${basePoints} base points.`);
     const generatingUserId = generationRecord.masterAccountId.toString();
     const rewardsToDistribute = [];
     const shares = {};
@@ -544,7 +537,7 @@ async function distributeContributorRewards(generationRecord, basePoints, { inte
         if (ownerId && ownerId !== generatingUserId) {
             shares[ownerId] = (shares[ownerId] || 0) + 1; // 1 share per LoRA used
             totalShares++;
-            logger.info(`[distributeContributorRewards] LoRA from ${ownerId} adds 1 share.`);
+            logger.debug(`[distributeContributorRewards] LoRA from ${ownerId} adds 1 share.`);
         }
     });
 
@@ -553,7 +546,7 @@ async function distributeContributorRewards(generationRecord, basePoints, { inte
     if (isSpell && spellOwnerId && spellOwnerId !== generatingUserId) {
         shares[spellOwnerId] = (shares[spellOwnerId] || 0) + 1; // 1 share for the spell
         totalShares++;
-        logger.info(`[distributeContributorRewards] Spell from ${spellOwnerId} adds 1 share.`);
+        logger.debug(`[distributeContributorRewards] Spell from ${spellOwnerId} adds 1 share.`);
     }
 
     // Future-proofing for base model owner reward
@@ -563,26 +556,26 @@ async function distributeContributorRewards(generationRecord, basePoints, { inte
         // For now, we just log it. Uncomment the lines below to activate it.
         // shares[baseModelOwnerId] = (shares[baseModelOwnerId] || 0) + 1;
         // totalShares++;
-        logger.info(`[distributeContributorRewards] Base model owner found (${baseModelOwnerId}), but reward logic is not yet active for base models.`);
+        logger.debug(`[distributeContributorRewards] Base model owner found (${baseModelOwnerId}), but reward logic is not yet active for base models.`);
     }
 
     if (totalShares === 0) {
-        logger.info('[distributeContributorRewards] No external contributors found. No rewards to distribute.');
+        logger.debug('[distributeContributorRewards] No external contributors found. No rewards to distribute.');
         return { totalPointsToCharge: basePoints, totalRewards: 0, rewardBreakdown: [] };
     }
 
     // --- 2. Calculate rewards ---
     const contributorRewardPool = Math.floor(basePoints * 0.20);
-    logger.info(`[distributeContributorRewards] Total Shares: ${totalShares}. Reward Pool: ${contributorRewardPool} points (20% of base).`);
+    logger.debug(`[distributeContributorRewards] Total Shares: ${totalShares}. Reward Pool: ${contributorRewardPool} points (20% of base).`);
 
     if (contributorRewardPool === 0) {
-        logger.info('[distributeContributorRewards] Reward pool is zero. No rewards to distribute.');
+        logger.debug('[distributeContributorRewards] Reward pool is zero. No rewards to distribute.');
         return { totalPointsToCharge: basePoints, totalRewards: 0, rewardBreakdown: [] };
     }
 
     const pointsPerShare = Math.floor(contributorRewardPool / totalShares);
     if (pointsPerShare === 0) {
-        logger.info(`[distributeContributorRewards] Points per share is zero. No rewards to distribute.`);
+        logger.debug(`[distributeContributorRewards] Points per share is zero. No rewards to distribute.`);
         return { totalPointsToCharge: basePoints, totalRewards: 0, rewardBreakdown: [] };
     }
 
@@ -614,7 +607,7 @@ async function distributeContributorRewards(generationRecord, basePoints, { inte
                 }
             };
             await issuePointsCredit(reward.contributorId, creditPayload, { internalApiClient, logger });
-            logger.info(`[distributeContributorRewards] Successfully credited ${reward.points} points to contributor ${reward.contributorId}.`);
+            logger.debug(`[distributeContributorRewards] Successfully credited ${reward.points} points to contributor ${reward.contributorId}.`);
             rewardBreakdown.push({
                 contributorId: reward.contributorId,
                 points: reward.points,
@@ -631,7 +624,7 @@ async function distributeContributorRewards(generationRecord, basePoints, { inte
         }
     }
     
-    logger.info(`[distributeContributorRewards] Calculation complete. Base: ${basePoints}, Rewards: ${totalPointsDistributed}, Total Charge: ${totalPointsToCharge}.`);
+    logger.debug(`[distributeContributorRewards] Calculation complete. Base: ${basePoints}, Rewards: ${totalPointsDistributed}, Total Charge: ${totalPointsToCharge}.`);
     
     return { totalPointsToCharge, totalRewards: totalPointsDistributed, rewardBreakdown };
 }
@@ -649,7 +642,7 @@ async function issuePointsCredit(masterAccountId, payload, { internalApiClient, 
     const creditEndpoint = `/internal/v1/data/users/${masterAccountId}/economy/credit-points`;
     const requestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
 
-    logger.info(`[issuePointsCredit] Sending POST to ${creditEndpoint} for user ${masterAccountId}.`, { payload });
+    logger.debug(`[issuePointsCredit] Sending POST to ${creditEndpoint} for user ${masterAccountId}.`, { payload });
     try {
         await internalApiClient.post(creditEndpoint, payload, requestOptions);
     } catch (error) {
@@ -726,12 +719,12 @@ async function issueDebit(masterAccountId, payload, { internalApiClient, logger 
     logger.warn(`[Webhook Processor - issueDebit] INTERNAL_API_KEY_WEB is not set. Debit call to ${debitEndpoint} may fail authentication.`);
   }
 
-  logger.info(`[Webhook Processor - issueDebit] Sending POST to ${debitEndpoint} for user ${masterAccountId}. Payload:`, JSON.stringify(payload));
+  logger.debug(`[Webhook Processor - issueDebit] Sending POST to ${debitEndpoint} for user ${masterAccountId}. Payload:`, JSON.stringify(payload));
   
   try {
     const response = await internalApiClient.post(debitEndpoint, payload, requestOptions);
     // Assuming a successful response is 2xx. The internalApiClient might throw for non-2xx.
-    logger.info(`[Webhook Processor - issueDebit] Debit request successful for user ${masterAccountId}. Response status: ${response.status}`);
+    logger.debug(`[Webhook Processor - issueDebit] Debit request successful for user ${masterAccountId}. Response status: ${response.status}`);
     return response.data; // Or whatever the successful response structure is
   } catch (error) {
     const errorMessage = error.response?.data?.message || error.message || 'Unknown error during debit';
@@ -753,11 +746,11 @@ async function issueSpend(masterAccountId, payload, { internalApiClient, logger 
   const spendEndpoint = `/internal/v1/data/users/${masterAccountId}/economy/spend`;
   const requestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
   
-  logger.info(`[issueSpend] Sending POST to ${spendEndpoint} for user ${masterAccountId}.`, { payload });
+  logger.debug(`[issueSpend] Sending POST to ${spendEndpoint} for user ${masterAccountId}.`, { payload });
   
   try {
     const response = await internalApiClient.post(spendEndpoint, payload, requestOptions);
-    logger.info(`[issueSpend] Spend request successful for user ${masterAccountId}. Response status: ${response.status}`);
+    logger.debug(`[issueSpend] Spend request successful for user ${masterAccountId}. Response status: ${response.status}`);
     return response.data;
   } catch (error) {
     const errorMessage = error.response?.data?.message || error.message || 'Unknown error during spend';
@@ -784,7 +777,6 @@ function _convertCostUsdForWebSocket(costUsd) {
     try {
       return parseFloat(costUsd.toString());
     } catch (e) {
-      console.warn('[Webhook Processor] Failed to convert Decimal128 costUsd:', e.message);
       return null;
     }
   }
@@ -794,7 +786,6 @@ function _convertCostUsdForWebSocket(costUsd) {
     try {
       return parseFloat(costUsd.$numberDecimal);
     } catch (e) {
-      console.warn('[Webhook Processor] Failed to convert $numberDecimal costUsd:', e.message);
       return null;
     }
   }
@@ -805,7 +796,6 @@ function _convertCostUsdForWebSocket(costUsd) {
     return isNaN(num) ? null : num;
   }
 
-  console.warn('[Webhook Processor] Unknown costUsd format:', typeof costUsd, costUsd);
   return null;
 }
 

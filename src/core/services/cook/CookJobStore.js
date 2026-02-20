@@ -1,7 +1,5 @@
 const { dbQueue, getCachedClient } = require('../db/utils/queue');
 
-const ENABLE_POLL_LOGS = false;
-
 /**
  * CookJobStore
  * Lightweight Mongo-backed queue for cook generation jobs.
@@ -65,9 +63,6 @@ class CookJobStore {
       { returnDocument: 'after' }
     );
     const job = res.value || null;
-    if (job && ENABLE_POLL_LOGS) {
-      try { console.log(`[CookJobStore] Claimed specific job ${job._id} (collection ${job.collectionId}, user ${job.userId})`); } catch (_) {}
-    }
     return job;
   }
 
@@ -83,9 +78,6 @@ class CookJobStore {
       { sort: { createdAt: 1 }, returnDocument: 'after' }
     );
     const job = res.value || null;
-    if (job && ENABLE_POLL_LOGS) {
-      try { console.log(`[CookJobStore] Claimed queued job ${job._id} (collection ${job.collectionId}, user ${job.userId})`); } catch (_) {}
-    }
     return job;
   }
 
@@ -105,10 +97,7 @@ class CookJobStore {
         try {
           const job = await this.claimNextQueued();
           if (job) {
-            if (ENABLE_POLL_LOGS) {
-              try { console.log(`[CookJobStore] Poll claimed job ${job._id}`); } catch (_) {}
-            }
-            callback(job);
+              callback(job);
           }
         } catch (e) {
           // continue polling silently

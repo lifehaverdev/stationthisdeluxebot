@@ -28,7 +28,7 @@ class DepositNotificationService {
     });
 
     if (sent) {
-      this.logger.info(`[DepositNotificationService] Sent pointsDepositUpdate (${status}) to user ${masterAccountId}`);
+      this.logger.debug(`[DepositNotificationService] Sent pointsDepositUpdate (${status}) to user ${masterAccountId}`);
     } else {
       this.logger.warn(`[DepositNotificationService] Failed to send pointsDepositUpdate (${status}) to user ${masterAccountId} - user may be offline`);
       // TODO: Consider storing notification in database for later delivery
@@ -62,7 +62,7 @@ class DepositNotificationService {
     });
 
     if (sent) {
-      this.logger.info(`[DepositNotificationService] Sent transactionStatusUpdate (${status}) for tx ${txHash} to user ${masterAccountId}`);
+      this.logger.debug(`[DepositNotificationService] Sent transactionStatusUpdate (${status}) for tx ${txHash} to user ${masterAccountId}`);
     } else {
       this.logger.warn(`[DepositNotificationService] Failed to send transactionStatusUpdate (${status}) for tx ${txHash} to user ${masterAccountId}`);
     }

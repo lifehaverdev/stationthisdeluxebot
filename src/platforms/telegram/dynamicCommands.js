@@ -25,7 +25,7 @@ class CommandRegistry {
             this.logger.warn(`[CommandRegistry] Command '/${commandName}' is already registered. Overwriting.`);
         }
         this.commands.set(commandName, { regex, handler });
-        this.logger.info(`[CommandRegistry] Registered command: /${commandName}`);
+        this.logger.debug(`[CommandRegistry] Registered command: /${commandName}`);
     }
 
     /**
@@ -465,7 +465,7 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
       registeredCommandsList.push({ command: commandName, description: trimmedDesc });
     }
 
-    logger.info(`[Telegram] Successfully registered ${registeredCommandsList.length} dynamic commands in the registry.`);
+    logger.debug(`[Telegram] Successfully registered ${registeredCommandsList.length} dynamic commands in the registry.`);
     return registeredCommandsList;
 
   } catch (error) {

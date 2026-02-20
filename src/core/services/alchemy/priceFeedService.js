@@ -35,7 +35,7 @@ class PriceFeedService {
     }
     this.alchemyApiKey = config.alchemyApiKey;
     
-    this.logger.info('[PriceFeedService] Initialized.');
+    this.logger.debug('[PriceFeedService] Initialized.');
   }
 
   /**

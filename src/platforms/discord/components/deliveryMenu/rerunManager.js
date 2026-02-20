@@ -248,7 +248,7 @@ function registerHandlers(dispatchers, dependencies) {
 
     buttonInteractionDispatcher.register('rerun_gen:', handleRerunGenCallback);
     
-    logger.info('[RerunManager] Handler registered for "rerun_gen:" interactions.');
+    logger.debug('[RerunManager] Handler registered for "rerun_gen:" interactions.');
 }
 
 module.exports = {

@@ -109,7 +109,7 @@ class InstanceSweeper {
         return results;
       }
 
-      this.logger.info(`[InstanceSweeper] Found ${runningInstances.length} running instance(s)`);
+      this.logger.debug(`[InstanceSweeper] Found ${runningInstances.length} running instance(s)`);
 
       // Step 2: Get all active trainings from database
       const [orphanCandidates, stuckJobs] = await Promise.all([

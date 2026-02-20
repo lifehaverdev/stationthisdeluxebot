@@ -189,11 +189,11 @@ function createAuthApi(dependencies) {
         const storedNonce = nonceStore.get(lowerCaseAddress);
         if (storedNonce && storedNonce.nonce === nonce) {
           nonceStore.delete(lowerCaseAddress);
-          logger.info(`Nonce for ${lowerCaseAddress} expired and was removed.`);
+          logger.debug(`Nonce for ${lowerCaseAddress} expired and was removed.`);
         }
       }, 5 * 60 * 1000); // 5 minutes
 
-      logger.info(`Generated nonce for address: ${lowerCaseAddress}`);
+      logger.debug(`Generated nonce for address: ${lowerCaseAddress}`);
       res.status(200).json({ nonce });
 
     } catch (error) {
@@ -256,10 +256,10 @@ function createAuthApi(dependencies) {
         const { nonce } = storedNonceData;
 
         // INSPECT SIGNATURE: Try to decode and understand what's in there
-        logger.info(`[AuthApi] Inspecting signature: length=${signatureHex.length} chars (${signatureHex.length / 2} bytes)`);
+        logger.debug(`[AuthApi] Inspecting signature: length=${signatureHex.length} chars (${signatureHex.length / 2} bytes)`);
         
         // Log first and last parts of signature for debugging
-        logger.info(`[AuthApi] Signature preview: first 100 chars=${signature.substring(0, 102)}, last 100 chars=${signature.substring(signature.length - 100)}`);
+        logger.debug(`[AuthApi] Signature preview: first 100 chars=${signature.substring(0, 102)}, last 100 chars=${signature.substring(signature.length - 100)}`);
         
         // Try to decode as Coinbase Smart Wallet SignatureWrapper (ERC-4337)
         // struct SignatureWrapper {
@@ -276,7 +276,7 @@ function createAuthApi(dependencies) {
             // But it might be nested in WebAuthn data or other structures
             // Strategy: Search thoroughly for a 65-byte ECDSA signature that verifies our message
             
-            logger.info(`[AuthApi] Searching for ECDSA signature in ${signatureHex.length / 2} bytes of data...`);
+            logger.debug(`[AuthApi] Searching for ECDSA signature in ${signatureHex.length / 2} bytes of data...`);
             
             // First, try to decode as SignatureWrapper if it starts with proper ABI encoding
             if (signatureHex.length > 128) {
@@ -292,14 +292,14 @@ function createAuthApi(dependencies) {
                             
                             if (decoded && decoded[0]) {
                                 const [ownerIndex, signatureData] = decoded[0];
-                                logger.info(`[AuthApi] Decoded SignatureWrapper: ownerIndex=${ownerIndex}, signatureDataLength=${signatureData.length} bytes`);
+                                logger.debug(`[AuthApi] Decoded SignatureWrapper: ownerIndex=${ownerIndex}, signatureDataLength=${signatureData.length} bytes`);
                                 
                                 if (signatureData.length === 65) {
                                     const sigHex = ethers.hexlify(signatureData);
                                     extractedStandardSig = sigHex;
                                     extractedSignatureForEIP1271 = sigHex;
                                     isCoinbaseSmartWallet = true;
-                                    logger.info(`[AuthApi] Extracted ECDSA signature from SignatureWrapper`);
+                                    logger.debug(`[AuthApi] Extracted ECDSA signature from SignatureWrapper`);
                                 } else {
                                     // Search within signatureData
                                     const sigDataHex = ethers.hexlify(signatureData);
@@ -311,7 +311,7 @@ function createAuthApi(dependencies) {
                                         if (vByte === 27 || vByte === 28 || vByte === 0 || vByte === 1) {
                                             try {
                                                 const recovered = ethers.verifyMessage(nonce, candidate);
-                                                logger.info(`[AuthApi] Found valid signature in signatureData at offset ${i}, recovered: ${recovered}`);
+                                                logger.debug(`[AuthApi] Found valid signature in signatureData at offset ${i}, recovered: ${recovered}`);
                                                 extractedStandardSig = candidate;
                                                 extractedSignatureForEIP1271 = candidate;
                                                 isCoinbaseSmartWallet = true;
@@ -324,7 +324,7 @@ function createAuthApi(dependencies) {
                                 }
                             }
                         } catch (decodeError) {
-                            logger.info(`[AuthApi] ABI decode failed:`, decodeError.message);
+                            logger.debug(`[AuthApi] ABI decode failed:`, decodeError.message);
                         }
                     }
                 } catch (e) {
@@ -335,7 +335,7 @@ function createAuthApi(dependencies) {
             // Brute force: Search the entire signature blob for a 65-byte signature that verifies our message
             // This handles nested structures, WebAuthn data, etc.
             if (!extractedStandardSig) {
-                logger.info(`[AuthApi] Brute force searching for valid signature...`);
+                logger.debug(`[AuthApi] Brute force searching for valid signature...`);
                 let candidatesChecked = 0;
                 
                 // Search every possible 65-byte window
@@ -348,14 +348,14 @@ function createAuthApi(dependencies) {
                         candidatesChecked++;
                         try {
                             const recovered = ethers.verifyMessage(nonce, candidate);
-                            logger.info(`[AuthApi] Found valid signature at offset ${i}! Recovered address: ${recovered}`);
+                            logger.debug(`[AuthApi] Found valid signature at offset ${i}! Recovered address: ${recovered}`);
                             
                             // For Coinbase Smart Wallet, the recovered address is the owner, not the wallet
                             // But if we found a valid signature, we accept it
                             extractedStandardSig = candidate;
                             extractedSignatureForEIP1271 = candidate;
                             isCoinbaseSmartWallet = true;
-                            logger.info(`[AuthApi] Successfully extracted and verified signature from Coinbase Smart Wallet`);
+                            logger.debug(`[AuthApi] Successfully extracted and verified signature from Coinbase Smart Wallet`);
                             break;
                         } catch (e) {
                             // Not a valid signature for this message, continue searching
@@ -363,7 +363,7 @@ function createAuthApi(dependencies) {
                     }
                 }
                 
-                logger.info(`[AuthApi] Checked ${candidatesChecked} potential signature candidates`);
+                logger.debug(`[AuthApi] Checked ${candidatesChecked} potential signature candidates`);
             }
             
             // If still no signature found, try manual ABI extraction
@@ -374,7 +374,7 @@ function createAuthApi(dependencies) {
                     
                     // Check if offsets are reasonable (not overflow values)
                     if (firstOffset < 1000 && secondOffset < 10000 && firstOffset < secondOffset) {
-                        logger.info(`[AuthApi] Trying manual ABI extraction: firstOffset=${firstOffset}, secondOffset=${secondOffset}`);
+                        logger.debug(`[AuthApi] Trying manual ABI extraction: firstOffset=${firstOffset}, secondOffset=${secondOffset}`);
                         
                         // Extract signatureData manually
                         const signatureDataPos = secondOffset * 2;
@@ -391,7 +391,7 @@ function createAuthApi(dependencies) {
                                     extractedStandardSig = signatureData;
                                     extractedSignatureForEIP1271 = signatureData;
                                     isCoinbaseSmartWallet = true;
-                                    logger.info(`[AuthApi] Manually extracted 65-byte signature`);
+                                    logger.debug(`[AuthApi] Manually extracted 65-byte signature`);
                                 } else {
                                     // Search within manually extracted data
                                     const sigDataHexClean = signatureData.slice(2);
@@ -401,7 +401,7 @@ function createAuthApi(dependencies) {
                                         if (vByte === 27 || vByte === 28 || vByte === 0 || vByte === 1) {
                                             try {
                                                 const recovered = ethers.verifyMessage(nonce, candidate);
-                                                logger.info(`[AuthApi] Found valid signature in manually extracted data`);
+                                                logger.debug(`[AuthApi] Found valid signature in manually extracted data`);
                                                 extractedStandardSig = candidate;
                                                 extractedSignatureForEIP1271 = candidate;
                                                 isCoinbaseSmartWallet = true;
@@ -426,11 +426,11 @@ function createAuthApi(dependencies) {
         // If we found a standard signature (especially from Coinbase Smart Wallet), use it directly!
         // Coinbase Smart Wallet signs messages with standard ECDSA, we just need to extract it from SignatureWrapper
         if (extractedStandardSig && extractedStandardSig.length === 132) { // 0x + 130 chars
-            logger.info(`[AuthApi] Using extracted standard signature${isCoinbaseSmartWallet ? ' (from Coinbase Smart Wallet)' : ''}, proceeding with standard verification`);
+            logger.debug(`[AuthApi] Using extracted standard signature${isCoinbaseSmartWallet ? ' (from Coinbase Smart Wallet)' : ''}, proceeding with standard verification`);
             try {
                 const recoveredAddress = ethers.verifyMessage(nonce, extractedStandardSig);
                 if (recoveredAddress.toLowerCase() === lowerCaseAddress) {
-                    logger.info(`[AuthApi] Extracted signature verified successfully!`);
+                    logger.debug(`[AuthApi] Extracted signature verified successfully!`);
                     nonceStore.delete(lowerCaseAddress);
                     
                     // Defer user creation/lookup to the internal API
@@ -447,11 +447,11 @@ function createAuthApi(dependencies) {
                     // For Coinbase Smart Wallet, the recovered address might be the owner's address, not the wallet address
                     // In that case, we should still accept it if it's from the wallet's owner
                     if (isCoinbaseSmartWallet) {
-                        logger.info(`[AuthApi] Coinbase Smart Wallet: recovered address is owner, checking if wallet is controlled by this owner...`);
+                        logger.debug(`[AuthApi] Coinbase Smart Wallet: recovered address is owner, checking if wallet is controlled by this owner...`);
                         // We can't easily verify owner relationship without on-chain lookup, but we know the wallet signed it
                         // So if the signature is valid, we can trust it came from the wallet
                         // For now, let's accept it - the wallet itself proves ownership
-                        logger.info(`[AuthApi] Accepting Coinbase Smart Wallet signature - wallet address proves ownership`);
+                        logger.debug(`[AuthApi] Accepting Coinbase Smart Wallet signature - wallet address proves ownership`);
                         nonceStore.delete(lowerCaseAddress);
                         
                         const response = await internalApiClient.post('/internal/v1/data/auth/find-or-create-by-wallet', {
@@ -487,7 +487,7 @@ function createAuthApi(dependencies) {
                 
                 if (rpcUrl) {
                     fallbackProvider = new ethers.JsonRpcProvider(rpcUrl);
-                    logger.info(`[AuthApi] Created fallback provider for signature verification using ${rpcUrl.substring(0, 30)}...`);
+                    logger.debug(`[AuthApi] Created fallback provider for signature verification using ${rpcUrl.substring(0, 30)}...`);
                 } else {
                     logger.warn(`[AuthApi] No RPC URL available for fallback provider`);
                 }
@@ -504,12 +504,12 @@ function createAuthApi(dependencies) {
         if (provider) {
             try {
                 isSmartWallet = await isContract(provider, lowerCaseAddress);
-                logger.info(`[AuthApi] Address ${lowerCaseAddress} is ${isSmartWallet ? 'a smart contract wallet' : 'an EOA'}, signature length: ${signatureHex.length}`);
+                logger.debug(`[AuthApi] Address ${lowerCaseAddress} is ${isSmartWallet ? 'a smart contract wallet' : 'an EOA'}, signature length: ${signatureHex.length}`);
             } catch (error) {
                 logger.warn(`[AuthApi] Could not check if address is contract:`, error.message);
                 // If contract check fails but signature is unusually long, assume it might be a smart wallet
                 if (signatureIsLong) {
-                    logger.info(`[AuthApi] Contract check failed but signature length (${signatureHex.length}) suggests smart wallet, will attempt EIP-1271 verification`);
+                    logger.debug(`[AuthApi] Contract check failed but signature length (${signatureHex.length}) suggests smart wallet, will attempt EIP-1271 verification`);
                     isSmartWallet = true; // Try smart wallet verification as fallback
                 }
             }
@@ -555,7 +555,7 @@ function createAuthApi(dependencies) {
                 // Some smart wallets expect just the signature bytes, others expect the full data
                 const signatureToVerify = extractedSignatureForEIP1271 || signature;
                 
-                logger.info(`[AuthApi] Attempting EIP-1271 verification for ${isSmartWallet ? 'smart wallet' : 'long signature'}`, {
+                logger.debug(`[AuthApi] Attempting EIP-1271 verification for ${isSmartWallet ? 'smart wallet' : 'long signature'}`, {
                     address: lowerCaseAddress,
                     originalSignatureLength: signatureHex.length,
                     signatureToVerifyLength: signatureToVerify.length - 2,
@@ -573,7 +573,7 @@ function createAuthApi(dependencies) {
                             extractedSignatureForEIP1271
                         );
                         if (isValid) {
-                            logger.info(`[AuthApi] EIP-1271 verification succeeded with extracted signature!`);
+                            logger.debug(`[AuthApi] EIP-1271 verification succeeded with extracted signature!`);
                         } else {
                             logger.warn(`[AuthApi] EIP-1271 verification failed with extracted signature, trying full blob`);
                         }
@@ -585,7 +585,7 @@ function createAuthApi(dependencies) {
                 // If extracted signature didn't work, try the full blob
                 // Some smart wallets (like WebAuthn-based) might expect the full signing data
                 if (!isValid) {
-                    logger.info(`[AuthApi] Trying EIP-1271 with full signature blob`);
+                    logger.debug(`[AuthApi] Trying EIP-1271 with full signature blob`);
                     isValid = await verifyEIP1271Signature(
                         provider,
                         lowerCaseAddress,
@@ -649,12 +649,12 @@ function createAuthApi(dependencies) {
                 
                 // If EIP-1271 fails and it's not confirmed to be a contract, try standard verification as fallback (only if signature length matches)
                 if (!isSmartWallet && signatureHex.length === expectedEOALength) {
-                    logger.info(`[AuthApi] EIP-1271 failed but signature length matches EOA, trying standard verification`);
+                    logger.debug(`[AuthApi] EIP-1271 failed but signature length matches EOA, trying standard verification`);
                     try {
                         const recoveredAddress = ethers.verifyMessage(nonce, signature);
                         isValid = recoveredAddress.toLowerCase() === lowerCaseAddress;
                         if (isValid) {
-                            logger.info(`[AuthApi] Standard verification succeeded as fallback`);
+                            logger.debug(`[AuthApi] Standard verification succeeded as fallback`);
                         } else {
                             return res.status(401).json({ 
                                 error: { 
@@ -716,7 +716,7 @@ function createAuthApi(dependencies) {
                     return res.status(401).json({ error: { code: 'INVALID_SIGNATURE', message: 'Signature is invalid.' } });
                 }
                 
-                logger.info(`[AuthApi] Standard signature verified successfully for EOA ${lowerCaseAddress}`);
+                logger.debug(`[AuthApi] Standard signature verified successfully for EOA ${lowerCaseAddress}`);
             } catch (error) {
                 logger.error(`[AuthApi] Error during standard signature verification:`, error);
                 return res.status(500).json({ 

@@ -102,7 +102,7 @@ function createTelegramBot(dependencies, token, options = {}) {
     const handleStatusCommand = createStatusCommandHandler(allDependencies);
     commandDispatcher.register(/^\/status(?:@\w+)?/i, handleStatusCommand);
 
-    logger.info('[Bot] All feature handlers registered with dispatchers.');
+    logger.debug('[Bot] All feature handlers registered with dispatchers.');
   }
 
   registerAllHandlers();
@@ -223,7 +223,7 @@ function createTelegramBot(dependencies, token, options = {}) {
 
   bot.on('polling_error', (error) => logger.error('Telegram polling error:', error));
 
-  logger.info('Telegram bot configured and ready with dispatcher architecture.');
+  logger.debug('Telegram bot configured and ready with dispatcher architecture.');
   
   return bot;
 }

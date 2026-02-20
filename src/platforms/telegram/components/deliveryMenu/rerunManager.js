@@ -208,7 +208,7 @@ function registerHandlers(dispatchers, dependencies) {
 
     callbackQueryDispatcher.register('rerun_gen:', handleRerunGenCallback);
     
-    logger.info('[RerunManager] Handler registered for "rerun_gen:" callbacks.');
+    logger.debug('[RerunManager] Handler registered for "rerun_gen:" callbacks.');
 }
 
 module.exports = {

@@ -22,7 +22,7 @@ class WebSandboxNotifier {
     }
     this.websocketService = websocketService;
     this.logger = logger;
-    this.logger.info('[WebSandboxNotifier] Initialized.');
+    this.logger.debug('[WebSandboxNotifier] Initialized.');
   }
 
   /**

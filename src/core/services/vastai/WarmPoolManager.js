@@ -170,7 +170,7 @@ class WarmPoolManager {
 
     instance.state = InstanceState.READY;
     instance.lastActivity = Date.now();
-    this.logger.info(`[WarmPoolManager] Instance ${instanceId} is now READY`);
+    this.logger.debug(`[WarmPoolManager] Instance ${instanceId} is now READY`);
     return true;
   }
 
@@ -199,7 +199,7 @@ class WarmPoolManager {
 
     instance.state = InstanceState.BUSY;
     instance.lastActivity = Date.now();
-    this.logger.info(`[WarmPoolManager] Instance ${instanceId} is now BUSY`);
+    this.logger.debug(`[WarmPoolManager] Instance ${instanceId} is now BUSY`);
     return true;
   }
 
@@ -234,7 +234,7 @@ class WarmPoolManager {
     const timeoutMs = this._calculateIdleTimeout(requestType);
     this._startIdleTimer(instanceId, timeoutMs);
 
-    this.logger.info(`[WarmPoolManager] Instance ${instanceId} is now IDLE, timeout in ${timeoutMs / 1000}s`);
+    this.logger.debug(`[WarmPoolManager] Instance ${instanceId} is now IDLE, timeout in ${timeoutMs / 1000}s`);
     return true;
   }
 
@@ -265,7 +265,7 @@ class WarmPoolManager {
     this._startIdleTimer(instanceId, timeoutMs);
 
     instance.lastActivity = Date.now();
-    this.logger.info(`[WarmPoolManager] Extended warmth for ${instanceId}, new timeout in ${timeoutMs / 1000}s`);
+    this.logger.debug(`[WarmPoolManager] Extended warmth for ${instanceId}, new timeout in ${timeoutMs / 1000}s`);
     return true;
   }
 
@@ -409,7 +409,7 @@ class WarmPoolManager {
    */
   _startIdleTimer(instanceId, timeoutMs) {
     const timer = setTimeout(async () => {
-      this.logger.info(`[WarmPoolManager] Idle timeout reached for ${instanceId}, terminating`);
+      this.logger.debug(`[WarmPoolManager] Idle timeout reached for ${instanceId}, terminating`);
       await this.terminateInstance(instanceId);
     }, timeoutMs);
 

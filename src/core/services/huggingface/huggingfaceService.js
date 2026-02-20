@@ -17,7 +17,7 @@ class HuggingFaceService {
       spaceUrl: 'https://fancyfeast-joy-caption-beta-one.hf.space',
       logger: this.logger
     });
-    this.logger.info('HuggingFaceService initialized successfully.');
+    this.logger.debug('HuggingFaceService initialized successfully.');
   }
 
   /**

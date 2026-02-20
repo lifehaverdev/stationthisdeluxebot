@@ -18,7 +18,7 @@ class AsyncAdapterStrategy extends ExecutionStrategy {
     async execute(inputs, executionContext, dependencies) {
         const { tool } = executionContext;
 
-        this.logger.info(`[AsyncAdapterStrategy] Executing async adapter tool ${tool.toolId}`);
+        this.logger.debug(`[AsyncAdapterStrategy] Executing async adapter tool ${tool.toolId}`);
 
         // Use AdapterCoordinator to create async job and start polling
         const result = await this.adapterCoordinator.createAsyncJob(

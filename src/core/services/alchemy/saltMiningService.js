@@ -37,7 +37,7 @@ class SaltMiningService {
     this.saltQueue = []; // A queue to hold pre-mined salts
     this.isMining = false;
 
-    this.logger.info(`[SaltMiningService] Initialized with Foundation: ${this.contractConfig.address}, Beacon: ${this.contractConfig.beaconAddress}`);
+    this.logger.debug(`[SaltMiningService] Initialized with Foundation: ${this.contractConfig.address}, Beacon: ${this.contractConfig.beaconAddress}`);
   }
 
   /**

@@ -20,7 +20,7 @@ class ReviewQueueDB extends BaseDB {
       // Drop old single-field index if it exists (one-time migration)
       try {
         await collection.dropIndex('generation_unique');
-        this.logger.info('[ReviewQueueDB] Dropped old generation_unique index');
+        this.logger.debug('[ReviewQueueDB] Dropped old generation_unique index');
       } catch (dropErr) {
         // Index may not exist, that's fine
         if (dropErr.code !== 27) { // 27 = IndexNotFound
@@ -42,7 +42,7 @@ class ReviewQueueDB extends BaseDB {
           name: 'reviewer_status'
         }
       ]);
-      this.logger.info('[ReviewQueueDB] Indexes ensured.');
+      this.logger.debug('[ReviewQueueDB] Indexes ensured.');
     } catch (err) {
       this.logger.error('[ReviewQueueDB] Failed to ensure indexes', err);
     }

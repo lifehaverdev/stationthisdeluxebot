@@ -448,7 +448,7 @@ function registerHandlers(dispatchers, dependencies) {
   // Register link callback handler
   buttonInteractionDispatcher.register('link', createLinkCallbackHandler(dependencies));
 
-  dependencies.logger.info('[LinkManager] Link handlers registered for Discord');
+  dependencies.logger.debug('[LinkManager] Link handlers registered for Discord');
 }
 
 module.exports = {

@@ -44,7 +44,7 @@ class TokenRiskEngine {
         throw new Error(`TokenRiskEngine: No USDC address found for network: ${network}`);
     }
 
-    this.logger.info(`[TokenRiskEngine] Initialized for liquidity checks against mainnet USDC.`);
+    this.logger.debug(`[TokenRiskEngine] Initialized for liquidity checks against mainnet USDC.`);
   }
 
   /**

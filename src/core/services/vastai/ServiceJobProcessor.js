@@ -91,7 +91,7 @@ class ServiceJobProcessor {
     try {
       // Step 1: Mark job as executing
       await this.serviceJobDb.markExecuting(jobId);
-      this.logger.info(`[ServiceJobProcessor] Job ${jobId} marked as EXECUTING`);
+      this.logger.debug(`[ServiceJobProcessor] Job ${jobId} marked as EXECUTING`);
 
       // Step 2: Generate signed R2 upload URL for results
       const r2UploadUrl = await this._generateUploadUrl(jobId);
@@ -121,14 +121,14 @@ class ServiceJobProcessor {
 
       // Step 5: Calculate cost
       costUsd = this._calculateCost(gpuSeconds, hourlyRate, job.userId);
-      this.logger.info(`[ServiceJobProcessor] Job ${jobId} cost: $${costUsd.toFixed(6)} (${gpuSeconds.toFixed(2)}s @ $${hourlyRate}/hr)`);
+      this.logger.debug(`[ServiceJobProcessor] Job ${jobId} cost: $${costUsd.toFixed(6)} (${gpuSeconds.toFixed(2)}s @ $${hourlyRate}/hr)`);
 
       // Step 6: Bill user (non-blocking - failures logged but don't fail job)
       await this._billUser(job, costUsd, gpuSeconds);
 
       // Step 7: Mark job as completed
       await this.serviceJobDb.markCompleted(jobId, result.outputs, gpuSeconds);
-      this.logger.info(`[ServiceJobProcessor] Job ${jobId} marked as COMPLETED`);
+      this.logger.debug(`[ServiceJobProcessor] Job ${jobId} marked as COMPLETED`);
 
       // Step 8: Release instance back to pool
       await this._releaseInstance(jobId, instanceId, job.requestType);
@@ -219,7 +219,7 @@ class ServiceJobProcessor {
         expiresIn: 3600, // 1 hour expiry
         contentType: 'application/json'
       });
-      this.logger.info(`[ServiceJobProcessor] Generated R2 upload URL for job ${jobId}`);
+      this.logger.debug(`[ServiceJobProcessor] Generated R2 upload URL for job ${jobId}`);
       return url;
     } catch (err) {
       this.logger.error(`[ServiceJobProcessor] Failed to generate R2 upload URL: ${err.message}`);
@@ -247,11 +247,11 @@ class ServiceJobProcessor {
     const pointsToDeduct = Math.ceil(costUsd * this.config.pointsPerUsd);
 
     if (pointsToDeduct <= 0) {
-      this.logger.info(`[ServiceJobProcessor] No points to deduct for job ${jobId} (cost: $${costUsd.toFixed(6)})`);
+      this.logger.debug(`[ServiceJobProcessor] No points to deduct for job ${jobId} (cost: $${costUsd.toFixed(6)})`);
       return;
     }
 
-    this.logger.info(`[ServiceJobProcessor] Billing job ${jobId}: ${pointsToDeduct} points ($${costUsd.toFixed(6)})`);
+    this.logger.debug(`[ServiceJobProcessor] Billing job ${jobId}: ${pointsToDeduct} points ($${costUsd.toFixed(6)})`);
 
     // Check if points service is available and has the deduct method
     if (!this.pointsService || typeof this.pointsService.deductPointsForService !== 'function') {
@@ -269,7 +269,7 @@ class ServiceJobProcessor {
               costUsd
             }
           });
-          this.logger.info(`[ServiceJobProcessor] Billed ${pointsToDeduct} points to ${job.walletAddress} (via training method)`);
+          this.logger.debug(`[ServiceJobProcessor] Billed ${pointsToDeduct} points to ${job.walletAddress} (via training method)`);
           return;
         } catch (err) {
           this.logger.error(`[ServiceJobProcessor] Billing failed for job ${jobId}: ${err.message}`);
@@ -298,7 +298,7 @@ class ServiceJobProcessor {
           costUsd
         }
       });
-      this.logger.info(`[ServiceJobProcessor] Billed ${pointsToDeduct} points to ${job.walletAddress}`);
+      this.logger.debug(`[ServiceJobProcessor] Billed ${pointsToDeduct} points to ${job.walletAddress}`);
     } catch (err) {
       this.logger.error(`[ServiceJobProcessor] Billing failed for job ${jobId}: ${err.message}`);
       this.logger.warn(`[ServiceJobProcessor] BILLING ALERT: Job ${jobId} completed but billing failed. Manual reconciliation needed.`);
@@ -324,7 +324,7 @@ class ServiceJobProcessor {
 
     try {
       await this.scheduler.completeJob(jobId, instanceId, requestType);
-      this.logger.info(`[ServiceJobProcessor] Released instance ${instanceId} for job ${jobId}`);
+      this.logger.debug(`[ServiceJobProcessor] Released instance ${instanceId} for job ${jobId}`);
     } catch (err) {
       this.logger.error(`[ServiceJobProcessor] Failed to release instance ${instanceId}: ${err.message}`);
       throw err;

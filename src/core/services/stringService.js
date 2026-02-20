@@ -109,14 +109,14 @@ class StringService {
           throw new Error('searchText cannot be empty or only whitespace after extraction');
         }
 
-        // Logging to diagnose issues - use info level so it's visible
-        this.logger.info(`[StringService] Replace operation - searchText: "${strSearchValue}", replacementText: "${strB}", inputText length: ${strA.length}`);
-        this.logger.info(`[StringService] First 200 chars of inputText: "${strA.substring(0, 200)}"`);
-        
+        // Logging to diagnose issues
+        this.logger.debug(`[StringService] Replace operation - searchText: "${strSearchValue}", replacementText: "${strB}", inputText length: ${strA.length}`);
+        this.logger.debug(`[StringService] First 200 chars of inputText: "${strA.substring(0, 200)}"`);
+
         // Count occurrences before replacement
         const escapedForCount = strSearchValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const beforeCount = (strA.match(new RegExp(escapedForCount, 'gi')) || []).length;
-        this.logger.info(`[StringService] Found ${beforeCount} occurrences of "${strSearchValue}" (case-insensitive)`);
+        this.logger.debug(`[StringService] Found ${beforeCount} occurrences of "${strSearchValue}" (case-insensitive)`);
         
         // Escape special regex characters to treat searchValue as a literal string
         const escapedSearchValue = strSearchValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -126,7 +126,7 @@ class StringService {
         
         // Count occurrences after replacement
         const afterCount = (result.match(new RegExp(escapedForCount, 'gi')) || []).length;
-        this.logger.info(`[StringService] After replacement: ${afterCount} occurrences remaining. Result length: ${result.length}`);
+        this.logger.debug(`[StringService] After replacement: ${afterCount} occurrences remaining. Result length: ${result.length}`);
         
         // Log a sample of the result to verify replacement worked
         if (beforeCount > 0 && afterCount > 0) {

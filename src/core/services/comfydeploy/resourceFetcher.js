@@ -158,17 +158,17 @@ async function getDeployments(instanceData) {
     const { logger, API_ENDPOINTS, _makeApiRequest } = instanceData;
     logger.debug('[resourceFetcher.getDeployments] Fetching deployments...');
     try {
-      const response = await _makeApiRequest(API_ENDPOINTS.DEPLOYMENTS, {
-        headers: { 'Accept': 'application/json' } // Authorization handled by _makeApiRequest
+      const response = await _makeApiRequest(`${API_ENDPOINTS.DEPLOYMENTS}?is_deleted=false`, {
+        headers: { 'Accept': 'application/json' }
       });
-      
+
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`Failed to get deployments: ${response.status} ${errorText}`);
       }
-      
+
       const data = await response.json();
-      logger.info(`[resourceFetcher.getDeployments] Fetched ${data.length} deployments.`);
+      logger.debug(`[resourceFetcher.getDeployments] Fetched ${data.length} deployments.`);
       return data;
     } catch (error) {
       logger.error(`[resourceFetcher.getDeployments] Error: ${error.message}`);
@@ -220,17 +220,17 @@ async function getMachines(instanceData) {
     const { logger, API_ENDPOINTS, _makeApiRequest } = instanceData;
     logger.debug('[resourceFetcher.getMachines] Fetching machines...');
     try {
-      const response = await _makeApiRequest(API_ENDPOINTS.MACHINES, {
-        headers: { 'Accept': 'application/json' } 
+      const response = await _makeApiRequest(`${API_ENDPOINTS.MACHINES}?is_deleted=false`, {
+        headers: { 'Accept': 'application/json' }
       });
-      
+
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`Failed to get machines: ${response.status} ${errorText}`);
       }
-      
+
       const data = await response.json();
-      logger.info(`[resourceFetcher.getMachines] Fetched ${data.length} machines.`);
+      logger.debug(`[resourceFetcher.getMachines] Fetched ${data.length} machines.`);
       return data;
     } catch (error) {
       logger.error(`[resourceFetcher.getMachines] Error: ${error.message}`);

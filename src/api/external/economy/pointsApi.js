@@ -23,7 +23,7 @@ function createPointsApi(dependencies) {
             }
 
             const userId = user.masterAccountId || user.userId || user.id;
-            logger.info(`[pointsApi-external] /balance fetching for user ${userId}`);
+            logger.debug(`[pointsApi-external] /balance fetching for user ${userId}`);
 
             // First get user's wallet address
             const userResponse = await internalApiClient.get(`/internal/v1/data/users/${userId}`);
@@ -79,7 +79,7 @@ function createPointsApi(dependencies) {
         try {
             const { chainId } = req.query;
             const url = chainId ? `/internal/v1/data/points/supported-assets?chainId=${chainId}` : '/internal/v1/data/points/supported-assets';
-            logger.info(`[pointsApi-external] /supported-assets forwarding -> ${url}`);
+            logger.debug(`[pointsApi-external] /supported-assets forwarding -> ${url}`);
             const response = await internalApiClient.get(url);
             try {
                 const data = response.data || {};
@@ -142,9 +142,9 @@ function createPointsApi(dependencies) {
                     const response = await internalApiClient.get(`/internal/v1/data/users/${req.user.userId}/preferences/preferredCharteredFund`);
                     if (response.data && response.data.value && response.data.value.referralCode) {
                         referralCode = response.data.value.referralCode;
-                        logger.info('[pointsApi-external] Used referral code from user preferences', { 
+                        logger.debug('[pointsApi-external] Used referral code from user preferences', {
                             userId: req.user.userId,
-                            referralCode 
+                            referralCode
                         });
                     }
                 } catch (error) {

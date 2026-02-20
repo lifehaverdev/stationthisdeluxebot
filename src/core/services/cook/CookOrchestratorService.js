@@ -81,7 +81,7 @@ class CookOrchestratorService {
    */
   setWebSocketService(webSocketService) {
     this.webSocketService = webSocketService;
-    this.logger.info('[CookOrchestrator] WebSocket service configured');
+    this.logger.debug('[CookOrchestrator] WebSocket service configured');
   }
 
   async _init() {
@@ -338,36 +338,36 @@ class CookOrchestratorService {
    * Returns a function to release the lock
    */
   async _acquireLock(key) {
-    this.logger.info(`[CookOrchestrator] _acquireLock called for key: ${key}`);
+    this.logger.debug(`[CookOrchestrator] _acquireLock called for key: ${key}`);
     // Get or create lock promise chain for this key
     if (!this.locks.has(key)) {
       this.locks.set(key, Promise.resolve());
-      this.logger.info(`[CookOrchestrator] Created new lock chain for key: ${key}`);
+      this.logger.debug(`[CookOrchestrator] Created new lock chain for key: ${key}`);
     }
-    
+
     // Add ourselves to the chain - wait for previous operations
     const previousLock = this.locks.get(key);
     let releaseLock;
     const lockPromise = new Promise(resolve => {
       releaseLock = resolve; // Store release function
     });
-    
+
     // Chain our lock after the previous one
     const ourLock = previousLock.then(() => {
-      this.logger.info(`[CookOrchestrator] Lock acquired for key: ${key}, waiting for release...`);
+      this.logger.debug(`[CookOrchestrator] Lock acquired for key: ${key}, waiting for release...`);
       return lockPromise;
     });
-    
+
     // Update chain with our lock
     this.locks.set(key, ourLock);
-    
+
     // Wait for our turn (for previous operations to complete)
     await previousLock;
-    this.logger.info(`[CookOrchestrator] Previous lock released, we now have the lock for key: ${key}`);
-    
+    this.logger.debug(`[CookOrchestrator] Previous lock released, we now have the lock for key: ${key}`);
+
     // Return release function
     return () => {
-      this.logger.info(`[CookOrchestrator] Releasing lock for key: ${key}`);
+      this.logger.debug(`[CookOrchestrator] Releasing lock for key: ${key}`);
       releaseLock(); // Release lock, allowing next operation
     };
   }
@@ -410,11 +410,11 @@ class CookOrchestratorService {
    * ✅ MODIFIED: Now accepts batchSize (explicit number to generate) instead of totalSupply (auto-calculate from target)
    */
   async startCook({ collectionId, userId, cookId, spellId, toolId, traitTypes = [], paramsTemplate = {}, traitTree = [], paramOverrides = {}, batchSize = 1 }) {
-    this.logger.info(`[CookOrchestrator] startCook called for collection ${collectionId}, userId: ${userId}, cookId: ${cookId}, spellId: ${spellId}, toolId: ${toolId}, batchSize: ${batchSize}`);
+    this.logger.debug(`[CookOrchestrator] startCook called for collection ${collectionId}, userId: ${userId}, cookId: ${cookId}, spellId: ${spellId}, toolId: ${toolId}, batchSize: ${batchSize}`);
     try {
-      this.logger.info(`[CookOrchestrator] Calling _init()...`);
+      this.logger.debug(`[CookOrchestrator] Calling _init()...`);
     await this._init();
-      this.logger.info(`[CookOrchestrator] _init completed`);
+      this.logger.debug(`[CookOrchestrator] _init completed`);
 
       if (!spellId && !toolId) {
         this.logger.error(`[CookOrchestrator] startCook failed: spellId or toolId required. spellId: ${spellId}, toolId: ${toolId}`);
@@ -424,15 +424,15 @@ class CookOrchestratorService {
     // ✅ NEW: batchSize is the exact number of pieces to generate (no auto-calculation)
     const batch = Number.isFinite(batchSize) && batchSize > 0 ? Math.floor(batchSize) : 1;
     const key = this._getKey(collectionId, userId);
-      this.logger.info(`[CookOrchestrator] Acquiring lock for key: ${key}`);
+      this.logger.debug(`[CookOrchestrator] Acquiring lock for key: ${key}`);
 
       // Acquire lock to prevent race conditions
       const releaseLock = await this._acquireLock(key);
-      this.logger.info(`[CookOrchestrator] Lock acquired, getting produced count...`);
+      this.logger.debug(`[CookOrchestrator] Lock acquired, getting produced count...`);
 
       try {
     const producedSoFar = await this._getProducedCount(collectionId, userId);
-    this.logger.info(`[Cook DEBUG] collection ${collectionId} batchSize=${batch} producedSoFar=${producedSoFar}`);
+    this.logger.debug(`[Cook DEBUG] collection ${collectionId} batchSize=${batch} producedSoFar=${producedSoFar}`);
 
         // Check if state exists, create or update atomically
         const existingState = this.runningByCollection.get(key);
@@ -477,7 +477,7 @@ class CookOrchestratorService {
         }
 
     const state = this.runningByCollection.get(key);
-    this.logger.info(`[Cook DEBUG] State on start`, { nextIndex: state.nextIndex, runningSize: state.running.size, batchTarget: state.batchTarget });
+    this.logger.debug(`[Cook DEBUG] State on start`, { nextIndex: state.nextIndex, runningSize: state.running.size, batchTarget: state.batchTarget });
     state.nextIndex = Math.max(state.nextIndex, producedSoFar);
 
         await this.appendEvent('CookStarted', { collectionId, userId, cookId: state.cookId, batchSize: batch });
@@ -494,7 +494,7 @@ class CookOrchestratorService {
         try {
           // Build submission payload directly without waiting for any watcher
           const submission = enq.submission;
-          if (ENABLE_VERBOSE_SUBMIT_LOGS) this.logger.info(`[CookOrchestrator] Immediate submit for job ${enqueuedJobId} (tool ${submission.toolId})`);
+          if (ENABLE_VERBOSE_SUBMIT_LOGS) this.logger.debug(`[CookOrchestrator] Immediate submit for job ${enqueuedJobId} (tool ${submission.toolId})`);
           const resp = await submitPiece({ spellId: spellId, submission });
           this.logger.info(`[Cook] Submitted piece. job=${enqueuedJobId} resp=${resp?.status || 'ok'}`);
 
@@ -520,7 +520,7 @@ class CookOrchestratorService {
         throw innerErr;
       } finally {
         releaseLock(); // Always release lock, even on error
-        this.logger.info(`[CookOrchestrator] Lock released for key: ${key}`);
+        this.logger.debug(`[CookOrchestrator] Lock released for key: ${key}`);
       }
     } catch (err) {
       this.logger.error(`[CookOrchestrator] startCook error for collection ${collectionId}:`, err);
@@ -812,7 +812,7 @@ class CookOrchestratorService {
           this.logger.warn(`[CookOrchestrator] Generation for jobId ${finishedJobId} not found – parent cook will not be updated.`);
         } else if (generation.status !== 'completed') {
           // ✅ Don't update cook document for failed generations
-          this.logger.info(`[CookOrchestrator] Generation ${generation._id} has status '${generation.status}', skipping cook update`);
+          this.logger.debug(`[CookOrchestrator] Generation ${generation._id} has status '${generation.status}', skipping cook update`);
         } else {
           const costDelta = typeof generation.costUsd === 'number' ? generation.costUsd : 0;
 
@@ -870,7 +870,7 @@ class CookOrchestratorService {
 
     // Fill available slots up to maxConcurrent, without exceeding batch target
     if (state.paused) {
-      this.logger.info(`[CookOrchestrator] Cook ${key} is paused – skipping queueing new pieces`);
+      this.logger.debug(`[CookOrchestrator] Cook ${key} is paused – skipping queueing new pieces`);
       return { queued: 0 };
     }
 
@@ -908,7 +908,7 @@ class CookOrchestratorService {
           state.running.add(String(enq.jobId));
           state.nextIndex = idx + 1; // Atomic update
           queued += 1;
-          this.logger.info('[Cook DEBUG] queued job', { jobId: enq.jobId, pieceIndex: idx });
+          this.logger.debug('[Cook DEBUG] queued job', { jobId: enq.jobId, pieceIndex: idx });
       } catch (e) {
         this.logger.error(`[CookOrchestrator] submit failed for job ${enq.jobId}: ${e.message}`);
           // Don't add to running set or increment nextIndex if submit failed

@@ -64,7 +64,7 @@ class ServiceRunner {
     let gpuSeconds = 0;
 
     try {
-      this.logger.info(`[ServiceRunner] Executing job ${jobId} (type: ${requestType})`);
+      this.logger.debug(`[ServiceRunner] Executing job ${jobId} (type: ${requestType})`);
 
       // Prepare job config
       const config = {
@@ -98,7 +98,7 @@ class ServiceRunner {
         };
       }
 
-      this.logger.info(`[ServiceRunner] Job ${jobId} completed successfully in ${gpuSeconds.toFixed(2)}s`);
+      this.logger.debug(`[ServiceRunner] Job ${jobId} completed successfully in ${gpuSeconds.toFixed(2)}s`);
 
       return {
         success: true,
@@ -130,7 +130,7 @@ class ServiceRunner {
    */
   async uploadInputs(localPath, remotePath) {
     try {
-      this.logger.info(`[ServiceRunner] Uploading ${localPath} -> ${remotePath}`);
+      this.logger.debug(`[ServiceRunner] Uploading ${localPath} -> ${remotePath}`);
       await this.sshTransport.upload(localPath, remotePath);
     } catch (err) {
       this.logger.error(`[ServiceRunner] Upload failed: ${err.message}`);
@@ -147,7 +147,7 @@ class ServiceRunner {
    */
   async downloadResults(remotePath, localPath) {
     try {
-      this.logger.info(`[ServiceRunner] Downloading ${remotePath} -> ${localPath}`);
+      this.logger.debug(`[ServiceRunner] Downloading ${remotePath} -> ${localPath}`);
       await this.sshTransport.download(remotePath, localPath);
     } catch (err) {
       this.logger.error(`[ServiceRunner] Download failed: ${err.message}`);
@@ -195,7 +195,7 @@ CONFIGEOF`;
 
     try {
       await this.sshTransport.exec(cmd);
-      this.logger.info(`[ServiceRunner] Uploaded job config to ${remotePath}`);
+      this.logger.debug(`[ServiceRunner] Uploaded job config to ${remotePath}`);
     } catch (err) {
       throw new Error(`Failed to upload job config: ${err.message}`);
     }

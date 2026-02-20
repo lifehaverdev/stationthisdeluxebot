@@ -342,7 +342,6 @@ class ResponsePayloadNormalizer {
       // Extract direct video URL (HuggingFace async adapter format: { type: 'video', data: { videoUrl } })
       if (item.data.videoUrl || item.data.video) {
         const videoUrl = item.data.videoUrl || item.data.video;
-        console.log(`[ResponsePayloadNormalizer] extractMedia: Found direct videoUrl in item.data, extracting as video: ${videoUrl.substring(0, 80)}...`);
         media.push({
           url: videoUrl,
           type: 'video',
@@ -352,10 +351,8 @@ class ResponsePayloadNormalizer {
 
       // Extract images
       if (item.data.images && Array.isArray(item.data.images)) {
-        console.log(`[ResponsePayloadNormalizer] extractMedia: Found ${item.data.images.length} image(s) in item.data.images (item.type=${item.type})`);
         item.data.images.forEach((image, idx) => {
           if (image && image.url) {
-            console.log(`[ResponsePayloadNormalizer] extractMedia: Extracting image ${idx} as photo: ${image.url.substring(0, 80)}...`);
             media.push({ 
               ...image,
               url: image.url,
@@ -367,7 +364,6 @@ class ResponsePayloadNormalizer {
       
       // Extract files (videos, documents, images, etc.)
       if (item.data.files && Array.isArray(item.data.files)) {
-        console.log(`[ResponsePayloadNormalizer] extractMedia: Found ${item.data.files.length} file(s) in item.data.files (item.type=${item.type})`);
         item.data.files.forEach(file => {
           if (file && file.url) {
             // Determine type from file properties
@@ -433,7 +429,6 @@ class ResponsePayloadNormalizer {
               }
             }
             
-            console.log(`[ResponsePayloadNormalizer] extractMedia: Extracted file as ${mediaType} (reason: ${detectionReason}): ${file.url.substring(0, 80)}...`);
             media.push({ 
               ...file,
               url: file.url,
@@ -444,7 +439,6 @@ class ResponsePayloadNormalizer {
       }
     }
     
-    console.log(`[ResponsePayloadNormalizer] extractMedia: Returning ${media.length} media item(s): ${media.map(m => `${m.type}(${m.url?.substring(0, 50)}...)`).join(', ')}`);
     return media;
   }
 

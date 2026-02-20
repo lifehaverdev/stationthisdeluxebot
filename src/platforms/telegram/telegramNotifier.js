@@ -25,7 +25,7 @@ class TelegramNotifier {
     }
     this.bot = bot;
     this.logger = logger;
-    this.logger.info('[TelegramNotifier] Initialized.');
+    this.logger.debug('[TelegramNotifier] Initialized.');
   }
 
   /**

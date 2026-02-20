@@ -631,7 +631,7 @@ function registerHandlers(dispatchers, dependencies) {
   // Register account menu button handler
   buttonInteractionDispatcher.register('account', handleAccountMenuInteraction);
 
-  dependencies.logger.info('[AccountMenu] Account menu handlers registered');
+  dependencies.logger.debug('[AccountMenu] Account menu handlers registered');
 }
 
 module.exports = {

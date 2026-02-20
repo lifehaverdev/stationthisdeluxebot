@@ -226,7 +226,7 @@ class SpellPaymentService {
     if (tracking) {
       tracking.txHash = txHash;
       this.paymentTracking.set(spellPaymentId, tracking);
-      this.logger.info(`[SpellPaymentService] Tracked transaction ${txHash} for payment ${spellPaymentId}`);
+      this.logger.debug(`[SpellPaymentService] Tracked transaction ${txHash} for payment ${spellPaymentId}`);
     } else {
       this.logger.warn(`[SpellPaymentService] No tracking found for spellPaymentId ${spellPaymentId}`);
     }

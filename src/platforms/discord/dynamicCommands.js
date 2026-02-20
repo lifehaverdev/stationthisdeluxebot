@@ -22,7 +22,7 @@ class CommandRegistry {
             this.logger.warn(`[CommandRegistry] Command '/${commandName}' is already registered. Overwriting.`);
         }
         this.commands.set(commandName, { handler });
-        this.logger.info(`[CommandRegistry] Registered command: /${commandName}`);
+        this.logger.debug(`[CommandRegistry] Registered command: /${commandName}`);
     }
 
     /**
@@ -506,7 +506,7 @@ async function setupDynamicCommands(commandRegistry, dependencies, client, token
       });
     }
 
-    logger.info(`[Discord] Successfully registered ${registeredCommandsList.length} dynamic commands in the registry.`);
+    logger.debug(`[Discord] Successfully registered ${registeredCommandsList.length} dynamic commands in the registry.`);
     
     // Note: Commands are NOT registered with Discord API here.
     // The caller (bot.js) will merge these with static commands and register them all together.

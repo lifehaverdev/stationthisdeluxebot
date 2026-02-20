@@ -87,7 +87,7 @@ class WorkflowsService {
    */
   async initialize() {
     if (this.isLoading) {
-      this.logger.info('Workflows already being loaded');
+      this.logger.debug('Workflows already being loaded');
       return this.cache.workflows;
     }
 
@@ -101,7 +101,7 @@ class WorkflowsService {
       this._buildIndexes();
       this.isInitialized = true;
       this._hasInitializedOnce = true; // Set flag only on full success
-      this.logger.info(`Workflows initialized successfully. Found ${this.cache.workflows.length} workflows and ${this.cache.deployments.length} deployments.`);
+      this.logger.debug(`Workflows initialized successfully. Found ${this.cache.workflows.length} workflows and ${this.cache.deployments.length} deployments.`);
       return this.cache.workflows;
     } catch (error) {
       this.logger.error(`Error initializing workflows: ${error.message}`);
@@ -144,7 +144,7 @@ class WorkflowsService {
     
     // Standardize the workflow name
     const standardName = this.standardizeWorkflowName(name);
-    this.logger.info(`[getWorkflowByName] Looking up standard name: "${standardName}" (from original: "${name}")`);
+    this.logger.debug(`[getWorkflowByName] Looking up standard name: "${standardName}" (from original: "${name}")`);
     
     // Try to find by standardized name first
     let workflow = this.cache.byName.get(standardName);
@@ -160,7 +160,7 @@ class WorkflowsService {
       workflow = this.cache.byName.get(name);
       
       if (workflow) {
-        this.logger.info(`Found workflow using original name "${name}" instead of standardized name "${standardName}"`);
+        this.logger.debug(`Found workflow using original name "${name}" instead of standardized name "${standardName}"`);
       }
     }
     
@@ -429,10 +429,10 @@ class WorkflowsService {
       // Verify that the machine exists and is ready
       const machine = await this.getMachineById(machineId);
       if (machine && machine.status === 'ready') {
-        this.logger.info(`Routing workflow "${standardizedName}" to machine: ${machine.name} (${machineId})`);
+        this.logger.debug(`Routing workflow "${standardizedName}" to machine: ${machine.name} (${machineId})`);
         return machineId;
       } else {
-        this.logger.info(`Configured machine for "${standardizedName}" (${machineId}) is not available, falling back to default`);
+        this.logger.debug(`Configured machine for "${standardizedName}" (${machineId}) is not available, falling back to default`);
       }
     }
     
@@ -440,7 +440,7 @@ class WorkflowsService {
     if (this.routingConfig?.defaultMachine) {
       const defaultMachine = await this.getMachineById(this.routingConfig.defaultMachine);
       if (defaultMachine && defaultMachine.status === 'ready') {
-        this.logger.info(`Using default machine for workflow "${standardizedName}": ${defaultMachine.name} (${this.routingConfig.defaultMachine})`);
+        this.logger.debug(`Using default machine for workflow "${standardizedName}": ${defaultMachine.name} (${this.routingConfig.defaultMachine})`);
         return this.routingConfig.defaultMachine;
       }
     }
@@ -450,11 +450,11 @@ class WorkflowsService {
     const readyMachine = machines.find(machine => machine.status === 'ready');
     
     if (readyMachine) {
-      this.logger.info(`Using fallback ready machine for workflow "${standardizedName}": ${readyMachine.name} (${readyMachine.id})`);
+      this.logger.debug(`Using fallback ready machine for workflow "${standardizedName}": ${readyMachine.name} (${readyMachine.id})`);
       return readyMachine.id;
     }
-    
-    this.logger.info(`No suitable machine found for workflow "${standardizedName}"`);
+
+    this.logger.debug(`No suitable machine found for workflow "${standardizedName}"`);
     return null;
   }
 
@@ -638,7 +638,7 @@ class WorkflowsService {
    * @private
    */
   async _getWorkflowJsonFromDeployments(workflowId) {
-    this.logger.info(`[_getWorkflowJsonFromDeployments] Attempting for workflow ID: ${workflowId}`);
+    this.logger.debug(`[_getWorkflowJsonFromDeployments] Attempting for workflow ID: ${workflowId}`);
     
     try {
        // Get all deployments (use the cached raw deployments)
@@ -651,7 +651,7 @@ class WorkflowsService {
                 deployment.workflow_version.workflow.id === workflowId;
        });
        
-       this.logger.info(`[_getWorkflowJsonFromDeployments] Found ${matchingDeployments.length} deployments linked to workflow ID: ${workflowId}`);
+       this.logger.debug(`[_getWorkflowJsonFromDeployments] Found ${matchingDeployments.length} deployments linked to workflow ID: ${workflowId}`);
        
        if (matchingDeployments.length > 0) {
          // Sort by newest first
@@ -664,21 +664,21 @@ class WorkflowsService {
            if (deployment.workflow_version && 
                deployment.workflow_version.workflow_json && 
                deployment.workflow_version.workflow_json.nodes) {
-             this.logger.info(`[_getWorkflowJsonFromDeployments] Found workflow_json in deployment ${deployment.id}`);
+             this.logger.debug(`[_getWorkflowJsonFromDeployments] Found workflow_json in deployment ${deployment.id}`);
              return deployment.workflow_version.workflow_json;
            }
-           
-           if (deployment.workflow_version && 
-               deployment.workflow_version.workflow_data && 
+
+           if (deployment.workflow_version &&
+               deployment.workflow_version.workflow_data &&
                deployment.workflow_version.workflow_data.nodes) {
-             this.logger.info(`[_getWorkflowJsonFromDeployments] Found workflow_data in deployment ${deployment.id}`);
+             this.logger.debug(`[_getWorkflowJsonFromDeployments] Found workflow_data in deployment ${deployment.id}`);
              return deployment.workflow_version.workflow_data;
            }
            
            if (deployment.workflow_version && 
                deployment.workflow_version.version_id) {
              // Try to get the version
-             this.logger.info(`[_getWorkflowJsonFromDeployments] Trying to get version details for version ID: ${deployment.workflow_version.version_id}`);
+             this.logger.debug(`[_getWorkflowJsonFromDeployments] Trying to get version details for version ID: ${deployment.workflow_version.version_id}`);
              // Use a temporary ComfyUIService instance, passing the logger
              const ComfyUIService = require('./comfyui'); 
              const comfyui = new ComfyUIService({ logger: this.logger });
@@ -686,7 +686,7 @@ class WorkflowsService {
              try {
                const versionDetails = await comfyui.getWorkflowVersion(deployment.workflow_version.version_id);
                if (versionDetails && versionDetails.workflow_json && versionDetails.workflow_json.nodes) {
-                 this.logger.info(`[_getWorkflowJsonFromDeployments] Found workflow_json in fetched version: ${deployment.workflow_version.version_id}`);
+                 this.logger.debug(`[_getWorkflowJsonFromDeployments] Found workflow_json in fetched version: ${deployment.workflow_version.version_id}`);
                  return versionDetails.workflow_json;
                }
              } catch (error) {
@@ -699,7 +699,7 @@ class WorkflowsService {
        // If we get here, try a broader approach - look at all deployments to find similar workflows
        // This fallback logic is less reliable now that we fetch workflows directly.
        // Consider removing or refining if it causes issues.
-       this.logger.info(`[_getWorkflowJsonFromDeployments] No direct match found in deployments. Fallback search by name is less reliable and might be removed.`);
+       this.logger.debug(`[_getWorkflowJsonFromDeployments] No direct match found in deployments. Fallback search by name is less reliable and might be removed.`);
        
        // We don't have the workflow name readily available here if only ID is passed.
        // Skip the name-based fallback for now as it depends on the main workflow cache.
@@ -745,7 +745,7 @@ class WorkflowsService {
    * @returns {Promise<Object|null>} - Processed workflow object from cache or null if not found.
    */
   async getWorkflowWithDetails(name) {
-    this.logger.info(`[getWorkflowWithDetails] Retrieving cached details for workflow name: ${name}`);
+    this.logger.debug(`[getWorkflowWithDetails] Retrieving cached details for workflow name: ${name}`);
     // Ensure cache is loaded before attempting retrieval
     await this._ensureInitialized(); 
 
@@ -758,7 +758,7 @@ class WorkflowsService {
     }
     
     // The object in the cache should already be fully processed by _fetchAndProcessWorkflowDetails
-    this.logger.info(`[getWorkflowWithDetails] Found cached workflow: ${workflow.name} (ID: ${workflow.id})`);
+    this.logger.debug(`[getWorkflowWithDetails] Found cached workflow: ${workflow.name} (ID: ${workflow.id})`);
     return workflow;
   }
 
@@ -825,7 +825,7 @@ class WorkflowsService {
     const originalName = workflowSummary.name;
     const standardName = this.standardizeWorkflowName(originalName);
     
-    this.logger.info(`[_fetchAndProcessWorkflowDetails] Starting for: ${originalName} (ID: ${workflowId}, Standard: ${standardName})`);
+    this.logger.debug(`[_fetchAndProcessWorkflowDetails] Starting for: ${originalName} (ID: ${workflowId}, Standard: ${standardName})`);
 
     if (!workflowId || !originalName) {
         this.logger.warn(`[_fetchAndProcessWorkflowDetails] Skipping due to missing ID or name in summary: ${JSON.stringify(workflowSummary)}`);
@@ -858,11 +858,11 @@ class WorkflowsService {
         // --- Fetching Logic (adapted from old getWorkflowWithDetails) ---
 
         // 1. Try comfyui.getWorkflowDetails
-        this.logger.info(`[_fetchAndProcessWorkflowDetails] Attempting comfyui.getWorkflowDetails for ID: ${workflowId}`);
+        this.logger.debug(`[_fetchAndProcessWorkflowDetails] Attempting comfyui.getWorkflowDetails for ID: ${workflowId}`);
         let workflowDetails = null;
         try {
             workflowDetails = await comfyui.getWorkflowDetails(workflowId);
-            this.logger.info(`[_fetchAndProcessWorkflowDetails] Completed comfyui.getWorkflowDetails for ID: ${workflowId}`);
+            this.logger.debug(`[_fetchAndProcessWorkflowDetails] Completed comfyui.getWorkflowDetails for ID: ${workflowId}`);
         } catch (detailsError) {
              this.logger.warn(`[_fetchAndProcessWorkflowDetails] Error during comfyui.getWorkflowDetails for ID ${workflowId}: ${detailsError.message}`);
              // Continue, we might find JSON elsewhere
@@ -872,43 +872,43 @@ class WorkflowsService {
             processedWorkflow.versions = workflowDetails.workflow_versions || [];
             // Check if we already have a usable workflow JSON
             if (workflowDetails.workflow_json && workflowDetails.workflow_json.nodes) {
-                this.logger.info(`[_fetchAndProcessWorkflowDetails] Found workflow_json in getWorkflowDetails response for ${workflowId}.`);
+                this.logger.debug(`[_fetchAndProcessWorkflowDetails] Found workflow_json in getWorkflowDetails response for ${workflowId}.`);
                 processedWorkflow.workflow_json = workflowDetails.workflow_json;
             }
         }
       
         // 2. If no JSON yet, try comfyui.getWorkflowContent
         if (!processedWorkflow.workflow_json || !processedWorkflow.workflow_json.nodes) {
-            this.logger.info(`[_fetchAndProcessWorkflowDetails] No workflow_json yet, attempting comfyui.getWorkflowContent for ID: ${workflowId}`);
+            this.logger.debug(`[_fetchAndProcessWorkflowDetails] No workflow_json yet, attempting comfyui.getWorkflowContent for ID: ${workflowId}`);
             let workflowContent = null;
             try {
                  workflowContent = await comfyui.getWorkflowContent(workflowId);
-                 this.logger.info(`[_fetchAndProcessWorkflowDetails] Completed comfyui.getWorkflowContent for ID: ${workflowId}`);
+                 this.logger.debug(`[_fetchAndProcessWorkflowDetails] Completed comfyui.getWorkflowContent for ID: ${workflowId}`);
             } catch (contentError) {
                  this.logger.warn(`[_fetchAndProcessWorkflowDetails] Error during comfyui.getWorkflowContent for ID ${workflowId}: ${contentError.message}`);
                  // Continue
             }
            
             if (workflowContent && workflowContent.nodes) {
-                this.logger.info(`[_fetchAndProcessWorkflowDetails] Found workflow_json via getWorkflowContent for ${workflowId}.`);
+                this.logger.debug(`[_fetchAndProcessWorkflowDetails] Found workflow_json via getWorkflowContent for ${workflowId}.`);
                 processedWorkflow.workflow_json = workflowContent;
             }
         }
       
         // 3. If still no JSON, try getting it from deployments (using ID directly)
         if (!processedWorkflow.workflow_json || !processedWorkflow.workflow_json.nodes) {
-            this.logger.info(`[_fetchAndProcessWorkflowDetails] Still no workflow_json, attempting _getWorkflowJsonFromDeployments for ID: ${workflowId}`);
+            this.logger.debug(`[_fetchAndProcessWorkflowDetails] Still no workflow_json, attempting _getWorkflowJsonFromDeployments for ID: ${workflowId}`);
             let workflowJsonFromDeployments = null;
             try {
                  workflowJsonFromDeployments = await this._getWorkflowJsonFromDeployments(workflowId); // Pass ID directly
-                 this.logger.info(`[_fetchAndProcessWorkflowDetails] Completed _getWorkflowJsonFromDeployments for ID: ${workflowId}`);
+                 this.logger.debug(`[_fetchAndProcessWorkflowDetails] Completed _getWorkflowJsonFromDeployments for ID: ${workflowId}`);
             } catch (deploymentsError) {
                  this.logger.warn(`[_fetchAndProcessWorkflowDetails] Error during _getWorkflowJsonFromDeployments for ID ${workflowId}: ${deploymentsError.message}`);
                  // Continue
             }
 
             if (workflowJsonFromDeployments && workflowJsonFromDeployments.nodes) {
-                this.logger.info(`[_fetchAndProcessWorkflowDetails] Found workflow_json via _getWorkflowJsonFromDeployments for ${workflowId}.`);
+                this.logger.debug(`[_fetchAndProcessWorkflowDetails] Found workflow_json via _getWorkflowJsonFromDeployments for ${workflowId}.`);
                 processedWorkflow.workflow_json = workflowJsonFromDeployments;
             } else {
                 this.logger.warn(`[_fetchAndProcessWorkflowDetails] Could not retrieve workflow_json structure from any source for ${workflowId}.`);
@@ -917,7 +917,7 @@ class WorkflowsService {
 
         // --- Parsing Logic ---
         if (processedWorkflow.workflow_json && processedWorkflow.workflow_json.nodes) {
-            this.logger.info(`[_fetchAndProcessWorkflowDetails] Parsing workflow structure for ${standardName} (ID: ${workflowId})`);
+            this.logger.debug(`[_fetchAndProcessWorkflowDetails] Parsing workflow structure for ${standardName} (ID: ${workflowId})`);
             try {
                 const structureInfo = this.parseWorkflowStructure(processedWorkflow.workflow_json);
                 processedWorkflow.requiredInputs = structureInfo.externalInputNodes;
@@ -925,7 +925,7 @@ class WorkflowsService {
                 processedWorkflow.hasLoraLoader = structureInfo.hasLoraLoader;
                 // Replace legacy 'inputs' with structured requiredInputs
                 processedWorkflow.inputs = processedWorkflow.requiredInputs.map(i => i.inputName); 
-                this.logger.info(`[_fetchAndProcessWorkflowDetails] Successfully parsed structure for ${standardName}. Inputs: ${processedWorkflow.requiredInputs.length}, Output: ${processedWorkflow.outputType}, LoRA: ${processedWorkflow.hasLoraLoader}`);
+                this.logger.debug(`[_fetchAndProcessWorkflowDetails] Successfully parsed structure for ${standardName}. Inputs: ${processedWorkflow.requiredInputs.length}, Output: ${processedWorkflow.outputType}, LoRA: ${processedWorkflow.hasLoraLoader}`);
             } catch(parseError) {
                 this.logger.error(`[_fetchAndProcessWorkflowDetails] Error parsing workflow structure for ${standardName} (ID: ${workflowId}): ${parseError.message}`);
                 // Keep defaults: requiredInputs=[], outputType='unknown', hasLoraLoader=false
@@ -941,7 +941,7 @@ class WorkflowsService {
         // It was only needed temporarily for parsing. The raw deployments cache might still hold it.
         // delete processedWorkflow.workflow_json; // Consider removing if memory becomes an issue
 
-        this.logger.info(`[_fetchAndProcessWorkflowDetails] Finished processing for: ${originalName} (ID: ${workflowId})`);
+        this.logger.debug(`[_fetchAndProcessWorkflowDetails] Finished processing for: ${originalName} (ID: ${workflowId})`);
         return processedWorkflow;
 
     } catch (error) {
@@ -958,7 +958,7 @@ class WorkflowsService {
    * @private
    */
   async _fetchWorkflows() {
-    this.logger.info('Fetching workflows list...');
+    this.logger.debug('Fetching workflows list...');
     
     let workflowsList = [];
     try {
@@ -976,7 +976,7 @@ class WorkflowsService {
         }
         
         workflowsList = await response.json();
-        this.logger.info(`Fetched ${workflowsList.length} workflow summaries.`);
+        this.logger.debug(`Fetched ${workflowsList.length} workflow summaries.`);
 
     } catch (listError) {
         this.logger.error(`Error fetching workflow list from API: ${listError.message}`);
@@ -1014,7 +1014,7 @@ class WorkflowsService {
     // Optional: Log summary of settled promises
     const fulfilledCount = results.filter(r => r.status === 'fulfilled').length;
     const rejectedCount = results.filter(r => r.status === 'rejected').length;
-    this.logger.info(`[_fetchWorkflows] Detail processing settled. Fulfilled: ${fulfilledCount}, Rejected: ${rejectedCount}, Total Processed Objects: ${processedWorkflows.length}`);
+    this.logger.debug(`[_fetchWorkflows] Detail processing settled. Fulfilled: ${fulfilledCount}, Rejected: ${rejectedCount}, Total Processed Objects: ${processedWorkflows.length}`);
 
 
     // Update the main workflow cache with the successfully processed workflows
@@ -1022,7 +1022,7 @@ class WorkflowsService {
     
     // NOTE: _buildIndexes() is called separately at the end of initialize()
     
-    this.logger.info(`[_fetchWorkflows] Finished processing workflow details. Stored ${this.cache.workflows.length} workflows in cache.`);
+    this.logger.debug(`[_fetchWorkflows] Finished processing workflow details. Stored ${this.cache.workflows.length} workflows in cache.`);
 }
 
   /**
@@ -1033,11 +1033,11 @@ class WorkflowsService {
    */
   async _fetchAndProcessDeployments() {
     try {
-      this.logger.info('Fetching deployments from ComfyUI Deploy API...');
-      
+      this.logger.debug('Fetching deployments from ComfyUI Deploy API...');
+
       // Use the correct API endpoint
       const url = `${this.apiUrl}${API_ENDPOINTS.DEPLOYMENTS}`;
-      this.logger.info(`Using API URL: ${url}`);
+      this.logger.debug(`Using API URL: ${url}`);
       
       const response = await fetch(url, {
         headers: {
@@ -1052,7 +1052,7 @@ class WorkflowsService {
       }
       
       const deployments = await response.json();
-      this.logger.info(`Fetched ${deployments.length} deployments successfully`);
+      this.logger.debug(`Fetched ${deployments.length} deployments successfully`);
       
       // Store raw deployments
       this.cache.deployments = deployments;
@@ -1073,7 +1073,7 @@ class WorkflowsService {
    */
   async _fetchMachines() {
     try {
-      this.logger.info('Fetching machines from ComfyUI Deploy API...');
+      this.logger.debug('Fetching machines from ComfyUI Deploy API...');
       
       // Use the correct API endpoint
       const url = `${this.apiUrl}${API_ENDPOINTS.MACHINES}`;
@@ -1091,7 +1091,7 @@ class WorkflowsService {
       }
       
       const machines = await response.json();
-      this.logger.info(`Fetched ${machines.length} machines successfully`);
+      this.logger.debug(`Fetched ${machines.length} machines successfully`);
       
       // Update cache
       this.cache.machines = machines;
@@ -1111,7 +1111,7 @@ class WorkflowsService {
    * @private
    */
   async _processDeployments(deployments) {
-    this.logger.info(`Processing ${deployments.length} deployments...`);
+    this.logger.debug(`Processing ${deployments.length} deployments...`);
     this.cache.deployments = deployments; // Store raw deployments
     
     // Clear existing deployment index before processing
@@ -1125,7 +1125,7 @@ class WorkflowsService {
           this.logger.warn(`Skipping deployment due to missing ID: ${JSON.stringify(deployment)}`);
       }
     }
-    this.logger.info(`Indexed ${this.cache.byDeploymentId.size} deployments by ID.`);
+    this.logger.debug(`Indexed ${this.cache.byDeploymentId.size} deployments by ID.`);
 
     // Note: Linking deployments to workflows (populating workflow.deploymentIds)
     // now happens within _buildIndexes, which runs after both deployments 
@@ -1137,7 +1137,7 @@ class WorkflowsService {
    * @private
    */
   _buildIndexes() {
-    this.logger.info('Building workflow indexes...');
+    this.logger.debug('Building workflow indexes...');
     this.cache.byName.clear();
     
     // Reset deployment IDs on all cached workflows first
@@ -1168,10 +1168,10 @@ class WorkflowsService {
       }
     });
     
-    this.logger.info(`Indexed ${this.cache.byName.size} workflows by standardized name.`);
+    this.logger.debug(`Indexed ${this.cache.byName.size} workflows by standardized name.`);
 
     // Link Deployments to Workflows
-    this.logger.info('Linking deployments to workflows...');
+    this.logger.debug('Linking deployments to workflows...');
     let linkedCount = 0;
     this.cache.deployments.forEach(deployment => {
         if (!deployment || !deployment.workflow_id || !deployment.id) {
@@ -1198,7 +1198,7 @@ class WorkflowsService {
              this.logger.warn(`Could not find workflow with ID "${deployment.workflow_id}" in cache to link deployment "${deployment.id}" (Name: ${deployment.name || 'N/A'}).`);
         }
     });
-    this.logger.info(`Successfully linked ${linkedCount} deployment IDs to workflows.`);
+    this.logger.debug(`Successfully linked ${linkedCount} deployment IDs to workflows.`);
   }
 
   /**

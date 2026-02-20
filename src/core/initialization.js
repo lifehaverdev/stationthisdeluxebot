@@ -50,7 +50,7 @@ async function loadBurnsData(services, logger) {
       });
     }
     
-    logger.info(`Burns data loaded successfully: ${burns.length} records`);
+    logger.debug(`Burns data loaded successfully: ${burns.length} records`);
     return burns;
   } catch (error) {
     logger.error('Error loading burns data:', error);
@@ -81,21 +81,9 @@ async function loadRoomsData(services, logger) {
         rooms.push(doc);
       });
       
-      logger.info(`Rooms data loaded successfully: ${rooms.length} rooms`);
-      
-      if (rooms.length > 0) {
-        // Log sample room titles
-        const sampleRooms = rooms.slice(0, 5);
-        sampleRooms.forEach(room => {
-          logger.info(`  - Room: ${room.title || 'Unnamed'}`);
-        });
-        
-        if (rooms.length > 5) {
-          logger.info(`  - And ${rooms.length - 5} more rooms...`);
-        }
-      }
+      logger.debug(`Rooms data loaded successfully: ${rooms.length} rooms`);
     } else {
-      logger.info('No rooms data found');
+      logger.debug('No rooms data found');
     }
     
     return rooms;
@@ -178,7 +166,7 @@ async function loadWorkflowsData(services, logger) {
       }
     }
     
-    logger.info(`Workflows data loaded successfully: ${flows.length} workflows`);
+    logger.debug(`Workflows data loaded successfully: ${flows.length} workflows`);
     return flows;
   } catch (error) {
     logger.error('Error loading workflows data:', error);
@@ -210,7 +198,7 @@ async function loadLorasData(services, logger) {
       });
     }
     
-    logger.info(`Loras data loaded successfully: ${loraTriggers.length} lora triggers`);
+    logger.debug(`Loras data loaded successfully: ${loraTriggers.length} lora triggers`);
     return loraTriggers;
   } catch (error) {
     logger.error('Error loading loras data:', error);
@@ -229,22 +217,16 @@ async function checkComfyUIAPI(comfyUIService, logger) {
   logger.info('Checking ComfyUI Deploy API connectivity...');
   
   try {
-    // Test API connectivity by fetching workflows
-    const apiWorkflows = await comfyUIService.getWorkflows();
-    logger.info(`Successfully connected to ComfyUI API: ${apiWorkflows.length} workflows available`);
-    
-    // Fetch deployments
+    // Test API connectivity using already-cached machines + deployments (fast, no workflow fetch)
     const apiDeployments = await comfyUIService.getDeployments();
-    logger.info(`Successfully fetched ${apiDeployments.length} deployments from ComfyUI API`);
-    
-    // Fetch machines
+    logger.info(`ComfyUI API: ${apiDeployments.length} deployments available`);
+
     const apiMachines = await comfyUIService.getMachines();
     const readyMachines = apiMachines.filter(m => m.status === 'ready').length;
-    logger.info(`Successfully fetched ${apiMachines.length} machines from ComfyUI API (${readyMachines} ready)`);
-    
+    logger.info(`ComfyUI API: ${apiMachines.length} machines (${readyMachines} ready)`);
+
     return {
       connected: true,
-      workflows: apiWorkflows.length,
       deployments: apiDeployments.length,
       machines: apiMachines.length,
       readyMachines
@@ -265,8 +247,6 @@ async function checkComfyUIAPI(comfyUIService, logger) {
  * @returns {Promise<Object>} - Initialization results
  */
 async function initialize(services, logger) {
-  logger.info('==== INITIALIZING STATIONTHIS SYSTEM ====');
-  
   try {
     // Verify DB service is available
     if (!services.db || !services.db.models) {
@@ -274,38 +254,27 @@ async function initialize(services, logger) {
     } else {
       // Log database information
       logger.info('Database service available:');
-      const models = Object.keys(services.db.models).filter(key => 
+      const models = Object.keys(services.db.models).filter(key =>
         services.db.models[key] && typeof services.db.models[key] === 'object'
       );
       logger.info(`- Available models: ${models.join(', ')}`);
-      
-      // Check for MONGO_PASS environment variable
-      if (process.env.MONGO_PASS) {
-        let displayUri = process.env.MONGO_PASS;
-        if (displayUri.includes('@')) {
-          displayUri = displayUri.replace(/\/\/[^:]+:[^@]+@/, '//[user]:[password]@');
-        }
-        logger.info(`- MONGO_PASS environment variable: ${displayUri}`);
-      } else {
-        logger.warn('MONGO_PASS environment variable not set');
-      }
     }
-    
+
     // Step 1: Load data from database
     logger.info('=== STEP 1: Loading data from database ===');
     const burnsData = await loadBurnsData(services, logger);
     const roomsData = await loadRoomsData(services, logger);
     const workflowsData = await loadWorkflowsData(services, logger);
     const lorasData = await loadLorasData(services, logger);
-    
+
     // Step 2: Check ComfyUI API connectivity
     logger.info('=== STEP 2: Checking ComfyUI API connectivity ===');
     const comfyUIStatus = await checkComfyUIAPI(services.comfyUI, logger);
-    
+
     // Step 3: Check additional database systems
     logger.info('=== STEP 3: Checking additional database systems ===');
     // TODO: Add checks for user_core and global_status
-    
+
     logger.info('==== INITIALIZATION COMPLETE ====');
     
     // Return initialization results

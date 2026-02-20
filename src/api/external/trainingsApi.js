@@ -42,7 +42,7 @@ module.exports = function createTrainingsApiRouter(deps = {}) {
         gpuClass: gpuClass || '24GB',
       });
 
-      logger.info(`[ExternalTrainingsApi] Cost estimate: ${baseModel}, ${numSteps} steps, ${numImages} images -> ${estimate.estimatedPoints} points`);
+      logger.debug(`[ExternalTrainingsApi] Cost estimate: ${baseModel}, ${numSteps} steps, ${numImages} images -> ${estimate.estimatedPoints} points`);
 
       res.json({
         totalCost: estimate.estimatedPoints,

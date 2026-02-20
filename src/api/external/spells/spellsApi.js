@@ -199,7 +199,7 @@ function createSpellsApi(dependencies) {
                 return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User or userId not found.' } });
             }
             const response = await internalApiClient.get(`/internal/v1/data/spells?ownedBy=${user.userId}`);
-            logger.info('[externalSpellsApi] Data received from internal API:', JSON.stringify(response.data, null, 2));
+            logger.debug('[externalSpellsApi] Data received from internal API:', JSON.stringify(response.data, null, 2));
             res.status(200).json(response.data);
         } catch (error) {
             logger.error('Failed to fetch user spells:', error);

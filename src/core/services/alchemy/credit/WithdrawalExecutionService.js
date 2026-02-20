@@ -36,7 +36,7 @@ class WithdrawalExecutionService {
    * @returns {Promise<void>}
    */
   async executeWithdrawal(requestTxHash) {
-    this.logger.info(`[WithdrawalExecutionService] Processing withdrawal request ${requestTxHash}`);
+    this.logger.debug(`[WithdrawalExecutionService] Processing withdrawal request ${requestTxHash}`);
 
     const request = await this.creditLedgerDb.findWithdrawalRequestByTxHash(requestTxHash);
     if (!request) {
@@ -44,7 +44,7 @@ class WithdrawalExecutionService {
     }
 
     if (request.status !== 'PENDING_PROCESSING') {
-      this.logger.info(`[WithdrawalExecutionService] Request ${requestTxHash} is not in PENDING_PROCESSING state`);
+      this.logger.debug(`[WithdrawalExecutionService] Request ${requestTxHash} is not in PENDING_PROCESSING state`);
       return;
     }
 
@@ -56,7 +56,7 @@ class WithdrawalExecutionService {
       // Re-check status after acquiring lock (double-check pattern)
       const recheckRequest = await this.creditLedgerDb.findWithdrawalRequestByTxHash(requestTxHash);
       if (!recheckRequest || recheckRequest.status !== 'PENDING_PROCESSING') {
-        this.logger.info(`[WithdrawalExecutionService] Request ${requestTxHash} status changed while acquiring lock`);
+        this.logger.debug(`[WithdrawalExecutionService] Request ${requestTxHash} status changed while acquiring lock`);
         return;
       }
 
@@ -139,7 +139,7 @@ class WithdrawalExecutionService {
     }
 
     // 3. Execute withdrawal
-    this.logger.info(`[WithdrawalExecutionService] Executing withdrawal for ${userAddress}. Amount: ${tokenDecimalService.formatTokenAmount(withdrawalAmount, '0x0000000000000000000000000000000000000000')} ETH, Fee: ${tokenDecimalService.formatTokenAmount(feeInWei, '0x0000000000000000000000000000000000000000')} ETH`);
+    this.logger.debug(`[WithdrawalExecutionService] Executing withdrawal for ${userAddress}. Amount: ${tokenDecimalService.formatTokenAmount(withdrawalAmount, '0x0000000000000000000000000000000000000000')} ETH, Fee: ${tokenDecimalService.formatTokenAmount(feeInWei, '0x0000000000000000000000000000000000000000')} ETH`);
     const txResponse = await this.ethereumService.write(
       this.contractConfig.address,
       this.contractConfig.abi,

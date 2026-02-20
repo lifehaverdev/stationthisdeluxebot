@@ -45,13 +45,6 @@ function initializeExternalApi(dependencies) {
   const internalApiClient = dependencies.internalApiClient || dependencies.internal.client;
   const logger = createLogger('ExternalAPI');
   
-  // Debug logging for dependencies
-  console.log('[ExternalAPI] Dependencies check:', {
-    internalApiClient: !!internalApiClient,
-    longRunningApiClient: !!dependencies.longRunningApiClient,
-    priceFeedService: !!dependencies.priceFeedService,
-    saltMiningService: !!dependencies.saltMiningService
-  });
   
   const externalApiRouter = express.Router();
   // Maintain backward compatibility for modules that still expect dependencies.internal.client
@@ -93,7 +86,7 @@ function initializeExternalApi(dependencies) {
         receiverAddress: x402ReceiverAddress,
         network: x402Network
       });
-      logger.info('[ExternalAPI] x402 middleware initialized', { network: x402Network });
+      logger.debug('[ExternalAPI] x402 middleware initialized', { network: x402Network });
     } catch (err) {
       logger.error('[ExternalAPI] Failed to initialize x402 middleware:', err.message);
     }
@@ -162,12 +155,10 @@ function initializeExternalApi(dependencies) {
 
     // JWT authentication from cookie
     const token = req.cookies.jwt;
-  console.log('[dualAuth] jwt cookie:', token);
   if (token) {
     try {
       const jwt = require('jsonwebtoken');
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      console.log('[dualAuth] decoded JWT:', decoded);
       req.user = decoded;
       return next();
     } catch (error) {
@@ -184,7 +175,7 @@ function initializeExternalApi(dependencies) {
   const userRouter = createUserApi(dependencies);
   if (userRouter) {
     externalApiRouter.use('/user', authenticateUserOrApiKey, userRouter);
-    logger.info('External User API router mounted at /user. (JWT or API key protected)');
+    logger.debug('External User API router mounted at /user. (JWT or API key protected)');
   } else {
     logger.warn('External User API router not mounted due to missing dependencies.');
   }
@@ -198,7 +189,7 @@ function initializeExternalApi(dependencies) {
   const referralVaultApi = createReferralVaultApi(referralVaultDependencies);
   if (referralVaultApi) {
     externalApiRouter.use('/referral-vault', authenticateUserOrApiKey, referralVaultApi);
-    logger.info('External Referral Vault API router mounted at /referral-vault. (JWT or API key protected)');
+    logger.debug('External Referral Vault API router mounted at /referral-vault. (JWT or API key protected)');
   } else {
     logger.warn('External Referral Vault API router not mounted due to missing dependencies.');
   }
@@ -207,7 +198,7 @@ function initializeExternalApi(dependencies) {
   const modelsApiRouter = createModelsApiRouter(dependencies);
   if (modelsApiRouter) {
     externalApiRouter.use('/models', dualAuth, modelsApiRouter);
-    logger.info('External Models API router mounted at /models (JWT or API key protected)');
+    logger.debug('External Models API router mounted at /models (JWT or API key protected)');
   } else {
     logger.warn('External Models API router not mounted due to missing dependencies.');
   }
@@ -262,7 +253,7 @@ function initializeExternalApi(dependencies) {
   const statusRouter = createStatusApi(dependencies);
   if (statusRouter) {
     externalApiRouter.use('/status', statusRouter);
-    logger.info('External Status API router mounted at /status. (Public)');
+    logger.debug('External Status API router mounted at /status. (Public)');
   } else {
     logger.warn('External Status API router not mounted due to missing dependencies.');
   }
@@ -274,7 +265,7 @@ function initializeExternalApi(dependencies) {
   const toolsRouter = createToolsApiRouter(dependencies);
   if (toolsRouter) {
     externalApiRouter.use('/tools', toolsRouter);
-    logger.info('External Tools API router mounted at /tools. (Public)');
+    logger.debug('External Tools API router mounted at /tools. (Public)');
   } else {
     logger.warn('External Tools API router not mounted due to missing dependencies.');
   }
@@ -286,7 +277,7 @@ function initializeExternalApi(dependencies) {
   });
   if (mcpRouter) {
     externalApiRouter.use('/mcp', mcpRouter);
-    logger.info('External MCP API router mounted at /mcp. (Public discovery, API key for execution)');
+    logger.debug('External MCP API router mounted at /mcp. (Public discovery, API key for execution)');
   } else {
     logger.warn('External MCP API router not mounted due to missing dependencies.');
   }
@@ -295,7 +286,7 @@ function initializeExternalApi(dependencies) {
   const authRouter = createAuthApi(dependencies);
   if (authRouter) {
     externalApiRouter.use('/auth', authRouter);
-    logger.info('External Auth API router mounted at /auth. (Public)');
+    logger.debug('External Auth API router mounted at /auth. (Public)');
   } else {
     logger.warn('External Auth API router not mounted due to missing dependencies.');
   }
@@ -304,7 +295,7 @@ function initializeExternalApi(dependencies) {
   const walletConnectionRouter = createWalletConnectionApiRouter(dependencies);
   if (walletConnectionRouter) {
     externalApiRouter.use('/wallets/connect', walletConnectionRouter);
-    logger.info('External Wallet Connection API router mounted at /wallets/connect. (Public)');
+    logger.debug('External Wallet Connection API router mounted at /wallets/connect. (Public)');
   } else {
     logger.warn('External Wallet Connection API router not mounted due to missing dependencies.');
   }
@@ -313,7 +304,7 @@ function initializeExternalApi(dependencies) {
   const generationsRouter = createGenerationsApi(dependencies);
   if (generationsRouter) {
     externalApiRouter.use('/generations', apiKeyAuth, generationsRouter);
-    logger.info('External Generations API router mounted at /generations. (Protected)');
+    logger.debug('External Generations API router mounted at /generations. (Protected)');
   } else {
     logger.warn('External Generations API router not mounted due to missing dependencies.');
   }
@@ -322,7 +313,7 @@ function initializeExternalApi(dependencies) {
   const storageRouter = createPublicStorageApi(dependencies);
   if (storageRouter) {
     externalApiRouter.use('/storage', storageRouter);
-    logger.info('External Public Storage API router mounted at /storage. (Public)');
+    logger.debug('External Public Storage API router mounted at /storage. (Public)');
   } else {
     logger.warn('External Public Storage API router not mounted due to missing dependencies.');
   }
@@ -331,7 +322,7 @@ function initializeExternalApi(dependencies) {
   const uploadRouter = createPublicUploadApi(dependencies);
   if (uploadRouter) {
     externalApiRouter.use('/upload', uploadRouter);
-    logger.info('External Public Upload API router mounted at /upload. (Public)');
+    logger.debug('External Public Upload API router mounted at /upload. (Public)');
   } else {
     logger.warn('External Public Upload API router not mounted due to missing dependencies.');
   }
@@ -343,7 +334,7 @@ function initializeExternalApi(dependencies) {
   });
   if (webhookRouter) {
     externalApiRouter.use('/webhook', webhookRouter);
-    logger.info('External Webhook API router mounted at /webhook. (Public with validation)');
+    logger.debug('External Webhook API router mounted at /webhook. (Public with validation)');
   } else {
     logger.warn('External Webhook API router not mounted due to missing dependencies.');
   }
@@ -361,12 +352,12 @@ function initializeExternalApi(dependencies) {
       });
       // Apply x402 middleware only to x402 routes
       externalApiRouter.use('/x402', x402Middleware, x402Router);
-      logger.info('External x402 Generation API router mounted at /x402. (Payment auth via X-PAYMENT header)');
+      logger.debug('External x402 Generation API router mounted at /x402. (Payment auth via X-PAYMENT header)');
     } catch (err) {
       logger.error('[ExternalAPI] Failed to mount x402 API:', err.message);
     }
   } else if (!x402Enabled) {
-    logger.info('[ExternalAPI] x402 protocol disabled (X402_ENABLED not set)');
+    logger.debug('[ExternalAPI] x402 protocol disabled (X402_ENABLED not set)');
   }
 
   // Mount the Admin Vault API router (Protected by NFT ownership verification)
@@ -375,7 +366,7 @@ function initializeExternalApi(dependencies) {
   const adminVaultRouter = createAdminVaultApi(dependencies);
   if (adminVaultRouter) {
     externalApiRouter.use('/admin/vaults', adminVaultRouter);
-    logger.info('External Admin Vault API router mounted at /admin/vaults. (NFT protected)');
+    logger.debug('External Admin Vault API router mounted at /admin/vaults. (NFT protected)');
   } else {
     logger.warn('External Admin Vault API router not mounted due to missing dependencies.');
   }
@@ -385,7 +376,7 @@ function initializeExternalApi(dependencies) {
   const adminRouter = createAdminApi(dependencies);
   if (adminRouter) {
     externalApiRouter.use('/admin', apiKeyAuth, adminRouter);
-    logger.info('External Admin API router mounted at /admin. (Protected)');
+    logger.debug('External Admin API router mounted at /admin. (Protected)');
   } else {
     logger.warn('External Admin API router not mounted due to missing dependencies.');
   }
@@ -415,14 +406,6 @@ function initializeExternalApi(dependencies) {
           iconUrl: iconUrl || '/images/sandbox/components/nft-placeholder.png',
         }));
 
-      // Debug preview
-      console.log('[ExternalAPI] supported-assets preview:', {
-        chainId,
-        tokensLen: tokens.length,
-        nftsLen: nfts.length,
-        token0: tokens[0],
-        nft0: nfts[0]
-      });
 
       return res.json({ tokens, nfts, defaults: { tokenFundingRate: DEFAULT_FUNDING_RATE } });
     } catch (err) {
@@ -446,7 +429,7 @@ function initializeExternalApi(dependencies) {
   const pointsRouter = createPointsApi({ internalApiClient, logger });
   if (pointsRouter) {
     externalApiRouter.use('/points', authenticateUserOrApiKey, pointsRouter);
-    logger.info('External Points API router mounted at /points. (JWT or API key protected)');
+    logger.debug('External Points API router mounted at /points. (JWT or API key protected)');
   } else {
     logger.warn('External Points API router not mounted due to missing dependencies.');
   }
@@ -455,7 +438,7 @@ function initializeExternalApi(dependencies) {
   const ratesRouter = createRatesApi({ internalApiClient, priceFeedService: dependencies.priceFeedService, logger });
   if (ratesRouter) {
     externalApiRouter.use('/economy', ratesRouter);
-    logger.info('External Rates API router mounted at /economy. (Public access)');
+    logger.debug('External Rates API router mounted at /economy. (Public access)');
   } else {
     logger.warn('External Rates API router not mounted due to missing dependencies.');
   }
@@ -466,7 +449,7 @@ function initializeExternalApi(dependencies) {
     const dsRouter = datasetsApi(dependencies);
     if (dsRouter) {
       externalApiRouter.use('/datasets', dualAuth, dsRouter);
-      logger.info('External Datasets API router mounted at /datasets.');
+      logger.debug('External Datasets API router mounted at /datasets.');
     }
   }
   // Mount Trainings API (auth required)
@@ -475,7 +458,7 @@ function initializeExternalApi(dependencies) {
     const trRouter = trainingsApi(dependencies);
     if (trRouter) {
       externalApiRouter.use('/trainings', dualAuth, trRouter);
-      logger.info('External Trainings API router mounted at /trainings.');
+      logger.debug('External Trainings API router mounted at /trainings.');
     }
   }
 
@@ -483,7 +466,7 @@ function initializeExternalApi(dependencies) {
   const lorasRouter = createLorasApi({ internalApiClient, logger });
   if (lorasRouter) {
     externalApiRouter.use('/loras', lorasRouter);
-    logger.info('External LoRAs API router mounted at /loras. (Public discovery)');
+    logger.debug('External LoRAs API router mounted at /loras. (Public discovery)');
   } else {
     logger.warn('External LoRAs API router not mounted due to missing dependencies.');
   }
@@ -497,7 +480,7 @@ function initializeExternalApi(dependencies) {
   });
   if (paymentsRouter) {
     externalApiRouter.use('/payments', paymentsRouter);
-    logger.info('External Payments API router mounted at /payments. (Public)');
+    logger.debug('External Payments API router mounted at /payments. (Public)');
   } else {
     logger.warn('External Payments API router not mounted due to missing dependencies.');
   }
@@ -511,7 +494,7 @@ function initializeExternalApi(dependencies) {
   });
   if (spellsRouter) {
     externalApiRouter.use('/spells', spellsRouter);
-    logger.info('External Spells API router mounted at /spells. (JWT or API key protected, dualAuth)');
+    logger.debug('External Spells API router mounted at /spells. (JWT or API key protected, dualAuth)');
   } else {
     logger.warn('External Spells API router not mounted due to missing dependencies.');
   }
@@ -520,14 +503,14 @@ function initializeExternalApi(dependencies) {
   const cookApiRouter = createCookApiRouter(dependencies);
   if (cookApiRouter) {
     externalApiRouter.use('/', authenticateUserOrApiKey, cookApiRouter); // ensure req.user is populated
-    logger.info('External Cook API router mounted (collections & cooks endpoints).');
+    logger.debug('External Cook API router mounted (collections & cooks endpoints).');
   } else {
     logger.warn('External Cook API router not mounted due to missing dependencies.');
   }
   const reviewQueueRouter = createReviewQueueApiRouter({ ...dependencies, authenticateUserOrApiKey });
   if (reviewQueueRouter) {
     externalApiRouter.use('/', reviewQueueRouter);
-    logger.info('External Review Queue API router mounted.');
+    logger.debug('External Review Queue API router mounted.');
   } else {
     logger.warn('External Review Queue API router not mounted.');
   }
@@ -536,7 +519,7 @@ function initializeExternalApi(dependencies) {
   const generationExecutionRouter = createGenerationExecutionApi(dependencies);
   if (generationExecutionRouter) {
     externalApiRouter.use('/generation', dualAuth, generationExecutionRouter);
-    logger.info('External Generation Execution API router mounted at /api/v1/generation/. (Dual Auth)');
+    logger.debug('External Generation Execution API router mounted at /api/v1/generation/. (Dual Auth)');
   } else {
     logger.warn('External Generation Execution API router not mounted due to missing dependencies.');
   }
@@ -545,7 +528,7 @@ function initializeExternalApi(dependencies) {
   const workspacesRouter = createWorkspacesApiRouter(dependencies);
   if (workspacesRouter) {
     externalApiRouter.use('/', workspacesRouter);
-    logger.info('External Workspaces API router mounted (GET public, POST auth via internal proxy).');
+    logger.debug('External Workspaces API router mounted (GET public, POST auth via internal proxy).');
   } else {
     logger.warn('External Workspaces API router not mounted due to missing dependencies.');
   }

@@ -12,7 +12,10 @@ const { getCachedClient } = require('../db/utils/queue');
 async function initializeCookServices(logger = console, options = {}) {
   const log = logger.child ? logger.child({ service: 'Cook' }) : logger;
   try {
+    const _t = Date.now();
+    log.info('[CookServices] Starting projection rebuild...');
     await CookProjectionUpdater.rebuild();
+    log.info(`[CookServices] Projection rebuild done in ${Date.now() - _t}ms`);
     await CookProjectionUpdater.watch();
     log.info('[CookServices] Projection rebuilt & watcher started');
     await resumeActiveCooksOnStartup({

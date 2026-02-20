@@ -33,7 +33,7 @@ function createCastCommandHandler(dependencies) {
     const platform = 'discord';
 
     try {
-      logger.info(`[Cast Command] Processing /cast for Discord user ${platformIdStr}...`);
+      logger.debug(`[Cast Command] Processing /cast for Discord user ${platformIdStr}...`);
       
       // Validate interaction object
       if (!interaction || typeof interaction.deferReply !== 'function') {
@@ -44,7 +44,7 @@ function createCastCommandHandler(dependencies) {
       // Acknowledge the interaction immediately (Discord requires response within 3 seconds)
       if (!interaction.deferred && !interaction.replied) {
         await interaction.deferReply();
-        logger.info('Interaction deferred for cast command');
+        logger.debug('Interaction deferred for cast command');
       }
       
       // Get spell slug from command options
@@ -124,7 +124,7 @@ function createCastCommandHandler(dependencies) {
       }
       
       // Get masterAccountId
-      logger.info(`[Cast Command] Resolving masterAccountId for user ${platformIdStr}...`);
+      logger.debug(`[Cast Command] Resolving masterAccountId for user ${platformIdStr}...`);
       const findOrCreateResponse = await apiClient.post('/internal/v1/data/users/find-or-create', {
         platform: platform,
         platformId: platformIdStr,
@@ -145,7 +145,7 @@ function createCastCommandHandler(dependencies) {
         return;
       }
       
-      logger.info(`[Cast Command] Resolved masterAccountId ${masterAccountId}, casting spell "${spellSlug}"`);
+      logger.debug(`[Cast Command] Resolved masterAccountId ${masterAccountId}, casting spell "${spellSlug}"`);
       
       // Call SpellsService to cast the spell
       try {

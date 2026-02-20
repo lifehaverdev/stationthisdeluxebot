@@ -64,7 +64,7 @@ function initializeDiscordPlatform(services, options = {}) {
     options
   );
   
-  logger.info('Discord platform initialized');
+  logger.debug('Discord platform initialized');
   
   // Return bot object with client for notifier registration
   // bot is already an object with { client, bot } from createDiscordBot

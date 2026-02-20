@@ -233,7 +233,7 @@ function createGenerationsApi(dependencies) {
 
             const generations = response.data?.generations || response.data || [];
             
-            logger.info(`[GenerationsApi] Status check: Found ${generations.length} generations for ${generationIds.length} requested IDs`);
+            logger.debug(`[GenerationsApi] Status check: Found ${generations.length} generations for ${generationIds.length} requested IDs`);
             
             res.status(200).json({ generations });
         } catch (error) {

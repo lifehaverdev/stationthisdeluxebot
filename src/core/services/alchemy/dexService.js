@@ -30,7 +30,7 @@ class DexService {
     // If the specific mainnet RPC URL isn't set, try to construct it from the Alchemy secret.
     if (!mainnetRpcUrl && process.env.ALCHEMY_SECRET) {
       mainnetRpcUrl = `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_SECRET}`;
-      this.logger.info('[DexService] Constructed mainnet RPC URL from ALCHEMY_SECRET.');
+      this.logger.debug('[DexService] Constructed mainnet RPC URL from ALCHEMY_SECRET.');
     }
 
     if (!mainnetRpcUrl) {
@@ -55,8 +55,8 @@ class DexService {
     );
 
     const transactionalNetworkName = this._getNetworkName(this.ethereumService.chainId);
-    this.logger.info(`[DexService] Initialized for on-chain TX on network ${transactionalNetworkName}.`);
-    this.logger.info(`[DexService] Configured for swap quoting on ${quoteNetwork} with Quoter at ${quoterAddress}`);
+    this.logger.debug(`[DexService] Initialized for on-chain TX on network ${transactionalNetworkName}.`);
+    this.logger.debug(`[DexService] Configured for swap quoting on ${quoteNetwork} with Quoter at ${quoterAddress}`);
   }
 
   /**
@@ -86,7 +86,7 @@ class DexService {
    * @returns {Promise<ethers.BigNumber>} The amount of tokenOut that would be received.
    */
   async getSwapQuote(tokenInAddress, tokenOutAddress, amountIn, fee) {
-    this.logger.info(`[DexService] Getting swap quote for ${amountIn} of ${tokenInAddress} -> ${tokenOutAddress} on mainnet`);
+    this.logger.debug(`[DexService] Getting swap quote for ${amountIn} of ${tokenInAddress} -> ${tokenOutAddress} on mainnet`);
 
     if (!this.quoterContract) {
       this.logger.error('[DexService] Quoting is disabled because no mainnet RPC URL is configured.');

@@ -97,7 +97,7 @@ function createStatusCommandHandler(dependencies) {
     const platform = 'discord';
 
     try {
-      logger.info(`[Status Command] Processing /status for Discord user ${platformIdStr}...`);
+      logger.debug(`[Status Command] Processing /status for Discord user ${platformIdStr}...`);
       
       // Validate interaction object
       if (!interaction || typeof interaction.deferReply !== 'function') {
@@ -108,7 +108,7 @@ function createStatusCommandHandler(dependencies) {
       // Acknowledge the interaction immediately (Discord requires response within 3 seconds)
       if (!interaction.deferred && !interaction.replied) {
         await interaction.deferReply();
-        logger.info('Interaction deferred for status command');
+        logger.debug('Interaction deferred for status command');
       }
       
       // 1. Get masterAccountId via Internal API
@@ -125,7 +125,7 @@ function createStatusCommandHandler(dependencies) {
       
       masterAccountId = findOrCreateResponse.data.masterAccountId;
       const isNewUser = findOrCreateResponse.data.isNewUser;
-      logger.info(`[statusCommand] Got masterAccountId: ${masterAccountId}. New user: ${isNewUser}`);
+      logger.debug(`[statusCommand] Got masterAccountId: ${masterAccountId}. New user: ${isNewUser}`);
 
       // 2. Get Enhanced Status Info via new Internal API Endpoint
       logger.debug(`[statusCommand] Getting enhanced status report for masterAccountId: ${masterAccountId}...`);
@@ -198,9 +198,9 @@ function createStatusCommandHandler(dependencies) {
       }
       
       // 5. Send the embed as a reply
-      logger.info('Sending enhanced status embed response');
+      logger.debug('Sending enhanced status embed response');
       await interaction.editReply({ embeds: [statusEmbed] });
-      logger.info(`[statusCommand] Successfully processed /status for masterAccountId: ${masterAccountId}`);
+      logger.debug(`[statusCommand] Successfully processed /status for masterAccountId: ${masterAccountId}`);
       
     } catch (error) {
       logger.error(`[statusCommand] Error processing /status for discordUserId ${platformIdStr}: ${error.response ? JSON.stringify(error.response.data) : error.message} ${error.stack}`);

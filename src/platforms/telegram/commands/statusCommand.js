@@ -106,7 +106,7 @@ function createStatusCommandHandler(dependencies) {
       
       masterAccountId = findOrCreateResponse.data.masterAccountId;
       const isNewUser = findOrCreateResponse.data.isNewUser;
-      logger.info(`[statusCommand] Got masterAccountId: ${masterAccountId}. New user: ${isNewUser}`);
+      logger.debug(`[statusCommand] Got masterAccountId: ${masterAccountId}. New user: ${isNewUser}`);
 
       // NOTE: Session management removed as per deprecation.
 
@@ -186,7 +186,7 @@ function createStatusCommandHandler(dependencies) {
           parse_mode: 'Markdown' // Optional: if you want to use Markdown for formatting (e.g. bolding titles)
         }
       );
-      logger.info(`[statusCommand] Successfully processed /status for masterAccountId: ${masterAccountId}`);
+      logger.debug(`[statusCommand] Successfully processed /status for masterAccountId: ${masterAccountId}`);
 
     } catch (error) {
       logger.error(`[statusCommand] Error processing /status for telegramUserId ${platformIdStr}: ${error.response ? JSON.stringify(error.response.data) : error.message} ${error.stack}`);

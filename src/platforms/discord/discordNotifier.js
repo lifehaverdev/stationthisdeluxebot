@@ -18,7 +18,7 @@ class DiscordNotifier {
     }
     this.client = client;
     this.logger = logger;
-    this.logger.info('[DiscordNotifier] Initialized.');
+    this.logger.debug('[DiscordNotifier] Initialized.');
   }
 
   /**

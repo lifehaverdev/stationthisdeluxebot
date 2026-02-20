@@ -19,16 +19,16 @@ class PlatformLinkNotificationService {
    */
   async sendApprovalRequestNotification(linkRequest, targetUser, requestingUser) {
     try {
-      this.logger.info(`[PlatformLinkNotification] Attempting to send approval request notification. RequestId: ${linkRequest.requestId}`);
-      this.logger.info(`[PlatformLinkNotification] Target user ID: ${targetUser._id}`);
-      this.logger.info(`[PlatformLinkNotification] Available notifiers: ${Object.keys(this.platformNotifiers).join(', ')}`);
+      this.logger.debug(`[PlatformLinkNotification] Attempting to send approval request notification. RequestId: ${linkRequest.requestId}`);
+      this.logger.debug(`[PlatformLinkNotification] Target user ID: ${targetUser._id}`);
+      this.logger.debug(`[PlatformLinkNotification] Available notifiers: ${Object.keys(this.platformNotifiers).join(', ')}`);
       
       // Get target user's platform identities
       const platformIdentities = targetUser.platformIdentities || {};
       const targetPlatforms = Object.keys(platformIdentities);
 
-      this.logger.info(`[PlatformLinkNotification] Target user platforms: ${targetPlatforms.join(', ')}`);
-      this.logger.info(`[PlatformLinkNotification] Platform identities: ${JSON.stringify(platformIdentities)}`);
+      this.logger.debug(`[PlatformLinkNotification] Target user platforms: ${targetPlatforms.join(', ')}`);
+      this.logger.debug(`[PlatformLinkNotification] Platform identities: ${JSON.stringify(platformIdentities)}`);
 
       if (targetPlatforms.length === 0) {
         this.logger.warn(`[PlatformLinkNotification] Target user ${targetUser._id} has no platform identities. Cannot send notification.`);
@@ -39,7 +39,7 @@ class PlatformLinkNotificationService {
       let targetPlatform = targetPlatforms.find(p => p === 'telegram') || targetPlatforms[0];
       const targetPlatformId = platformIdentities[targetPlatform];
 
-      this.logger.info(`[PlatformLinkNotification] Selected platform: ${targetPlatform}, Platform ID: ${targetPlatformId}`);
+      this.logger.debug(`[PlatformLinkNotification] Selected platform: ${targetPlatform}, Platform ID: ${targetPlatformId}`);
 
       if (!targetPlatformId) {
         this.logger.warn(`[PlatformLinkNotification] Target platform ${targetPlatform} has no platformId.`);
@@ -53,7 +53,7 @@ class PlatformLinkNotificationService {
         return false;
       }
 
-      this.logger.info(`[PlatformLinkNotification] Notifier found for ${targetPlatform}. Preparing to send notification.`);
+      this.logger.debug(`[PlatformLinkNotification] Notifier found for ${targetPlatform}. Preparing to send notification.`);
 
       // Build notification message
       const requestingPlatform = linkRequest.requestingPlatform;
@@ -122,8 +122,8 @@ class PlatformLinkNotificationService {
       // For now, let's build a plain message and let sendEscapedMessage handle escaping
       // But we want buttons, so we need to use the bot directly or modify the approach
       
-      this.logger.info(`[PlatformLinkNotification] Calling notifier.sendNotification with context: ${JSON.stringify(notificationContext)}`);
-      this.logger.info(`[PlatformLinkNotification] Message content (first 200 chars): ${messageContent.substring(0, 200)}`);
+      this.logger.debug(`[PlatformLinkNotification] Calling notifier.sendNotification with context: ${JSON.stringify(notificationContext)}`);
+      this.logger.debug(`[PlatformLinkNotification] Message content (first 200 chars): ${messageContent.substring(0, 200)}`);
       
       try {
         // For Telegram, we need to send with buttons, so we'll use the bot directly

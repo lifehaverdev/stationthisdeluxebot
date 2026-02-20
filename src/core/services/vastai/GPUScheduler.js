@@ -381,7 +381,7 @@ class GPUScheduler {
       currentInstances < this.config.maxInstances;
 
     if (shouldSpinup) {
-      this.logger.info(
+      this.logger.debug(
         `[GPUScheduler] Spinup recommended: queue depth ${queueDepth} >= threshold ${this.config.spinupThreshold}, ` +
         `instances ${currentInstances} < max ${this.config.maxInstances}`
       );

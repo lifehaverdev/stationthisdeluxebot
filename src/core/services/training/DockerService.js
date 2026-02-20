@@ -26,17 +26,17 @@ class DockerService {
     const workDir = `/tmp/training/${jobId}`;
     
     try {
-      this.logger.info(`Starting Docker training for job ${jobId}`);
+      this.logger.debug(`Starting Docker training for job ${jobId}`);
       
       // Create working directory
       await this.createWorkDir(workDir);
-      
+
       // Build Docker image if needed
       const imageName = await this.buildImage(recipe, jobId);
-      
+
       // Run training container
       const result = await this.runContainer(imageName, containerName, config, workDir, jobId);
-      
+
       // Clean up container
       await this.cleanupContainer(containerName);
       
@@ -57,7 +57,7 @@ class DockerService {
   async createWorkDir(workDir) {
     try {
       await fs.mkdir(workDir, { recursive: true });
-      this.logger.info(`Created working directory: ${workDir}`);
+      this.logger.debug(`Created working directory: ${workDir}`);
     } catch (error) {
       this.logger.error(`Failed to create working directory ${workDir}:`, error);
       throw error;
@@ -74,11 +74,11 @@ class DockerService {
       // Check if image already exists
       const exists = await this.imageExists(imageName);
       if (exists) {
-        this.logger.info(`Using existing image: ${imageName}`);
+        this.logger.debug(`Using existing image: ${imageName}`);
         return imageName;
       }
 
-      this.logger.info(`Building Docker image: ${imageName}`);
+      this.logger.debug(`Building Docker image: ${imageName}`);
       
       // Create Dockerfile
       const dockerfile = await recipe.generateDockerfile();
@@ -88,7 +88,7 @@ class DockerService {
       // Build image
       await this.buildDockerImage(dockerfilePath, imageName);
       
-      this.logger.info(`Successfully built image: ${imageName}`);
+      this.logger.debug(`Successfully built image: ${imageName}`);
       return imageName;
       
     } catch (error) {
@@ -156,7 +156,7 @@ class DockerService {
         imageName
       ];
 
-      this.logger.info(`Running container: docker ${dockerArgs.join(' ')}`);
+      this.logger.debug(`Running container: docker ${dockerArgs.join(' ')}`);
       
       const docker = spawn('docker', dockerArgs);
       
@@ -166,7 +166,7 @@ class DockerService {
       docker.stdout.on('data', (data) => {
         const output = data.toString();
         stdout += output;
-        this.logger.info(`[${containerName}] ${output.trim()}`);
+        this.logger.debug(`[${containerName}] ${output.trim()}`);
       });
       
       docker.stderr.on('data', (data) => {
@@ -240,7 +240,7 @@ class DockerService {
       await this.removeContainer(containerName);
       
       this.activeContainers.delete(containerName);
-      this.logger.info(`Cleaned up container: ${containerName}`);
+      this.logger.debug(`Cleaned up container: ${containerName}`);
       
     } catch (error) {
       this.logger.warn(`Failed to cleanup container ${containerName}:`, error);

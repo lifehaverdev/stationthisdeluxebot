@@ -51,7 +51,7 @@ function createAdminApi(dependencies) {
     const requestId = require('uuid').v4();
     const chainId = req.query.chainId || '1';
     
-    logger.info(`[AdminApi] GET /accounts for chainId=${chainId}, requestId=${requestId}`);
+    logger.debug(`[AdminApi] GET /accounts for chainId=${chainId}, requestId=${requestId}`);
 
     try {
       const { creditService, ethereumService } = getChainServices(chainId);
@@ -76,7 +76,7 @@ function createAdminApi(dependencies) {
         points_credited: { $exists: true, $gt: 0 }
       });
 
-      logger.info(`[AdminApi] Found ${allDeposits.length} confirmed deposits with points`);
+      logger.debug(`[AdminApi] Found ${allDeposits.length} confirmed deposits with points`);
 
       // Group deposits by (depositor_address, token_address) to get account summaries
       const accountMap = new Map();

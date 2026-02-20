@@ -180,7 +180,7 @@ function registerHandlers(dispatchers, dependencies) {
 
     buttonInteractionDispatcher.register('view_gen_info:', handleViewGenInfoCallback);
 
-    logger.info('[InfoManager] Handler registered for "view_gen_info:" interactions.');
+    logger.debug('[InfoManager] Handler registered for "view_gen_info:" interactions.');
 }
 
 module.exports = {

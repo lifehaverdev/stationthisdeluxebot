@@ -19,7 +19,7 @@ class StorageService {
           secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
         },
       });
-      this.logger.info('StorageService initialized for Cloudflare R2.');
+      this.logger.debug('StorageService initialized for Cloudflare R2.');
       this._publicUrlCache = new Map();
       this._initBucketMap();
       // use only v3 client

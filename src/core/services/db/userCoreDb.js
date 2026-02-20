@@ -396,7 +396,7 @@ class UserCoreDB extends BaseDB {
     if (updatedUserDoc) {
       // Check if the specific key was actually modified if needed (e.g., by comparing updatedAt)
       // For now, assume success if updateUserCore returned a document.
-      this.logger.info(`[UserCoreDB] updateApiKey: Successfully updated API key subdocument for masterAccountId ${masterAccountId}, keyPrefix ${keyPrefix}.`);
+      this.logger.debug(`[UserCoreDB] updateApiKey: Successfully updated API key subdocument for masterAccountId ${masterAccountId}, keyPrefix ${keyPrefix}.`);
       return updatedUserDoc;
     } else {
       this.logger.warn(`[UserCoreDB] updateApiKey: Failed to update API key (user or key not found) for masterAccountId ${masterAccountId}, keyPrefix ${keyPrefix}.`);

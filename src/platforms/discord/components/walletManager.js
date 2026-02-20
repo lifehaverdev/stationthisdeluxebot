@@ -481,7 +481,7 @@ function registerHandlers(dispatcherInstances, dependencies) {
     // Register button handlers (all wallet buttons start with 'wallet_')
     buttonInteractionDispatcher.register('wallet_', walletButtonHandler);
     
-    logger.info('[WalletManager] Handlers registered.');
+    logger.debug('[WalletManager] Handlers registered.');
 }
 
 module.exports = {

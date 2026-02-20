@@ -96,7 +96,7 @@ class CreditService {
       ? disableWebhookActionsConfig
       : disableWebhookActionsEnv;
     if (this.disableWebhookActions) {
-      this.logger.warn('[CreditService] Webhook-dependent credit actions are DISABLED for this environment.');
+      this.logger.debug('[CreditService] Webhook-dependent credit actions are DISABLED for this environment.');
     }
     if (!foundationAddress || !foundationAbi) {
       throw new Error('CreditService: Missing contract address or ABI in config.');
@@ -106,8 +106,8 @@ class CreditService {
     // Initialize extracted services
     this._initializeServices();
 
-    this.logger.info(`[CreditService] Configured to use Foundation at address: ${this.contractConfig.address}`);
-    this.logger.info('[CreditService] Initialized (refactored facade).');
+    this.logger.debug(`[CreditService] Configured to use Foundation at address: ${this.contractConfig.address}`);
+    this.logger.debug('[CreditService] Initialized (refactored facade).');
   }
 
   /**
@@ -232,7 +232,7 @@ class CreditService {
       );
     } else {
       this.eventWebhookProcessor = null;
-      this.logger.info('[CreditService] Event webhook processor not initialized (disabled).');
+      this.logger.debug('[CreditService] Event webhook processor not initialized (disabled).');
     }
   }
 

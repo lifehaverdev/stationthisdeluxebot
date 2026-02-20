@@ -21,7 +21,7 @@ class CloudflareService {
    */
   async downloadDataset(dataset, jobId) {
     try {
-      this.logger.info(`Downloading dataset ${dataset._id} for job ${jobId}`);
+      this.logger.debug(`Downloading dataset ${dataset._id} for job ${jobId}`);
       
       const localDir = `/tmp/training/${jobId}/dataset`;
       await fs.mkdir(localDir, { recursive: true });
@@ -48,7 +48,7 @@ class CloudflareService {
         throw new Error('No images could be downloaded from dataset');
       }
       
-      this.logger.info(`Downloaded ${validPaths.length}/${dataset.images.length} images for job ${jobId}`);
+      this.logger.debug(`Downloaded ${validPaths.length}/${dataset.images.length} images for job ${jobId}`);
       
       // Create dataset info file
       const datasetInfo = {
@@ -78,7 +78,7 @@ class CloudflareService {
    */
   async uploadModel(modelPath, jobId) {
     try {
-      this.logger.info(`Uploading model for job ${jobId}`);
+      this.logger.debug(`Uploading model for job ${jobId}`);
       
       // Generate unique filename
       const timestamp = Date.now();
@@ -95,7 +95,7 @@ class CloudflareService {
         }
       });
       
-      this.logger.info(`Model uploaded successfully: ${modelUrl}`);
+      this.logger.debug(`Model uploaded successfully: ${modelUrl}`);
       return modelUrl;
       
     } catch (error) {
@@ -112,7 +112,7 @@ class CloudflareService {
    */
   async uploadPreviewImages(imagePaths, jobId) {
     try {
-      this.logger.info(`Uploading ${imagePaths.length} preview images for job ${jobId}`);
+      this.logger.debug(`Uploading ${imagePaths.length} preview images for job ${jobId}`);
       
       const uploadPromises = imagePaths.map(async (imagePath, index) => {
         const filename = `preview-${jobId}-${index}.jpg`;
@@ -139,7 +139,7 @@ class CloudflareService {
       const uploadedUrls = await Promise.all(uploadPromises);
       const validUrls = uploadedUrls.filter(url => url !== null);
       
-      this.logger.info(`Uploaded ${validUrls.length}/${imagePaths.length} preview images`);
+      this.logger.debug(`Uploaded ${validUrls.length}/${imagePaths.length} preview images`);
       return validUrls;
       
     } catch (error) {
@@ -203,7 +203,7 @@ class CloudflareService {
     try {
       const jobDir = `/tmp/training/${jobId}`;
       await fs.rm(jobDir, { recursive: true, force: true });
-      this.logger.info(`Cleaned up local files for job ${jobId}`);
+      this.logger.debug(`Cleaned up local files for job ${jobId}`);
     } catch (error) {
       this.logger.warn(`Failed to cleanup files for job ${jobId}:`, error);
     }

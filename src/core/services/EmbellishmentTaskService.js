@@ -217,7 +217,7 @@ function createEmbellishmentTaskService(deps) {
     // 9. Kick off initial batch
     processNextBatch(task._id, datasetId, spellSlug, ownerAccountId, parameterOverrides, dataset.images, embellishmentMeta);
 
-    logger.info(`[EmbellishmentTaskService] Started task ${task._id} for dataset ${datasetId} (type: ${embellishmentMeta.type})`);
+    logger.debug(`[EmbellishmentTaskService] Started task ${task._id} for dataset ${datasetId} (type: ${embellishmentMeta.type})`);
 
     return {
       taskId: task._id,
@@ -394,7 +394,7 @@ function createEmbellishmentTaskService(deps) {
           );
 
           if (!embellishment?.config?.prompt) {
-            logger.info(`[EmbellishmentTaskService] Storing control prompt in embellishment config: "${controlPrompt.substring(0, 50)}..."`);
+            logger.debug(`[EmbellishmentTaskService] Storing control prompt in embellishment config: "${controlPrompt.substring(0, 50)}..."`);
             await datasetDb.updateEmbellishmentConfig(datasetId, task.embellishmentId, {
               prompt: controlPrompt
             });
@@ -434,7 +434,7 @@ function createEmbellishmentTaskService(deps) {
 
     if (item && item.retryCount < MAX_RETRIES) {
       // Schedule retry
-      logger.info(`[EmbellishmentTaskService] Scheduling retry ${item.retryCount + 1}/${MAX_RETRIES} for task ${taskId} item ${itemIndex}`);
+      logger.debug(`[EmbellishmentTaskService] Scheduling retry ${item.retryCount + 1}/${MAX_RETRIES} for task ${taskId} item ${itemIndex}`);
 
       await embellishmentTasksDb.updateItem(taskId, itemIndex, {
         status: 'pending',
@@ -504,7 +504,7 @@ function createEmbellishmentTaskService(deps) {
       failed: task.failedItems,
     });
 
-    logger.info(`[EmbellishmentTaskService] Task ${taskId} finalized with status: ${finalStatus}`);
+    logger.debug(`[EmbellishmentTaskService] Task ${taskId} finalized with status: ${finalStatus}`);
   }
 
   /**
@@ -542,7 +542,7 @@ function createEmbellishmentTaskService(deps) {
       failed: task.failedItems,
     });
 
-    logger.info(`[EmbellishmentTaskService] Task ${taskId} cancelled by user`);
+    logger.debug(`[EmbellishmentTaskService] Task ${taskId} cancelled by user`);
 
     return { cancelled: true };
   }
@@ -600,7 +600,7 @@ function createEmbellishmentTaskService(deps) {
    */
   function setSpellsService(service) {
     spellsService = service;
-    logger.info('[EmbellishmentTaskService] SpellsService injected.');
+    logger.debug('[EmbellishmentTaskService] SpellsService injected.');
   }
 
   /**
@@ -666,7 +666,7 @@ function createEmbellishmentTaskService(deps) {
       const result = await spellsService.castSpell(spellSlug, context, castsDb);
       const castId = result?.castId || context.castId || null;
 
-      logger.info(`[EmbellishmentTaskService] Regenerate cast for embellishment ${embellishmentId} item ${itemIndex}, castId: ${castId}`);
+      logger.debug(`[EmbellishmentTaskService] Regenerate cast for embellishment ${embellishmentId} item ${itemIndex}, castId: ${castId}`);
 
       return {
         success: true,
@@ -752,7 +752,7 @@ function createEmbellishmentTaskService(deps) {
       });
     }
 
-    logger.info(`[EmbellishmentTaskService] Regenerated item ${itemIndex} for embellishment ${embellishmentId}`);
+    logger.debug(`[EmbellishmentTaskService] Regenerated item ${itemIndex} for embellishment ${embellishmentId}`);
   }
 
   // Listen for spell completions (also handle regenerate)
@@ -769,7 +769,7 @@ function createEmbellishmentTaskService(deps) {
     }
   });
 
-  logger.info('[EmbellishmentTaskService] Listener attached.');
+  logger.debug('[EmbellishmentTaskService] Listener attached.');
 
   return {
     startTask,

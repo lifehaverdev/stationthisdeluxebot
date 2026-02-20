@@ -122,7 +122,7 @@ function createToolDefinitionApiRouter(services) {
     }
   );
 
-  logger.info('[ToolDefinitionApi] Tool Definition API routes initialized.');
+  logger.debug('[ToolDefinitionApi] Tool Definition API routes initialized.');
   return router;
 }
 

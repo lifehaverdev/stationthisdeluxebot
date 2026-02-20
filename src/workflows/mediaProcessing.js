@@ -26,7 +26,7 @@ async function processImageWorkflow(deps, params) {
     processingOptions = {}
   } = params;
   
-  logger.info(`Starting ${processingType} workflow for user ${userId}`);
+  logger.debug(`Starting ${processingType} workflow for user ${userId}`);
   
   try {
     // Step 1: Get media URL from the message
@@ -39,11 +39,11 @@ async function processImageWorkflow(deps, params) {
     
     // Step 2: Download the media file
     const localFilePath = await mediaService.downloadFromUrl(mediaUrl, userId);
-    logger.info(`Media downloaded to ${localFilePath}`);
-    
+    logger.debug(`Media downloaded to ${localFilePath}`);
+
     // Step 3: Get image metadata
     const metadata = await mediaService.getImageMetadata(localFilePath);
-    logger.info(`Image metadata: ${JSON.stringify(metadata)}`);
+    logger.debug(`Image metadata: ${JSON.stringify(metadata)}`);
     
     // Step 4: Process the image based on processing type
     let processedFilePath;
@@ -75,7 +75,7 @@ async function processImageWorkflow(deps, params) {
         processedFilePath = localFilePath;
     }
     
-    logger.info(`Image processed: ${processedFilePath}`);
+    logger.debug(`Image processed: ${processedFilePath}`);
     
     // Step 5: Send the processed media back to the user
     // This uses the platform-specific adapter
@@ -103,7 +103,7 @@ async function processImageWorkflow(deps, params) {
         });
       }
       
-      logger.info('Sent processed media back to user');
+      logger.debug('Sent processed media back to user');
     }
     
     // Step 6: Optionally save the media to persistent storage
@@ -115,7 +115,7 @@ async function processImageWorkflow(deps, params) {
         metadata
       });
       
-      logger.info(`Media saved to persistent storage: ${savedMedia.path}`);
+      logger.debug(`Media saved to persistent storage: ${savedMedia.path}`);
       return { 
         success: true, 
         filePath: processedFilePath,

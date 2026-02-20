@@ -149,7 +149,7 @@ class TrainingMonitor {
     }
 
     this.streamingActive = true;
-    this.logger.info('[TrainingMonitor] Starting streaming mode');
+    this.logger.debug('[TrainingMonitor] Starting streaming mode');
 
     // Buffer for accumulating partial lines
     let lineBuffer = '';
@@ -209,7 +209,7 @@ class TrainingMonitor {
             this.logger.error(`[TrainingMonitor] Stream error: ${err.message}`);
           },
           onClose: () => {
-            this.logger.info('[TrainingMonitor] Stream closed');
+            this.logger.debug('[TrainingMonitor] Stream closed');
             this.streamingActive = false;
           }
         });
@@ -235,7 +235,7 @@ class TrainingMonitor {
   stopStreaming() {
     if (!this.streamingActive) return;
 
-    this.logger.info('[TrainingMonitor] Stopping streaming mode');
+    this.logger.debug('[TrainingMonitor] Stopping streaming mode');
     this.streamingActive = false;
 
     if (this.streamProcess) {

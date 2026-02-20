@@ -24,7 +24,7 @@ function generateApiKey() {
   // The prefix is the part of the key before the first underscore, plus the underscore itself.
   const keyPrefix = apiKey.substring(0, apiKey.indexOf('_') + 1);
 
-  logger.info(`Generated new API key with prefix: ${keyPrefix}`);
+  logger.debug(`Generated new API key with prefix: ${keyPrefix}`);
   
   return {
     apiKey, // e.g., 'sat_...xyz'

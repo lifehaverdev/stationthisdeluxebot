@@ -300,7 +300,7 @@ class CreditLedgerDB extends BaseDB {
    * @returns {Promise<Array<{tokenAddress: string, totalDeposits: string, totalAdjustedGrossUsd: number}>>}
    */
   async getVaultTokenStats(vaultAddress) {
-    this.logger.info(`[CreditLedgerDB] Getting token stats for vault: ${vaultAddress}`);
+    this.logger.debug(`[CreditLedgerDB] Getting token stats for vault: ${vaultAddress}`);
     try {
       const stats = await this.aggregate([
         {
@@ -325,7 +325,7 @@ class CreditLedgerDB extends BaseDB {
           }
         }
       ]);
-      this.logger.info(`[CreditLedgerDB] Found stats for ${stats.length} tokens for vault ${vaultAddress}.`);
+      this.logger.debug(`[CreditLedgerDB] Found stats for ${stats.length} tokens for vault ${vaultAddress}.`);
       return stats;
     } catch (error) {
       this.logger.error(`[CreditLedgerDB] Error getting vault token stats for ${vaultAddress}:`, error);
@@ -517,15 +517,15 @@ class CreditLedgerDB extends BaseDB {
     };
     // Debug: log how many entries match before aggregation
     const allEntries = await this.findMany(match);
-    this.logger.info(`[CreditLedgerDB] Aggregating points for wallet ${walletAddress}: Found ${allEntries.length} matching ledger entries.`);
+    this.logger.debug(`[CreditLedgerDB] Aggregating points for wallet ${walletAddress}: Found ${allEntries.length} matching ledger entries.`);
     if (allEntries.length > 0) {
-      this.logger.info(`[CreditLedgerDB] Points remaining in entries:`, allEntries.map(e => e.points_remaining));
+      this.logger.debug(`[CreditLedgerDB] Points remaining in entries:`, allEntries.map(e => e.points_remaining));
     }
     const result = await this.aggregate([
       { $match: match },
       { $group: { _id: null, total: { $sum: "$points_remaining" } } }
     ]);
-    this.logger.info(`[CreditLedgerDB] Aggregation result for wallet ${walletAddress}:`, result);
+    this.logger.debug(`[CreditLedgerDB] Aggregation result for wallet ${walletAddress}:`, result);
     return result.length > 0 ? result[0].total : 0;
   }
 

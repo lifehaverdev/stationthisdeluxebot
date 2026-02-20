@@ -28,23 +28,51 @@ class CookProjectionUpdater {
 
   /**
    * Rebuild status projection by processing events from all cook documents.
+   * Uses in-memory reduction + bulkWrite to avoid thousands of sequential DB round-trips.
    */
   async rebuild() {
     await this._init();
+    const _t = Date.now();
     logger.info('[CookProjection] Rebuilding status projection from cook documents…');
     await this.statusCol.deleteMany({});
-    
-    // ✅ Process all cook documents and their events
+
+    // Phase 1: Read all cooks and reduce events in-memory
+    const statusMap = new Map(); // "collectionId:userId" -> status object
     const cursor = this.cooksCol.find({});
+    let cookCount = 0;
+    let eventCount = 0;
     for await (const cook of cursor) {
+      cookCount++;
       if (cook.events && Array.isArray(cook.events) && cook.events.length > 0) {
-        // Process all events from this cook document
+        eventCount += cook.events.length;
         for (const evt of cook.events) {
-          await this._applyEvent(evt, true);
+          const mapKey = `${evt.collectionId}:${evt.userId}`;
+          if (!statusMap.has(mapKey)) {
+            statusMap.set(mapKey, {
+              key: { collectionId: evt.collectionId, userId: evt.userId },
+              state: 'idle',
+              generationCount: 0,
+              queued: 0,
+              approved: 0,
+              rejected: 0,
+            });
+          }
+          this._reduce(statusMap.get(mapKey), evt);
         }
       }
     }
-    logger.info('[CookProjection] Rebuild complete');
+
+    // Phase 2: Bulk-insert all computed statuses in one shot
+    if (statusMap.size > 0) {
+      const docs = [];
+      for (const status of statusMap.values()) {
+        status.updatedAt = new Date();
+        docs.push(status);
+      }
+      await this.statusCol.insertMany(docs, { ordered: false });
+    }
+
+    logger.info(`[CookProjection] Rebuild complete: ${cookCount} cooks, ${eventCount} events, ${statusMap.size} statuses in ${Date.now() - _t}ms`);
   }
 
   /**
@@ -102,7 +130,7 @@ class CookProjectionUpdater {
         this.changeStream = null;
       });
       
-      logger.info('[CookProjection] Change stream watching cook documents');
+      logger.debug('[CookProjection] Change stream watching cook documents');
     } catch (err) {
       logger.warn('[CookProjection] Change streams not supported – falling back to polling every 30s');
       setInterval(async () => {

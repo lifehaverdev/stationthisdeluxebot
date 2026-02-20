@@ -921,12 +921,12 @@ function registerHandlers(dispatcherInstances, dependencies) {
                 await setReaction(bot, chatId, msg.message_id, '😨');
             }
         });
-        logger.info('[SpellMenuManager] /cast command handler registered successfully');
+        logger.debug('[SpellMenuManager] /cast command handler registered successfully');
     } catch (registrationError) {
         logger.error(`[SpellMenuManager] Failed to register /cast command: ${registrationError.stack || registrationError}`);
     }
 
-    logger.info('[SpellMenuManager] All handlers registered.');
+    logger.debug('[SpellMenuManager] All handlers registered.');
 }
 
 module.exports = {

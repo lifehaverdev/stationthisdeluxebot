@@ -23,7 +23,7 @@ class SpellExecutor {
 
         // Normalize the 'prompt' parameter to 'input_prompt' for consistency
         if (context.parameterOverrides && context.parameterOverrides.prompt && !context.parameterOverrides.input_prompt) {
-            this.logger.info('[SpellExecutor] Adding alias "input_prompt" for provided "prompt" input.');
+            this.logger.debug('[SpellExecutor] Adding alias "input_prompt" for provided "prompt" input.');
             context.parameterOverrides.input_prompt = context.parameterOverrides.prompt;
             // Keep original 'prompt' key so tools that expect it still work
         }

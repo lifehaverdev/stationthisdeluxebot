@@ -50,7 +50,6 @@ function extractCivitaiModelVersionId(civitaiUrl) {
 async function fetchCivitaiMetadata(modelId, modelVersionId = null) {
   if (!modelId) return null;
   const apiUrl = `https://civitai.com/api/v1/models/${modelId}`;
-  logger.info(`[LoraImportService] Fetching Civitai metadata from: ${apiUrl}`);
   try {
     const response = await axios.get(apiUrl);
     const data = response.data;
@@ -97,7 +96,6 @@ async function fetchCivitaiMetadata(modelId, modelVersionId = null) {
         const triggerMatch = descLowerCase.match(/(?:trigger words?|activation(?: terms?)|tag words?)\s*:\s*([^\n.]+)/i);
         if (triggerMatch && triggerMatch[1]) {
             metadata.triggerWords = triggerMatch[1].split(',').map(tw => tw.trim()).filter(tw => tw.length > 0);
-            logger.info(`[LoraImportService] Extracted trigger words from description for ${modelId}: ${metadata.triggerWords.join(', ')}`);
         }
     }
     // Ensure modelFilename has an extension, default to .safetensors if missing and it's a common LoRA file
@@ -105,7 +103,6 @@ async function fetchCivitaiMetadata(modelId, modelVersionId = null) {
         metadata.modelFilename += '.safetensors';
     }
 
-    logger.info(`[LoraImportService] Successfully fetched and mapped Civitai metadata for model ID: ${modelId}, VersionID: ${versionData.id}`);
     return metadata;
   } catch (error) {
     logger.error(`[LoraImportService] Error fetching Civitai metadata for model ID ${modelId}:`, error.message, error.response?.data);
@@ -134,7 +131,6 @@ function extractHFRepoId(hfUrl) {
 async function fetchHuggingFaceMetadata(repoId) {
   if (!repoId) return null;
   const apiUrl = `https://huggingface.co/api/models/${repoId}`;
-  logger.info(`[LoraImportService] Fetching Hugging Face metadata from: ${apiUrl}`);
 
   try {
     const response = await axios.get(apiUrl);
@@ -244,7 +240,6 @@ async function fetchHuggingFaceMetadata(repoId) {
       tags: data.tags?.map(tag => ({ tag: tag, source: "huggingface" })) || [],
     };
 
-    logger.info(`[LoraImportService] Successfully fetched and mapped Hugging Face metadata for repo: ${repoId}`);
     // logger.debug('[LoraImportService] HF Mapped Metadata:', JSON.stringify(metadata, null, 2));
     return metadata;
   } catch (error) {

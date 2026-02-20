@@ -77,7 +77,7 @@ function createSettingsCommandHandler(dependencies) {
       // This is REQUIRED - failing to respond within 3 seconds can trigger Discord security measures
       if (!actualInteraction.deferred && !actualInteraction.replied) {
         await actualInteraction.deferReply();
-        logger.info('[Settings Command] Interaction deferred immediately');
+        logger.debug('[Settings Command] Interaction deferred immediately');
       }
       
       // Create workflow instance with services

@@ -8,7 +8,7 @@ const crypto = require('crypto');
 function validateAlchemySignature(signingKey) {
   return (req, res, next) => {
     const logger = req.app && req.app.locals && req.app.locals.logger ? req.app.locals.logger : console;
-    logger.info('[AlchemyWebhookUtils] validateAlchemySignature called', {
+    logger.debug('[AlchemyWebhookUtils] validateAlchemySignature called', {
       signature: req.header('X-Alchemy-Signature'),
       hasRawBody: !!req.rawBody
     });
@@ -24,13 +24,13 @@ function validateAlchemySignature(signingKey) {
     // Compute expected signature
     const hmac = crypto.createHmac('sha256', signingKey);
     const computedSignature = hmac.update(req.rawBody).digest('hex');
-    logger.info('[AlchemyWebhookUtils] Computed signature', { computedSignature });
+    logger.debug('[AlchemyWebhookUtils] Computed signature', { computedSignature });
     // Constant-time comparison to prevent timing attacks
     if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(computedSignature))) {
       logger.error('[AlchemyWebhookUtils] Invalid signature', { signature, computedSignature });
       return res.status(401).json({ error: 'Invalid signature' });
     }
-    logger.info('[AlchemyWebhookUtils] Signature validated successfully');
+    logger.debug('[AlchemyWebhookUtils] Signature validated successfully');
     next();
   };
 }

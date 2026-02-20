@@ -196,7 +196,7 @@ function initializeTelegramPlatform(dependencies, options = {}) {
     });
   }
   
-  logger.info('Telegram platform initialized');
+  logger.debug('Telegram platform initialized');
   
   // Return an object with the bot and a setup function for dynamic commands
   // Note: We no longer set commands at startup - use /updateCommands instead
@@ -552,9 +552,9 @@ function initializeTelegramPlatform(dependencies, options = {}) {
         
         if (commandsToRegister && commandsToRegister.length > 0) {
             await bot.setMyCommands(commandsToRegister);
-            logger.info(`Telegram bot dynamic commands configured: ${commandsToRegister.length} commands registered.`);
+            logger.debug(`Telegram bot dynamic commands configured: ${commandsToRegister.length} commands registered.`);
         } else {
-            logger.info('No dynamic commands were registered.');
+            logger.debug('No dynamic commands were registered.');
         }
 
       } catch (error) {

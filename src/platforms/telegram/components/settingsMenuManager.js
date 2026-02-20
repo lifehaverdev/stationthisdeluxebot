@@ -898,7 +898,7 @@ function registerHandlers(dispatcherInstances, dependencies) {
     // Register the reply handler for when a user provides a new parameter value
     messageReplyDispatcher.register('settings_param_edit', handleSettingsReply);
 
-    logger.info('[SettingsMenuManager] Handlers registered.');
+    logger.debug('[SettingsMenuManager] Handlers registered.');
 }
 
 // TODO: Implement other menu building functions as per ADR-007

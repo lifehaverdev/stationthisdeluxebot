@@ -32,7 +32,7 @@ class WithdrawalProcessorService {
    * @returns {Promise<{success: boolean, message: string, txHash?: string}>}
    */
   async initiateWithdrawal(userAddress, tokenAddress, fundAddress) {
-    this.logger.info(`[WithdrawalProcessorService] Processing withdrawal request for user ${userAddress} and token ${tokenAddress}`);
+    this.logger.debug(`[WithdrawalProcessorService] Processing withdrawal request for user ${userAddress} and token ${tokenAddress}`);
 
     try {
       // 1. Verify user account exists
@@ -40,7 +40,7 @@ class WithdrawalProcessorService {
       try {
         const response = await this.internalApiClient.get(`/internal/v1/data/wallets/lookup?address=${userAddress}`);
         masterAccountId = response.data.masterAccountId;
-        this.logger.info(`[WithdrawalProcessorService] User found. MasterAccountId: ${masterAccountId}`);
+        this.logger.debug(`[WithdrawalProcessorService] User found. MasterAccountId: ${masterAccountId}`);
       } catch (error) {
         if (error.response?.status === 404) {
           return { success: false, message: 'No user account found for this address.' };
@@ -58,7 +58,7 @@ class WithdrawalProcessorService {
       }
 
       // 3. Record the withdrawal request on-chain
-      this.logger.info(`[WithdrawalProcessorService] Recording withdrawal request on-chain for user ${userAddress}`);
+      this.logger.debug(`[WithdrawalProcessorService] Recording withdrawal request on-chain for user ${userAddress}`);
       const txResponse = await this.ethereumService.write(
         this.contractConfig.address,
         this.contractConfig.abi,
@@ -111,7 +111,7 @@ class WithdrawalProcessorService {
     try {
       const response = await this.internalApiClient.get(`/internal/v1/data/ledger/withdrawals/${transactionHash}`);
       if (response.data.request) {
-        this.logger.info(`[WithdrawalProcessorService] Withdrawal request ${transactionHash} already processed`);
+        this.logger.debug(`[WithdrawalProcessorService] Withdrawal request ${transactionHash} already processed`);
         return;
       }
     } catch (error) {

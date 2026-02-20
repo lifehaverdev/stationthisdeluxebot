@@ -236,9 +236,9 @@ class BaseDB {
             try {
                 const client = await getCachedClient();
                 const collection = client.db(this.dbName).collection(this.collectionName);
-                this.logger.info(`[BaseDB] Clearing all documents from collection: ${this.collectionName}`);
+                this.logger.debug(`[BaseDB] Clearing all documents from collection: ${this.collectionName}`);
                 const result = await collection.deleteMany({});
-                this.logger.info(`[BaseDB] Cleared ${result.deletedCount} documents from ${this.collectionName}.`);
+                this.logger.debug(`[BaseDB] Cleared ${result.deletedCount} documents from ${this.collectionName}.`);
                 return result;
             } catch (error) {
                 this.logger.error(`[BaseDB] Error clearing collection ${this.collectionName}:`, error);
@@ -270,7 +270,6 @@ class BaseDB {
             return new Promise((resolve, reject) => {
                 readableStream.pipe(uploadStream)
                     .on('finish', () => {
-                        console.log(`File ${filename} saved to GridFS from URL with id:`, uploadStream.id.toString());
                         resolve(new ObjectId(uploadStream.id));
                     })
                     .on('error', (error) => {
@@ -289,7 +288,6 @@ class BaseDB {
             return new Promise((resolve, reject) => {
                 stream.pipe(uploadStream)
                     .on('finish', () => {
-                        console.log(`File ${filename} saved to GridFS with id:`, uploadStream.id.toString());
                         resolve(new ObjectId(uploadStream.id));
                     })
                     .on('error', (error) => {
@@ -307,7 +305,7 @@ class BaseDB {
                 const objectId = typeof fileId === 'string' ? new ObjectId(fileId) : fileId;
                 return bucket.openDownloadStream(objectId);
             } catch (error) {
-                console.error('Error opening download stream:', error);
+                // swallow – caller expects null on missing file
                 return null;
             }
         }, priority);

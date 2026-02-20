@@ -615,7 +615,7 @@ class DiscordAdapter extends PlatformAdapter {
 
       await rest.put(route, { body: discordCommands });
       
-      this.logger.info(`[DiscordAdapter] Registered ${discordCommands.length} commands`);
+      this.logger.debug(`[DiscordAdapter] Registered ${discordCommands.length} commands`);
       return true;
     } catch (error) {
       this.logger.error(`[DiscordAdapter] Error registering commands: ${error.message}`);

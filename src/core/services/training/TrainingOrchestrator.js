@@ -45,7 +45,7 @@ class TrainingOrchestrator {
     
     // Wait for active jobs to complete
     while (this.activeJobs.size > 0) {
-      this.logger.info(`Waiting for ${this.activeJobs.size} active jobs to complete...`);
+      this.logger.debug(`Waiting for ${this.activeJobs.size} active jobs to complete...`);
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
     
@@ -122,24 +122,24 @@ class TrainingOrchestrator {
       }
 
       // Download dataset from Cloudflare
-      this.logger.info(`Downloading dataset for job ${jobId}`);
+      this.logger.debug(`Downloading dataset for job ${jobId}`);
       const dataset = await this.mongoService.getDataset(job.datasetId);
       const datasetPath = await this.cloudflareService.downloadDataset(dataset, jobId);
 
       // Prepare training environment
-      this.logger.info(`Preparing training environment for job ${jobId}`);
+      this.logger.debug(`Preparing training environment for job ${jobId}`);
       const trainingConfig = await recipe.prepareTrainingConfig(job, datasetPath);
-      
+
       // Execute training in Docker container
-      this.logger.info(`Starting Docker training for job ${jobId}`);
+      this.logger.debug(`Starting Docker training for job ${jobId}`);
       const trainingResult = await this.dockerService.runTraining(recipe, trainingConfig, jobId);
 
       // Upload trained model to Cloudflare
-      this.logger.info(`Uploading trained model for job ${jobId}`);
+      this.logger.debug(`Uploading trained model for job ${jobId}`);
       const modelUrl = await this.cloudflareService.uploadModel(trainingResult.modelPath, jobId);
 
       // Register model in LoRAModelDB
-      this.logger.info(`Registering model for job ${jobId}`);
+      this.logger.debug(`Registering model for job ${jobId}`);
       const loraModel = await this.mongoService.createLoRAModel({
         name: `${dataset.name} - ${job.baseModel}`,
         slug: `${dataset.name.toLowerCase().replace(/\s+/g, '-')}-${job.baseModel.toLowerCase()}-${Date.now()}`,
@@ -211,7 +211,7 @@ class TrainingOrchestrator {
         });
       }
 
-      this.logger.info(`Credited users for training job ${job._id}`);
+      this.logger.debug(`Credited users for training job ${job._id}`);
     } catch (error) {
       this.logger.error(`Error crediting users for job ${job._id}:`, error);
     }
@@ -227,7 +227,7 @@ class TrainingOrchestrator {
           trainingId: job._id,
           reason: 'training_failed'
         });
-        this.logger.info(`Refunded ${job.costPoints} points for failed training job ${job._id}`);
+        this.logger.debug(`Refunded ${job.costPoints} points for failed training job ${job._id}`);
       }
     } catch (error) {
       this.logger.error(`Error refunding points for job ${job._id}:`, error);

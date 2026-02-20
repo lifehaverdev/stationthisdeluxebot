@@ -17,7 +17,7 @@ module.exports = function initializeWalletsApi(dependencies) {
     return router;
   }
 
-  logger.info('[userWalletsApi] Initializing User Wallets API routes...');
+  logger.debug('[userWalletsApi] Initializing User Wallets API routes...');
 
   const getMasterAccountId = (req, res) => {
     const { masterAccountId: masterAccountIdStr } = req.params;
@@ -457,7 +457,7 @@ module.exports = function initializeWalletsApi(dependencies) {
     }
   });
 
-  logger.info('[userWalletsApi] User Wallets API routes configured.');
+  logger.debug('[userWalletsApi] User Wallets API routes configured.');
   
   return {
     walletsRouter, // for /wallets/lookup

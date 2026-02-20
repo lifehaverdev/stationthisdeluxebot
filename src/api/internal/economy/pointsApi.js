@@ -85,7 +85,7 @@ module.exports = function pointsApi(dependencies) {
         return { creditService: cs, ethereumService: es };
     }
     const creditLedgerDb = db.creditLedger;
-    logger.info('[pointsApi] Initializing with dependencies:', {
+    logger.debug('[pointsApi] Initializing with dependencies:', {
         priceFeedService: !!priceFeedService,
         nftPriceService: !!nftPriceService,
         creditService: !!legacyCredit,

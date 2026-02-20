@@ -165,7 +165,7 @@ class DatasetValidator {
 
     if (this.logger) {
       const status = valid ? 'VALID' : 'INVALID';
-      this.logger.info(
+      this.logger.debug(
         `[DatasetValidator] ${status}: ${stats.imageCount} images, ${stats.captionCount} captions, ${stats.pairedCount} paired`
       );
       if (errors.length > 0) {
@@ -300,7 +300,7 @@ class DatasetValidator {
 
     if (this.logger) {
       const status = valid ? 'VALID' : 'INVALID';
-      this.logger.info(
+      this.logger.debug(
         `[DatasetValidator] Control validation ${status}: ${controlStats.controlImageCount} control images`
       );
     }

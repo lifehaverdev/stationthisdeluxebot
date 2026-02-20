@@ -76,7 +76,7 @@ class TrainingNotifier {
         });
         result.success = true;
         result.channel = 'telegram';
-        this.logger.info(`[TrainingNotifier] Sent notification via Telegram to ${user.telegramId}`);
+        this.logger.debug(`[TrainingNotifier] Sent notification via Telegram to ${user.telegramId}`);
         return result;
       } catch (err) {
         this.logger.warn(`[TrainingNotifier] Telegram send failed: ${err.message}`);
@@ -91,7 +91,7 @@ class TrainingNotifier {
         await discordUser.send(message);
         result.success = true;
         result.channel = 'discord';
-        this.logger.info(`[TrainingNotifier] Sent notification via Discord to ${user.discordId}`);
+        this.logger.debug(`[TrainingNotifier] Sent notification via Discord to ${user.discordId}`);
         return result;
       } catch (err) {
         this.logger.warn(`[TrainingNotifier] Discord send failed: ${err.message}`);

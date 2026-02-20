@@ -309,10 +309,10 @@ async function getMachineForWorkflow(serviceInstance, workflowName) {
     // Verify that the machine exists and is ready using the instance method
     const machine = await serviceInstance.getMachineById(machineId);
     if (machine && machine.status === 'ready') {
-      logger.info(`Routing workflow "${standardizedName}" to machine: ${machine.name} (${machineId})`);
+      logger.debug(`Routing workflow "${standardizedName}" to machine: ${machine.name} (${machineId})`);
       return machineId;
     } else {
-      logger.info(`Configured machine for "${standardizedName}" (${machineId}) is not available, falling back to default`);
+      logger.debug(`Configured machine for "${standardizedName}" (${machineId}) is not available, falling back to default`);
     }
   }
   
@@ -320,7 +320,7 @@ async function getMachineForWorkflow(serviceInstance, workflowName) {
   if (routingConfig?.defaultMachine) {
     const defaultMachine = await serviceInstance.getMachineById(routingConfig.defaultMachine);
     if (defaultMachine && defaultMachine.status === 'ready') {
-      logger.info(`Using default machine for workflow "${standardizedName}": ${defaultMachine.name} (${routingConfig.defaultMachine})`);
+      logger.debug(`Using default machine for workflow "${standardizedName}": ${defaultMachine.name} (${routingConfig.defaultMachine})`);
       return routingConfig.defaultMachine;
     }
   }
@@ -330,11 +330,11 @@ async function getMachineForWorkflow(serviceInstance, workflowName) {
   const readyMachine = machines.find(machine => machine.status === 'ready');
   
   if (readyMachine) {
-    logger.info(`Using fallback ready machine for workflow "${standardizedName}": ${readyMachine.name} (${readyMachine.id})`);
+    logger.debug(`Using fallback ready machine for workflow "${standardizedName}": ${readyMachine.name} (${readyMachine.id})`);
     return readyMachine.id;
   }
   
-  logger.info(`No suitable machine found for workflow "${standardizedName}"`);
+  logger.debug(`No suitable machine found for workflow "${standardizedName}"`);
   return null;
 }
 

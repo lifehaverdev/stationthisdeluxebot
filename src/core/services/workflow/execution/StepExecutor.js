@@ -51,7 +51,7 @@ class StepExecutor {
         }
         validateTool(tool, step.toolIdentifier, step.stepId, stepIndex, spell.name);
 
-        this.logger.info(`[StepExecutor] Executing Step ${stepIndex + 1}/${spell.steps.length}: ${tool.displayName}`);
+        this.logger.debug(`[StepExecutor] Executing Step ${stepIndex + 1}/${spell.steps.length}: ${tool.displayName}`);
 
         // Create event FIRST (required for initiatingEventId in generation records)
         const { eventId } = await createEvent(
@@ -60,7 +60,7 @@ class StepExecutor {
             { spellId: spell._id, stepId: step.stepId, toolId: tool.toolId },
             this.internalApiClient
         );
-        this.logger.info(`[StepExecutor] Created event ${eventId} for spell step ${stepIndex + 1}`);
+        this.logger.debug(`[StepExecutor] Created event ${eventId} for spell step ${stepIndex + 1}`);
 
         // Resolve parameters
         const stepInput = this.parameterResolver.resolveStepInputs(step, pipelineContext, tool);

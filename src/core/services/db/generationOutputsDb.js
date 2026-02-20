@@ -183,7 +183,7 @@ class GenerationOutputsDB extends BaseDB {
           background: true,
         }
       ]);
-      this.logger.info('[GenerationOutputsDB] Review indexes ensured.');
+      this.logger.debug('[GenerationOutputsDB] Review indexes ensured.');
     } catch (error) {
       this.logger.error('[GenerationOutputsDB] Failed to ensure indexes:', error);
     }
@@ -235,7 +235,7 @@ class GenerationOutputsDB extends BaseDB {
     try {
       this.logger.debug(`[GenerationOutputsDB] Executing aggregation for most frequent tools for MAID ${masterAccountId} with limit ${limit}: ${JSON.stringify(pipeline)}`);
       const results = await this.aggregate(pipeline);
-      this.logger.info(`[GenerationOutputsDB] Found ${results.length} frequently used tool(s) for MAID ${masterAccountId}`);
+      this.logger.debug(`[GenerationOutputsDB] Found ${results.length} frequently used tool(s) for MAID ${masterAccountId}`);
       return results;
     } catch (error) {
       this.logger.error(`[GenerationOutputsDB] Error aggregating most frequently used tools for MAID ${masterAccountId}: ${error.message}`, error);

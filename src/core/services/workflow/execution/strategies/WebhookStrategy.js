@@ -18,7 +18,7 @@ class WebhookStrategy extends ExecutionStrategy {
     async execute(inputs, executionContext, dependencies) {
         const { tool } = executionContext;
 
-        this.logger.info(`[WebhookStrategy] Executing webhook tool ${tool.toolId}`);
+        this.logger.debug(`[WebhookStrategy] Executing webhook tool ${tool.toolId}`);
 
         // Use AdapterCoordinator to create job (no polling for webhook tools)
         const result = await this.adapterCoordinator.executeWithAdapter(

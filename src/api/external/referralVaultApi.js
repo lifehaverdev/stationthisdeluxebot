@@ -10,7 +10,7 @@ function createReferralVaultApi(dependencies) {
   const { internalApiClient, longRunningApiClient, priceFeedService, creditServices = {}, ethereumServices = {}, creditService: legacyCredit, ethereumService: legacyEth } = dependencies;
 
   // Debug logging for dependencies
-  console.log('[ReferralVaultApi] Dependencies check:', {
+  logger.debug('[ReferralVaultApi] Dependencies check:', {
     internalApiClient: !!internalApiClient,
     longRunningApiClient: !!longRunningApiClient,
     priceFeedService: !!priceFeedService,
@@ -35,7 +35,7 @@ function createReferralVaultApi(dependencies) {
   const contractConfig = creditService && creditService.contractConfig;
 
   // Debug log for missing dependencies
-  console.log('[ReferralVaultApi] Dependency check:', {
+  logger.debug('[ReferralVaultApi] Dependency check:', {
     ethereumService: !!ethereumService,
     priceFeedService: !!priceFeedService,
     creditService: !!creditService,
@@ -46,7 +46,7 @@ function createReferralVaultApi(dependencies) {
 
   if (!ethereumService || !priceFeedService || !creditService || !contractConfig) {
     //throw new Error('ReferralVaultApi: Missing one or more required services or contract configuration. (creditService is the canonical source for contract config)');
-    console.log('[ReferralVaultApi] Missing one or more required services or contract configuration. (creditService is the canonical source for contract config)');
+    logger.debug('[ReferralVaultApi] Missing one or more required services or contract configuration. (creditService is the canonical source for contract config)');
   }
 
   // Endpoint to check if a vault name is available
@@ -96,7 +96,7 @@ function createReferralVaultApi(dependencies) {
             return res.status(500).json({ error: { code: 'SERVICE_UNAVAILABLE', message: 'Salt mining service is not available.' } });
         }
 
-        logger.info(`[ReferralVaultApi] Creating vault "${name}" for user ${userId} using long-running client`);
+        logger.debug(`[ReferralVaultApi] Creating vault "${name}" for user ${userId} using long-running client`);
         
         // This internal endpoint will orchestrate the creation.
         // Use long-running client for salt mining operations which can take time
@@ -105,7 +105,7 @@ function createReferralVaultApi(dependencies) {
             vaultName: name
         });
         
-        logger.info(`[ReferralVaultApi] Successfully created vault "${name}" for user ${userId}`);
+        logger.debug(`[ReferralVaultApi] Successfully created vault "${name}" for user ${userId}`);
         // The internal endpoint will return the new vault details upon success.
         res.status(201).json(response.data);
 
@@ -127,7 +127,7 @@ function createReferralVaultApi(dependencies) {
 
   router.get('/:vaultAddress/dashboard', async (req, res) => {
     const { vaultAddress } = req.params;
-    logger.info(`[ReferralVaultApi] GET /:vaultAddress/dashboard for vault: ${vaultAddress}`);
+    logger.debug(`[ReferralVaultApi] GET /:vaultAddress/dashboard for vault: ${vaultAddress}`);
 
     try {
       // 1. Get historical stats from the internal API

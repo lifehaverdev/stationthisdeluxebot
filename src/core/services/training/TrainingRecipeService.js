@@ -40,7 +40,7 @@ class TrainingRecipeService {
       const kontextRecipe = new KONTEXTRecipe({ logger: this.logger });
       this.recipes.set('KONTEXT', kontextRecipe);
 
-      this.logger.info(`Registered ${this.recipes.size} training recipes: ${Array.from(this.recipes.keys()).join(', ')}`);
+      this.logger.debug(`Registered ${this.recipes.size} training recipes: ${Array.from(this.recipes.keys()).join(', ')}`);
       
     } catch (error) {
       this.logger.error('Failed to register training recipes:', error);

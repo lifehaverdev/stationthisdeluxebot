@@ -31,7 +31,7 @@ class NftPriceService {
     this.alchemyApiKey = config.alchemyApiKey;
     this.baseUrl = `https://eth-mainnet.g.alchemy.com/nft/v3/${this.alchemyApiKey}`;
 
-    this.logger.info('[NftPriceService] Initialized.');
+    this.logger.debug('[NftPriceService] Initialized.');
   }
 
   /**

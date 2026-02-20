@@ -179,10 +179,10 @@ class LoRAModelsDB extends BaseDB {
         replaceWith: longTrigger
       });
 
-      this.logger.info(`[LoRAModelDb] Created a cognate '${cognateWord}' for a long trigger word for LoRA: ${dataToInsert.name}`);
+      this.logger.debug(`[LoRAModelDb] Created a cognate '${cognateWord}' for a long trigger word for LoRA: ${dataToInsert.name}`);
     }
 
-    this.logger.info(`[LoRAModelDb] Creating imported LoRA: ${dataToInsert.name} (Slug: ${dataToInsert.slug}) by MAID ${masterAccountId}`);
+    this.logger.debug(`[LoRAModelDb] Creating imported LoRA: ${dataToInsert.name} (Slug: ${dataToInsert.slug}) by MAID ${masterAccountId}`);
     const result = await this.insertOne(dataToInsert);
     return result.insertedId ? { _id: result.insertedId, ...dataToInsert } : null;
   }
@@ -335,8 +335,8 @@ class LoRAModelsDB extends BaseDB {
       updatedAt: now
     };
 
-    this.logger.info(`[LoRAModelDb] Creating trained LoRA: ${dataToInsert.name} (Slug: ${dataToInsert.slug}) by MAID ${masterAccountId}`);
-    this.logger.info(`[LoRAModelDb] Published to: ${hfRepoId ? `HuggingFace ${hfRepoId}` : `R2 ${r2ModelUrl}`}`);
+    this.logger.debug(`[LoRAModelDb] Creating trained LoRA: ${dataToInsert.name} (Slug: ${dataToInsert.slug}) by MAID ${masterAccountId}`);
+    this.logger.debug(`[LoRAModelDb] Published to: ${hfRepoId ? `HuggingFace ${hfRepoId}` : `R2 ${r2ModelUrl}`}`);
 
     const result = await this.insertOne(dataToInsert);
     return result.insertedId ? { _id: result.insertedId, ...dataToInsert } : null;
@@ -445,7 +445,7 @@ class LoRAModelsDB extends BaseDB {
       const uniq = Array.from(new Set(categories))
         .map(t => t.toLowerCase())
         .sort();
-      this.logger.info(`[LoRAModelDb] listCategories -> ${JSON.stringify(uniq)}`);
+      this.logger.debug(`[LoRAModelDb] listCategories -> ${JSON.stringify(uniq)}`);
       return uniq;
     }, 'distinct');
   }

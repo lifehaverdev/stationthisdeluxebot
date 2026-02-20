@@ -46,7 +46,7 @@ function initializeWebPlatform(services, options = {}) {
   app.set('trust proxy', 1);
 
   // Set up middleware
-  logger.info('[WebPlatform] Initializing middleware...');
+  logger.debug('[WebPlatform] Initializing middleware...');
   app.use(httpLogger); // Use the centralized, correctly configured HTTP logger
   app.use(cors({
     origin: process.env.CORS_ORIGIN || ['http://localhost:3000', 'http://localhost:4000'],
@@ -165,7 +165,7 @@ function initializeWebPlatform(services, options = {}) {
       });
       if (agentCardRouter) {
         app.use('/.well-known/agent-card.json', agentCardRouter);
-        logger.info('[WebPlatform] Agent card mounted at /.well-known/agent-card.json');
+        logger.debug('[WebPlatform] Agent card mounted at /.well-known/agent-card.json');
       }
 
       // AI Skill files and OpenAPI spec (/.well-known/ai-skill.md, /.well-known/openapi.json, etc.)
@@ -175,7 +175,7 @@ function initializeWebPlatform(services, options = {}) {
       });
       if (skillRouter) {
         app.use('/.well-known', skillRouter);
-        logger.info('[WebPlatform] Skill router mounted at /.well-known/*');
+        logger.debug('[WebPlatform] Skill router mounted at /.well-known/*');
       }
 
       // --- Static File Serving ---
@@ -214,7 +214,7 @@ function initializeWebPlatform(services, options = {}) {
         }
       });
 
-      logger.info('[WebPlatform] Routes initialized.');
+      logger.debug('[WebPlatform] Routes initialized.');
     },
     start: (port = 3000) => {
       return new Promise((resolve) => {

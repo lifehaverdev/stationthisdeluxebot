@@ -16,7 +16,7 @@ class SpellsService {
      * @returns {Promise<any>} The final result of the spell execution.
      */
     async castSpell(slug, context, castsDb = null) {
-        this.logger.info(`[SpellsService] Attempting to cast spell with slug: "${slug}" for MAID ${context.masterAccountId}`);
+        this.logger.debug(`[SpellsService] Attempting to cast spell with slug: "${slug}" for MAID ${context.masterAccountId}`);
 
         // 1. Find the spell
         let spell = await this.db.spells.findBySlug(slug);
@@ -25,7 +25,7 @@ class SpellsService {
         if(!spell){
             spell = await this.db.spells.findByName(slug);
             if(spell){
-                this.logger.info(`[SpellsService] Found spell by unique name fallback: ${spell.name}`);
+                this.logger.debug(`[SpellsService] Found spell by unique name fallback: ${spell.name}`);
             }
         }
 
@@ -33,7 +33,7 @@ class SpellsService {
         if (!spell) {
             spell = await this.db.spells.findByPublicSlug(slug);
             if (spell) {
-                this.logger.info(`[SpellsService] Found spell by public slug: ${spell.slug || spell.publicSlug}`);
+                this.logger.debug(`[SpellsService] Found spell by public slug: ${spell.slug || spell.publicSlug}`);
             }
         }
 
@@ -41,18 +41,18 @@ class SpellsService {
         if (!spell && require('mongodb').ObjectId.isValid(slug)) {
             spell = await this.db.spells.findById(slug);
             if (spell) {
-                this.logger.info(`[SpellsService] Found spell by ObjectId fallback: ${spell.slug}`);
+                this.logger.debug(`[SpellsService] Found spell by ObjectId fallback: ${spell.slug}`);
             }
         }
 
         // If still not found and user is authenticated, try a partial match for spells owned by the user
         if (!spell && context.masterAccountId) {
-            this.logger.info(`[SpellsService] Exact slug "${slug}" not found. Trying partial match for user ${context.masterAccountId}.`);
+            this.logger.debug(`[SpellsService] Exact slug "${slug}" not found. Trying partial match for user ${context.masterAccountId}.`);
             const possibleSpells = await this.db.spells.findSpellsByOwnerAndPartialSlug(context.masterAccountId, slug);
             
             if (possibleSpells.length === 1) {
                 spell = possibleSpells[0];
-                this.logger.info(`[SpellsService] Found unique partial match: "${spell.slug}"`);
+                this.logger.debug(`[SpellsService] Found unique partial match: "${spell.slug}"`);
             } else if (possibleSpells.length > 1) {
                 this.logger.warn(`[SpellsService] Ambiguous partial slug "${slug}" for user ${context.masterAccountId} matched ${possibleSpells.length} spells.`);
                 const spellNames = possibleSpells.map(s => `• ${s.name} (\`${s.slug}\`)`).join('\\n');

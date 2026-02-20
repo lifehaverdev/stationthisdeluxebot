@@ -18,7 +18,7 @@ module.exports = function userWalletsApi(dependencies) {
     };
   }
 
-  logger.info('[userWalletsApi] Initializing User Wallets API routes...');
+  logger.debug('[userWalletsApi] Initializing User Wallets API routes...');
 
   // Helper function to get masterAccountId (already validated by parent router, but check anyway)
   const getMasterAccountId = (req, res) => {
@@ -388,6 +388,6 @@ module.exports = function userWalletsApi(dependencies) {
   // Note: Catch-all for malformed DELETE requests under /users/:masterAccountId/wallets/* should remain in userCoreApi.js
   // as it catches paths before they reach this sub-router.
 
-  logger.info('[userWalletsApi] User Wallets API routes initialized.');
+  logger.debug('[userWalletsApi] User Wallets API routes initialized.');
   return router;
 }; 

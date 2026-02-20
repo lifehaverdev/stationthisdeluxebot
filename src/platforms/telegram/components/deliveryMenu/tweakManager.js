@@ -464,7 +464,7 @@ function registerHandlers(dispatchers, dependencies) {
         await bot.answerCallbackQuery(callbackQuery.id);
     });
 
-    logger.info('[TweakManager] All handlers registered.');
+    logger.debug('[TweakManager] All handlers registered.');
 }
 
 module.exports = {

@@ -57,7 +57,7 @@ function registerHandlers(dispatchers, dependencies) {
     // Register the handler for the specific 'rate_gen:' prefix.
     callbackQueryDispatcher.register('rate_gen:', handleRateGenCallback);
     
-    logger.info('[RateManager] Handler registered for "rate_gen:" callbacks.');
+    logger.debug('[RateManager] Handler registered for "rate_gen:" callbacks.');
 }
 
 module.exports = {

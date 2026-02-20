@@ -1490,7 +1490,7 @@ function registerHandlers(dispatcherInstances, dependencies) {
     callbackQueryDispatcher.register('lora_admin', loraAdminCallbackHandler);
     messageReplyDispatcher.register('mod_import_url', modImportHandler);
 
-    logger.info('[ModsMenuManager] All handlers registered.');
+    logger.debug('[ModsMenuManager] All handlers registered.');
 }
 
 // TODO: Implement other display functions:

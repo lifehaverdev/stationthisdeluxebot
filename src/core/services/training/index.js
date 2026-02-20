@@ -37,7 +37,7 @@ async function initializeTrainingServices(options = {}) {
     throw new Error('PointsService required for training system');
   }
 
-  logger.info('Initializing training services...');
+  logger.debug('Initializing training services...');
 
   try {
     // Initialize core services
@@ -56,7 +56,7 @@ async function initializeTrainingServices(options = {}) {
       pointsService
     });
 
-    logger.info('Training services initialized successfully');
+    logger.debug('Training services initialized successfully');
 
     return {
       orchestrator,

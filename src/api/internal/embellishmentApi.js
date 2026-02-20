@@ -1,10 +1,7 @@
 // src/api/internal/embellishmentApi.js
-console.log('[EmbellishmentAPI] Module loading...');
 
 const express = require('express');
 const { ObjectId } = require('mongodb');
-
-console.log('[EmbellishmentAPI] Dependencies loaded');
 
 /**
  * Embellishment API endpoints
@@ -18,7 +15,7 @@ console.log('[EmbellishmentAPI] Dependencies loaded');
 function createEmbellishmentApi({ logger, db, embellishmentTaskService }) {
   const router = express.Router();
 
-  logger.info('[EmbellishmentAPI] Creating embellishment API router...');
+  logger.debug('[EmbellishmentAPI] Creating embellishment API router...');
 
   if (!db) {
     logger.error('[EmbellishmentAPI] db is undefined!');
@@ -37,7 +34,7 @@ function createEmbellishmentApi({ logger, db, embellishmentTaskService }) {
 
   // Debug middleware to log all requests hitting this router
   router.use((req, res, next) => {
-    logger.info(`[EmbellishmentAPI] Incoming: ${req.method} ${req.path}`);
+    logger.debug(`[EmbellishmentAPI] Incoming: ${req.method} ${req.path}`);
     next();
   });
 
@@ -46,7 +43,7 @@ function createEmbellishmentApi({ logger, db, embellishmentTaskService }) {
     const { datasetId } = req.params;
     const { spellSlug, masterAccountId, parameterOverrides } = req.body;
 
-    logger.info(`[EmbellishmentAPI] POST /datasets/${datasetId}/embellish - spell=${spellSlug}`);
+    logger.debug(`[EmbellishmentAPI] POST /datasets/${datasetId}/embellish - spell=${spellSlug}`);
 
     if (!spellSlug) {
       return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'spellSlug is required' } });
@@ -170,19 +167,19 @@ function createEmbellishmentApi({ logger, db, embellishmentTaskService }) {
 
   // Test endpoint to verify router is mounted
   router.get('/embellishment-test', (req, res) => {
-    logger.info('[EmbellishmentAPI] Test endpoint hit!');
+    logger.debug('[EmbellishmentAPI] Test endpoint hit!');
     res.json({ success: true, message: 'Embellishment API is mounted correctly' });
   });
 
-  logger.info('[EmbellishmentAPI] Registering POST /datasets/:datasetId/embellishments/manual');
+  logger.debug('[EmbellishmentAPI] Registering POST /datasets/:datasetId/embellishments/manual');
 
   // POST /datasets/:datasetId/embellishments/manual - Create manual embellishment (for user-written captions)
   router.post('/datasets/:datasetId/embellishments/manual', async (req, res) => {
-    logger.info(`[EmbellishmentAPI] Manual embellishment route hit! datasetId=${req.params.datasetId}`);
+    logger.debug(`[EmbellishmentAPI] Manual embellishment route hit! datasetId=${req.params.datasetId}`);
     const { datasetId } = req.params;
     const { masterAccountId, type = 'caption' } = req.body;
 
-    logger.info(`[EmbellishmentAPI] POST /datasets/${datasetId}/embellishments/manual - type=${type}`);
+    logger.debug(`[EmbellishmentAPI] POST /datasets/${datasetId}/embellishments/manual - type=${type}`);
 
     if (!masterAccountId) {
       return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'masterAccountId is required' } });
@@ -355,7 +352,7 @@ function createEmbellishmentApi({ logger, db, embellishmentTaskService }) {
     }
   });
 
-  logger.info(`[EmbellishmentAPI] Router created with ${router.stack.length} routes`);
+  logger.debug(`[EmbellishmentAPI] Router created with ${router.stack.length} routes`);
   return router;
 }
 

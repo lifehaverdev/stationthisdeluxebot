@@ -13,7 +13,7 @@ function createAnalyticsApi(dependencies) {
     const { masterAccountId } = req.params;
     const { startDate, endDate } = req.query;
     
-    logger.info(`[AnalyticsAPI] GET /training/${masterAccountId} - Fetching training analytics`);
+    logger.debug(`[AnalyticsAPI] GET /training/${masterAccountId} - Fetching training analytics`);
     
     try {
       const query = { userId: masterAccountId };
@@ -89,7 +89,7 @@ function createAnalyticsApi(dependencies) {
   router.get('/datasets/:masterAccountId', async (req, res, next) => {
     const { masterAccountId } = req.params;
     
-    logger.info(`[AnalyticsAPI] GET /datasets/${masterAccountId} - Fetching dataset analytics`);
+    logger.debug(`[AnalyticsAPI] GET /datasets/${masterAccountId} - Fetching dataset analytics`);
     
     try {
       const datasets = await db.data.datasets.find({ 
@@ -143,7 +143,7 @@ function createAnalyticsApi(dependencies) {
     const { masterAccountId } = req.params;
     const { startDate, endDate } = req.query;
     
-    logger.info(`[AnalyticsAPI] GET /overview/${masterAccountId} - Fetching comprehensive analytics overview`);
+    logger.debug(`[AnalyticsAPI] GET /overview/${masterAccountId} - Fetching comprehensive analytics overview`);
     
     try {
       // Get training analytics
@@ -273,7 +273,7 @@ function createAnalyticsApi(dependencies) {
     const { masterAccountId } = req.params;
     const { startDate, endDate } = req.query;
     
-    logger.info(`[AnalyticsAPI] GET /performance/${masterAccountId} - Fetching performance metrics`);
+    logger.debug(`[AnalyticsAPI] GET /performance/${masterAccountId} - Fetching performance metrics`);
     
     try {
       const query = { userId: masterAccountId };

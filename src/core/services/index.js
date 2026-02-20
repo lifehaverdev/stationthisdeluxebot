@@ -62,13 +62,15 @@ async function initializeServices(options = {}) {
   // Initialize ToolRegistry Singleton
   const toolRegistry = ToolRegistry.getInstance();
   toolRegistry.loadStaticTools(); // Load hardcoded tools
-  logger.info('ToolRegistry initialized.');
+  logger.debug('ToolRegistry initialized.');
   
   // DIAGNOSTIC LOGGING REMOVED
   
   try {
-    logger.info('Initializing core services...');
-    
+    const _t = Date.now();
+    const _tick = (label) => logger.info(`[initSvc] ${label} +${Date.now()-_t}ms`);
+    _tick('start');
+
     // Initialize services with proper dependencies
     const mediaService = new MediaService({ 
       logger,
@@ -76,34 +78,36 @@ async function initializeServices(options = {}) {
       storageDir: options.mediaConfig?.storageDir
     });
     const pointsService = new PointsService({ logger });
+    _tick('PointsService');
     const comfyUIService = new ComfyUIService({ logger });
-    // Instantiate the unified ModelDiscoveryService (used by menus, quoting, etc.)
+    _tick('ComfyUIService');
     const modelDiscoveryService = new ModelDiscoveryService({ comfyService: comfyUIService });
+    _tick('ModelDiscoveryService');
     const openAIService = new OpenAIService({ logger });
     const huggingfaceService = new HuggingFaceService({ logger });
-    const storageService = new StorageService(logger); // Initialize StorageService
+    const storageService = new StorageService(logger);
     const stringService = new StringService({ logger });
-    
-    // Create a compatible logger for WorkflowsService if needed
-    // The WorkflowsService expects logger to be a function, but we want to use logger.info method
+    _tick('misc services');
+
     const workflowsLogger = {
       info: (message) => logger.info(message),
       warn: (message) => logger.warn ? logger.warn(message) : logger.info(`WARN: ${message}`),
       error: (message) => logger.error ? logger.error(message) : logger.info(`ERROR: ${message}`),
       debug: (message, ...args) => logger.debug ? logger.debug(message, ...args) : logger.info(`DEBUG: ${message}`, ...args)
     };
-    
-    const workflowsService = new WorkflowsService({ 
+
+    const workflowsService = new WorkflowsService({
       logger: workflowsLogger
     });
-    
+    _tick('WorkflowsService');
+
     // Initialize Database Services with Logger
     if (!dbService || typeof dbService.initializeDbServices !== 'function') {
       logger.error('Failed to initialize DB services: initializeDbServices function not found in db module.');
       throw new Error('DB service initialization function not found.');
     }
     const initializedDbServices = dbService.initializeDbServices(logger);
-    logger.info('Database services initialized.');
+    _tick('DB services');
     try {
       const generationOutputsDb = initializedDbServices?.data?.generationOutputs;
       if (generationOutputsDb && typeof generationOutputsDb.ensureIndexes === 'function') {
@@ -118,19 +122,20 @@ async function initializeServices(options = {}) {
         const x402PaymentLogDb = initializedDbServices?.data?.x402PaymentLog;
         if (x402PaymentLogDb && typeof x402PaymentLogDb.ensureIndexes === 'function') {
           await x402PaymentLogDb.ensureIndexes();
-          logger.info('[initializeServices] x402PaymentLogDb indexes ensured.');
+          logger.debug('[initializeServices] x402PaymentLogDb indexes ensured.');
         }
       }
     } catch (indexErr) {
       logger.error('Failed to ensure DB indexes:', indexErr);
     }
+    _tick('DB indexes');
     try {
       createCaptionTaskService({
         logger,
         db: initializedDbServices.data,
         websocketService: webSocketService,
       });
-      logger.info('[initializeServices] CaptionTaskService initialized.');
+      logger.debug('[initializeServices] CaptionTaskService initialized.');
     } catch (err) {
       logger.error('[initializeServices] Failed to initialize CaptionTaskService:', err);
     }
@@ -143,12 +148,11 @@ async function initializeServices(options = {}) {
         websocketService: webSocketService,
         spellsService: null, // Will be injected after SpellsService is created
       });
-      logger.info('[initializeServices] EmbellishmentTaskService initialized.');
+      logger.debug('[initializeServices] EmbellishmentTaskService initialized.');
     } catch (err) {
       logger.error('[initializeServices] Failed to initialize EmbellishmentTaskService:', err);
     }
-
-    // --- Initialize On-Chain Services ---
+    _tick('task services');
     const ethereumServices = {}; // chainId -> EthereumService
     const creditServices = {};   // chainId -> CreditService
     let priceFeedService;
@@ -166,13 +170,14 @@ async function initializeServices(options = {}) {
         webSocketService: webSocketService,
         logger
       });
-      logger.info('[initializeServices] AdminActivityService initialized.');
+      logger.debug('[initializeServices] AdminActivityService initialized.');
     } catch (err) {
       logger.error('[initializeServices] Failed to initialize AdminActivityService:', err);
     }
 
     try {
-      logger.info('Initializing on-chain services (Ethereum, Credit)...');
+      const _tChain = Date.now();
+      logger.info('[initializeServices] starting on-chain services...');;
       
       // --- MULTICHAIN INITIALISATION ---
       const { RPC_ENV_VARS, getRpcUrl, getFoundationAddress, getCharterBeaconAddress } = require('./alchemy/foundationConfig');
@@ -210,7 +215,7 @@ async function initializeServices(options = {}) {
           foundationAbi: contracts.foundation.abi,
           charterBeacon: getCharterBeaconAddress('1'),
         }, logger);
-        logger.info('[initializeServices] SaltMiningService initialized.');
+        logger.debug('[initializeServices] SaltMiningService initialized.');
       } catch (err) {
         logger.error('[initializeServices] Failed to initialize SaltMiningService:', err);
       }
@@ -226,11 +231,11 @@ async function initializeServices(options = {}) {
           // Lazily instantiate shared dexService & tokenRiskEngine using the first available EthereumService (prefer mainnet)
           if (!dexService) {
             dexService = new DexService({ ethereumService: ethService }, logger);
-            logger.info('[initializeServices] DexService initialized.');
+            logger.debug('[initializeServices] DexService initialized.');
           }
           if (!tokenRiskEngine) {
             tokenRiskEngine = new TokenRiskEngine({ dexService, priceFeedService }, logger);
-            logger.info('[initializeServices] TokenRiskEngine initialized.');
+            logger.debug('[initializeServices] TokenRiskEngine initialized.');
           }
 
           const creditServiceConfig = {
@@ -258,20 +263,19 @@ async function initializeServices(options = {}) {
           logger.error(`[initializeServices] Failed to init on-chain services for chain ${chainId}:`, err);
         }
       }
-      logger.info('On-chain services initialized.');
+      _tick('on-chain services done');
     } catch (error) {
         logger.error('Failed to initialize on-chain services:', error);
         // Continue without on-chain features
     }
     // --- End On-Chain Services ---
-
     // Initialize UserSettingsService before the API so it can be injected.
     const userSettingsService = getUserSettingsService({
       logger,
       toolRegistry,
       internalApiClient // Use the directly imported singleton
     });
-    logger.info('UserSettingsService initialized globally in core services.');
+    logger.debug('UserSettingsService initialized globally in core services.');
 
     // --- Initialize WorkflowExecutionService & SpellsService BEFORE API so they can be injected ---
     const workflowExecutionService = new WorkflowExecutionService({
@@ -283,14 +287,12 @@ async function initializeServices(options = {}) {
       workflowsService: workflowsService,
       userSettingsService,
     });
-    logger.info('WorkflowExecutionService initialized (pre-API).');
-
     // Initialize SpellMigrator for auto-healing spells when tool schemas change
     const spellMigrator = new SpellMigrator({
       toolRegistry,
       logger
     });
-    logger.info('SpellMigrator initialized.');
+    logger.debug('SpellMigrator initialized.');
 
     const spellsService = new SpellsService({
       logger,
@@ -300,12 +302,10 @@ async function initializeServices(options = {}) {
       creditService: creditServices && creditServices['1'] ? creditServices['1'] : null, // Mainnet credit service for upfront payments
       spellMigrator, // Inject SpellMigrator for auto-healing
     });
-    logger.info('SpellsService initialized (pre-API).');
-
     // Inject spellsService into EmbellishmentTaskService now that it's available
     if (embellishmentTaskService && typeof embellishmentTaskService.setSpellsService === 'function') {
       embellishmentTaskService.setSpellsService(spellsService);
-      logger.info('[initializeServices] SpellsService injected into EmbellishmentTaskService.');
+      logger.debug('[initializeServices] SpellsService injected into EmbellishmentTaskService.');
     }
 
     // Initialize Guest Account Services
@@ -314,13 +314,13 @@ async function initializeServices(options = {}) {
       internalApiClient,
       userCoreDb: initializedDbServices.data.userCore
     });
-    logger.info('GuestAccountService initialized.');
+    logger.debug('GuestAccountService initialized.');
 
     const guestAuthService = new GuestAuthService({
       logger,
       userCoreDb: initializedDbServices.data.userCore
     });
-    logger.info('GuestAuthService initialized.');
+    logger.debug('GuestAuthService initialized.');
 
     // Initialize SpellPaymentService (uses mainnet credit service)
     // Note: This must be after creditServices are initialized
@@ -340,13 +340,13 @@ async function initializeServices(options = {}) {
             abi: contracts.foundation.abi
           }
         });
-        logger.info('SpellPaymentService initialized.');
+        logger.debug('SpellPaymentService initialized.');
         
         // Inject SpellPaymentService back into CreditService (mainnet only)
         // This allows CreditService to track spell payments when processing deposits
         if (creditServices['1']) {
           creditServices['1'].spellPaymentService = spellPaymentService;
-          logger.info('SpellPaymentService injected into mainnet CreditService.');
+          logger.debug('SpellPaymentService injected into mainnet CreditService.');
         }
       } catch (error) {
         logger.error('Failed to initialize SpellPaymentService:', error);
@@ -358,7 +358,7 @@ async function initializeServices(options = {}) {
     // After database services initialized and toolRegistry loaded, enrich tools with stats
     const spellStatsService = new SpellStatsService({ generationOutputsDb: initializedDbServices.data.generationOutputs, logger });
     spellStatsService.startAutoRefresh(toolRegistry);
-    logger.info('SpellStatsService initialized and ToolRegistry stats enrichment scheduled.');
+    logger.debug('SpellStatsService initialized and ToolRegistry stats enrichment scheduled.');
 
     let collectionExportService = null;
     if (initializedDbServices.data.collectionExports && initializedDbServices.data.cookCollections && initializedDbServices.data.generationOutputs && storageService) {
@@ -371,7 +371,7 @@ async function initializeServices(options = {}) {
         systemStateDb: initializedDbServices.data.systemState,
         processingEnabled: options.collectionExportProcessingEnabled !== false
       });
-      logger.info('CollectionExportService initialized.');
+      logger.debug('CollectionExportService initialized.');
     } else {
       logger.warn('CollectionExportService not initialized: missing DB or storage dependencies.');
     }
@@ -435,6 +435,7 @@ async function initializeServices(options = {}) {
     // });
     // logger.info('SpellsService initialized.');
 
+    _tick('initializeAPI done');
     logger.info('Core services created successfully');
     
     const dbInstances = initializedDbServices?.data || {};
@@ -485,12 +486,12 @@ async function initializeServices(options = {}) {
 
     // DIAGNOSTIC LOGGING REMOVED
 
+    _tick('starting cook services');
     // Initialize Cook projection services
     await initializeCookServices(logger, {
       cookCollectionsDb: dbInstances.cookCollections,
       cooksDb: dbInstances.cooks,
     });
-
     // Initialize Training services
     const trainingServices = await initializeTrainingServices({
       logger,

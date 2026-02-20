@@ -25,7 +25,7 @@ function createAccountCommandHandler(dependencies) {
    */
   return async function handleAccountCommand(client, interaction, dependencies) {
     try {
-      logger.info('[Account Command] Received account command');
+      logger.debug('[Account Command] Received account command');
       
       // Validate interaction
       if (!interaction || typeof interaction.deferReply !== 'function') {
@@ -66,7 +66,7 @@ function createAccountCommandHandler(dependencies) {
         components: accountMenu.components
       });
 
-      logger.info('[Account Command] Account command executed successfully');
+      logger.debug('[Account Command] Account command executed successfully');
 
     } catch (error) {
       logger.error('[Account Command] Error:', error);

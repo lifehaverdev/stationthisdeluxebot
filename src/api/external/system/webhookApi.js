@@ -21,7 +21,7 @@ function createWebhookApi(dependencies) {
       const routeLogger = dependencies.logger || console;
 
       // Log summary of dependencies
-      routeLogger.info('[WebhookAPI] Dependencies prepared for webhookProcessor', {
+      routeLogger.debug('[WebhookAPI] Dependencies prepared for webhookProcessor', {
         internalApiClient: {
           exists: Boolean(dependencies.internal?.client),
           hasGet: typeof dependencies.internal?.client?.get === 'function'
@@ -74,7 +74,7 @@ function createWebhookApi(dependencies) {
   webhookRouter.post('/alchemy/:chainId?',
     (req, res, next) => {
       const logger = dependencies.logger || console;
-      logger.info('[AlchemyWebhook] Incoming request', {
+      logger.debug('[AlchemyWebhook] Incoming request', {
         headers: req.headers,
         method: req.method,
         url: req.originalUrl
@@ -83,7 +83,7 @@ function createWebhookApi(dependencies) {
     },
     (req, res, next) => {
       const logger = dependencies.logger || console;
-      logger.info('[AlchemyWebhook] Before signature validation', {
+      logger.debug('[AlchemyWebhook] Before signature validation', {
         signature: req.header('X-Alchemy-Signature'),
         hasRawBody: !!req.rawBody,
         rawBodyLength: req.rawBody ? req.rawBody.length : 0
@@ -103,7 +103,7 @@ function createWebhookApi(dependencies) {
     },
     async (req, res) => {
       const logger = dependencies.logger || console;
-      logger.info('[AlchemyWebhook] Handler start', {
+      logger.debug('[AlchemyWebhook] Handler start', {
         body: req.body,
         rawBody: req.rawBody ? req.rawBody.toString('hex').slice(0, 64) + '...' : undefined
       });
@@ -115,7 +115,7 @@ function createWebhookApi(dependencies) {
           throw new Error('CreditService not available');
         }
         const result = await creditService.handleEventWebhook(req.body);
-        logger.info('[AlchemyWebhook] Handler result', { chainId, result });
+        logger.debug('[AlchemyWebhook] Handler result', { chainId, result });
         res.json(result);
       } catch (error) {
         logger.error('[AlchemyWebhook] Error processing webhook:', error);

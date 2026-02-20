@@ -13,14 +13,14 @@ async function ensure() {
   started = true;
   const logger = createLogger('CookEmbeddedWorker');
   try {
-    logger.info('[EmbeddedWorker] Starting cook job watcher in-process…');
+    logger.debug('[EmbeddedWorker] Starting cook job watcher in-process…');
     // Periodic metrics for debugging polling behavior
     const metricsMs = Number(process.env.COOK_QUEUE_METRICS_MS) || 5000;
     if (ENABLE_QUEUE_METRICS) {
       metricsTimer = setInterval(async () => {
         try {
           const dbg = await CookJobStore.getQueueDebug();
-          logger.info(`[EmbeddedWorker] Queue counts q:${dbg.counts.queued} r:${dbg.counts.running} d:${dbg.counts.done} f:${dbg.counts.failed}`);
+          logger.debug(`[EmbeddedWorker] Queue counts q:${dbg.counts.queued} r:${dbg.counts.running} d:${dbg.counts.done} f:${dbg.counts.failed}`);
           if (dbg.next) {
             logger.debug ? logger.debug(`[EmbeddedWorker] Next candidate ${dbg.next._id} coll:${dbg.next.collectionId} user:${dbg.next.userId}`) : null;
           }
@@ -47,16 +47,16 @@ async function ensure() {
             totalSupply
           }
         };
-        logger.info(`[EmbeddedWorker] Submitting job ${job._id} for collection ${collectionId} (tool ${spellIdOrToolId})`);
+        logger.debug(`[EmbeddedWorker] Submitting job ${job._id} for collection ${collectionId} (tool ${spellIdOrToolId})`);
         const resp = await internalApiClient.post('/internal/v1/data/execute', payload);
         const status = resp?.status || resp?.data?.status || 'ok';
-        logger.info(`[EmbeddedWorker] Submit result for job ${job._id}: ${status}`);
+        logger.debug(`[EmbeddedWorker] Submit result for job ${job._id}: ${status}`);
       } catch (err) {
         logger.error(`[EmbeddedWorker] Failed to submit job ${job._id}: ${err.message}`);
         try { await CookJobStore.markFailed(job._id, err.message); } catch(e){}
       }
     });
-    logger.info('[EmbeddedWorker] Watcher active.');
+    logger.debug('[EmbeddedWorker] Watcher active.');
   } catch (err) {
     started = false;
     changeHandle = null;

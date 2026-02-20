@@ -18,9 +18,6 @@ async function _fetchAndCacheTriggerMap(internalApiClient, masterAccountId, tool
   let apiUrl = masterAccountId ? `/internal/v1/data/lora/trigger-map-data?userId=${masterAccountId}` : '/internal/v1/data/lora/trigger-map-data';
   if (toolBaseModel) {
     apiUrl += (apiUrl.includes('?') ? '&' : '?') + `baseModelType=${toolBaseModel}`;
-    logger.info(`[LoRAResolutionService] Fetching trigger map from API. User: ${masterAccountId || 'N/A (public only)'}, ToolBaseModel: ${toolBaseModel}`);
-  } else {
-    logger.info(`[LoRAResolutionService] Fetching trigger map from API. User: ${masterAccountId || 'N/A (public only)'}`);
   }
   
   try {
@@ -38,7 +35,6 @@ async function _fetchAndCacheTriggerMap(internalApiClient, masterAccountId, tool
     }
     
     triggerMapCache.set(cacheKey, { data: newMap, timestamp: Date.now() });
-    logger.info(`[LoRAResolutionService] Successfully fetched and cached trigger map for ${cacheKey}. Map size: ${newMap.size} keys.`);
     return newMap;
   } catch (error) {
     logger.error(`[LoRAResolutionService] Error fetching trigger map from API for ${cacheKey}: ${error.message}`, error.stack);
@@ -63,7 +59,6 @@ async function _getTriggerMap(internalApiClient, masterAccountId, toolBaseModel)
   const cachedEntry = triggerMapCache.get(cacheKey);
 
   if (cachedEntry && (Date.now() - cachedEntry.timestamp < USER_CACHE_TTL)) {
-    logger.info(`[LoRAResolutionService] Using cached trigger map for ${cacheKey}.`);
     return cachedEntry.data;
   }
   
@@ -98,11 +93,9 @@ async function resolveLoraTriggers(promptString, masterAccountId, toolBaseModel,
   const warnings = [];
   const lorasAppliedThisRun = new Set(); // Tracks slugs of LoRAs applied in this run
 
-  logger.info(`[LoRAResolutionService] Resolving LoRAs for user: ${masterAccountId || 'N/A (public map only)'}. Prompt: "${promptString.substring(0,50)}...". ToolBaseModel: ${toolBaseModel || 'N/A'}`);
   const triggerMap = await _getTriggerMap(internalApiClient, masterAccountId, toolBaseModel);
 
   if (!triggerMap || triggerMap.size === 0) {
-    logger.info(`[LoRAResolutionService] Trigger map is empty for ${masterAccountId || 'public'}. Returning original prompt.`);
     return { modifiedPrompt: rawPrompt, rawPrompt, appliedLoras, warnings };
   }
 
@@ -210,7 +203,6 @@ async function resolveLoraTriggers(promptString, masterAccountId, toolBaseModel,
     
     if (triggerMap.has(baseToken)) {
       if (userSpecifiedWeight === 0.0) {
-        logger.info(`[LoRAResolutionService] LoRA trigger suppression for: ${baseToken} via weight 0.0`);
         finalPromptParts.push(originalSegmentForPush); 
         continue;
       }
@@ -220,9 +212,6 @@ async function resolveLoraTriggers(promptString, masterAccountId, toolBaseModel,
       // BEGIN MODIFICATION: Filter by toolBaseModel if provided
       if (toolBaseModel && potentialLoras.length > 0) {
         const initialCount = potentialLoras.length;
-        // Debug log to show all potential LoRAs for this trigger before filtering
-        logger.info(`[LoRAResolutionService][DEBUG] All potential LoRAs for trigger '${baseToken}':`, potentialLoras.map(l => ({slug: l.slug, checkpoint: l.checkpoint})));
-        
         const upperCaseToolBaseModel = toolBaseModel.toUpperCase();
 
         // Updated logic for flexible LoRA compatibility
@@ -254,9 +243,6 @@ async function resolveLoraTriggers(promptString, masterAccountId, toolBaseModel,
           );
         }
 
-        if (potentialLoras.length < initialCount) {
-            logger.info(`[LoRAResolutionService] Filtered ${initialCount - potentialLoras.length} LoRAs from trigger '${baseToken}' due to toolBaseModel/checkpoint mismatch (tool wants ${toolBaseModel}).`);
-        }
       }
       // END MODIFICATION
 
@@ -287,7 +273,6 @@ async function resolveLoraTriggers(promptString, masterAccountId, toolBaseModel,
       if (selectedLora) {
         if (lorasAppliedThisRun.has(selectedLora.slug)) {
           // This LoRA has already been applied, so just remove the trigger word.
-          logger.info(`[LoRAResolutionService] LoRA with slug ${selectedLora.slug} already applied. Removing duplicate trigger '${baseToken}'.`);
           finalPromptParts.push(trailingPunctuation);
           continue;
         }
@@ -328,7 +313,6 @@ async function resolveLoraTriggers(promptString, masterAccountId, toolBaseModel,
   
   const finalPrompt = finalPromptParts.join("");
 
-  logger.info(`[LoRAResolutionService] Resolution complete for user ${masterAccountId || 'public'}. Modified prompt: "${finalPrompt.substring(0,100)}...". Applied LoRAs: ${appliedLoras.length}. Warnings: ${warnings.length}.`);
   return { modifiedPrompt: finalPrompt, rawPrompt, appliedLoras, warnings };
 }
 
@@ -338,15 +322,9 @@ async function resolveLoraTriggers(promptString, masterAccountId, toolBaseModel,
  */
 function refreshTriggerMapCache(masterAccountId) {
   if (masterAccountId) {
-    if (triggerMapCache.has(masterAccountId)) {
-      triggerMapCache.delete(masterAccountId);
-      logger.info(`[LoRAResolutionService] LoRA trigger map cache cleared for user: ${masterAccountId}`);
-    } else {
-      logger.info(`[LoRAResolutionService] No cache found for user ${masterAccountId} to clear.`);
-    }
+    triggerMapCache.delete(masterAccountId);
   } else {
     triggerMapCache.clear();
-    logger.info('[LoRAResolutionService] Entire LoRA trigger map cache cleared.');
   }
 }
 

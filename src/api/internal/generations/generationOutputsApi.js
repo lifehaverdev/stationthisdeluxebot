@@ -70,7 +70,7 @@ module.exports = function generationOutputsApi(dependencies) {
     };
   }
 
-  logger.info('[generationOutputsApi] Initializing Generation Outputs API routes...');
+  logger.debug('[generationOutputsApi] Initializing Generation Outputs API routes...');
 
   // Middleware for validating ObjectId in path parameters
   const validateObjectId = (paramName) => (req, res, next) => {
@@ -93,7 +93,7 @@ module.exports = function generationOutputsApi(dependencies) {
 
   // GET / - Retrieves multiple generation outputs based on query filters
   router.get('/', async (req, res, next) => {
-    logger.info('[generationOutputsApi] GET / - Received request with query:', req.query);
+    logger.debug('[generationOutputsApi] GET / - Received request with query:', req.query);
     try {
       const filter = {};
       const reservedQueryKeys = new Set(['limit', 'skip', 'page', 'sort', 'fields', 'projection']);
@@ -156,11 +156,11 @@ module.exports = function generationOutputsApi(dependencies) {
       }
 
       if (!generations) {
-        logger.info('[generationOutputsApi] GET / - No generations found matching criteria or db method returned null/undefined.');
+        logger.debug('[generationOutputsApi] GET / - No generations found matching criteria or db method returned null/undefined.');
         return res.status(200).json({ generations: [] }); // Return empty array for consistency
       }
       
-      logger.info(`[generationOutputsApi] GET / - Found ${generations.length} generation(s).`);
+      logger.debug(`[generationOutputsApi] GET / - Found ${generations.length} generation(s).`);
       // The API contract usually expects an object with a key (e.g., "generations") holding the array.
       res.status(200).json({ generations });
 
@@ -210,7 +210,7 @@ module.exports = function generationOutputsApi(dependencies) {
 
   // POST / - Logs a new generation task
   router.post('/', async (req, res, next) => {
-    logger.info('[generationOutputsApi] POST / - Received request', { body: req.body });
+    logger.debug('[generationOutputsApi] POST / - Received request', { body: req.body });
 
     // Validate required fields from ADR-003
     const { masterAccountId, initiatingEventId, serviceName, toolId, toolDisplayName, spellId, castId, cookId, requestPayload, responsePayload, metadata, requestTimestamp, notificationPlatform, deliveryStatus, deliveryStrategy, status } = req.body;
@@ -288,7 +288,7 @@ module.exports = function generationOutputsApi(dependencies) {
         newGeneration.notificationPlatform !== 'none';
 
       if (isNotificationReady) {
-        logger.info(`[generationOutputsApi] POST /: New generation ${newGeneration._id} is ready for delivery, emitting event.`);
+        logger.debug(`[generationOutputsApi] POST /: New generation ${newGeneration._id} is ready for delivery, emitting event.`);
         notificationEvents.emit('generationUpdated', newGeneration);
       }
 
@@ -304,7 +304,7 @@ module.exports = function generationOutputsApi(dependencies) {
   // GET /:generationId - Retrieves a generation output
   router.get('/:generationId', validateObjectId('generationId'), async (req, res, next) => {
     const { generationId } = req.locals;
-    logger.info(`[generationOutputsApi] GET /${generationId} - Received request`);
+    logger.debug(`[generationOutputsApi] GET /${generationId} - Received request`);
 
     try {
       const generation = await db.generationOutputs.findGenerationById(generationId);
@@ -316,7 +316,7 @@ module.exports = function generationOutputsApi(dependencies) {
         });
       }
 
-      logger.info(`[generationOutputsApi] GET /${generationId}: Generation output found.`);
+      logger.debug(`[generationOutputsApi] GET /${generationId}: Generation output found.`);
       res.status(200).json(generation);
 
     } catch (error) {
@@ -330,7 +330,7 @@ module.exports = function generationOutputsApi(dependencies) {
     const { generationId } = req.locals;
     const updatePayload = req.body;
 
-    logger.info(`[generationOutputsApi] PUT /${generationId} - Received request, PAYLOAD:`, { body: updatePayload });
+    logger.debug(`[generationOutputsApi] PUT /${generationId} - Received request, PAYLOAD:`, { body: updatePayload });
 
     if (!updatePayload || typeof updatePayload !== 'object' || Object.keys(updatePayload).length === 0) {
       return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Request body must be a non-empty object containing fields to update.' } });
@@ -384,7 +384,7 @@ module.exports = function generationOutputsApi(dependencies) {
         updatedGeneration.notificationPlatform !== 'none';
 
       if (isNotificationReady && statusJustBecameTerminal) {
-        logger.info(`[generationOutputsApi] PUT /${generationId}: Generation has become terminal and is ready for delivery, emitting event.`);
+        logger.debug(`[generationOutputsApi] PUT /${generationId}: Generation has become terminal and is ready for delivery, emitting event.`);
         
         // Determine delivery strategy based on metadata
         // If this is a spell step, set deliveryStrategy to 'spell_step' so NotificationDispatcher handles it correctly
@@ -398,7 +398,7 @@ module.exports = function generationOutputsApi(dependencies) {
         logger.debug(`[generationOutputsApi] PUT /${generationId}: Generation is ready for delivery, but status did not just become terminal in this update. Suppressing redundant event.`);
       }
 
-      logger.info(`[generationOutputsApi] PUT /${generationId}: Generation output updated successfully.`);
+      logger.debug(`[generationOutputsApi] PUT /${generationId}: Generation output updated successfully.`);
       res.status(200).json(updatedGeneration);
 
     } catch (error) {
@@ -418,7 +418,7 @@ module.exports = function generationOutputsApi(dependencies) {
       });
     }
 
-    logger.info(`[generationOutputsApi] GET /users/${masterAccountId}/most-frequent-tools - Requested limit for DB fetch: ${limit}`);
+    logger.debug(`[generationOutputsApi] GET /users/${masterAccountId}/most-frequent-tools - Requested limit for DB fetch: ${limit}`);
 
     try {
       const frequentToolsDataFromDb = await db.generationOutputs.getMostFrequentlyUsedToolsByMasterAccountId(masterAccountId, limit);
@@ -430,7 +430,7 @@ module.exports = function generationOutputsApi(dependencies) {
       
       // The API now returns raw data: toolId and usageCount. Client will handle enrichment and filtering.
       // The objects will be like { toolId: string, usageCount: number }
-      logger.info(`[generationOutputsApi] GET /users/${masterAccountId}/most-frequent-tools - Returning ${frequentToolsDataFromDb.length} raw tool usage data entries.`);
+      logger.debug(`[generationOutputsApi] GET /users/${masterAccountId}/most-frequent-tools - Returning ${frequentToolsDataFromDb.length} raw tool usage data entries.`);
       res.status(200).json({ frequentTools: frequentToolsDataFromDb });
 
     } catch (error) {
@@ -444,7 +444,7 @@ module.exports = function generationOutputsApi(dependencies) {
     const { generationId } = req.locals;
     const { ratingType, masterAccountId } = req.body;
 
-    logger.info(`[generationOutputsApi] POST /rate_gen/${generationId} - Received request to rate as ${ratingType}`);
+    logger.debug(`[generationOutputsApi] POST /rate_gen/${generationId} - Received request to rate as ${ratingType}`);
 
     if (!ratingType || !['beautiful', 'funny', 'sad'].includes(ratingType)) {
       return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Invalid rating type.' } });
@@ -479,7 +479,7 @@ module.exports = function generationOutputsApi(dependencies) {
 
       await db.generationOutputs.updateGenerationOutput(generationId, { ratings, masterAccountId, ratingType });
 
-      logger.info(`[generationOutputsApi] POST /rate_gen/${generationId}: Rating updated successfully.`);
+      logger.debug(`[generationOutputsApi] POST /rate_gen/${generationId}: Rating updated successfully.`);
       res.status(200).json({ message: 'Rating updated successfully.' });
 
     } catch (error) {
@@ -488,6 +488,6 @@ module.exports = function generationOutputsApi(dependencies) {
     }
   });
 
-  logger.info('[generationOutputsApi] Generation Outputs API routes initialized.');
+  logger.debug('[generationOutputsApi] Generation Outputs API routes initialized.');
   return router;
 }; 

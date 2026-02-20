@@ -40,7 +40,7 @@ function createMcpServer(dependencies) {
       registerToolWithMcp(server, tool, internalApiClient);
     }
 
-    logger.info(`[MCP] Registered ${publicTools.length} tools`);
+    logger.debug(`[MCP] Registered ${publicTools.length} tools`);
   }
 
   // ============================================
@@ -257,7 +257,7 @@ function registerToolWithMcp(server, tool, internalApiClient) {
     description,
     { parameters: z.object(schemaShape) },
     async (args, context) => {
-      logger.info(`[MCP] Tool call: ${tool.toolId}`, { args: Object.keys(args || {}) });
+      logger.debug(`[MCP] Tool call: ${tool.toolId}`, { args: Object.keys(args || {}) });
 
       // Check for API key in context
       const apiKey = context?.apiKey;

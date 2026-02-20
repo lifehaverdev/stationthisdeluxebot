@@ -218,7 +218,7 @@ function createX402GenerationApi(dependencies) {
     // Execute generation via internal API
     let executionResult;
     try {
-      logger.info('[x402] Executing generation', {
+      logger.debug('[x402] Executing generation', {
         toolId,
         payer: x402.payer,
         costUsd: quote.totalCostUsd

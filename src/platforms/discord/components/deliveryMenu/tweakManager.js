@@ -745,7 +745,7 @@ function registerHandlers(dispatchers, dependencies) {
     // Register reply handler for param edit
     messageReplyDispatcher.register('tweak_param_edit', handleParamEditReply);
 
-    logger.info('[TweakManager] All handlers registered.');
+    logger.debug('[TweakManager] All handlers registered.');
 }
 
 module.exports = {

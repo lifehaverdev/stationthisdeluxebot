@@ -77,7 +77,7 @@ function createX402Middleware(config) {
 
   const facilitatorClient = new HTTPFacilitatorClient(cdpFacilitator);
 
-  logger.info(`[x402] Middleware initialized`, {
+  logger.debug(`[x402] Middleware initialized`, {
     receiverAddress,
     network,
     facilitator: 'CDP (@coinbase/x402)'

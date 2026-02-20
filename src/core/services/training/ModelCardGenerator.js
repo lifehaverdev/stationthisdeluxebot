@@ -65,18 +65,18 @@ class ModelCardGenerator {
    * @returns {Promise<{readme: string, description: string, samplePrompts: string[]}>}
    */
   async generate({ modelName, triggerWord, trainingSteps, captions, description: userDescription, hfOrg = DEFAULTS.HF_ORG, trainingConfig = {}, baseModel = 'FLUX', trainingMode = null }) {
-    this.logger.info(`[ModelCardGenerator] Generating model card for ${modelName}`);
+    this.logger.debug(`[ModelCardGenerator] Generating model card for ${modelName}`);
 
     let description;
 
     // Priority: 1. User-provided description, 2. OpenAI-generated, 3. Fallback
     if (userDescription && userDescription.trim()) {
-      this.logger.info(`[ModelCardGenerator] Using user-provided description`);
+      this.logger.debug(`[ModelCardGenerator] Using user-provided description`);
       description = userDescription.trim();
     } else {
       // Select ONE caption for description generation (captions can be very long)
       const selectedCaptions = this._selectDiverseCaptions(captions, 1);
-      this.logger.info(`[ModelCardGenerator] Selected ${selectedCaptions.length} caption for OpenAI description`);
+      this.logger.debug(`[ModelCardGenerator] Selected ${selectedCaptions.length} caption for OpenAI description`);
 
       // Generate description via OpenAI (falls back to default if OpenAI fails)
       description = await this._generateDescription({

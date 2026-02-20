@@ -164,7 +164,7 @@ class UserSettingsService {
         preferences, // The body should be the preferences object for that toolId
         requestConfig
       );
-      logger.info(`[savePreferences] Preferences saved successfully. Response status: ${response.status}`, { masterAccountId, toolId });
+      logger.debug(`[savePreferences] Preferences saved successfully. Response status: ${response.status}`, { masterAccountId, toolId });
       return { success: true, data: response.data, errors: [] };
     } catch (error) {
       logger.error(`[savePreferences] Error saving preferences: ${error.message}`, { masterAccountId, toolId, responseData: error.response?.data });
@@ -221,7 +221,7 @@ class UserSettingsService {
     const saneUserInput = (typeof userInput === 'object' && userInput !== null) ? userInput : {};
 
     const resolvedInput = { ...toolDefaults, ...userPreferences, ...saneUserInput };
-    logger.info(`[getResolvedInput] Input resolved`, { toolId, resolvedInput });
+    logger.debug(`[getResolvedInput] Input resolved`, { toolId, resolvedInput });
     return resolvedInput;
   }
 }
@@ -240,7 +240,7 @@ function getUserSettingsService(services = {}) {
         // Potentially throw here or return a service that will loudly fail.
     }
     userSettingsServiceInstance = new UserSettingsService(services);
-    logger.info('UserSettingsService initialized.');
+    logger.debug('UserSettingsService initialized.');
   }
   return userSettingsServiceInstance;
 }

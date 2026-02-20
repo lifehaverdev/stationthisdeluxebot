@@ -81,7 +81,7 @@ function buildTriggerMapFromLoras(loras) {
  * This is called on startup and when LoRA visibility changes.
  */
 async function refreshPublicLoraCache() {
-  logger.info('[LoraTriggerMapApi] Refreshing public LoRA cache...');
+  logger.debug('[LoraTriggerMapApi] Refreshing public LoRA cache...');
   try {
     const publicLoras = await loRAModelsDb.findMany({ visibility: 'public' });
     publicLorasCache = publicLoras.map(lora => ({
@@ -123,7 +123,7 @@ async function getLoraTriggerMapDataHandler(req, res) {
 
   // EARLY RETURN: public-only request
   if (!req.query.userId) {
-    logger.info('[LoraTriggerMapApi] Returning cached public trigger map (no userId).');
+    logger.debug('[LoraTriggerMapApi] Returning cached public trigger map (no userId).');
     return res.status(200).json(publicTriggerMapCache || {});
   }
 

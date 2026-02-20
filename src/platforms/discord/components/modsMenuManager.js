@@ -670,7 +670,7 @@ function registerHandlers(dispatcherInstances, dependencies) {
     // Register message reply handler
     messageReplyDispatcher.register('mod_import_url', handleModImportReply);
     
-    logger.info('[ModsMenuManager] All handlers registered.');
+    logger.debug('[ModsMenuManager] All handlers registered.');
 }
 
 module.exports = {

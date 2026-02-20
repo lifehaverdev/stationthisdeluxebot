@@ -156,6 +156,6 @@ module.exports = function createRatesApiService(dependencies = {}) {
     });
   });
 
-  logger.info('[ratesApi] Economy Rates API service initialized');
+  logger.debug('[ratesApi] Economy Rates API service initialized');
   return router;
 };

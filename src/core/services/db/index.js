@@ -49,7 +49,7 @@ function initializeDbServices(logger) {
     logger = console;
   }
   
-  logger.info(`[DB Index] LoRATrainingsDB class loaded, type: ${typeof LoRATrainingsDB}`);
+  logger.debug(`[DB Index] LoRATrainingsDB class loaded, type: ${typeof LoRATrainingsDB}`);
 
   const databaseServices = {
     userCore: new UserCoreDB(logger), // Instantiate with logger
@@ -93,12 +93,8 @@ function initializeDbServices(logger) {
     }
   });
 
-  logger.info(`[DB Index] Final check of databaseServices.loraTrainings type: ${typeof databaseServices.loraTrainings}`);
-  logger.info(`[DB Index] Is databaseServices.loraTrainings strictly null: ${databaseServices.loraTrainings === null}`);
-  if (databaseServices.loraTrainings && typeof databaseServices.loraTrainings.findTrainingsByUser === 'function') {
-    logger.info(`[DB Index] LoRATrainingsDB instance appears valid in databaseServices.`);
-  } else {
-    logger.warn(`[DB Index] LoRATrainingsDB instance IS MISSING or INVALID in databaseServices. Check loading of LoRATrainingsDB class and its instantiation.`);
+  if (!databaseServices.loraTrainings || typeof databaseServices.loraTrainings.findTrainingsByUser !== 'function') {
+    logger.warn(`[DB Index] LoRATrainingsDB instance IS MISSING or INVALID in databaseServices.`);
   }
 
   return {

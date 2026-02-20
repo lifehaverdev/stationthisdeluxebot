@@ -128,7 +128,7 @@ function createAgentCardRouter(dependencies) {
       res.setHeader('Content-Type', 'application/json');
       res.json(agentCard);
 
-      logger.info('[AgentCard] Served agent card', { toolCount: tools.length, loraCount });
+      logger.debug('[AgentCard] Served agent card', { toolCount: tools.length, loraCount });
 
     } catch (error) {
       logger.error('[AgentCard] Error generating agent card:', error);

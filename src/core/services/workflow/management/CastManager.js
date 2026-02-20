@@ -89,7 +89,7 @@ class CastManager {
                 generationId: generationId.toString(),
                 costDeltaUsd: costDelta,
             });
-            this.logger.info(`[CastManager] Updated cast ${castId} with generation ${generationId} (costUsd=${costDelta}).`);
+            this.logger.debug(`[CastManager] Updated cast ${castId} with generation ${generationId} (costUsd=${costDelta}).`);
         } catch (err) {
             this.logger.error(`[CastManager] Failed to update cast ${castId}:`, err.message);
             // Add retry logic for transient failures
@@ -113,7 +113,7 @@ class CastManager {
                         }
                     }
                 );
-                this.logger.info(`[CastManager] Successfully updated cast ${castId} after retry`);
+                this.logger.debug(`[CastManager] Successfully updated cast ${castId} after retry`);
             } catch (retryErr) {
                 // All retries exhausted, error already logged by onFailure callback
             }

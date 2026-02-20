@@ -82,7 +82,7 @@ function createCookApi(deps = {}) {
   // ✅ Configure WebSocket service for CookOrchestratorService
   if (deps.webSocketService) {
     CookOrchestratorService.setWebSocketService(deps.webSocketService);
-    logger.info('[CookAPI] WebSocket service configured for CookOrchestratorService');
+    logger.debug('[CookAPI] WebSocket service configured for CookOrchestratorService');
   }
 
   // POST /internal/v1/data/collections/:id/resume - resume a paused/stopped cook
@@ -1379,8 +1379,8 @@ function createCookApi(deps = {}) {
             ]
           }).limit(3).toArray();
           
-          logger.info(`[CookAPI] ⚠️ Found ${totalForCollection} total generations for collection ${collectionId}, but 0 match completed filter.`);
-          logger.info(`[CookAPI] Sample generation details:`, JSON.stringify(sampleGens.map(g => ({
+          logger.debug(`[CookAPI] ⚠️ Found ${totalForCollection} total generations for collection ${collectionId}, but 0 match completed filter.`);
+          logger.debug(`[CookAPI] Sample generation details:`, JSON.stringify(sampleGens.map(g => ({
             _id: String(g._id),
             status: g.status,
             masterAccountId: String(g.masterAccountId),
@@ -1392,9 +1392,9 @@ function createCookApi(deps = {}) {
             reviewOutcome: g.metadata?.reviewOutcome || g.reviewOutcome,
             hasMetadata: !!g.metadata
           })), null, 2));
-          logger.info(`[CookAPI] Query used:`, JSON.stringify(countQuery, null, 2));
+          logger.debug(`[CookAPI] Query used:`, JSON.stringify(countQuery, null, 2));
         } else if (generated > 0) {
-          logger.info(`[CookAPI] ✅ Collection ${collectionId}: Found ${generated}/${totalForCollection} completed generations matching query`);
+          logger.debug(`[CookAPI] ✅ Collection ${collectionId}: Found ${generated}/${totalForCollection} completed generations matching query`);
         }
         
         const targetSupply = coll.totalSupply || coll.config?.totalSupply || 0;
@@ -1470,7 +1470,7 @@ function createCookApi(deps = {}) {
       let collections = [];
       if (userId) {
         collections = await cookDb.findByUser(userId);
-        logger.info(`[CookAPI] collections list for user ${userId} -> ${collections?.length || 0}`);
+        logger.debug(`[CookAPI] collections list for user ${userId} -> ${collections?.length || 0}`);
       }
       if ((!collections || collections.length === 0)) {
         // Fallback: include legacy docs created without userId during early dev
@@ -1592,7 +1592,7 @@ function createCookApi(deps = {}) {
       let collections = [];
       if (userId) {
         collections = await cookDb.findByUser(userId);
-        logger.info(`[CookAPI] collections list for user ${userId} -> ${collections?.length || 0}`);
+        logger.debug(`[CookAPI] collections list for user ${userId} -> ${collections?.length || 0}`);
       }
       if ((!collections || collections.length === 0)) {
         try {

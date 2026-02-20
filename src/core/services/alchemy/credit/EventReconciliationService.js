@@ -26,16 +26,16 @@ class EventReconciliationService {
    * @returns {Promise<void>}
    */
   async reconcileMissedEvents() {
-    this.logger.info('[EventReconciliationService] Starting acknowledgment of new deposit events...');
+    this.logger.debug('[EventReconciliationService] Starting acknowledgment of new deposit events...');
     const fromBlock = (await this.systemStateDb.getLastSyncedBlock(CONTRACT_DEPLOYMENT_BLOCK)) + 1;
     const toBlock = await this.ethereumService.getLatestBlock();
 
     if (fromBlock > toBlock) {
-      this.logger.info(`[EventReconciliationService] No new blocks to sync. Last synced block: ${toBlock}`);
+      this.logger.debug(`[EventReconciliationService] No new blocks to sync. Last synced block: ${toBlock}`);
       return;
     }
 
-    this.logger.info(`[EventReconciliationService] Fetching 'ContributionRecorded' events from block ${fromBlock} to ${toBlock}.`);
+    this.logger.debug(`[EventReconciliationService] Fetching 'ContributionRecorded' events from block ${fromBlock} to ${toBlock}.`);
     const pastDepositEvents = await this.ethereumService.getPastEvents(
       this.contractConfig.address,
       this.contractConfig.abi,
@@ -44,13 +44,13 @@ class EventReconciliationService {
       toBlock,
     );
 
-    this.logger.info(`[EventReconciliationService] Found ${pastDepositEvents.length} new 'ContributionRecorded' events. Acknowledging...`);
+    this.logger.debug(`[EventReconciliationService] Found ${pastDepositEvents.length} new 'ContributionRecorded' events. Acknowledging...`);
 
     for (const event of pastDepositEvents) {
       await this.acknowledgeEvent(event);
     }
 
-    this.logger.info('[EventReconciliationService] Event acknowledgment process completed.');
+    this.logger.debug('[EventReconciliationService] Event acknowledgment process completed.');
     await this.systemStateDb.setLastSyncedBlock(toBlock);
   }
 
@@ -70,7 +70,7 @@ class EventReconciliationService {
     if (this.magicAmountLinkingService) {
       const wasHandledByLinking = await this.magicAmountLinkingService.checkMagicAmount(user, token, amount.toString());
       if (wasHandledByLinking) {
-        this.logger.info(`[EventReconciliationService] Deposit from tx ${normalizedTxHash} was a magic amount and has been fully processed. Skipping credit ledger entry.`);
+        this.logger.debug(`[EventReconciliationService] Deposit from tx ${normalizedTxHash} was a magic amount and has been fully processed. Skipping credit ledger entry.`);
         return; // Skip to the next event.
       }
     }
@@ -89,7 +89,7 @@ class EventReconciliationService {
       return;
     }
 
-    this.logger.info(`[EventReconciliationService] Acknowledging new deposit: ${normalizedTxHash}`);
+    this.logger.debug(`[EventReconciliationService] Acknowledging new deposit: ${normalizedTxHash}`);
     await this.creditLedgerDb.createLedgerEntry({
       deposit_tx_hash: normalizedTxHash,
       deposit_log_index: logIndex,

@@ -67,7 +67,7 @@ class SpellStatsService {
      */
     async enrichToolRegistry(toolRegistry) {
         const tools = toolRegistry.getAllTools();
-        this.logger.info(`[SpellStatsService] Enriching ${tools.length} tool(s) with avg stats...`);
+        this.logger.debug(`[SpellStatsService] Enriching ${tools.length} tool(s) with avg stats...`);
         const promises = tools.map(async (tool) => {
             try {
                 const stats = await this.getAvgStats(tool.toolId);
@@ -95,7 +95,7 @@ class SpellStatsService {
             }
         });
         await Promise.all(promises);
-        this.logger.info('[SpellStatsService] ToolRegistry enrichment complete.');
+        this.logger.debug('[SpellStatsService] ToolRegistry enrichment complete.');
     }
 
     /**

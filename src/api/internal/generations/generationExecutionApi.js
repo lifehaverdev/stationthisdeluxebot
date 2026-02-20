@@ -34,7 +34,7 @@ module.exports = function generationExecutionApi(dependencies) {
     };
   }
 
-  logger.info('[generationExecutionApi] Initializing Generation Execution API routes...');
+  logger.debug('[generationExecutionApi] Initializing Generation Execution API routes...');
 
   // POST / - Executes a generation based on a toolId and inputs
   router.post('/', async (req, res) => {
@@ -59,7 +59,7 @@ module.exports = function generationExecutionApi(dependencies) {
 
     try {
       // 2. --- Tool Lookup & Validation ---
-      logger.info(`[Execute] Received request for toolId: ${toolId}`);
+      logger.debug(`[Execute] Received request for toolId: ${toolId}`);
 
       // Try direct lookup first, then resolve alias if not found
       let tool = await toolRegistry.getToolById(toolId);
@@ -82,7 +82,7 @@ module.exports = function generationExecutionApi(dependencies) {
 
         if (tool) {
           resolvedToolId = tool.toolId;
-          logger.info(`[Execute] Resolved alias "${toolId}" to toolId "${resolvedToolId}"`);
+          logger.debug(`[Execute] Resolved alias "${toolId}" to toolId "${resolvedToolId}"`);
         }
       }
 
@@ -95,7 +95,7 @@ module.exports = function generationExecutionApi(dependencies) {
       // Skip credit check for x402 payments - they pay directly in USDC
       const isX402Execution = user.isX402 === true;
       if (isX402Execution) {
-        logger.info(`[Execute] x402 payment detected - skipping credit check for payer ${user.payerAddress}`);
+        logger.debug(`[Execute] x402 payment detected - skipping credit check for payer ${user.payerAddress}`);
         // For x402, we still need cost info for record-keeping, so continue to calculate it
         // but don't do the user lookup or points check
       }
@@ -188,7 +188,7 @@ module.exports = function generationExecutionApi(dependencies) {
             const depositsResponse = await internalApiClient.get(`/internal/v1/data/ledger/deposits/by-wallet/${walletAddress}`);
             const activeDeposits = depositsResponse.data.deposits || [];
             isMs2User = pricingService.userQualifiesForMs2Pricing(activeDeposits);
-            logger.info(`[Pricing] User ${userId} MS2 status: ${isMs2User}`);
+            logger.debug(`[Pricing] User ${userId} MS2 status: ${isMs2User}`);
           } catch (depositErr) {
             logger.warn(`[Pricing] Could not determine MS2 status for user ${userId}: ${depositErr.message}. Defaulting to standard pricing.`);
             isMs2User = false;
@@ -204,7 +204,7 @@ module.exports = function generationExecutionApi(dependencies) {
           costUsd = pricingResult.finalCostUsd;
           pricingBreakdown = pricingResult.breakdown;
 
-          logger.info(`[Pricing] Service: ${tool.service}, Base: $${baseCostUsd.toFixed(4)}, Final: $${costUsd.toFixed(4)}, Tier: ${isMs2User ? 'MS2' : 'standard'}`);
+          logger.debug(`[Pricing] Service: ${tool.service}, Base: $${baseCostUsd.toFixed(4)}, Final: $${costUsd.toFixed(4)}, Tier: ${isMs2User ? 'MS2' : 'standard'}`);
 
           // Calculate points from the adjusted cost
           const USD_PER_POINT = 0.000337;
@@ -213,7 +213,7 @@ module.exports = function generationExecutionApi(dependencies) {
           const pointsResponse = await internalApiClient.get(`/internal/v1/data/ledger/points/by-wallet/${walletAddress}`);
           const currentPoints = pointsResponse.data.points || 0;
 
-          logger.info(`[Pre-Execution Credit Check] User ${userId} (Wallet: ${walletAddress}) has ${currentPoints} points. Required: ${pointsRequired}`);
+          logger.debug(`[Pre-Execution Credit Check] User ${userId} (Wallet: ${walletAddress}) has ${currentPoints} points. Required: ${pointsRequired}`);
 
           if (currentPoints < pointsRequired) {
             return res.status(402).json({
@@ -253,7 +253,7 @@ module.exports = function generationExecutionApi(dependencies) {
 
       // 4. --- Routing based on Service ---
       const service = tool.service;
-      logger.info(`[Execute] Routing tool '${toolId}' to service: '${service}'`);
+      logger.debug(`[Execute] Routing tool '${toolId}' to service: '${service}'`);
 
       /* ---------------------------------------------------------------
        * 🌟 Adapter-based execution path (new architecture)            
@@ -341,7 +341,7 @@ module.exports = function generationExecutionApi(dependencies) {
           try {
             const notificationEvents = require('../../../core/events/notificationEvents');
             notificationEvents.emit('generationUpdated', recordToEmit);
-            logger.info(`[Execute] Emitted generationUpdated for immediate ${isSpellStep ? 'spell step' : 'generation'} ${newGeneration._id}`);
+            logger.debug(`[Execute] Emitted generationUpdated for immediate ${isSpellStep ? 'spell step' : 'generation'} ${newGeneration._id}`);
           } catch (emitErr) {
             logger.warn(`[Execute] Failed to emit generationUpdated for immediate generation ${newGeneration._id}: ${emitErr.message}`);
           }
@@ -504,7 +504,7 @@ module.exports = function generationExecutionApi(dependencies) {
           ) {
             // ComfyUI expects a 32-bit unsigned int seed
             finalInputs[seedKey] = Math.floor(Math.random() * 0xffffffff);
-            logger.info(
+            logger.debug(
               `[Execute] Auto-assigned random ${seedKey}=${finalInputs[seedKey]} for tool '${toolId}'.`
             );
           }
@@ -512,7 +512,7 @@ module.exports = function generationExecutionApi(dependencies) {
           // --- LoRA Resolution ---
           const promptInputKey = tool.metadata?.telegramPromptInputKey || 'input_prompt';
           if (tool.metadata.hasLoraLoader && finalInputs[promptInputKey]) {
-            logger.info(`[Execute] Resolving LoRA triggers for tool '${toolId}'.`);
+            logger.debug(`[Execute] Resolving LoRA triggers for tool '${toolId}'.`);
             const { modifiedPrompt, appliedLoras, warnings } = await loraResolutionService.resolveLoraTriggers(
               finalInputs[promptInputKey],
               masterAccountId,
@@ -565,14 +565,14 @@ module.exports = function generationExecutionApi(dependencies) {
 
           const createResponse = await db.generationOutputs.createGenerationOutput(generationParams);
           generationRecord = createResponse;
-          logger.info(`[Execute] Created generation record ${generationRecord._id} for tool '${toolId}' with costRate: ${JSON.stringify(costRateInfo)}.`);
+          logger.debug(`[Execute] Created generation record ${generationRecord._id} for tool '${toolId}' with costRate: ${JSON.stringify(costRateInfo)}.`);
 
           // --- Submit to ComfyUI Service ---
           const runId = await comfyUIService.submitRequest({
             deploymentId: tool.metadata.deploymentId,
             inputs: finalInputs,
           });
-          logger.info(`[Execute] Submitted job to ComfyUI for GenID ${generationRecord._id}. Run ID: ${runId}`);
+          logger.debug(`[Execute] Submitted job to ComfyUI for GenID ${generationRecord._id}. Run ID: ${runId}`);
 
           // --- Update Record with Run ID ---
           await db.generationOutputs.updateGenerationOutput(generationRecord._id, {
@@ -652,7 +652,7 @@ module.exports = function generationExecutionApi(dependencies) {
 
           const { masterAccountId } = user;
           const isSpellStep = metadata && metadata.isSpell;
-          logger.info(`[Execute] String service - metadata.castId: ${metadata?.castId}, full metadata:`, JSON.stringify(metadata));
+          logger.debug(`[Execute] String service - metadata.castId: ${metadata?.castId}, full metadata:`, JSON.stringify(metadata));
           
           const initialDeliveryStatus = (user.platform && user.platform !== 'none') ? 'pending' : 'skipped';
           const generationParams = {
@@ -683,12 +683,12 @@ module.exports = function generationExecutionApi(dependencies) {
 
           const createResponse = await db.generationOutputs.createGenerationOutput(generationParams);
           generationRecord = createResponse;
-          logger.info(`[Execute] Created generation record ${generationRecord._id} for tool '${toolId}'.`);
+          logger.debug(`[Execute] Created generation record ${generationRecord._id} for tool '${toolId}'.`);
 
           let resultStr;
           try {
             // Log inputs for debugging
-            logger.info(`[Execute] StringService inputs: ${JSON.stringify({ 
+            logger.debug(`[Execute] StringService inputs: ${JSON.stringify({
               operation: inputs.operation, 
               stringA_length: inputs.stringA ? String(inputs.stringA).length : 0,
               stringA_preview: inputs.stringA ? String(inputs.stringA).substring(0, 100) : null,
@@ -698,7 +698,7 @@ module.exports = function generationExecutionApi(dependencies) {
               searchValue_length: inputs.searchValue ? String(inputs.searchValue).length : 0
             })}`);
             resultStr = stringService.execute(inputs);
-            logger.info(`[Execute] StringService result length: ${resultStr ? String(resultStr).length : 0}`);
+            logger.debug(`[Execute] StringService result length: ${resultStr ? String(resultStr).length : 0}`);
           } catch (err) {
             logger.error(`[Execute] StringService error for tool '${toolId}': ${err.message}`);
             await db.generationOutputs.updateGenerationOutput(generationRecord._id, {
@@ -733,7 +733,7 @@ module.exports = function generationExecutionApi(dependencies) {
           }
 
           if (websocketServer) {
-            logger.info(`[Execute] Sending final WebSocket update for String generation ${generationRecord._id}.`);
+            logger.debug(`[Execute] Sending final WebSocket update for String generation ${generationRecord._id}.`);
             websocketServer.sendToUser(generationRecord.masterAccountId.toString(), {
               type: 'generationUpdate',
               payload: {
@@ -795,6 +795,6 @@ module.exports = function generationExecutionApi(dependencies) {
     }
   });
 
-  logger.info('[generationExecutionApi] Generation Execution API routes initialized.');
+  logger.debug('[generationExecutionApi] Generation Execution API routes initialized.');
   return router;
 }; 

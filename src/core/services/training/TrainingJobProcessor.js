@@ -241,7 +241,7 @@ class TrainingJobProcessor {
         gpuClass: '24GB', // Default for now
       });
 
-      this.logger.info(`[JobProcessor] Cost estimate for ${jobId}: ${estimate.estimatedPoints} points`);
+      this.logger.debug(`[JobProcessor] Cost estimate for ${jobId}: ${estimate.estimatedPoints} points`);
 
       // Check balance and charge
       const deductionResult = await this.pointsService.deductPointsForTraining({
@@ -257,7 +257,7 @@ class TrainingJobProcessor {
       // Record estimated cost
       await this.trainingDb.setEstimatedCost(jobId, estimate.estimatedPoints);
 
-      this.logger.info(`[JobProcessor] Charged ${estimate.estimatedPoints} points upfront for ${jobId}`);
+      this.logger.debug(`[JobProcessor] Charged ${estimate.estimatedPoints} points upfront for ${jobId}`);
 
       return {
         success: true,
@@ -296,7 +296,7 @@ class TrainingJobProcessor {
     const fsp = require('fs').promises;
     await fsp.mkdir(datasetDir, { recursive: true });
 
-    this.logger.info(`[JobProcessor] Starting parallel: download dataset + provision VastAI`);
+    this.logger.debug(`[JobProcessor] Starting parallel: download dataset + provision VastAI`);
     await this.trainingDb.setStatus(jobId, 'PROVISIONING');
 
     // Start download in background (will write .ready marker when done)
@@ -311,7 +311,7 @@ class TrainingJobProcessor {
       jobId,
       downloadOptions
     ).then(result => {
-      this.logger.info(`[JobProcessor] Dataset download complete: ${result.imageCount} images, ${result.captionCount} captions, hasControlImages: ${result.hasControlImages}`);
+      this.logger.debug(`[JobProcessor] Dataset download complete: ${result.imageCount} images, ${result.captionCount} captions, hasControlImages: ${result.hasControlImages}`);
       return result;
     }).catch(err => {
       this.logger.error(`[JobProcessor] Dataset download failed: ${err.message}`);
@@ -353,12 +353,12 @@ class TrainingJobProcessor {
           // For concept mode, pass control dir path - script will check if it exists
           if (job.trainingMode === 'concept') {
             args.push('--controlDir', controlDir);
-            this.logger.info(`[JobProcessor] KONTEXT concept mode: control dir will be ${controlDir}`);
+            this.logger.debug(`[JobProcessor] KONTEXT concept mode: control dir will be ${controlDir}`);
           }
         }
       }
 
-      this.logger.info(`[JobProcessor] Spawning: node ${args.join(' ')}`);
+      this.logger.debug(`[JobProcessor] Spawning: node ${args.join(' ')}`);
 
       const child = spawn('node', args, {
         env: { ...process.env },
@@ -418,10 +418,10 @@ class TrainingJobProcessor {
 
           if (foundId && foundId !== instanceId) {
             if (instanceId) {
-              this.logger.info(`[JobProcessor] Instance ID changed: ${instanceId} -> ${foundId} (provision retry)`);
+              this.logger.debug(`[JobProcessor] Instance ID changed: ${instanceId} -> ${foundId} (provision retry)`);
             }
             instanceId = foundId;
-            this.logger.info(`[JobProcessor] Detected instance ID: ${instanceId}`);
+            this.logger.debug(`[JobProcessor] Detected instance ID: ${instanceId}`);
 
             // Extract GPU info if available (GPU: RTX 4090 | ... | Price: $0.XX/hr)
             const gpuMatch = chunk.match(/GPU:\s*([^|]+)\s*\|.*?Price:\s*\$([0-9.]+)\/hr/);
@@ -445,7 +445,7 @@ class TrainingJobProcessor {
 
         // Clean up local temp directory as soon as upload to remote is complete
         if (chunk.includes('DATASET_UPLOADED')) {
-          this.logger.info(`[JobProcessor] Dataset uploaded to remote, cleaning up local temp`);
+          this.logger.debug(`[JobProcessor] Dataset uploaded to remote, cleaning up local temp`);
           cleanup();
         }
 
@@ -506,7 +506,7 @@ class TrainingJobProcessor {
       });
 
       child.on('close', (code) => {
-        this.logger.info(`[JobProcessor] launch-training.js exited with code ${code}`);
+        this.logger.debug(`[JobProcessor] launch-training.js exited with code ${code}`);
         cleanup();
 
         if (code === 0) {
@@ -566,7 +566,7 @@ class TrainingJobProcessor {
       await this.trainingDb.reconcileCost(jobId, actualCost.actualPoints);
 
       if (reconciliation.action === 'refund' && reconciliation.amount > 0) {
-        this.logger.info(`[JobProcessor] Refunding ${reconciliation.amount} points for job ${jobId}`);
+        this.logger.debug(`[JobProcessor] Refunding ${reconciliation.amount} points for job ${jobId}`);
 
         try {
           await this.pointsService.addPoints({
@@ -583,7 +583,7 @@ class TrainingJobProcessor {
               reason: 'Job failed or completed early',
             },
           });
-          this.logger.info(`[JobProcessor] Refunded ${reconciliation.amount} points to ${job.walletAddress}`);
+          this.logger.debug(`[JobProcessor] Refunded ${reconciliation.amount} points to ${job.walletAddress}`);
         } catch (refundErr) {
           this.logger.error(`[JobProcessor] Refund failed for ${jobId}:`, refundErr);
           // Alert ops for manual processing if auto-refund fails
@@ -627,16 +627,16 @@ class TrainingJobProcessor {
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        this.logger.info(`[JobProcessor] Terminating instance ${instanceId} (attempt ${attempt})`);
+        this.logger.debug(`[JobProcessor] Terminating instance ${instanceId} (attempt ${attempt})`);
         await this.vastaiService.terminateInstance(instanceId);
         await this.trainingDb.markInstanceTerminated(jobId, attempt);
-        this.logger.info(`[JobProcessor] Instance ${instanceId} terminated successfully`);
+        this.logger.debug(`[JobProcessor] Instance ${instanceId} terminated successfully`);
         return true;
 
       } catch (err) {
         // 404 means instance already terminated - treat as success
         if (err.message?.includes('not found') || err.status === 404) {
-          this.logger.info(`[JobProcessor] Instance ${instanceId} already terminated (404)`);
+          this.logger.debug(`[JobProcessor] Instance ${instanceId} already terminated (404)`);
           await this.trainingDb.markInstanceTerminated(jobId, attempt);
           return true;
         }

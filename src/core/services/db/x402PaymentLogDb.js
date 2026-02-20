@@ -60,7 +60,7 @@ class X402PaymentLogDB extends BaseDB {
         { key: { settled_at: -1 }, sparse: true, name: 'settled_at_idx', background: true }
       ]);
 
-      this.logger.info('[X402PaymentLogDB] Indexes ensured');
+      this.logger.debug('[X402PaymentLogDB] Indexes ensured');
     } catch (error) {
       this.logger.error('[X402PaymentLogDB] Failed to ensure indexes:', error);
       throw error;

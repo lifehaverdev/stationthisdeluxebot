@@ -29,7 +29,7 @@ function createUserCoreApiService(dependencies) {
     if (Object.keys(platformNotifiers).length > 0) {
       if (!linkNotificationService) {
         linkNotificationService = new PlatformLinkNotificationService(platformNotifiers, logger);
-        logger.info('[userCoreApi] Platform link notification service initialized.');
+        logger.debug('[userCoreApi] Platform link notification service initialized.');
       }
       return linkNotificationService;
     }
@@ -59,7 +59,7 @@ function createUserCoreApiService(dependencies) {
   // Mount the user-specific transaction routes
   const transactionsApiRouter = createTransactionsApiService(dependencies);
   router.use('/:masterAccountId/transactions', transactionsApiRouter);
-  logger.info('[userCoreApi] User-specific Transactions API service mounted.');
+  logger.debug('[userCoreApi] User-specific Transactions API service mounted.');
 
   // Middleware to parse JSON bodies
   router.use(express.json());
@@ -77,7 +77,7 @@ function createUserCoreApiService(dependencies) {
       const util = require('util');
       bodyStr = util.inspect(req.body, { depth: 2, breakLength: 100 });
     }
-    logger.info(`[userCoreApi] POST /find-or-create called with body: ${bodyStr}, requestId: ${requestId}`);
+    logger.debug(`[userCoreApi] POST /find-or-create called with body: ${bodyStr}, requestId: ${requestId}`);
     
     const { platform, platformId, platformContext } = req.body;
 
@@ -147,7 +147,7 @@ function createUserCoreApiService(dependencies) {
   router.get('/:masterAccountId', async (req, res) => {
     const requestId = uuidv4();
     const { masterAccountId } = req.params;
-    logger.info(`[userCoreApi] GET /users/${masterAccountId} called, requestId: ${requestId}`);
+    logger.debug(`[userCoreApi] GET /users/${masterAccountId} called, requestId: ${requestId}`);
 
     if (!masterAccountId || !ObjectId.isValid(masterAccountId)) {
       logger.warn(`[userCoreApi] GET /users/${masterAccountId}: Invalid masterAccountId format. requestId: ${requestId}`);
@@ -176,7 +176,7 @@ function createUserCoreApiService(dependencies) {
         });
       }
 
-      logger.info(`[userCoreApi] GET /users/${masterAccountId}: User found. requestId: ${requestId}`);
+      logger.debug(`[userCoreApi] GET /users/${masterAccountId}: User found. requestId: ${requestId}`);
       res.status(200).json(user); // ADR: Response: UserCoreObject
 
     } catch (error) {
@@ -197,7 +197,7 @@ function createUserCoreApiService(dependencies) {
     const { masterAccountId } = req.params;
     const updatePayload = req.body;
 
-    logger.info(`[userCoreApi] PUT /users/${masterAccountId} called with body: ${JSON.stringify(updatePayload)}, requestId: ${requestId}`);
+    logger.debug(`[userCoreApi] PUT /users/${masterAccountId} called with body: ${JSON.stringify(updatePayload)}, requestId: ${requestId}`);
 
     if (!masterAccountId || !ObjectId.isValid(masterAccountId)) {
       logger.warn(`[userCoreApi] PUT /users/${masterAccountId}: Invalid masterAccountId format. requestId: ${requestId}`);
@@ -305,7 +305,7 @@ function createUserCoreApiService(dependencies) {
   router.get('/by-platform/:platform/:platformId', async (req, res) => {
     const requestId = uuidv4();
     const { platform, platformId } = req.params;
-    logger.info(`[userCoreApi] GET /by-platform/${platform}/${platformId} called, requestId: ${requestId}`);
+    logger.debug(`[userCoreApi] GET /by-platform/${platform}/${platformId} called, requestId: ${requestId}`);
 
     if (!platform || typeof platform !== 'string' || platform.trim() === '') {
       logger.warn(`[userCoreApi] GET /by-platform/${platform}/${platformId}: Missing or invalid 'platform'. requestId: ${requestId}`);
@@ -346,7 +346,7 @@ function createUserCoreApiService(dependencies) {
         });
       }
 
-      logger.info(`[userCoreApi] GET /by-platform/${platform}/${platformId}: User found. MasterAccountId: ${user._id}. requestId: ${requestId}`);
+      logger.debug(`[userCoreApi] GET /by-platform/${platform}/${platformId}: User found. MasterAccountId: ${user._id}. requestId: ${requestId}`);
       res.status(200).json(user); // ADR: Response: UserCoreObject
 
     } catch (error) {
@@ -385,7 +385,7 @@ function createUserCoreApiService(dependencies) {
   // Note: Uses db.userEvents service
   router.get('/:masterAccountId/events', async (req, res, next) => {
       const { masterAccountId: masterAccountIdStr } = req.params; // Get ID string from params
-      logger.info(`[userCoreApi] GET /users/${masterAccountIdStr}/events - Received request`);
+      logger.debug(`[userCoreApi] GET /users/${masterAccountIdStr}/events - Received request`);
 
       // Inline validation for masterAccountId
       if (!masterAccountIdStr || !ObjectId.isValid(masterAccountIdStr)) {
@@ -404,7 +404,7 @@ function createUserCoreApiService(dependencies) {
       try {
         // Use the DB method, passing masterAccountId. Add options later for pagination.
         const userEvents = await db.userEvents.findEventsByMasterAccount(masterAccountId); // Use ObjectId
-        logger.info(`[userCoreApi] GET /users/${masterAccountIdStr}/events: Found ${userEvents.length} events.`);
+        logger.debug(`[userCoreApi] GET /users/${masterAccountIdStr}/events: Found ${userEvents.length} events.`);
         res.status(200).json(userEvents); // Returns an array of UserEventObjects
     } catch (error) {
         logger.error(`[userCoreApi] GET /users/${masterAccountIdStr}/events: Error processing request. Error: ${error.message}`, error);
@@ -419,7 +419,7 @@ function createUserCoreApiService(dependencies) {
   // Note: Uses db.transactions service
   router.get('/:masterAccountId/transactions', async (req, res, next) => {
     const { masterAccountId: masterAccountIdStr } = req.params; 
-    logger.info(`[userCoreApi] GET /users/${masterAccountIdStr}/transactions - Received request`);
+    logger.debug(`[userCoreApi] GET /users/${masterAccountIdStr}/transactions - Received request`);
 
     // Inline validation for masterAccountId
     if (!masterAccountIdStr || !ObjectId.isValid(masterAccountIdStr)) {
@@ -439,7 +439,7 @@ function createUserCoreApiService(dependencies) {
     try {
       // TODO: Add pagination options (limit, skip/page, sort) later via query params
       const userTransactions = await db.transactions.findTransactionsByMasterAccount(masterAccountId);
-      logger.info(`[userCoreApi] GET /users/${masterAccountIdStr}/transactions: Found ${userTransactions.length} transactions.`);
+      logger.debug(`[userCoreApi] GET /users/${masterAccountIdStr}/transactions: Found ${userTransactions.length} transactions.`);
       res.status(200).json(userTransactions); // Returns an array of TransactionObjects
     } catch (error) {
       logger.error(`[userCoreApi] GET /users/${masterAccountIdStr}/transactions: Error processing request. Error: ${error.message}`, error);
@@ -454,12 +454,12 @@ function createUserCoreApiService(dependencies) {
   // User Preferences API (already mounted at /:masterAccountId/preferences)
   const userPreferencesApiRouter = createUserPreferencesApiService(dependencies);
   router.use('/:masterAccountId/preferences', userPreferencesApiRouter);
-  logger.info(`[userCoreApi] User Preferences API routes mounted under /:masterAccountId/preferences.`);
+  logger.debug(`[userCoreApi] User Preferences API routes mounted under /:masterAccountId/preferences.`);
 
   // User Wallets API (mounted at /:masterAccountId/wallets)
   if (dependencies.userScopedWalletsRouter) {
     router.use('/:masterAccountId/wallets', dependencies.userScopedWalletsRouter);
-    logger.info(`[userCoreApi] User Wallets API routes mounted under /:masterAccountId/wallets.`);
+    logger.debug(`[userCoreApi] User Wallets API routes mounted under /:masterAccountId/wallets.`);
   } else {
     logger.error('[userCoreApi] userScopedWalletsRouter not found in dependencies, skipping wallet routes.');
   }
@@ -468,12 +468,12 @@ function createUserCoreApiService(dependencies) {
   const { managementRouter: apiKeysManagementRouter, performApiKeyValidation } = initializeApiKeysApi(dependencies);
   if (apiKeysManagementRouter && performApiKeyValidation) {
     router.use('/:masterAccountId/apikeys', validateObjectId('masterAccountId', 'params'), apiKeysManagementRouter);
-    logger.info(`[userCoreApi] API Keys management routes mounted under /:masterAccountId/apikeys.`);
+    logger.debug(`[userCoreApi] API Keys management routes mounted under /:masterAccountId/apikeys.`);
 
     router.post('/apikeys/validate-token', async (req, res) => {
       const { apiKey } = req.body;
       const requestId = uuidv4();
-      logger.info(`[userCoreApi] POST /apikeys/validate-token called, requestId: ${requestId}`);
+      logger.debug(`[userCoreApi] POST /apikeys/validate-token called, requestId: ${requestId}`);
       if (!apiKey) {
         logger.warn(`[userCoreApi] POST /apikeys/validate-token: Missing apiKey in request body. requestId: ${requestId}`);
         return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'apiKey is required in the request body.', requestId } });
@@ -494,7 +494,7 @@ function createUserCoreApiService(dependencies) {
         res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'An unexpected error occurred during API key validation.', requestId } });
       }
     });
-    logger.info(`[userCoreApi] API Key validation endpoint POST /apikeys/validate-token registered.`);
+    logger.debug(`[userCoreApi] API Key validation endpoint POST /apikeys/validate-token registered.`);
   } else {
     logger.error('[userCoreApi] Failed to initialize API Keys service (management router or validation function missing).');
   }
@@ -502,14 +502,14 @@ function createUserCoreApiService(dependencies) {
   // Mount User Economy routes
   const userEconomyApiRouter = initializeUserEconomyApi(dependencies);
   router.use('/:masterAccountId/economy', validateObjectId('masterAccountId', 'params'), userEconomyApiRouter);
-  logger.info(`[userCoreApi] User Economy API routes mounted under /:masterAccountId/economy.`);
+  logger.debug(`[userCoreApi] User Economy API routes mounted under /:masterAccountId/economy.`);
 
   // Mount User Tools API Router
   if (createUserToolsApiRouter) {
     const userToolsApiRouterInstance = createUserToolsApiRouter(dependencies);
     if (userToolsApiRouterInstance) {
       router.use('/:masterAccountId/used-tools', userToolsApiRouterInstance);
-      logger.info(`[userCoreApi] User Tools API service mounted under /:masterAccountId/used-tools`);
+      logger.debug(`[userCoreApi] User Tools API service mounted under /:masterAccountId/used-tools`);
     } else {
       logger.error('[userCoreApi] Failed to create User Tools API router.');
     }
@@ -522,7 +522,7 @@ function createUserCoreApiService(dependencies) {
   // Note: Uses db.generationOutputs service
   router.get('/:masterAccountId/generations', async (req, res, next) => {
     const { masterAccountId: masterAccountIdStr } = req.params;
-    logger.info(`[userCoreApi] GET /users/${masterAccountIdStr}/generations - Received request`);
+    logger.debug(`[userCoreApi] GET /users/${masterAccountIdStr}/generations - Received request`);
 
     // Inline validation for masterAccountId
     if (!masterAccountIdStr || !ObjectId.isValid(masterAccountIdStr)) {
@@ -542,7 +542,7 @@ function createUserCoreApiService(dependencies) {
     try {
       // TODO: Add pagination options (limit, skip/page, sort) later via query params
       const userGenerations = await db.generationOutputs.findGenerationsByMasterAccount(masterAccountId);
-      logger.info(`[userCoreApi] GET .../generations: Found ${userGenerations.length} generations for user ${masterAccountIdStr}.`);
+      logger.debug(`[userCoreApi] GET .../generations: Found ${userGenerations.length} generations for user ${masterAccountIdStr}.`);
       res.status(200).json(userGenerations); // Returns an array of GenerationOutputObjects
     } catch (error) {
       logger.error(`[userCoreApi] GET .../generations: Error for user ${masterAccountIdStr} - ${error.message}`, error);
@@ -559,7 +559,7 @@ function createUserCoreApiService(dependencies) {
     const requestId = uuidv4();
     const { requestingPlatform, requestingPlatformId, walletAddress, linkMethod } = req.body;
 
-    logger.info(`[userCoreApi] POST /request-platform-link called. RequestId: ${requestId}, Platform: ${requestingPlatform}, Wallet: ${walletAddress?.substring(0, 10)}...`);
+    logger.debug(`[userCoreApi] POST /request-platform-link called. RequestId: ${requestId}, Platform: ${requestingPlatform}, Wallet: ${walletAddress?.substring(0, 10)}...`);
 
     // Validate required inputs
     if (!requestingPlatform || typeof requestingPlatform !== 'string') {
@@ -752,7 +752,7 @@ function createUserCoreApiService(dependencies) {
       logger.info(`[userCoreApi] Platform link request created. RequestId: ${linkRequest.requestId}, Target: ${targetUser._id}`);
       
       // Log target user structure for debugging
-      logger.info(`[userCoreApi] Target user structure:`, {
+      logger.debug(`[userCoreApi] Target user structure:`, {
         _id: targetUser._id?.toString(),
         hasPlatformIdentities: !!targetUser.platformIdentities,
         platformIdentities: targetUser.platformIdentities,
@@ -765,9 +765,9 @@ function createUserCoreApiService(dependencies) {
       // Send approval request notification to target platform user
       const notificationService = getNotificationService();
       if (notificationService) {
-        logger.info(`[userCoreApi] Notification service available. Attempting to send notification for request ${linkRequest.requestId}`);
-        logger.info(`[userCoreApi] Target user platforms: ${JSON.stringify(Object.keys(targetUser.platformIdentities || {}))}`);
-        logger.info(`[userCoreApi] Full platformIdentities object: ${JSON.stringify(targetUser.platformIdentities)}`);
+        logger.debug(`[userCoreApi] Notification service available. Attempting to send notification for request ${linkRequest.requestId}`);
+        logger.debug(`[userCoreApi] Target user platforms: ${JSON.stringify(Object.keys(targetUser.platformIdentities || {}))}`);
+        logger.debug(`[userCoreApi] Full platformIdentities object: ${JSON.stringify(targetUser.platformIdentities)}`);
         try {
           const notificationResult = await notificationService.sendApprovalRequestNotification(
             linkRequest,
@@ -833,7 +833,7 @@ function createUserCoreApiService(dependencies) {
     const { requestId: linkRequestId } = req.params;
     const { masterAccountId } = req.body;
 
-    logger.info(`[userCoreApi] POST /link-requests/${linkRequestId}/approve called. RequestId: ${requestId}`);
+    logger.debug(`[userCoreApi] POST /link-requests/${linkRequestId}/approve called. RequestId: ${requestId}`);
 
     if (!masterAccountId || !ObjectId.isValid(masterAccountId)) {
       return res.status(400).json({
@@ -990,7 +990,7 @@ function createUserCoreApiService(dependencies) {
     const { requestId: linkRequestId } = req.params;
     const { masterAccountId, reason } = req.body;
 
-    logger.info(`[userCoreApi] POST /link-requests/${linkRequestId}/reject called. RequestId: ${requestId}`);
+    logger.debug(`[userCoreApi] POST /link-requests/${linkRequestId}/reject called. RequestId: ${requestId}`);
 
     if (!masterAccountId || !ObjectId.isValid(masterAccountId)) {
       return res.status(400).json({
@@ -1105,7 +1105,7 @@ function createUserCoreApiService(dependencies) {
     const requestId = uuidv4();
     const { masterAccountId } = req.body;
 
-    logger.info(`[userCoreApi] DELETE /link-requests/cancel-all called. RequestId: ${requestId}`);
+    logger.debug(`[userCoreApi] DELETE /link-requests/cancel-all called. RequestId: ${requestId}`);
 
     try {
       if (!masterAccountId) {
@@ -1174,7 +1174,7 @@ function createUserCoreApiService(dependencies) {
     const { requestId: linkRequestId } = req.params;
     const { masterAccountId } = req.body;
 
-    logger.info(`[userCoreApi] DELETE /link-requests/${linkRequestId}/cancel called. RequestId: ${requestId}`);
+    logger.debug(`[userCoreApi] DELETE /link-requests/${linkRequestId}/cancel called. RequestId: ${requestId}`);
 
     try {
       if (!masterAccountId) {
@@ -1252,7 +1252,7 @@ function createUserCoreApiService(dependencies) {
     const { masterAccountId, reason, expiresInHours } = req.body;
     // TODO: Add admin authentication check
 
-    logger.info(`[userCoreApi] POST /link-requests/ban called. RequestId: ${requestId}`);
+    logger.debug(`[userCoreApi] POST /link-requests/ban called. RequestId: ${requestId}`);
 
     try {
       if (!masterAccountId) {
@@ -1323,7 +1323,7 @@ function createUserCoreApiService(dependencies) {
     const { masterAccountId } = req.body;
     // TODO: Add admin authentication check
 
-    logger.info(`[userCoreApi] POST /link-requests/unban called. RequestId: ${requestId}`);
+    logger.debug(`[userCoreApi] POST /link-requests/unban called. RequestId: ${requestId}`);
 
     try {
       if (!masterAccountId) {
@@ -1379,7 +1379,7 @@ function createUserCoreApiService(dependencies) {
     const { requestId: linkRequestId } = req.params;
     const { masterAccountId, reason } = req.body;
 
-    logger.info(`[userCoreApi] POST /link-requests/${linkRequestId}/report called. RequestId: ${requestId}`);
+    logger.debug(`[userCoreApi] POST /link-requests/${linkRequestId}/report called. RequestId: ${requestId}`);
 
     try {
       if (!masterAccountId) {
@@ -1480,7 +1480,7 @@ function createUserCoreApiService(dependencies) {
     const { masterAccountId } = req.params;
     const { status } = req.query;
 
-    logger.info(`[userCoreApi] GET /users/${masterAccountId}/link-requests called. Status filter: ${status || 'all'}`);
+    logger.debug(`[userCoreApi] GET /users/${masterAccountId}/link-requests called. Status filter: ${status || 'all'}`);
 
     if (!masterAccountId || !ObjectId.isValid(masterAccountId)) {
       return res.status(400).json({
@@ -1534,7 +1534,7 @@ function createUserCoreApiService(dependencies) {
     }
   });
 
-  logger.info('[userCoreApi] User Core API service router configured.');
+  logger.debug('[userCoreApi] User Core API service router configured.');
   return router;
 }
 

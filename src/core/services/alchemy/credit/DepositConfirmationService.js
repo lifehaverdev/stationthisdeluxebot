@@ -66,15 +66,15 @@ class DepositConfirmationService {
         this.eventDeduplicationService ? this.eventDeduplicationService.isDuplicate(txHash) : false
       );
       if (allInCache) {
-        this.logger.info(`[DepositConfirmationService] Skipping confirmation for group (User: ${user}, Token: ${token}) because all txs are recently processed.`);
+        this.logger.debug(`[DepositConfirmationService] Skipping confirmation for group (User: ${user}, Token: ${token}) because all txs are recently processed.`);
         return;
       }
 
-      this.logger.info(`[DepositConfirmationService] Processing group (User: ${user}, Token: ${token}). Involves ${deposits.length} deposits.`);
+      this.logger.debug(`[DepositConfirmationService] Processing group (User: ${user}, Token: ${token}). Involves ${deposits.length} deposits.`);
       this.logger.debug(`[DepositConfirmationService] Original deposit hashes in this group: ${originalTxHashes.join(', ')}`);
 
       // 0. READ `custody` state from contract to get the true total unconfirmed balance.
-      this.logger.info(`[DepositConfirmationService] Step 0: Reading unconfirmed balance from contract 'custody' state...`);
+      this.logger.debug(`[DepositConfirmationService] Step 0: Reading unconfirmed balance from contract 'custody' state...`);
       const custodyKey = getCustodyKey(user, token);
       let custodyValue = await this.ethereumService.read(this.contractConfig.address, this.contractConfig.abi, 'custody', custodyKey);
       let { userOwned: amount } = splitCustodyAmount(custodyValue);
@@ -91,17 +91,17 @@ class DepositConfirmationService {
         }
         return;
       }
-      this.logger.info(`[DepositConfirmationService] Contract reports a total unconfirmed balance of ${tokenDecimalService.formatTokenAmount(amount, token)} ${tokenDecimalService.getTokenMetadata(token).symbol} for this group.`);
+      this.logger.debug(`[DepositConfirmationService] Contract reports a total unconfirmed balance of ${tokenDecimalService.formatTokenAmount(amount, token)} ${tokenDecimalService.getTokenMetadata(token).symbol} for this group.`);
 
       // 1. USER ACCOUNT VERIFICATION / CREATION
-      this.logger.info(`[DepositConfirmationService] Step 1: Ensuring user account exists for depositor ${user}...`);
+      this.logger.debug(`[DepositConfirmationService] Step 1: Ensuring user account exists for depositor ${user}...`);
       masterAccountId = await this.verifyUserAccount(user);
       if (!masterAccountId) {
         return; // Error already logged and deposits marked
       }
 
       // 2. DYNAMIC FUNDING RATE & RISK ASSESSMENT
-      this.logger.info(`[DepositConfirmationService] Step 2: Applying dynamic funding rate for token ${token}...`);
+      this.logger.debug(`[DepositConfirmationService] Step 2: Applying dynamic funding rate for token ${token}...`);
       const chainId = String(this.ethereumService.chainId || '1');
       const riskAssessment = await this.tokenRiskEngine.assessCollateral(token, amount, chainId);
       if (!riskAssessment.isSafe) {
@@ -135,10 +135,10 @@ class DepositConfirmationService {
       const fundingRate = getFundingRate(token);
       let grossDepositUsd = tokenDecimalService.calculateUsdValue(amount, token, priceInUsd);
       let adjustedGrossDepositUsd = grossDepositUsd * fundingRate;
-      this.logger.info(`[DepositConfirmationService] Original Value: $${grossDepositUsd.toFixed(2)}, Rate: ${fundingRate}, Adjusted Value: $${adjustedGrossDepositUsd.toFixed(2)}.`);
+      this.logger.debug(`[DepositConfirmationService] Original Value: $${grossDepositUsd.toFixed(2)}, Rate: ${fundingRate}, Adjusted Value: $${adjustedGrossDepositUsd.toFixed(2)}.`);
 
       // 3. COLLATERAL & PROFITABILITY CHECKS
-      this.logger.info(`[DepositConfirmationService] Step 3: Assessing collateral and profitability for the total amount...`);
+      this.logger.debug(`[DepositConfirmationService] Step 3: Assessing collateral and profitability for the total amount...`);
       const depositValueUsd = adjustedGrossDepositUsd;
       const { vault_account: vaultAccount } = deposits[0];
 
@@ -148,7 +148,7 @@ class DepositConfirmationService {
       const isDefaultVault = vaultAccount.toLowerCase() === this.contractConfig.address.toLowerCase();
 
       if (!isDefaultVault) {
-        this.logger.info(`[DepositConfirmationService] Deposit made to a non-default vault: ${vaultAccount}. Checking for referral info...`);
+        this.logger.debug(`[DepositConfirmationService] Deposit made to a non-default vault: ${vaultAccount}. Checking for referral info...`);
         const referralVault = await this.creditLedgerDb.findReferralVaultByAddress(vaultAccount);
         if (referralVault && referralVault.master_account_id) {
           referrerMasterAccountId = referralVault.master_account_id.toString();
@@ -169,7 +169,7 @@ class DepositConfirmationService {
       const bypassProfitabilityCheck = isMS2Deposit && grossDepositUsd >= MS2_MINIMUM_VALUE_USD;
 
       if (bypassProfitabilityCheck) {
-        this.logger.info(`[DepositConfirmationService] MS2 native token deposit ($${grossDepositUsd.toFixed(4)}) - bypassing profitability check (gas: $${estimatedGasCostUsd.toFixed(4)})`);
+        this.logger.debug(`[DepositConfirmationService] MS2 native token deposit ($${grossDepositUsd.toFixed(4)}) - bypassing profitability check (gas: $${estimatedGasCostUsd.toFixed(4)})`);
       }
 
       if (estimatedGasCostUsd >= depositValueUsd && !bypassProfitabilityCheck) {
@@ -195,7 +195,7 @@ class DepositConfirmationService {
         // MS2 native token: platform absorbs gas cost, no deduction from deposit
         gasFeeInWei = 0n;
         escrowAmountForContract = amount;
-        this.logger.info(`[DepositConfirmationService] MS2 bypass: platform absorbing gas cost, full amount goes to escrow.`);
+        this.logger.debug(`[DepositConfirmationService] MS2 bypass: platform absorbing gas cost, full amount goes to escrow.`);
       } else {
         const estimatedGasCostEth = estimatedGasCostUsd / priceInUsd;
         gasFeeInWei = ethers.parseEther(estimatedGasCostEth.toFixed(18));
@@ -253,7 +253,7 @@ class DepositConfirmationService {
         }
       }
       
-      this.logger.info(`[DepositConfirmationService] Step 4: Sending on-chain confirmation for user ${user}. Total Net Escrow: ${parseFloat(tokenDecimalService.formatTokenAmount(escrowAmountForContract, token)).toFixed(6)} ${tokenDecimalService.getTokenMetadata(token).symbol}, Total Fee: ${parseFloat(tokenDecimalService.formatTokenAmount(gasFeeInWei, token)).toFixed(6)} ${tokenDecimalService.getTokenMetadata(token).symbol}`);
+      this.logger.debug(`[DepositConfirmationService] Step 4: Sending on-chain confirmation for user ${user}. Total Net Escrow: ${parseFloat(tokenDecimalService.formatTokenAmount(escrowAmountForContract, token)).toFixed(6)} ${tokenDecimalService.getTokenMetadata(token).symbol}, Total Fee: ${parseFloat(tokenDecimalService.formatTokenAmount(gasFeeInWei, token)).toFixed(6)} ${tokenDecimalService.getTokenMetadata(token).symbol}`);
       
       const confirmationResult = await this.executeOnChainConfirmation(
         fundAddress,
@@ -297,7 +297,7 @@ class DepositConfirmationService {
 
       // For MS2 bypassed deposits with negative net value, credit minimum points
       if (netAdjustedDepositUsd < 0 && bypassProfitabilityCheck) {
-        this.logger.info(`[DepositConfirmationService] MS2 native token deposit has negative net value ($${netAdjustedDepositUsd.toFixed(4)}) but proceeding with minimum credit.`);
+        this.logger.debug(`[DepositConfirmationService] MS2 native token deposit has negative net value ($${netAdjustedDepositUsd.toFixed(4)}) but proceeding with minimum credit.`);
       }
       
       // For MS2 bypassed deposits with negative net, credit based on gross value minus a nominal fee
@@ -306,7 +306,7 @@ class DepositConfirmationService {
       if (bypassProfitabilityCheck && netAdjustedDepositUsd < 0) {
         // Credit at least 50% of gross deposit value for MS2 when gas exceeds deposit
         userCreditedUsd = Math.max(grossDepositUsd * 0.5, 0.01);
-        this.logger.info(`[DepositConfirmationService] MS2 bypass: crediting $${userCreditedUsd.toFixed(4)} (50% of gross) instead of negative net value.`);
+        this.logger.debug(`[DepositConfirmationService] MS2 bypass: crediting $${userCreditedUsd.toFixed(4)} (50% of gross) instead of negative net value.`);
       } else {
         userCreditedUsd = Math.max(netAdjustedDepositUsd, 0);
       }
@@ -315,13 +315,13 @@ class DepositConfirmationService {
       const finalReferralPayoutUsd = Math.min(platformCutUsd, referralRewardUsd);
       const netProtocolProfitUsd = platformCutUsd - finalReferralPayoutUsd;
 
-      this.logger.info(`[DepositConfirmationService] Step 5: Applying credit to user's off-chain account. Adj. Gross: $${adjustedGrossDepositUsd.toFixed(2)}, Gas: $${actualGasCostUsd.toFixed(2)}, Adj. Net: $${netAdjustedDepositUsd.toFixed(2)}, User Credit: $${userCreditedUsd.toFixed(2)}.`);
-      this.logger.info(`[DepositConfirmationService] Accounting Details -> Platform Cut: $${platformCutUsd.toFixed(4)}, Referral Payout: $${finalReferralPayoutUsd.toFixed(4)}, Net Protocol Profit: $${netProtocolProfitUsd.toFixed(4)}`);
+      this.logger.debug(`[DepositConfirmationService] Step 5: Applying credit to user's off-chain account. Adj. Gross: $${adjustedGrossDepositUsd.toFixed(2)}, Gas: $${actualGasCostUsd.toFixed(2)}, Adj. Net: $${netAdjustedDepositUsd.toFixed(2)}, User Credit: $${userCreditedUsd.toFixed(2)}.`);
+      this.logger.debug(`[DepositConfirmationService] Accounting Details -> Platform Cut: $${platformCutUsd.toFixed(4)}, Referral Payout: $${finalReferralPayoutUsd.toFixed(4)}, Net Protocol Profit: $${netProtocolProfitUsd.toFixed(4)}`);
 
       const points_credited = Math.floor(userCreditedUsd / USD_TO_POINTS_CONVERSION_RATE);
       const points_remaining = points_credited;
 
-      this.logger.info(`[DepositConfirmationService] Point Calculation -> User Credited USD: $${userCreditedUsd.toFixed(2)}, Points Credited: ${points_credited}`);
+      this.logger.debug(`[DepositConfirmationService] Point Calculation -> User Credited USD: $${userCreditedUsd.toFixed(2)}, Points Credited: ${points_credited}`);
       
       // Process Referral Payout
       if (referrerMasterAccountId && finalReferralPayoutUsd > 0) {
@@ -340,7 +340,7 @@ class DepositConfirmationService {
       }
       
       // 6. FINAL LEDGER UPDATE
-      this.logger.info(`[DepositConfirmationService] Step 6: Finalizing ${deposits.length} ledger entries for group.`);
+      this.logger.debug(`[DepositConfirmationService] Step 6: Finalizing ${deposits.length} ledger entries for group.`);
       const finalStatus = {
         master_account_id: masterAccountId,
         deposit_type: 'TOKEN',
@@ -507,7 +507,7 @@ class DepositConfirmationService {
       gasFee,
       '0x'
     );
-    this.logger.info(`[DepositConfirmationService] Transaction sent. On-chain hash: ${txResponse.hash}. Waiting for confirmation...`);
+    this.logger.debug(`[DepositConfirmationService] Transaction sent. On-chain hash: ${txResponse.hash}. Waiting for confirmation...`);
 
     // Send transaction status updates
     this.depositNotificationService.notifyTransactionStatus(masterAccountId, txResponse.hash, 'submitted', {
@@ -625,7 +625,7 @@ class DepositConfirmationService {
     try {
       let tracking = this.spellPaymentService.getPaymentTrackingByTxHash(confirmationTxHash);
       if (tracking) {
-        this.logger.info(`[DepositConfirmationService] Detected spell payment for transaction ${confirmationTxHash}`);
+        this.logger.debug(`[DepositConfirmationService] Detected spell payment for transaction ${confirmationTxHash}`);
         await this.spellPaymentService.handleSpellPaymentEvent(
           null,
           { args: { user, amount, transactionHash: confirmationTxHash } },
@@ -635,7 +635,7 @@ class DepositConfirmationService {
         for (const txHash of originalTxHashes) {
           tracking = this.spellPaymentService.getPaymentTrackingByTxHash(txHash);
           if (tracking) {
-            this.logger.info(`[DepositConfirmationService] Detected spell payment for original transaction ${txHash}`);
+            this.logger.debug(`[DepositConfirmationService] Detected spell payment for original transaction ${txHash}`);
             await this.spellPaymentService.handleSpellPaymentEvent(
               null,
               { args: { user, amount, transactionHash: confirmationTxHash } },

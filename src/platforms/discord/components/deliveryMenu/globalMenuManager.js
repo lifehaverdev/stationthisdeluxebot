@@ -61,7 +61,7 @@ function registerHandlers(dispatchers, dependencies) {
 
     buttonInteractionDispatcher.register('hide_menu', handleHideMenuCallback);
 
-    logger.info('[GlobalMenuManager] Handlers registered for global callbacks.');
+    logger.debug('[GlobalMenuManager] Handlers registered for global callbacks.');
 }
 
 module.exports = {

@@ -41,9 +41,9 @@ class EthereumService {
       evictions: 0
     };
 
-    this.logger.info(`[EthereumService] Initialized for address: ${this.signer.address} on chainId: ${this.chainId}`);
-    this.logger.info(`[EthereumService] DEBUG: Private key loaded from ETHEREUM_SIGNER_PRIVATE_KEY: ${privateKey ? 'YES' : 'NO'}`);
-    this.logger.info(`[EthereumService] DEBUG: Signer address: ${this.signer.address}`);
+    this.logger.debug(`[EthereumService] Initialized for address: ${this.signer.address} on chainId: ${this.chainId}`);
+    this.logger.debug(`[EthereumService] Private key loaded from ETHEREUM_SIGNER_PRIVATE_KEY: ${privateKey ? 'YES' : 'NO'}`);
+    this.logger.debug(`[EthereumService] Signer address: ${this.signer.address}`);
   }
 
   /**
@@ -138,7 +138,7 @@ class EthereumService {
    * @returns {Promise<any>} The result of the contract call.
    */
   async read(contractAddress, abi, functionName, ...args) {
-    this.logger.info(`[EthereumService] Executing read operation: ${functionName} on ${contractAddress}`);
+    this.logger.debug(`[EthereumService] Executing read operation: ${functionName} on ${contractAddress}`);
     
     if (!isAddress(contractAddress)) {
       throw new Error(`Invalid contract address: ${contractAddress}`);
@@ -160,8 +160,8 @@ class EthereumService {
    * @returns {Promise<import('ethers').TransactionResponse>} The initial transaction response.
    */
   async write(contractAddress, abi, functionName, ...args) {
-    this.logger.info(`[EthereumService] Sending write transaction: ${functionName} on ${contractAddress}`);
-    this.logger.info(`[EthereumService] DEBUG: Transaction will be signed by: ${this.signer.address}`);
+    this.logger.debug(`[EthereumService] Sending write transaction: ${functionName} on ${contractAddress}`);
+    this.logger.debug(`[EthereumService] Transaction will be signed by: ${this.signer.address}`);
     
     if (!isAddress(contractAddress)) {
       throw new Error(`Invalid contract address: ${contractAddress}`);
@@ -170,8 +170,8 @@ class EthereumService {
     try {
       const contract = this.getContract(contractAddress, abi, true);
       const txResponse = await contract[functionName](...args);
-      this.logger.info(`[EthereumService] Transaction sent with hash: ${txResponse.hash}.`);
-      this.logger.info(`[EthereumService] DEBUG: Transaction from address: ${txResponse.from}`);
+      this.logger.debug(`[EthereumService] Transaction sent with hash: ${txResponse.hash}.`);
+      this.logger.debug(`[EthereumService] Transaction from address: ${txResponse.from}`);
       return txResponse;
     } catch (error) {
       const context = {
@@ -207,7 +207,7 @@ class EthereumService {
       throw new Error('Invalid input: txResponse must be a valid TransactionResponse object.');
     }
     
-    this.logger.info(`[EthereumService] Waiting for ${confirmations} confirmation(s) of tx: ${txResponse.hash}...`);
+    this.logger.debug(`[EthereumService] Waiting for ${confirmations} confirmation(s) of tx: ${txResponse.hash}...`);
     
     const timeoutPromise = new Promise((_, reject) => {
       setTimeout(() => {
@@ -221,7 +221,7 @@ class EthereumService {
         timeoutPromise
       ]);
       
-      this.logger.info(`[EthereumService] Transaction ${txResponse.hash} confirmed in block: ${receipt.blockNumber}`);
+      this.logger.debug(`[EthereumService] Transaction ${txResponse.hash} confirmed in block: ${receipt.blockNumber}`);
       
       if (!receipt || !receipt.hash || receipt.hash !== txResponse.hash) {
         this.logger.error(`[EthereumService] CRITICAL: Received an invalid receipt for a confirmed transaction! Hash: ${txResponse.hash}`, { receipt });
@@ -256,7 +256,7 @@ class EthereumService {
    * @returns {Promise<number>} The latest block number.
    */
   async getLatestBlock() {
-    this.logger.info('[EthereumService] Fetching latest block number...');
+    this.logger.debug('[EthereumService] Fetching latest block number...');
     return await this._retryOperation(async () => {
       return await this.provider.getBlockNumber();
     }, 'getLatestBlock');
@@ -287,7 +287,7 @@ class EthereumService {
    * @returns {Promise<Array<import('ethers').EventLog>>} A list of event logs.
    */
   async getPastEvents(contractAddress, abi, eventName, fromBlock, toBlock, topics = []) {
-    this.logger.info(`[EthereumService] Fetching past '${eventName}' events from block ${fromBlock} to ${toBlock}`);
+    this.logger.debug(`[EthereumService] Fetching past '${eventName}' events from block ${fromBlock} to ${toBlock}`);
     
     if (!isAddress(contractAddress)) {
       throw new Error(`Invalid contract address: ${contractAddress}`);
@@ -321,7 +321,7 @@ class EthereumService {
         currentBlock = endBlock + 1;
       }
       
-      this.logger.info(`[EthereumService] Found ${allEvents.length} total '${eventName}' events across all chunks.`);
+      this.logger.debug(`[EthereumService] Found ${allEvents.length} total '${eventName}' events across all chunks.`);
       return allEvents;
     } catch (error) {
       const context = {
@@ -346,7 +346,7 @@ class EthereumService {
    * @returns {Promise<number>} The estimated cost of the transaction in USD.
    */
   async estimateGasCostInUsd(contractAddress, abi, functionName, ...args) {
-    this.logger.info(`[EthereumService] Estimating gas for ${functionName} on ${contractAddress}...`);
+    this.logger.debug(`[EthereumService] Estimating gas for ${functionName} on ${contractAddress}...`);
     
     if (!isAddress(contractAddress)) {
       throw new Error(`Invalid contract address: ${contractAddress}`);
@@ -400,7 +400,7 @@ class EthereumService {
         
         const estimatedCostUsd = parseFloat(formatEther(estimatedCostEth)) * ethPriceUsd;
 
-        this.logger.info(`[EthereumService] Gas estimation complete. Est. Gas: ${gasEstimate}, Gas Price: ${formatEther(effectiveGasPrice * 1000000000n)} gwei, Est. Cost: ~${estimatedCostUsd.toFixed(4)} USD`);
+        this.logger.debug(`[EthereumService] Gas estimation complete. Est. Gas: ${gasEstimate}, Gas Price: ${formatEther(effectiveGasPrice * 1000000000n)} gwei, Est. Cost: ~${estimatedCostUsd.toFixed(4)} USD`);
         this.logger.debug('[EthereumService] Note: Using realistic gas price (60% of maxFeePerGas) instead of worst-case for profitability checks.');
         return estimatedCostUsd;
 

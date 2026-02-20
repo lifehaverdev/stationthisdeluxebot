@@ -14,7 +14,7 @@ function resolveToolName(name, toolRegistry, logger) {
     const commandName = name.startsWith('/') ? name : `/${name}`;
     const byCommand = toolRegistry.findByCommand(commandName);
     if (byCommand) {
-        logger.info(`[GenerationExecutionApi] Resolved "${name}" to toolId "${byCommand.toolId}" via commandName`);
+        logger.debug(`[GenerationExecutionApi] Resolved "${name}" to toolId "${byCommand.toolId}" via commandName`);
         return byCommand.toolId;
     }
 
@@ -29,7 +29,7 @@ function resolveToolName(name, toolRegistry, logger) {
         t.displayName && t.displayName.toLowerCase() === lowerName
     );
     if (byDisplayName) {
-        logger.info(`[GenerationExecutionApi] Resolved "${name}" to toolId "${byDisplayName.toolId}" via displayName`);
+        logger.debug(`[GenerationExecutionApi] Resolved "${name}" to toolId "${byDisplayName.toolId}" via displayName`);
         return byDisplayName.toolId;
     }
 
@@ -80,7 +80,7 @@ function createGenerationExecutionApi(dependencies) {
             // Resolve tool name to actual toolId (same pattern as Telegram commands)
             const resolvedToolId = resolveToolName(toolId, toolRegistry, logger);
             if (resolvedToolId !== toolId) {
-                logger.info(`[ExternalGenerationExecutionApi] Resolved toolId "${toolId}" to "${resolvedToolId}"`);
+                logger.debug(`[ExternalGenerationExecutionApi] Resolved toolId "${toolId}" to "${resolvedToolId}"`);
             }
 
             // Ensure browser-originated requests are tagged with the correct platform for notifications

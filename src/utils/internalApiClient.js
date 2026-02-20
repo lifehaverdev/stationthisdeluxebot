@@ -132,7 +132,7 @@ internalApiClient.rateGeneration = async function(generationId, ratingType, mast
       ratingType,
       masterAccountId
     });
-    logger.info(`[InternalApiClient] Successfully rated generation ${generationId} as ${ratingType}.`);
+    logger.debug(`[InternalApiClient] Successfully rated generation ${generationId} as ${ratingType}.`);
     return response.data;
   } catch (error) {
     logger.error(`[InternalApiClient] Failed to rate generation ${generationId}: ${error.message}`);
