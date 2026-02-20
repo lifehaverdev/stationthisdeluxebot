@@ -89,7 +89,8 @@ function createAuthApi(dependencies) {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: sessionDurationMs
+      maxAge: sessionDurationMs,
+      ...(process.env.NODE_ENV === 'production' && { domain: '.noema.art' })
     });
     return token;
   }

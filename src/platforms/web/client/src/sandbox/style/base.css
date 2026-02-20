@@ -40,22 +40,6 @@
     cursor: pointer;
 }
 
-/* Click ripple effect */
-.click-ripple {
-    position: fixed;
-    pointer-events: none;
-    width: 128px;
-    height: 128px;
-    opacity: 0;
-    z-index: var(--z-modal);
-    transform: translate(-50%, -50%);
-    transition: opacity var(--transition-speed) ease-out;
-}
-
-.click-ripple.active {
-    opacity: 1;
-}
-
 /* Common animations */
 @keyframes fadeIn {
     from { 

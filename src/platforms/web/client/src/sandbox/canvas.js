@@ -83,26 +83,7 @@ export function makeDraggable(element, handle) {
 
 // Initialize canvas event listeners
 export function initCanvas() {
-    // Initialize canvas-related elements
-    const rippleElement = document.createElement('img');
-    rippleElement.src = '/images/workspace/circularwaterripple.gif';
-    rippleElement.className = 'click-ripple';
-    document.body.appendChild(rippleElement);
-
-    document.addEventListener('click', (e) => {
-        const sandbox = document.querySelector('.sandbox-content');
-        if (!sandbox || !sandbox.contains(e.target)) return;
-
-        // Show ripple effect
-        rippleElement.style.left = `${e.clientX}px`;
-        rippleElement.style.top = `${e.clientY}px`;
-        rippleElement.classList.add('active');
-
-        // Hide ripple after animation
-        setTimeout(() => {
-            rippleElement.classList.remove('active');
-        }, 300);
-    });
+    // No-op for now — ripple effect removed, canvas init reserved for future use
 }
 
 export function setActiveConnection(connection) {

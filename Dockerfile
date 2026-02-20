@@ -1,7 +1,15 @@
 # syntax=docker/dockerfile:1.2
-FROM node:20
 
-# Create and change to the app directory.
+# Stage 1: Build frontend
+FROM node:20 AS frontend-builder
+WORKDIR /frontend
+COPY src/platforms/web/frontend/package*.json ./
+RUN npm ci
+COPY src/platforms/web/frontend/ ./
+RUN npm run build
+
+# Stage 2: Production
+FROM node:20
 WORKDIR /usr/src/app
 
 # Install git and ffmpeg first in a separate layer
@@ -11,7 +19,6 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 # Copy package files and install dependencies first
-# This layer is only invalidated if package.json or package-lock.json changes
 COPY package*.json ./
 
 # Install only production dependencies (skip dev stack for faster builds)
@@ -20,8 +27,10 @@ RUN npm install -g pm2 \
     && npm install --omit=dev --legacy-peer-deps
 
 # Copy the rest of the application code
-# Note: Docker will automatically invalidate this cache when files change
 COPY . .
+
+# Copy built frontend from stage 1
+COPY --from=frontend-builder /frontend/dist ./src/platforms/web/frontend/dist
 
 # Create necessary directories and set permissions before switching user
 RUN mkdir -p tmp output storage/media \

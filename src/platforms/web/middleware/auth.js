@@ -35,7 +35,8 @@ function authenticateUser(req, res, next) {
     if (!token) {
       // For web pages, redirect to login. For API calls, send 401.
       if (req.accepts('html')) {
-        return res.redirect('/landing');
+        const loginUrl = process.env.NODE_ENV === 'production' ? 'https://noema.art' : '/landing';
+        return res.redirect(loginUrl);
       }
       return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'No token provided.' } });
     }
@@ -50,7 +51,8 @@ function authenticateUser(req, res, next) {
     jwt.verify(token, jwtSecret, (err, user) => {
       if (err) {
         if (req.accepts('html')) {
-          return res.redirect('/landing');
+          const loginUrl = process.env.NODE_ENV === 'production' ? 'https://noema.art' : '/landing';
+          return res.redirect(loginUrl);
         }
         return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Invalid token.' } });
       }

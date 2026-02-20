@@ -1,3 +1,7 @@
 noema.art, www.noema.art {
     reverse_proxy hyperbot:4000
 }
+
+app.noema.art {
+    reverse_proxy hyperbot:4000
+}

@@ -21,9 +21,10 @@ function referralHandler(req, res, next) {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       maxAge: MAX_AGE_DAYS * 24 * 60 * 60 * 1000, // 90 days
-      sameSite: 'lax'
+      sameSite: 'lax',
+      ...(process.env.NODE_ENV === 'production' && { domain: '.noema.art' })
     });
-    
+
     return res.redirect(newPath || '/');
   }
 
@@ -38,7 +39,8 @@ function referralHandler(req, res, next) {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       maxAge: MAX_AGE_DAYS * 24 * 60 * 60 * 1000, // 90 days
-      sameSite: 'lax'
+      sameSite: 'lax',
+      ...(process.env.NODE_ENV === 'production' && { domain: '.noema.art' })
     });
   }
 

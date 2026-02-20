@@ -5,17 +5,34 @@ function stateDebug(...args) {
     }
 }
 
-// Global state
-export let availableTools = [];
-export let activeToolWindows = [];
-export let lastClickPosition = null;
-export let activeConnection = null;
-export let connectionLine = null;
-export let activeModal = false;
-export let activeSubmenu = false;
+// Shared backing state — survives across module graph boundaries.
+// Both the Vite-bundled frontend and raw ESM /sandbox/ modules get
+// the SAME arrays/sets, so mutations are visible to both.
+const _shared = window.__sandboxState__ || (window.__sandboxState__ = {
+    availableTools: [],
+    activeToolWindows: [],
+    connections: [],
+    selectedNodeIds: new Set(),
+    lastClickPosition: null,
+    activeConnection: null,
+    connectionLine: null,
+    activeModal: false,
+    activeSubmenu: false,
+});
+
+// Exported refs — point to the shared objects. NEVER reassign these
+// with `=`; always mutate in place (splice, push, .clear(), etc.)
+// so both module graphs see the changes.
+export let availableTools = _shared.availableTools;
+export let activeToolWindows = _shared.activeToolWindows;
+export let lastClickPosition = _shared.lastClickPosition;
+export let activeConnection = _shared.activeConnection;
+export let connectionLine = _shared.connectionLine;
+export let activeModal = _shared.activeModal;
+export let activeSubmenu = _shared.activeSubmenu;
 
 // --- Selection Management ---
-export const selectedNodeIds = new Set();
+export const selectedNodeIds = _shared.selectedNodeIds;
 const canUseDOM = typeof window !== 'undefined' && typeof document !== 'undefined';
 let selectionChangeEvent = null;
 
@@ -62,7 +79,7 @@ export const lasso = {
  */
 
 /** @type {Connection[]} */
-export let connections = [];
+export let connections = _shared.connections;
 
 export function getConnections() {
     return connections;
@@ -253,8 +270,10 @@ function loadState() {
     const winRaw = localStorage.getItem(TOOL_WINDOWS_KEY);
     if (connRaw) {
         try {
-            connections = JSON.parse(connRaw);
-        } catch (e) { connections = []; }
+            const parsed = JSON.parse(connRaw);
+            connections.length = 0;
+            connections.push(...parsed);
+        } catch (e) { connections.length = 0; }
     }
     if (winRaw) {
         try {
@@ -265,14 +284,11 @@ function loadState() {
             wins.forEach(w => uniqueWinsMap.set(w.id, w));
             const uniqueWins = Array.from(uniqueWinsMap.values());
 
-            activeToolWindows = uniqueWins.map(w => {
+            const mapped = uniqueWins.map(w => {
                 if (w.isSpell) {
                     return {
-                        id: w.id,
-                        spell: w.spell,
-                        isSpell: true,
-                        workspaceX: w.workspaceX,
-                        workspaceY: w.workspaceY,
+                        id: w.id, spell: w.spell, isSpell: true,
+                        workspaceX: w.workspaceX, workspaceY: w.workspaceY,
                         output: w.output || null,
                         outputVersions: w.outputVersions || [],
                         currentVersionIndex: w.currentVersionIndex ?? -1,
@@ -283,12 +299,8 @@ function loadState() {
                 }
                 return {
                     id: w.id,
-                    tool: {
-                        displayName: w.displayName,
-                        toolId: w.toolId
-                    },
-                    workspaceX: w.workspaceX,
-                    workspaceY: w.workspaceY,
+                    tool: { displayName: w.displayName, toolId: w.toolId },
+                    workspaceX: w.workspaceX, workspaceY: w.workspaceY,
                     output: w.output || null,
                     outputVersions: w.outputVersions || [],
                     currentVersionIndex: w.currentVersionIndex ?? -1,
@@ -297,8 +309,10 @@ function loadState() {
                     totalCost: w.totalCost || { usd: 0, points: 0, ms2: 0, cult: 0 }
                 };
             });
+            activeToolWindows.length = 0;
+            activeToolWindows.push(...mapped);
             stateDebug(`Loaded ${activeToolWindows.length} unique tool windows from storage.`);
-        } catch (e) { activeToolWindows = []; }
+        } catch (e) { activeToolWindows.length = 0; }
     }
 }
 
@@ -326,11 +340,16 @@ export function addConnection(connection) {
 }
 
 export function removeConnection(connectionId) {
-    connections = connections.filter(c => c.id !== connectionId);
+    const idx = connections.findIndex(c => c.id === connectionId);
+    if (idx !== -1) connections.splice(idx, 1);
 }
 
 export function clearConnectionsForWindow(windowId) {
-    connections = connections.filter(c => c.fromWindowId !== windowId && c.toWindowId !== windowId);
+    for (let i = connections.length - 1; i >= 0; i--) {
+        if (connections[i].fromWindowId === windowId || connections[i].toWindowId === windowId) {
+            connections.splice(i, 1);
+        }
+    }
 }
 
 // TODO: Add undo/redo stack for connections
@@ -352,14 +371,14 @@ export const OUTPUT_TYPE_EMOJI = {
 
 // Initialize state
 export function initState() {
-    availableTools = [];
-    activeToolWindows = [];
-    connections = [];
-    lastClickPosition = null;
-    activeConnection = null;
-    connectionLine = null;
-    activeModal = false;
-    activeSubmenu = false;
+    availableTools.length = 0;
+    activeToolWindows.length = 0;
+    connections.length = 0;
+    _shared.lastClickPosition = lastClickPosition = null;
+    _shared.activeConnection = activeConnection = null;
+    _shared.connectionLine = connectionLine = null;
+    _shared.activeModal = activeModal = false;
+    _shared.activeSubmenu = activeSubmenu = false;
     selectedNodeIds.clear();
     loadState();
 
@@ -368,7 +387,7 @@ export function initState() {
 
 // State getters and setters
 export function setModalState(state) {
-    activeModal = state;
+    _shared.activeModal = activeModal = state;
 }
 
 export function getModalState() {
@@ -376,7 +395,7 @@ export function getModalState() {
 }
 
 export function setSubmenuState(state) {
-    activeSubmenu = state;
+    _shared.activeSubmenu = activeSubmenu = state;
 }
 
 export function getSubmenuState() {
@@ -452,7 +471,7 @@ export function clearSelection() {
 
 
 export function setLastClickPosition(position) {
-    lastClickPosition = position;
+    _shared.lastClickPosition = lastClickPosition = position;
 }
 
 export function getLastClickPosition() {
@@ -461,7 +480,8 @@ export function getLastClickPosition() {
 
 export function setAvailableTools(tools) {
     stateDebug('Setting available tools:', tools);
-    availableTools = tools;
+    availableTools.length = 0;
+    availableTools.push(...tools);
 }
 
 export function getAvailableTools() {
@@ -612,7 +632,8 @@ export function addToolWindow(windowData) {
 }
 
 export function removeToolWindow(windowId) {
-    activeToolWindows = activeToolWindows.filter(w => w.id !== windowId);
+    const idx = activeToolWindows.findIndex(w => w.id === windowId);
+    if (idx !== -1) activeToolWindows.splice(idx, 1);
     const windowEl = document.getElementById(windowId);
     if (windowEl) {
         windowEl.remove();
@@ -624,7 +645,7 @@ export function removeToolWindow(windowId) {
 }
 
 export function setActiveConnection(connection) {
-    activeConnection = connection;
+    _shared.activeConnection = activeConnection = connection;
 }
 
 export function getActiveConnection() {
@@ -632,7 +653,7 @@ export function getActiveConnection() {
 }
 
 export function setConnectionLine(line) {
-    connectionLine = line;
+    _shared.connectionLine = connectionLine = line;
 }
 
 export function setToolWindowOutput(id, output) {
@@ -684,75 +705,29 @@ export function setToolWindowOutput(id, output) {
  * @param {Object} costData - Cost data with usd, points, ms2, cult
  */
 export function addWindowCost(windowId, costData) {
-    const window = getToolWindow(windowId);
-    if (!window) {
+    const win = getToolWindow(windowId);
+    if (!win) {
         stateDebug(`[Cost] Window ${windowId} not found for cost update`);
         return;
     }
 
-    // Initialize cost arrays if they don't exist
-    if (!window.costVersions) {
-        window.costVersions = [];
-    }
-    if (!window.totalCost) {
-        window.totalCost = { usd: 0, points: 0, ms2: 0, cult: 0 };
-    }
+    if (!win.costVersions) win.costVersions = [];
+    if (!win.totalCost) win.totalCost = { usd: 0, points: 0, ms2: 0, cult: 0 };
 
-    // Add cost to versions array
-    window.costVersions.push({
-        ...costData,
-        timestamp: Date.now()
-    });
+    win.costVersions.push({ ...costData, timestamp: Date.now() });
 
-    // Update total cost
-    window.totalCost.usd += costData.usd || 0;
-    window.totalCost.points += costData.points || 0;
-    window.totalCost.ms2 += costData.ms2 || 0;
-    window.totalCost.cult += costData.cult || 0;
+    win.totalCost.usd += costData.usd || 0;
+    win.totalCost.points += costData.points || 0;
+    win.totalCost.ms2 += costData.ms2 || 0;
+    win.totalCost.cult += costData.cult || 0;
 
-    // Persist state
     persistState();
 
-    // Dispatch cost update event
-    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
-        window.dispatchEvent(new CustomEvent('costUpdate', { 
-            detail: { windowId, costData, totalCost: window.totalCost }
+    // Dispatch cost update event for subscribers
+    if (typeof globalThis.dispatchEvent === 'function') {
+        globalThis.dispatchEvent(new CustomEvent('costUpdate', {
+            detail: { windowId, costData, totalCost: win.totalCost }
         }));
-        stateDebug('[Cost] Dispatched costUpdate event for window:', windowId);
-    } else {
-        stateDebug('[Cost] Cost update (dispatchEvent not available):', { windowId, costData, totalCost: window.totalCost });
-    }
-    
-    // Always try to update cost HUD directly as a fallback
-    if (typeof window !== 'undefined' && window.costHUD && typeof window.costHUD.updateDisplay === 'function') {
-        stateDebug('[Cost] Updating cost HUD via direct call');
-        window.costHUD.updateDisplay();
-    } else {
-        stateDebug('[Cost] Cost HUD not available for update:', {
-            windowAvailable: typeof window !== 'undefined',
-            costHUDAvailable: !!(window && window.costHUD),
-            updateDisplayAvailable: !!(window && window.costHUD && typeof window.costHUD.updateDisplay === 'function')
-        });
-    }
-    
-    // Also update the window cost display directly
-    if (typeof window !== 'undefined' && window.updateWindowCostDisplay) {
-        window.updateWindowCostDisplay(windowId);
-    } else {
-        // Fallback: try to update the DOM directly
-        const windowEl = document.getElementById(windowId);
-        if (windowEl) {
-            const costElement = windowEl.querySelector('.window-cost-display .cost-amount');
-            if (costElement) {
-                const costData = getWindowCost(windowId);
-                if (costData) {
-                    const USD_TO_POINTS_CONVERSION_RATE = 0.000337;
-                    const points = Math.round((costData.totalCost.usd || 0) * (1 / USD_TO_POINTS_CONVERSION_RATE));
-                    costElement.textContent = `${points} POINTS`;
-                    stateDebug(`[Cost] Updated window ${windowId} cost display to ${points} POINTS`);
-                }
-            }
-        }
     }
 }
 
@@ -777,64 +752,31 @@ export function getWindowCost(windowId) {
  */
 export function getTotalWorkspaceCost() {
     const totals = { usd: 0, points: 0, ms2: 0, cult: 0 };
-    
-    stateDebug(`[getTotalWorkspaceCost] Processing ${activeToolWindows.length} windows`);
-    
-    activeToolWindows.forEach((window, index) => {
-        stateDebug(`[getTotalWorkspaceCost] Window ${index}:`, {
-            id: window.id,
-            totalCost: window.totalCost,
-            hasTotalCost: !!window.totalCost
-        });
-        
-        if (window.totalCost) {
-            totals.usd += window.totalCost.usd || 0;
-            totals.points += window.totalCost.points || 0;
-            totals.ms2 += window.totalCost.ms2 || 0;
-            totals.cult += window.totalCost.cult || 0;
+    activeToolWindows.forEach(win => {
+        if (win.totalCost) {
+            totals.usd += win.totalCost.usd || 0;
+            totals.points += win.totalCost.points || 0;
+            totals.ms2 += win.totalCost.ms2 || 0;
+            totals.cult += win.totalCost.cult || 0;
         }
     });
-
-    stateDebug('[getTotalWorkspaceCost] Final totals:', totals);
     return totals;
 }
 
-/**
- * Reset cost data for a specific window
- * @param {string} windowId - Window ID
- */
 export function resetWindowCost(windowId) {
-    const window = getToolWindow(windowId);
-    if (!window) return;
-
-    window.costVersions = [];
-    window.totalCost = { usd: 0, points: 0, ms2: 0, cult: 0 };
-    
+    const win = getToolWindow(windowId);
+    if (!win) return;
+    win.costVersions = [];
+    win.totalCost = { usd: 0, points: 0, ms2: 0, cult: 0 };
     persistState();
-
-    // Dispatch cost reset event
-    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
-        window.dispatchEvent(new CustomEvent('costReset', { 
-            detail: { windowId }
-        }));
-    }
 }
 
-/**
- * Reset cost data for all windows
- */
 export function resetAllCosts() {
-    activeToolWindows.forEach(window => {
-        window.costVersions = [];
-        window.totalCost = { usd: 0, points: 0, ms2: 0, cult: 0 };
+    activeToolWindows.forEach(win => {
+        win.costVersions = [];
+        win.totalCost = { usd: 0, points: 0, ms2: 0, cult: 0 };
     });
-    
     persistState();
-
-    // Dispatch global cost reset event
-    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
-        window.dispatchEvent(new CustomEvent('costResetAll'));
-    }
 }
 
 // --- Generation Recovery System ---
@@ -981,36 +923,3 @@ export async function checkPendingGenerations() {
     }
 }
 
-// Expose for debugging in browser console
-if (typeof window !== 'undefined') {
-    window.getToolWindows = getToolWindows;
-    window.activeToolWindows = activeToolWindows;
-    window.getTotalWorkspaceCost = getTotalWorkspaceCost;
-    window.resetAllCosts = resetAllCosts;
-    window.getPendingGenerations = getPendingGenerations;
-    window.checkPendingGenerations = checkPendingGenerations;
-    window.clearPendingGenerations = clearPendingGenerations;
-} 
-
-const sandboxState = {
-    toolWindows: [], // Array of active tool window data
-    connections: [], // Array of active connection data
-    availableTools: [], // All tools loaded from the server
-    history: [], // For undo/redo
-    historyIndex: -1,
-    activeConnection: null, // Info about the connection being drawn
-    connectionLine: null, // The DOM element for the connection line
-    lastClickPosition: { x: 0, y: 0 },
-    modal: { active: false, type: null, position: { x: 0, y: 0 } },
-    submenu: { active: false, type: null, position: { x: 0, y: 0 } },
-    selectedNodeIds: new Set(), // IDs of selected tool windows
-    lasso: {
-        active: false,
-        x1: 0, y1: 0,
-        x2: 0, y2: 0,
-        element: null
-    },
-};
-
-// --- History Management ---
-// ... existing code ...

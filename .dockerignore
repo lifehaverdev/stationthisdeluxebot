@@ -2,6 +2,8 @@
 /npm-debug.log
 .env
 .env.*
-!.env.example 
+!.env.example
 scripts/local_dev_helpers/node_modules
 scripts/local_dev_helpers/package-lock.json
+src/platforms/web/frontend/node_modules
+src/platforms/web/frontend/dist

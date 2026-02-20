@@ -49,7 +49,16 @@ function initializeWebPlatform(services, options = {}) {
   logger.debug('[WebPlatform] Initializing middleware...');
   app.use(httpLogger); // Use the centralized, correctly configured HTTP logger
   app.use(cors({
-    origin: process.env.CORS_ORIGIN || ['http://localhost:3000', 'http://localhost:4000'],
+    origin: process.env.CORS_ORIGIN || [
+      'http://localhost:3000',
+      'http://localhost:4000',
+      'http://localhost:5173',
+      'http://app.localhost:4000',
+      'http://app.localhost:5173',
+      'https://noema.art',
+      'https://www.noema.art',
+      'https://app.noema.art'
+    ],
     credentials: true
   }));
   app.use(express.json({ verify: rawBodySaver }));
@@ -108,45 +117,48 @@ function initializeWebPlatform(services, options = {}) {
   return {
     app,
     initializeRoutes: async () => {
+      // --- Hostname routing ---
+      const frontendDist = path.join(__dirname, 'frontend', 'dist');
+      const frontendIndexHtml = path.join(frontendDist, 'index.html');
+
+      const isAppSubdomain = (req) => {
+        return req.hostname.startsWith('app.');
+      };
+
       // --- Page Routes ---
-      // Allow anonymous access to sandbox when ?workspace=<id>
+
+      // Allow anonymous access to sandbox when ?workspace=<id> (app subdomain only)
       app.get('/', (req, res, next) => {
+        if (!isAppSubdomain(req)) return next();
         if (req.query.workspace) {
-          return res.sendFile(path.join(__dirname, 'client', 'index.html'));
+          return res.sendFile(frontendIndexHtml);
         }
         return next();
       });
 
-      app.get('/', authenticateUser, (req, res) => {
-        // Auth middleware has run, so if we're here, the user is authenticated.
-        res.sendFile(path.join(__dirname, 'client', 'index.html'));
+      // Authenticated sandbox root (app subdomain only)
+      app.get('/', authenticateUser, (req, res, next) => {
+        if (!isAppSubdomain(req)) return next();
+        res.sendFile(frontendIndexHtml);
       });
 
       app.get('/logout', (req, res) => {
-          // Clear the JWT cookie to log the user out
           res.clearCookie('jwt', {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'lax',
+            ...(process.env.NODE_ENV === 'production' && { domain: '.noema.art' })
           });
-          res.redirect('/landing');
+          res.redirect(process.env.NODE_ENV === 'production' ? 'https://noema.art' : '/landing');
       });
 
-      app.get('/landing', (req, res) => {
+      // Legacy landing fallback (app subdomain only)
+      app.get('/landing', (req, res, next) => {
+        if (!isAppSubdomain(req)) return next();
         res.sendFile(path.join(publicPath, 'landing.html'));
       });
 
-      app.get('/pricing', (req, res) => {
-        res.sendFile(path.join(publicPath, 'pricing.html'));
-      });
-
-      app.get('/docs', (req, res) => {
-        res.sendFile(path.join(publicPath, 'docs.html'));
-      });
-
-      app.get('/admin', (req, res) => {
-        res.sendFile(path.join(publicPath, 'admin.html'));
-      });
+      // /pricing, /docs, /admin on app subdomain fall through to SPA catch-all
 
       // Spell Execution Page
       app.get('/spells/:slug', (req, res) => {
@@ -179,35 +191,30 @@ function initializeWebPlatform(services, options = {}) {
       }
 
       // --- Static File Serving ---
-      const clientDir = path.join(__dirname, 'client');
-      const clientDist = path.join(clientDir, 'dist');
-      const clientSrc = path.join(clientDir, 'src');
+      const clientSrc = path.join(__dirname, 'client', 'src');
 
-      // Serve static files from the client/dist directory first (production bundle only)
-      app.use(express.static(clientDist));
-
-      // Serve sandbox source modules (ESM bundle is not built yet)
+      // Serve sandbox source modules as ESM (old vanilla code loaded at runtime)
       app.use('/sandbox', express.static(path.join(clientSrc, 'sandbox')));
       app.get('/index.css', (req, res) => res.sendFile(path.join(clientSrc, 'index.css')));
 
+      // Serve frontend SPA assets (both domains — JS/CSS bundles from frontend/dist)
+      app.use(express.static(frontendDist));
+
       // Then serve assets from the public directory (images, landing pages, etc.)
       app.use(express.static(publicPath));
-      
+
       // Then serve from the regular static path if specified
       if (options.staticPath) {
         app.use(express.static(options.staticPath));
       }
 
-      // Handle SPA routing - return main app's index.html for all other routes
+      // Handle SPA routing — both domains serve the microact SPA
       app.get('*', (req, res) => {
         if (req.accepts('html')) {
-          const clientIndexPath = path.join(__dirname, 'client', 'dist', 'index.html');
-          if (fs.existsSync(clientIndexPath)) {
-            res.sendFile(clientIndexPath);
+          if (fs.existsSync(frontendIndexHtml)) {
+            res.sendFile(frontendIndexHtml);
           } else {
-            // If the main app doesn't exist, we don't have a good fallback for SPA routes.
-            // Sending a 404 is more appropriate than sending an unrelated file.
-            res.status(404).send('Application not found.');
+            res.sendFile(path.join(publicPath, 'landing.html'));
           }
         } else {
           res.status(404).json({ error: 'Not found' });
