@@ -1,8 +1,5 @@
 import { Component, h } from '@monygroupcorp/microact';
-
-const APP_URL = window.location.hostname === 'localhost'
-  ? 'http://app.localhost:4000'
-  : 'https://app.noema.art';
+import { getAppUrl } from '../lib/urls.js';
 
 export class Nav extends Component {
   render() {
@@ -11,7 +8,7 @@ export class Nav extends Component {
       h('div', { className: 'nav-links' },
         h('a', { href: '/pricing' }, 'Pricing'),
         h('a', { href: '/docs' }, 'Docs'),
-        h('a', { href: APP_URL, className: 'nav-cta' }, 'Launch App')
+        h('a', { href: getAppUrl(), className: 'nav-cta' }, 'Launch App')
       )
     );
   }
