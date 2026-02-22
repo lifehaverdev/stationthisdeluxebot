@@ -12,7 +12,6 @@ const cookieParser = require('cookie-parser');
 const httpLogger = require('../../utils/pino'); // Import the centralized pino-http logger
 const fs = require('fs');
 const { createLogger } = require('../../utils/logger');
-const { authenticateUser } = require('./middleware/auth');
 const csrfProtection = require('./middleware/csrf'); // <-- Import new CSRF middleware
 const { referralHandler } = require('./middleware/referralHandler');
 const { createAgentCardRouter } = require('../../api/external/mcp/agentCard');
@@ -136,8 +135,8 @@ function initializeWebPlatform(services, options = {}) {
         return next();
       });
 
-      // Authenticated sandbox root (app subdomain only)
-      app.get('/', authenticateUser, (req, res, next) => {
+      // SPA shell is public — auth is handled client-side by AuthWidget
+      app.get('/', (req, res, next) => {
         if (!isAppSubdomain(req)) return next();
         res.sendFile(frontendIndexHtml);
       });
