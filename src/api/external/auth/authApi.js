@@ -12,6 +12,12 @@ const logger = createLogger('AuthApi');
 // you would use a more robust cache like Redis.
 const nonceStore = new Map();
 
+// Short-lived one-time tokens for cross-subdomain session handoff (30s TTL).
+// Landing page (localhost) creates one after auth; app subdomain exchanges it
+// for its own session cookie. Avoids the localhost ↔ app.localhost cookie
+// domain isolation in Chrome dev environments.
+const transferTokenStore = new Map();
+
 /**
  * Creates a router for authentication flows.
  * @param {object} dependencies - Service dependencies.
@@ -90,7 +96,7 @@ function createAuthApi(dependencies) {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       maxAge: sessionDurationMs,
-      ...(process.env.NODE_ENV === 'production' && { domain: '.noema.art' })
+      ...(process.env.NODE_ENV === 'production' ? { domain: '.noema.art' } : { domain: 'localhost' })
     });
     return token;
   }
@@ -104,6 +110,26 @@ function createAuthApi(dependencies) {
   };
   
   const router = express.Router();
+
+  /**
+   * GET /account-exists?address=0x...
+   * Lightweight probe: returns { exists: boolean } without creating a user.
+   * Used by the app on boot to branch between returning vs new user UX.
+   */
+  router.get('/account-exists', async (req, res) => {
+    const { address } = req.query;
+    if (!address || !ethers.isAddress(address)) {
+      return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Valid Ethereum address required.' } });
+    }
+    try {
+      await internalApiClient.get(`/internal/v1/data/wallets/lookup?address=${address.toLowerCase()}`);
+      return res.json({ exists: true });
+    } catch (err) {
+      if (err.response?.status === 404) return res.json({ exists: false });
+      logger.error('[AuthApi] /account-exists failed:', err.message);
+      return res.status(500).json({ error: { code: 'LOOKUP_FAILED', message: 'Could not check account.' } });
+    }
+  });
 
   /**
    * POST /ensure-user
@@ -163,6 +189,46 @@ function createAuthApi(dependencies) {
       }
       return res.status(500).json({ error: { code: 'SESSION_REFRESH_FAILED', message: 'Could not refresh session.' } });
     }
+  });
+
+  /**
+   * POST /transfer-token
+   * Creates a one-time, short-lived token so the app subdomain can inherit
+   * the session cookie that was set on the marketing/landing subdomain.
+   * The caller must have a valid JWT cookie.
+   */
+  router.post('/transfer-token', (req, res) => {
+    const existingToken = req.cookies?.jwt;
+    if (!existingToken) {
+      return res.status(401).json({ error: { code: 'NO_SESSION', message: 'No active session to transfer.' } });
+    }
+    try {
+      const payload = jwt.verify(existingToken, jwtSecret);
+      const token = crypto.randomBytes(32).toString('hex');
+      transferTokenStore.set(token, { userId: payload.userId, exp: Date.now() + 30_000 });
+      setTimeout(() => transferTokenStore.delete(token), 30_000);
+      res.json({ token });
+    } catch {
+      res.status(401).json({ error: { code: 'INVALID_SESSION', message: 'Session invalid or expired.' } });
+    }
+  });
+
+  /**
+   * POST /exchange-transfer-token
+   * Exchanges a one-time transfer token for a fresh session cookie scoped to
+   * the current origin. Consumed immediately (one-time use).
+   */
+  router.post('/exchange-transfer-token', (req, res) => {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ error: { code: 'MISSING_TOKEN', message: 'token is required.' } });
+
+    const stored = transferTokenStore.get(token);
+    if (!stored || Date.now() > stored.exp) {
+      return res.status(401).json({ error: { code: 'INVALID_TOKEN', message: 'Transfer token invalid or expired.' } });
+    }
+    transferTokenStore.delete(token); // one-time use
+    issueSessionCookie(res, { userId: stored.userId });
+    res.json({ success: true });
   });
 
   /**
