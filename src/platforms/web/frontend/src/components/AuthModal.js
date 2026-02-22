@@ -2,10 +2,6 @@ import { Component, h, eventBus } from '@monygroupcorp/microact';
 import { WalletService, WalletModal } from '@monygroupcorp/micro-web3';
 import { postWithCsrf } from '../lib/api.js';
 
-const APP_URL = window.location.hostname === 'localhost'
-  ? 'http://app.localhost:4000'
-  : 'https://app.noema.art';
-
 /**
  * AuthModal — handles wallet connect, password, and API key login.
  * After successful auth the user is redirected to the app subdomain.
@@ -24,6 +20,7 @@ export class AuthModal extends Component {
 
   async didMount() {
     await this.walletService.initialize();
+    if (this.props.autoShow) this.show();
   }
 
   show() {
@@ -38,14 +35,12 @@ export class AuthModal extends Component {
     this.setState({ loading: true, error: null });
     try {
       const wallets = this.walletService.getAvailableWallets();
-      if (!wallets || wallets.size === 0) {
+      if (!wallets || wallets.length === 0) {
         this.setState({ error: 'No wallet detected. Please install a wallet extension.', loading: false });
         return;
       }
 
-      // Pick first available wallet (or could show picker)
-      const walletKey = wallets.keys().next().value;
-      await this.walletService.selectWallet(walletKey);
+      // micro-web3 auto-connects via EIP-6963 — just call connect()
       await this.walletService.connect();
       const address = this.walletService.getAddress();
 
@@ -69,7 +64,10 @@ export class AuthModal extends Component {
         throw new Error(err.error?.message || 'Verification failed.');
       }
 
-      window.location.href = APP_URL;
+      if (this.props.onSuccess) {
+        this.hide();
+        this.props.onSuccess();
+      }
     } catch (err) {
       this.setState({ error: err.message, loading: false });
     }
@@ -88,7 +86,10 @@ export class AuthModal extends Component {
         const err = await res.json();
         throw new Error(err.error?.message || 'Login failed.');
       }
-      window.location.href = APP_URL;
+      if (this.props.onSuccess) {
+        this.hide();
+        this.props.onSuccess();
+      }
     } catch (err) {
       this.setState({ error: err.message, loading: false });
     }
@@ -106,7 +107,10 @@ export class AuthModal extends Component {
         const err = await res.json();
         throw new Error(err.error?.message || 'API key login failed.');
       }
-      window.location.href = APP_URL;
+      if (this.props.onSuccess) {
+        this.hide();
+        this.props.onSuccess();
+      }
     } catch (err) {
       this.setState({ error: err.message, loading: false });
     }
