@@ -5,6 +5,7 @@ import { Sidebar } from '../sandbox/components/Sidebar.js';
 import { CostHUD } from '../sandbox/components/CostHUD.js';
 import { MintSpellFAB } from '../sandbox/components/MintSpellFAB.js';
 import { ActionModal } from '../sandbox/components/ActionModal.js';
+import { AuthWidget } from '../sandbox/components/AuthWidget.js';
 import { initStore } from '../sandbox/store.js';
 import { SandboxCanvas, loadCanvasState } from '../sandbox/canvas/SandboxCanvas.js';
 import { initializeTools } from '../sandbox/io.js';
@@ -27,6 +28,9 @@ export class Sandbox extends Component {
     this.state = {
       loading: true,
       error: null,
+      isAuthenticated: false,
+      walletDetected: false,
+      accountExists: false,
       actionModal: { visible: false, x: 0, y: 0, workspacePos: null },
     };
     this._cssLink = null;
@@ -99,23 +103,37 @@ export class Sandbox extends Component {
   }
 
   async _loadAuth() {
-    if (!window.auth?.ensureCsrfToken) {
-      await this._loadScript('/js/auth.js');
-    }
-    if (window.auth?.ensureUserCore) {
-      await window.auth.ensureUserCore();
-    }
-  }
+    // Check for existing session cookie by probing a lightweight endpoint
+    try {
+      const res = await fetch('/api/v1/user/dashboard', { credentials: 'include' });
+      if (res.ok) {
+        this.setState({ isAuthenticated: true });
+        return;
+      }
+    } catch {}
 
-  _loadScript(src) {
-    return new Promise((resolve, reject) => {
-      if (document.querySelector(`script[src="${src}"]`)) return resolve();
-      const s = document.createElement('script');
-      s.src = src;
-      s.onload = resolve;
-      s.onerror = () => reject(new Error(`Failed to load ${src}`));
-      document.head.appendChild(s);
-    });
+    // Not authenticated — run passive wallet detection
+    try {
+      const { WalletService } = await import('@monygroupcorp/micro-web3');
+      const ws = new WalletService(eventBus);
+      await ws.initialize();
+      const wallets = ws.getAvailableWallets();
+      if (wallets && wallets.length > 0) {
+        // Wallet detected — check if account exists
+        const address = ws.getAddress?.();
+        if (address) {
+          const probe = await fetch(`/api/v1/auth/account-exists?address=${address}`, { credentials: 'include' });
+          if (probe.ok) {
+            const { exists } = await probe.json();
+            this.setState({ walletDetected: true, accountExists: exists });
+            return;
+          }
+        }
+        this.setState({ walletDetected: true, accountExists: false });
+      }
+    } catch (e) {
+      console.warn('[Sandbox] Wallet detection failed:', e.message);
+    }
   }
 
   async _boot() {
@@ -146,8 +164,13 @@ export class Sandbox extends Component {
       return h('div', { className: 'sandbox-shell-error' }, `Sandbox failed to load: ${this.state.error}`);
     }
 
+    if (this.state.loading) {
+      return h('div', { className: 'sandbox-loading' }, 'Loading...');
+    }
+
     const am = this.state.actionModal;
     const { windows, connections } = this._canvasState || {};
+    const { isAuthenticated } = this.state;
 
     return h('div', { className: 'sandbox-shell' },
       h(SandboxHeader, null),
@@ -163,6 +186,10 @@ export class Sandbox extends Component {
       ),
       h(CostHUD, null),
       h(MintSpellFAB, null),
+      h(AuthWidget, {
+        initialMode: isAuthenticated ? 'hidden' : 'card',
+        onSuccess: () => this.setState({ isAuthenticated: true }),
+      }),
       h(ActionModal, {
         visible: am.visible,
         x: am.x,
