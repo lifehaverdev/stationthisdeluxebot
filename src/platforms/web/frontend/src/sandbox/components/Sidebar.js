@@ -41,36 +41,25 @@ function groupByCategory(tools) {
 }
 
 /**
- * Sidebar — collapsible tool list. Renders tools as microact vnodes.
- * Listens on eventBus for tool availability (emitted by windowManager).
+ * Sidebar — collapsible tool list.
+ *
+ * Listens for sandbox:availableTools via eventBus. Creates tool windows
+ * by calling window.sandboxCanvas.addToolWindow() — no old module graph deps.
  */
 export class Sidebar extends Component {
   constructor(props) {
     super(props);
     this.state = { collapsed: true, tools: [] };
-    this._createToolWindow = null;
   }
 
   didMount() {
-    // Listen for tools loaded by windowManager via eventBus (true singleton)
     this.subscribe('sandbox:availableTools', (tools) => {
       this.setState({ tools: [...tools] });
     });
 
-    // If tools already loaded before we mounted, pick them up
+    // Pick up tools that loaded before we mounted
     const shared = window.__sandboxState__?.availableTools;
     if (shared?.length) this.setState({ tools: [...shared] });
-
-    this._loadCreateFn();
-  }
-
-  async _loadCreateFn() {
-    try {
-      const mod = await import(/* @vite-ignore */ '/sandbox/' + 'node/index.js');
-      this._createToolWindow = mod.createToolWindow;
-    } catch (e) {
-      console.error('[Sidebar] Failed to load createToolWindow:', e);
-    }
   }
 
   _toggle() {
@@ -78,14 +67,24 @@ export class Sidebar extends Component {
   }
 
   _createTool(tool) {
-    if (!this._createToolWindow) return;
-    const canvas = document.querySelector('.sandbox-canvas');
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const pos = window.sandbox
-      ? window.sandbox.screenToWorkspace(rect.left + rect.width / 2, rect.top + rect.height / 2)
-      : { x: 200, y: 200 };
-    this._createToolWindow(tool, pos);
+    const canvas = window.sandboxCanvas;
+    if (!canvas) {
+      console.warn('[Sidebar] sandboxCanvas not ready yet');
+      return;
+    }
+
+    // Place the new window near the center of the canvas viewport
+    const canvasEl = document.querySelector('.sc-root');
+    let pos = { x: 200, y: 200 };
+    if (canvasEl) {
+      const rect = canvasEl.getBoundingClientRect();
+      pos = canvas.screenToWorkspace(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      // Offset each window a bit so they don't stack exactly
+      pos.x += (Math.random() - 0.5) * 80;
+      pos.y += (Math.random() - 0.5) * 80;
+    }
+
+    canvas.addToolWindow(tool, pos);
   }
 
   static get styles() {
@@ -125,7 +124,7 @@ export class Sidebar extends Component {
           h('button', {
             className: 'sb-tool',
             key: tool.toolId || tool.displayName,
-            onclick: () => this._createTool(tool)
+            onclick: () => this._createTool(tool),
           },
             h('div', { className: 'sb-tool-name' }, tool.displayName),
             h('div', { className: 'sb-tool-desc' }, (tool.description || '').split('.')[0]),
@@ -143,7 +142,7 @@ export class Sidebar extends Component {
     return h('div', { className: 'sb-sidebar-wrap' },
       h('aside', {
         id: 'sidebar',
-        className: `sandbox-sidebar${collapsed ? ' collapsed' : ''}`
+        className: `sandbox-sidebar${collapsed ? ' collapsed' : ''}`,
       },
         h('div', { className: 'sidebar-content' },
           h('h3', null, 'Tools'),
@@ -155,7 +154,7 @@ export class Sidebar extends Component {
       h('button', {
         id: 'sidebar-toggle',
         className: 'sidebar-toggle',
-        onclick: this.bind(this._toggle)
+        onclick: this.bind(this._toggle),
       }, collapsed ? '\u2692\uFE0E' : '\u2715')
     );
   }

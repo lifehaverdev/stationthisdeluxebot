@@ -125,6 +125,25 @@ function createReferralVaultApi(dependencies) {
     }
   });
 
+  // List the authenticated user's vaults
+  router.get('/my-vaults', async (req, res) => {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User not authenticated.' } });
+    }
+
+    try {
+      const response = await internalApiClient.get(`/internal/v1/data/ledger/vaults/by-master-account/${userId}`);
+      res.json({ vaults: response.data.vaults || [] });
+    } catch (error) {
+      if (error.response && error.response.status === 404) {
+        return res.json({ vaults: [] });
+      }
+      logger.error('[ReferralVaultApi] /my-vaults failed:', { status: error.response?.status, message: error.message });
+      res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'Failed to fetch vaults.' } });
+    }
+  });
+
   router.get('/:vaultAddress/dashboard', async (req, res) => {
     const { vaultAddress } = req.params;
     logger.debug(`[ReferralVaultApi] GET /:vaultAddress/dashboard for vault: ${vaultAddress}`);
@@ -205,6 +224,65 @@ function createReferralVaultApi(dependencies) {
         return res.status(404).json({ error: { message: 'Vault not found or has no confirmed deposits.' } });
       }
       res.status(500).json({ error: { message: 'An internal error occurred while fetching vault data.' } });
+    }
+  });
+
+  // Create a withdrawal request for a vault
+  router.post('/:vaultAddress/withdraw', async (req, res) => {
+    const userId = req.user?.userId;
+    const { vaultAddress } = req.params;
+    const { tokenAddress } = req.body;
+
+    if (!userId) {
+      return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User not authenticated.' } });
+    }
+    if (!tokenAddress) {
+      return res.status(400).json({ error: { code: 'MISSING_TOKEN', message: 'tokenAddress is required.' } });
+    }
+
+    try {
+      // Look up the vault to verify ownership
+      const vaultRes = await internalApiClient.get(`/internal/v1/data/ledger/vaults/by-address/${vaultAddress}`);
+      const vault = vaultRes.data;
+
+      if (!vault || vault.master_account_id?.toString() !== userId.toString()) {
+        return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'You do not own this vault.' } });
+      }
+
+      // Get on-chain withdrawable balance
+      let collateralAmountWei = '0';
+      try {
+        const custodyKey = contractUtils.getCustodyKey(vaultAddress, tokenAddress);
+        const packedAmount = await ethereumService.read(contractConfig.address, contractConfig.abi, 'custody', custodyKey);
+        const { userOwned } = contractUtils.splitCustodyAmount(packedAmount);
+        collateralAmountWei = userOwned.toString();
+      } catch (e) {
+        logger.error(`[ReferralVaultApi] Could not read on-chain balance for withdraw:`, e);
+        return res.status(500).json({ error: { code: 'CHAIN_READ_FAILED', message: 'Could not read on-chain balance.' } });
+      }
+
+      if (BigInt(collateralAmountWei) === 0n) {
+        return res.status(400).json({ error: { code: 'ZERO_BALANCE', message: 'Nothing to withdraw for this token.' } });
+      }
+
+      // Create withdrawal request via internal ledger
+      const requestId = `wr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const response = await internalApiClient.post('/internal/v1/data/ledger/withdrawals', {
+        request_tx_hash: requestId,
+        request_block_number: 0,
+        vault_account: vaultAddress,
+        user_address: vault.owner_address,
+        token_address: tokenAddress,
+        master_account_id: userId,
+        collateral_amount_wei: collateralAmountWei,
+      });
+
+      res.status(201).json(response.data);
+    } catch (error) {
+      logger.error('[ReferralVaultApi] /withdraw failed:', { status: error.response?.status, message: error.message });
+      const status = error.response?.status || 500;
+      const errPayload = error.response?.data || { error: { code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create withdrawal request.' } };
+      res.status(status).json(errPayload);
     }
   });
 

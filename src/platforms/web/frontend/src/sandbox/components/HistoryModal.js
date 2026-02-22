@@ -102,9 +102,9 @@ export class HistoryModal extends Component {
       );
     }
 
-    return h(Modal, { onClose: this.props.onClose, title: 'Usage History' },
+    return h(Modal, { onClose: this.props.onClose, title: 'Usage History', content: [
       ModalError({ message: error }),
       body
-    );
+    ] });
   }
 }

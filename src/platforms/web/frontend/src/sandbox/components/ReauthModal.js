@@ -175,9 +175,9 @@ export class ReauthModal extends Component {
       default: body = this._renderInitial();
     }
 
-    return h(Modal, { onClose: this.props.onClose, title: 'Re-authenticate' },
+    return h(Modal, { onClose: this.props.onClose, title: 'Re-authenticate', content: [
       ModalError({ message: error }),
       body
-    );
+    ] });
   }
 }

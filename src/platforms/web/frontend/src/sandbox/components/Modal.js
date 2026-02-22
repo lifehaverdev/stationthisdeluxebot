@@ -8,20 +8,14 @@ import { Component, h } from '@monygroupcorp/microact';
  *   title      — optional header text
  *   className  — additional class on the container
  *   wide       — if true, max-width: 720px instead of 520px
+ *   content    — array of child vnodes to render inside the modal body
  *
- * Usage:
- *   h(Modal, { onClose: () => ..., title: 'My Modal' },
+ * NOTE: microact does not inject h() children into props. Always pass body
+ * content via the `content` prop:
+ *
+ *   h(Modal, { onClose: () => ..., title: 'My Modal', content: [
  *     h('div', null, 'content here')
- *   )
- *
- * Or extend for more control:
- *   class MyModal extends Component {
- *     render() {
- *       return h(Modal, { onClose: this.props.onClose, title: 'Foo' },
- *         this._renderBody()
- *       );
- *     }
- *   }
+ *   ] })
  */
 export class Modal extends Component {
   didMount() {
@@ -66,14 +60,14 @@ export class Modal extends Component {
   }
 
   render() {
-    const { title, className, wide, onClose, children } = this.props;
+    const { title, className, wide, onClose, content } = this.props;
     const containerClass = `modal-container${wide ? ' modal-container--wide' : ''}${className ? ' ' + className : ''}`;
 
     return h('div', { className: 'modal-overlay', onclick: this.bind(this._backdrop) },
       h('div', { className: containerClass },
         h('button', { className: 'modal-close', onclick: () => onClose?.() }, '\u00D7'),
         title ? h('div', { className: 'modal-title' }, title) : null,
-        ...(Array.isArray(children) ? children : children ? [children] : [])
+        ...(Array.isArray(content) ? content : content ? [content] : [])
       )
     );
   }
@@ -89,26 +83,26 @@ export class Modal extends Component {
 export class Loader extends Component {
   static get styles() {
     return `
-      .loader { text-align: center; padding: 24px; color: #888; }
-      .loader-spinner {
+      .mk-loader { text-align: center; padding: 24px; color: #888; }
+      .mk-loader-spinner {
         width: 24px; height: 24px; border: 2px solid #333; border-top-color: #888;
-        border-radius: 50%; animation: loader-spin 0.8s linear infinite;
+        border-radius: 50%; animation: mk-loader-spin 0.8s linear infinite;
         margin: 0 auto 12px;
       }
-      @keyframes loader-spin { to { transform: rotate(360deg); } }
-      .loader-msg { font-size: 13px; margin-top: 8px; }
-      .loader-bar { height: 4px; background: #222; border-radius: 2px; margin-top: 12px; overflow: hidden; }
-      .loader-fill { height: 100%; background: #90caf9; border-radius: 2px; transition: width 0.3s; }
+      @keyframes mk-loader-spin { to { transform: rotate(360deg); } }
+      .mk-loader-msg { font-size: 13px; margin-top: 8px; }
+      .mk-loader-bar { height: 4px; background: #222; border-radius: 2px; margin-top: 12px; overflow: hidden; }
+      .mk-loader-fill { height: 100%; background: #90caf9; border-radius: 2px; transition: width 0.3s; }
     `;
   }
 
   render() {
     const { message, progress } = this.props;
-    return h('div', { className: 'loader' },
-      h('div', { className: 'loader-spinner' }),
-      message ? h('div', { className: 'loader-msg' }, message) : null,
-      progress != null ? h('div', { className: 'loader-bar' },
-        h('div', { className: 'loader-fill', style: `width:${Math.round(progress * 100)}%` })
+    return h('div', { className: 'mk-loader' },
+      h('div', { className: 'mk-loader-spinner' }),
+      message ? h('div', { className: 'mk-loader-msg' }, message) : null,
+      progress != null ? h('div', { className: 'mk-loader-bar' },
+        h('div', { className: 'mk-loader-fill', style: `width:${Math.round(progress * 100)}%` })
       ) : null
     );
   }

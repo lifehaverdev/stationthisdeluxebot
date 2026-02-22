@@ -45,6 +45,12 @@ export function shortHash(value) {
   return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }
 
+export function shortenAddress(addr) {
+  if (!addr) return '';
+  if (addr.startsWith('0x1152')) return addr.slice(0, 10) + '...' + addr.slice(-4);
+  return addr.slice(0, 6) + '...' + addr.slice(-4);
+}
+
 export function relativeTime(timestamp) {
   if (!timestamp) return '';
   const deltaMs = Date.now() - new Date(timestamp).getTime();

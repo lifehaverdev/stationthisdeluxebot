@@ -32,9 +32,10 @@ export class OnboardingOverlay extends Component {
         'onboarding/steps/workspaceTourStep.js',
         'onboarding/steps/toolsBarStep.js',
       ];
+      // TODO: Port onboarding step modules to Vite bundle
       const modules = await Promise.all(
-        stepPaths.map(p => import(/* @vite-ignore */ '/sandbox/' + p))
-      );
+        stepPaths.map(p => import(`../onboarding/${p.split('/').pop()}`).catch(() => null))
+      ).then(mods => mods.filter(Boolean));
       this._steps = modules.map(m => new (m.default)());
       this.setState({ ready: true });
       this._renderCurrentStep();

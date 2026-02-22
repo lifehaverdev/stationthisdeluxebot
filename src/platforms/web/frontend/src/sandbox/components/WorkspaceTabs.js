@@ -47,16 +47,14 @@ export class WorkspaceTabs extends Component {
 
   async _getWorkspacesModule() {
     if (!this._wsModule) {
-      const url = '/sandbox/' + 'workspaces.js';
-      this._wsModule = await import(/* @vite-ignore */ url);
+      this._wsModule = await import('../workspaces.js');
     }
     return this._wsModule;
   }
 
   async _getStateModule() {
     if (!this._stModule) {
-      const url = '/sandbox/' + 'state.js';
-      this._stModule = await import(/* @vite-ignore */ url);
+      this._stModule = await import('../state.js');
     }
     return this._stModule;
   }

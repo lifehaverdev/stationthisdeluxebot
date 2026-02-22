@@ -1,27 +1,26 @@
 /**
- * SandboxStore — reactive wrapper around the vanilla sandbox state.js.
+ * SandboxStore — reactive wrapper around state.js.
  *
- * Phase 1: provides subscribe(key, fn) and dispatch(action, payload)
- * so microact components can react to state changes without polling.
+ * Provides subscribe(key, fn) and dispatch(action, payload) so microact
+ * components can react to state changes without polling.
  *
- * During the strangler-fig migration, state.js remains the source of truth.
- * The store imports it at runtime via dynamic import (served as ESM from /sandbox/).
- * Once migration is complete (Phase 6), the store replaces state.js entirely.
+ * state.js is now Vite-bundled (no more dual module graph).
+ * The window.__sandboxState__ backing store remains for any legacy
+ * vanilla code that hasn't been ported yet.
  */
 
 import { eventBus } from '@monygroupcorp/microact';
+import * as stateModuleImport from './state.js';
 
-let stateModule = null;
+let stateModule = stateModuleImport;
 const subscribers = new Map(); // key -> Set<callback>
 
 /**
- * Initialize the store by loading state.js at runtime.
- * Must be called once before using any other store methods.
+ * Initialize the store. Now synchronous since state.js is Vite-bundled.
+ * Kept async for backwards compatibility with callers that await it.
  */
 export async function initStore() {
-  if (stateModule) return;
-  const url = '/sandbox/' + 'state.js';
-  stateModule = await import(/* @vite-ignore */ url);
+  // state.js is already imported — nothing to do
 }
 
 // ── Subscription System ──────────────────────────────────────────────

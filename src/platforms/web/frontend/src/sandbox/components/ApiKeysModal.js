@@ -132,6 +132,6 @@ export class ApiKeysModal extends Component {
     else if (loading) body = h(Loader, { message: 'Loading keys...' });
     else body = this._renderList();
 
-    return h(Modal, { onClose: this.props.onClose, title }, body);
+    return h(Modal, { onClose: this.props.onClose, title, content: [body] });
   }
 }

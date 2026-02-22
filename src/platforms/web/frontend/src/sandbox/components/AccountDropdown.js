@@ -1,18 +1,15 @@
 import { Component, h } from '@monygroupcorp/microact';
 import { fetchJson } from '../../lib/api.js';
+import { shortenAddress } from '../../lib/format.js';
 import { HistoryModal } from './HistoryModal.js';
 import { ApiKeysModal } from './ApiKeysModal.js';
-
-function shortenWallet(addr) {
-  if (!addr) return '';
-  if (addr.startsWith('0x1152')) return addr.slice(0, 10) + '...' + addr.slice(-4);
-  return addr.slice(0, 6) + '...' + addr.slice(-4);
-}
+import { VaultModal } from './VaultModal.js';
+import { BuyPointsModal } from './BuyPointsModal.js';
 
 export class AccountDropdown extends Component {
   constructor(props) {
     super(props);
-    this.state = { open: false, loading: true, error: null, data: null, showHistory: false, showApiKeys: false };
+    this.state = { open: false, loading: true, error: null, data: null, showHistory: false, showApiKeys: false, showVaults: false, showBuyPoints: false };
   }
 
   didMount() {
@@ -48,12 +45,8 @@ export class AccountDropdown extends Component {
     switch (name) {
       case 'history': this.setState({ showHistory: true }); break;
       case 'apikeys': this.setState({ showApiKeys: true }); break;
-      case 'get-more-points':
-        if (window.openBuyPointsModal) window.openBuyPointsModal();
-        break;
-      case 'setup-referral':
-        if (window.openReferralVaultModal) window.openReferralVaultModal();
-        break;
+      case 'get-more-points': this.setState({ showBuyPoints: true }); break;
+      case 'vaults': this.setState({ showVaults: true }); break;
       case 'logout': window.location.href = '/logout'; break;
     }
   }
@@ -98,6 +91,7 @@ export class AccountDropdown extends Component {
       h('div', { className: 'acct-header' }, 'Account'),
       ...items,
       h('div', { className: 'acct-actions' },
+        h('a', { className: 'acct-action', href: '#', onclick: (e) => this._action('vaults', e) }, 'Referral Vaults'),
         h('a', { className: 'acct-action', href: '#', onclick: (e) => this._action('history', e) }, 'History'),
         h('a', { className: 'acct-action', href: '#', onclick: (e) => this._action('apikeys', e) }, 'API Keys'),
         h('a', { className: 'acct-action', href: '#', onclick: (e) => this._action('logout', e) }, 'Logout')
@@ -106,14 +100,16 @@ export class AccountDropdown extends Component {
   }
 
   render() {
-    const { open, data, showHistory, showApiKeys } = this.state;
-    const label = data?.wallet ? shortenWallet(data.wallet) : 'Account';
+    const { open, data, showHistory, showApiKeys, showVaults, showBuyPoints } = this.state;
+    const label = data?.wallet ? shortenAddress(data.wallet) : 'Account';
 
     return h('div', { className: 'acct-root', ref: (el) => { this._ref = el; } },
       h('button', { className: 'acct-btn', onclick: this.bind(this._toggle) }, label),
       open ? this._renderMenu() : null,
       showHistory ? h(HistoryModal, { onClose: () => this.setState({ showHistory: false }) }) : null,
-      showApiKeys ? h(ApiKeysModal, { onClose: () => this.setState({ showApiKeys: false }) }) : null
+      showApiKeys ? h(ApiKeysModal, { onClose: () => this.setState({ showApiKeys: false }) }) : null,
+      showVaults ? h(VaultModal, { onClose: () => this.setState({ showVaults: false }) }) : null,
+      showBuyPoints ? h(BuyPointsModal, { onClose: () => this.setState({ showBuyPoints: false }) }) : null
     );
   }
 }

@@ -1,12 +1,10 @@
-import { Component, h } from '@monygroupcorp/microact';
+import { Component, h, eventBus } from '@monygroupcorp/microact';
 import { subscribe, getSelectedNodeIds } from '../store.js';
 
 /**
  * MintSpellFAB — floating action button shown when 2+ nodes are selected.
- * Clicking serializes the selected subgraph and opens the spell creation flow.
- *
- * The heavy SpellsMenuModal and subgraph serializer are loaded at runtime
- * to keep this component's bundle footprint near zero.
+ * Clicking serializes the selected subgraph and emits an event for
+ * SandboxHeader to open SpellsModal in create mode.
  */
 export class MintSpellFAB extends Component {
   constructor(props) {
@@ -25,18 +23,13 @@ export class MintSpellFAB extends Component {
     const ids = getSelectedNodeIds();
     if (ids.size < 2) return;
 
-    // Dynamic imports — these are big modules served as ESM from /sandbox/
-    const subgraphUrl = '/sandbox/' + 'subgraph.js';
-    const spellsUrl = '/sandbox/' + 'components/SpellsMenuModal.js';
-
-    const [{ serializeSubgraph }, { default: SpellsMenuModal }] = await Promise.all([
-      import(/* @vite-ignore */ subgraphUrl),
-      import(/* @vite-ignore */ spellsUrl)
-    ]);
-
+    // Dynamic import — subgraph serializer is served from /sandbox/
+    
+    const { serializeSubgraph } = await import('../subgraph.js');
     const subgraph = serializeSubgraph(ids);
-    const modal = new SpellsMenuModal({ initialData: { subgraph } });
-    modal.show();
+
+    // Emit event for SandboxHeader to open SpellsModal with subgraph
+    eventBus.emit('openSpellsModal', { subgraph });
   }
 
   static get styles() {

@@ -1,6 +1,8 @@
 import { Component, h } from '@monygroupcorp/microact';
 import { AccountDropdown } from './AccountDropdown.js';
-import { openSpellsMenu, openCookMenu, openModsMenu } from './modals.js';
+import { SpellsModal } from './SpellsModal.js';
+import { CookModal } from './CookModal.js';
+import { ModsModal } from './ModsModal.js';
 
 /**
  * SandboxHeader — top navigation bar for the sandbox.
@@ -11,7 +13,14 @@ import { openSpellsMenu, openCookMenu, openModsMenu } from './modals.js';
 export class SandboxHeader extends Component {
   constructor(props) {
     super(props);
-    this.state = { mobileOpen: false };
+    this.state = { mobileOpen: false, showSpells: false, spellSubgraph: null, showCook: false, showMods: false };
+  }
+
+  didMount() {
+    // Listen for MintSpellFAB opening the spells modal with a subgraph
+    this.subscribe('openSpellsModal', (data) => {
+      this.setState({ showSpells: true, spellSubgraph: data?.subgraph || null });
+    });
   }
 
   _toggleMobile() {
@@ -22,9 +31,9 @@ export class SandboxHeader extends Component {
     e.preventDefault();
     this.setState({ mobileOpen: false });
     switch (action) {
-      case 'spells': openSpellsMenu(); break;
-      case 'cook': openCookMenu(); break;
-      case 'mods': openModsMenu(); break;
+      case 'spells': this.setState({ showSpells: true }); break;
+      case 'cook': this.setState({ showCook: true }); break;
+      case 'mods': this.setState({ showMods: true }); break;
     }
   }
 
@@ -61,7 +70,7 @@ export class SandboxHeader extends Component {
   }
 
   render() {
-    const { mobileOpen } = this.state;
+    const { mobileOpen, showSpells, showCook, showMods } = this.state;
     const headerClass = `sb-header sandbox-header${mobileOpen ? ' is-open' : ''}`;
 
     return h('header', { className: headerClass },
@@ -76,7 +85,17 @@ export class SandboxHeader extends Component {
       ),
       h('div', { className: 'user-menu' },
         h(AccountDropdown, null)
-      )
+      ),
+      showSpells ? h(SpellsModal, {
+        onClose: () => this.setState({ showSpells: false, spellSubgraph: null }),
+        initialSubgraph: this.state.spellSubgraph,
+      }) : null,
+      showCook ? h(CookModal, {
+        onClose: () => this.setState({ showCook: false }),
+      }) : null,
+      showMods ? h(ModsModal, {
+        onClose: () => this.setState({ showMods: false }),
+      }) : null
     );
   }
 }

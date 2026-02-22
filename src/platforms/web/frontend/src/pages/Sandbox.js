@@ -1,43 +1,41 @@
-import { Component, h } from '@monygroupcorp/microact';
+import { Component, h, eventBus } from '@monygroupcorp/microact';
 import { SandboxHeader } from '../sandbox/components/SandboxHeader.js';
 import { WorkspaceTabs } from '../sandbox/components/WorkspaceTabs.js';
 import { Sidebar } from '../sandbox/components/Sidebar.js';
 import { CostHUD } from '../sandbox/components/CostHUD.js';
 import { MintSpellFAB } from '../sandbox/components/MintSpellFAB.js';
 import { ActionModal } from '../sandbox/components/ActionModal.js';
-import { initStore, dispatch } from '../sandbox/store.js';
-import { createViewport } from '../sandbox/viewport.js';
-import { ToolWindowManager } from '../sandbox/windowManager.js';
-import { ExecutionService } from '../sandbox/execution.js';
+import { initStore } from '../sandbox/store.js';
+import { SandboxCanvas, loadCanvasState } from '../sandbox/canvas/SandboxCanvas.js';
+import { initializeTools } from '../sandbox/io.js';
 
 /**
- * SandboxShell — the top-level sandbox page.
+ * Sandbox — top-level sandbox page.
  *
  * Boot sequence:
- *   1. Render DOM (header, canvas, sidebar, HUD, FAB, action modal)
- *   2. Load auth.js + initialize store
- *   3. Create viewport (zoom/pan/lasso)
- *   4. Initialize window manager (tool restore)
- *   5. Initialize execution service (WebSocket + handlers)
- *   6. Run sandbox init() (fetch interceptor, session keepalive, paste handler)
- *   7. Recover pending generations
+ *   1. Load auth
+ *   2. Init store
+ *   3. Fetch tool registry → notify Sidebar via eventBus
+ *   4. Mount SandboxCanvas (handles viewport, windows, connections, execution)
+ *
+ * SandboxCanvas exposes itself at window.sandboxCanvas for Sidebar + ActionModal.
  */
 export class Sandbox extends Component {
   constructor(props) {
     super(props);
+    this._canvasState = loadCanvasState();
     this.state = {
-      loading: true, error: null,
-      actionModal: { visible: false, x: 0, y: 0, workspacePos: null }
+      loading: true,
+      error: null,
+      actionModal: { visible: false, x: 0, y: 0, workspacePos: null },
     };
     this._cssLink = null;
-    this._viewport = null;
-    this._windowManager = null;
-    this._execution = null;
   }
 
   didMount() {
     window.__SANDBOX_SPA_MANAGED__ = true;
 
+    // Load sandbox CSS (served from /index.css via Express static)
     this._cssLink = document.createElement('link');
     this._cssLink.rel = 'stylesheet';
     this._cssLink.href = '/index.css';
@@ -46,7 +44,7 @@ export class Sandbox extends Component {
     document.body.style.overflow = 'hidden';
     document.documentElement.style.overflow = 'hidden';
 
-    // Canvas click handler for action modal + selection clearing
+    // Canvas background click → show ActionModal
     this._clickHandler = (e) => this._onCanvasClick(e);
     document.addEventListener('click', this._clickHandler);
 
@@ -54,55 +52,50 @@ export class Sandbox extends Component {
       .then(() => initStore())
       .then(() => this._boot())
       .catch(err => {
-        console.error('[SandboxShell] Init failed:', err);
+        console.error('[Sandbox] Init failed:', err);
         this.setState({ loading: false, error: err.message });
       });
   }
 
   willUnmount() {
-    if (this._viewport) this._viewport.destroy();
-    if (this._execution) this._execution.destroy();
     if (this._clickHandler) document.removeEventListener('click', this._clickHandler);
     if (this._cssLink?.parentNode) this._cssLink.parentNode.removeChild(this._cssLink);
     document.body.style.overflow = '';
     document.documentElement.style.overflow = '';
     delete window.__SANDBOX_SPA_MANAGED__;
-    delete window.__reloadSandboxState;
   }
 
   _onCanvasClick(e) {
-    // Ignore clicks on UI elements
-    if (e.target.closest('.tool-window, .act-modal, #sidebar, .sidebar-toggle, .cost-hud, .sb-header, .ws-suite')) {
-      return;
-    }
+    // Only handle clicks on the canvas background — not on windows or other UI
+    if (!e.target.closest('.sc-root')) return;
+    if (e.target.closest('.nw-root, .act-modal, #sidebar, .sidebar-toggle, .cost-hud, .sb-header, .ws-suite, .cdp-root')) return;
 
-    // Clear selection on background click
-    const stateModule = window.__sandboxState__;
-    if (stateModule?.selectedNodeIds?.size > 0) {
-      import(/* @vite-ignore */ '/sandbox/' + 'state.js').then(s => s.clearSelection());
-    }
+    // Spec 3: an anchor was just dropped on empty canvas — the drop picker is
+    // handling this click, don't also open the ActionModal.
+    if (window.sandboxCanvas?._anchorDropPending) return;
 
-    // Dismiss action modal if open
+    // Dismiss modal on second click
     if (this.state.actionModal.visible) {
       this.setState({ actionModal: { visible: false, x: 0, y: 0, workspacePos: null } });
       return;
     }
 
-    // Show action modal on canvas click
-    const content = document.querySelector('.sandbox-content');
-    if (content?.contains(e.target) && window.sandbox) {
-      const wp = window.sandbox.screenToWorkspace(e.clientX, e.clientY);
-      dispatch('SET_LAST_CLICK', wp);
+    // Get workspace position from canvas
+    const canvas = window.sandboxCanvas;
+    const workspacePos = canvas ? canvas.screenToWorkspace(e.clientX, e.clientY) : { x: 200, y: 200 };
 
-      const rect = content.getBoundingClientRect();
-      const pad = 20;
-      let mx = e.clientX, my = e.clientY - 80;
-      if (my < rect.top + pad) my = e.clientY + pad;
-      mx = Math.max(rect.left + pad, Math.min(rect.right - pad, mx));
-      my = Math.max(rect.top + pad, Math.min(rect.bottom - pad, my));
+    // Position the modal near the click, clamped to viewport
+    const canvasEl = document.querySelector('.sc-root');
+    if (!canvasEl) return;
+    const rect = canvasEl.getBoundingClientRect();
+    const pad = 20;
+    let mx = e.clientX;
+    let my = e.clientY - 80;
+    if (my < rect.top + pad) my = e.clientY + pad;
+    mx = Math.max(rect.left + pad, Math.min(rect.right - pad - 120, mx));
+    my = Math.max(rect.top + pad, Math.min(rect.bottom - pad, my));
 
-      this.setState({ actionModal: { visible: true, x: mx, y: my, workspacePos: wp } });
-    }
+    this.setState({ actionModal: { visible: true, x: mx, y: my, workspacePos } });
   }
 
   async _loadAuth() {
@@ -126,48 +119,25 @@ export class Sandbox extends Component {
   }
 
   async _boot() {
-    const [stateModule, connectionsModule] = await Promise.all([
-      import(/* @vite-ignore */ '/sandbox/' + 'state.js'),
-      import(/* @vite-ignore */ '/sandbox/' + 'connections/index.js')
-    ]);
-
-    // 1. Viewport
-    const canvasEl = document.querySelector('.sandbox-canvas');
-    const contentEl = document.querySelector('.sandbox-content');
-    if (canvasEl && contentEl) {
-      this._viewport = createViewport({ canvasEl, contentEl, state: stateModule, connections: connectionsModule });
+    // Fetch tools → Sidebar listens for this event
+    try {
+      const tools = await initializeTools();
+      eventBus.emit('sandbox:availableTools', tools);
+    } catch (e) {
+      console.warn('[Sandbox] Tool load failed:', e);
+      eventBus.emit('sandbox:availableTools', []);
     }
-
-    // 2. Window manager
-    this._windowManager = new ToolWindowManager();
-    await this._windowManager.init();
-
-    // 3. Sandbox init (fetch interceptor, session keepalive, paste handler)
-    const { init } = await import(/* @vite-ignore */ '/sandbox/' + 'index.js');
-    await init();
-
-    // 4. Execution service
-    this._execution = new ExecutionService();
-    await this._execution.init();
-
-    // 5. Reload helper
-    window.__reloadSandboxState = () => this._windowManager.reloadState();
-    window.addEventListener('sandboxSnapshotUpdated', async () => {
-      try { await this._windowManager.reloadState(); } catch (e) {
-        console.error('[Sandbox] Reload failed:', e);
-      }
-    });
-
-    // 6. Recover pending generations
-    this._execution.recoverPendingGenerations();
 
     this.setState({ loading: false });
   }
 
   static get styles() {
     return `
-      .sandbox-shell { height: 100vh; width: 100vw; position: relative; display: flex; flex-direction: column; background-color: #121212; overflow: hidden; }
+      .sandbox-shell { height: 100vh; width: 100vw; position: relative; display: flex; flex-direction: column; background: #121212; overflow: hidden; }
+      .sandbox-main { flex: 1; display: flex; overflow: hidden; min-height: 0; }
+      .sandbox-content { flex: 1; position: relative; overflow: hidden; }
       .sandbox-shell-error { display: flex; align-items: center; justify-content: center; height: 100vh; color: #f44; font-size: 14px; }
+      .sandbox-loading { display: flex; align-items: center; justify-content: center; height: 100vh; color: #888; font-size: 14px; }
     `;
   }
 
@@ -177,14 +147,17 @@ export class Sandbox extends Component {
     }
 
     const am = this.state.actionModal;
+    const { windows, connections } = this._canvasState || {};
 
     return h('div', { className: 'sandbox-shell' },
       h(SandboxHeader, null),
       h(WorkspaceTabs, null),
       h('main', { className: 'sandbox-main' },
         h('section', { className: 'sandbox-content' },
-          h('div', { className: 'sandbox-bg' }),
-          h('div', { className: 'sandbox-canvas' })
+          h(SandboxCanvas, {
+            initialWindows: windows || [],
+            initialConnections: connections || [],
+          })
         ),
         h(Sidebar, null)
       ),
@@ -195,7 +168,7 @@ export class Sandbox extends Component {
         x: am.x,
         y: am.y,
         workspacePosition: am.workspacePos,
-        onClose: () => this.setState({ actionModal: { visible: false, x: 0, y: 0, workspacePos: null } })
+        onClose: () => this.setState({ actionModal: { visible: false, x: 0, y: 0, workspacePos: null } }),
       })
     );
   }
