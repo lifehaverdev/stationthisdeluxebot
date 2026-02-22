@@ -1,5 +1,5 @@
-import { Component, h } from '@monygroupcorp/microact';
-import { fetchJson } from '../../lib/api.js';
+import { Component, h, eventBus } from '@monygroupcorp/microact';
+import { fetchJson, postWithCsrf } from '../../lib/api.js';
 import { shortenAddress } from '../../lib/format.js';
 import { HistoryModal } from './HistoryModal.js';
 import { ApiKeysModal } from './ApiKeysModal.js';
@@ -28,6 +28,16 @@ export class AccountDropdown extends Component {
       const data = await fetchJson('/api/v1/user/dashboard');
       this.setState({ data, loading: false });
     } catch (err) {
+      if (err.message.includes('401')) {
+        // Try silent refresh first
+        try {
+          const refreshRes = await postWithCsrf('/api/v1/auth/session/refresh', {});
+          if (refreshRes.ok) return this._fetch();
+        } catch {}
+        // Surface the AuthWidget — user needs to sign in
+        eventBus.emit('sandbox:requireAuth');
+        return;
+      }
       this.setState({ error: err.message, loading: false });
     }
   }
