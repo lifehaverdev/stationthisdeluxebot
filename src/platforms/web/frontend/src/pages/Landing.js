@@ -1,6 +1,6 @@
 import { Component, h } from '@monygroupcorp/microact';
 import { fetchJson } from '../lib/api.js';
-import { AuthModal } from '../components/AuthModal.js';
+import { getAppUrl } from '../lib/urls.js';
 
 export class Landing extends Component {
   constructor(props) {
@@ -10,7 +10,6 @@ export class Landing extends Component {
       toolsLoading: true,
       toolsError: null,
     };
-    this.authModalRef = null;
   }
 
   async didMount() {
@@ -28,10 +27,6 @@ export class Landing extends Component {
     } catch (err) {
       this.setState({ toolsError: err.message, toolsLoading: false });
     }
-  }
-
-  openAuth() {
-    if (this.authModalRef) this.authModalRef.show();
   }
 
   static get styles() {
@@ -147,7 +142,7 @@ export class Landing extends Component {
         h('h1', null, 'NOEMA.ART'),
         h('p', { className: 'subtitle' }, '[Powered by StationThis]'),
         h('p', { className: 'tagline' }, 'Generative Studio for Manifestation'),
-        h('button', { className: 'landing-cta', onClick: this.bind(this.openAuth) }, 'Create Now')
+        h('a', { className: 'landing-cta', href: getAppUrl() }, 'Create Now')
       ),
 
       // Tools
@@ -181,8 +176,6 @@ export class Landing extends Component {
         )
       ),
 
-      // Auth Modal
-      h(AuthModal, { ref: (inst) => { this.authModalRef = inst; } })
     );
   }
 }
