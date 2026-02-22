@@ -21,6 +21,11 @@ export class AccountDropdown extends Component {
     };
     document.addEventListener('click', this._outsideClick);
     this.registerCleanup(() => document.removeEventListener('click', this._outsideClick));
+
+    // Re-fetch after successful sign-in so account data loads without a page refresh
+    const onAuthSuccess = () => this._fetch();
+    eventBus.on('auth:success', onAuthSuccess);
+    this.registerCleanup(() => eventBus.off('auth:success', onAuthSuccess));
   }
 
   async _fetch() {

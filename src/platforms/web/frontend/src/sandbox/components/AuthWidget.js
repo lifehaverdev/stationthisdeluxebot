@@ -6,9 +6,12 @@ import { postWithCsrf } from '../../lib/api.js';
  * AuthWidget — persistent minimizable auth card for the sandbox.
  *
  * States: 'card' (full visible), 'badge' (corner icon), 'hidden' (authed).
- * Listens for sandbox:executeAttempt to re-expand when user tries to run a tool.
- * Listens for sandbox:requireAuth to re-expand when a 401 is encountered.
+ * Listens for sandbox:executeAttempt / sandbox:requireAuth to re-expand.
  * Emits auth:success on successful sign-in.
+ *
+ * Render note: always produces the same DOM structure — only style/disabled
+ * attributes change. This avoids microact null→element diff crashes that occur
+ * when conditional null children are used.
  */
 export class AuthWidget extends Component {
   constructor(props) {
@@ -16,7 +19,7 @@ export class AuthWidget extends Component {
     this.state = {
       mode: props?.initialMode || 'card',  // 'card' | 'badge' | 'hidden'
       view: 'main',                         // 'main' | 'password' | 'apikey'
-      error: null,
+      error: '',
       loading: false,
     };
     this.walletService = new WalletService(eventBus);
@@ -32,7 +35,7 @@ export class AuthWidget extends Component {
     });
   }
 
-  _minimize() { this.setState({ mode: 'badge', error: null }); }
+  _minimize() { this.setState({ mode: 'badge', error: '' }); }
   _expand()   { this.setState({ mode: 'card' }); }
 
   _success() {
@@ -42,7 +45,7 @@ export class AuthWidget extends Component {
   }
 
   async connectWallet() {
-    this.setState({ loading: true, error: null });
+    this.setState({ loading: true, error: '' });
     try {
       const wallets = this.walletService.getAvailableWallets();
       if (!wallets || wallets.length === 0) {
@@ -65,13 +68,13 @@ export class AuthWidget extends Component {
 
       this._success();
     } catch (err) {
-      this.setState({ error: err.message, loading: false });
+      this.setState({ error: err.message || 'Connection failed.', loading: false });
     }
   }
 
   async submitPassword(e) {
     e.preventDefault();
-    this.setState({ loading: true, error: null });
+    this.setState({ loading: true, error: '' });
     try {
       const form = e.target;
       const username = form.querySelector('[name="username"]').value;
@@ -80,13 +83,13 @@ export class AuthWidget extends Component {
       if (!res.ok) { const err = await res.json(); throw new Error(err.error?.message || 'Login failed.'); }
       this._success();
     } catch (err) {
-      this.setState({ error: err.message, loading: false });
+      this.setState({ error: err.message || 'Login failed.', loading: false });
     }
   }
 
   async submitApiKey(e) {
     e.preventDefault();
-    this.setState({ loading: true, error: null });
+    this.setState({ loading: true, error: '' });
     try {
       const form = e.target;
       const apikey = form.querySelector('[name="apikey"]').value;
@@ -94,7 +97,7 @@ export class AuthWidget extends Component {
       if (!res.ok) { const err = await res.json(); throw new Error(err.error?.message || 'API key login failed.'); }
       this._success();
     } catch (err) {
-      this.setState({ error: err.message, loading: false });
+      this.setState({ error: err.message || 'Login failed.', loading: false });
     }
   }
 
@@ -108,16 +111,16 @@ export class AuthWidget extends Component {
       .aw-badge:hover { border-color: #555; color: #fff; }
       .aw-overlay {
         position: fixed; inset: 0; z-index: 400;
-        display: flex; align-items: flex-start; justify-content: flex-end;
-        padding: 60px 16px 0; pointer-events: none;
+        display: flex; align-items: center; justify-content: center;
+        background: rgba(0,0,0,0.55); pointer-events: all;
       }
       .aw-card {
-        background: #141414; border: 1px solid #2a2a2a; border-radius: 8px;
-        padding: 1.5rem; width: 320px; pointer-events: all;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+        background: #141414; border: 1px solid #2a2a2a; border-radius: 12px;
+        padding: 2rem; width: 360px;
+        box-shadow: 0 16px 48px rgba(0,0,0,0.8);
       }
-      .aw-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; }
-      .aw-header h3 { color: #fff; font-size: 1rem; margin: 0; }
+      .aw-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
+      .aw-header h3 { color: #fff; font-size: 1.1rem; margin: 0; }
       .aw-minimize { background: none; border: none; color: #888; font-size: 1.2rem; cursor: pointer; padding: 0; width: auto; }
       .aw-minimize:hover { color: #fff; }
       .aw-error {
@@ -125,7 +128,7 @@ export class AuthWidget extends Component {
         padding: 0.5rem 0.75rem; border-radius: 4px; margin-bottom: 1rem; font-size: 0.85rem;
       }
       .aw-card button, .aw-card input[type="submit"] {
-        width: 100%; padding: 0.6rem; border: none; border-radius: 4px;
+        width: 100%; padding: 0.65rem; border: none; border-radius: 4px;
         cursor: pointer; font-size: 0.95rem; margin-bottom: 0.5rem;
       }
       .aw-btn-wallet { background: #fff; color: #0a0a0a; font-weight: 600; }
@@ -145,60 +148,76 @@ export class AuthWidget extends Component {
     `;
   }
 
-  _renderMain() {
-    const { loading } = this.state;
-    return [
-      h('button', {
-        className: 'aw-btn-wallet',
-        disabled: loading,
-        onClick: this.bind(this.connectWallet),
-      }, loading ? 'Connecting...' : 'Connect Wallet'),
-      h('div', { className: 'aw-alt' },
-        h('a', { onClick: () => this.setState({ view: 'password', error: null }) }, 'Username / Password'),
-        ' or ',
-        h('a', { onClick: () => this.setState({ view: 'apikey', error: null }) }, 'API Key')
-      ),
-    ];
-  }
-
-  _renderPasswordForm() {
-    return h('form', { onSubmit: this.bind(this.submitPassword) },
-      h('input', { type: 'text', name: 'username', placeholder: 'Username', required: true }),
-      h('input', { type: 'password', name: 'password', placeholder: 'Password', required: true }),
-      h('button', { type: 'submit', className: 'aw-btn-submit', disabled: this.state.loading },
-        this.state.loading ? 'Logging in...' : 'Login'),
-      h('a', { className: 'aw-back', onClick: () => this.setState({ view: 'main', error: null }) }, '\u2190 Back')
-    );
-  }
-
-  _renderApiKeyForm() {
-    return h('form', { onSubmit: this.bind(this.submitApiKey) },
-      h('input', { type: 'text', name: 'apikey', placeholder: 'API Key', required: true }),
-      h('button', { type: 'submit', className: 'aw-btn-submit', disabled: this.state.loading },
-        this.state.loading ? 'Logging in...' : 'Login'),
-      h('a', { className: 'aw-back', onClick: () => this.setState({ view: 'main', error: null }) }, '\u2190 Back')
-    );
-  }
-
   render() {
-    const { mode, view, error } = this.state;
-    if (mode === 'hidden') return null;
+    const { mode, view, error, loading } = this.state;
+    const isHidden = mode === 'hidden';
+    const isBadge = mode === 'badge';
 
-    if (mode === 'badge') {
-      return h('button', { className: 'aw-badge', onClick: this.bind(this._expand) }, 'Sign In');
-    }
+    // Always render the same DOM structure — style attributes control visibility.
+    // This prevents microact null→element diff crashes from conditional children.
+    return h('div', { className: 'aw-root', style: isHidden ? 'display:none' : '' },
 
-    // mode === 'card'
-    return h('div', { className: 'aw-overlay' },
-      h('div', { className: 'aw-card' },
-        h('div', { className: 'aw-header' },
-          h('h3', null, 'Sign In'),
-          h('button', { className: 'aw-minimize', onClick: this.bind(this._minimize) }, '\u2212')
-        ),
-        error ? h('div', { className: 'aw-error' }, error) : null,
-        view === 'main'     ? this._renderMain()         : null,
-        view === 'password' ? this._renderPasswordForm() : null,
-        view === 'apikey'   ? this._renderApiKeyForm()   : null
+      // Badge (minimized corner button)
+      h('button', {
+        className: 'aw-badge',
+        style: isBadge ? '' : 'display:none',
+        onClick: this.bind(this._expand),
+      }, 'Sign In'),
+
+      // Card (centered modal)
+      h('div', {
+        className: 'aw-overlay',
+        style: isBadge ? 'display:none' : '',
+      },
+        h('div', { className: 'aw-card' },
+          h('div', { className: 'aw-header' },
+            h('h3', null, 'Sign In'),
+            h('button', { className: 'aw-minimize', onClick: this.bind(this._minimize) }, '\u2212')
+          ),
+
+          // Error — always rendered, hidden when empty
+          h('div', {
+            className: 'aw-error',
+            style: error ? '' : 'display:none',
+          }, error),
+
+          // Main view
+          h('div', { style: view !== 'main' ? 'display:none' : '' },
+            h('button', {
+              className: 'aw-btn-wallet',
+              disabled: loading,
+              onClick: this.bind(this.connectWallet),
+            }, loading ? 'Connecting...' : 'Connect Wallet'),
+            h('div', { className: 'aw-alt' },
+              h('a', { onClick: () => this.setState({ view: 'password', error: '' }) }, 'Username / Password'),
+              ' or ',
+              h('a', { onClick: () => this.setState({ view: 'apikey', error: '' }) }, 'API Key')
+            )
+          ),
+
+          // Password view
+          h('form', {
+            style: view !== 'password' ? 'display:none' : '',
+            onSubmit: this.bind(this.submitPassword),
+          },
+            h('input', { type: 'text', name: 'username', placeholder: 'Username', required: true }),
+            h('input', { type: 'password', name: 'password', placeholder: 'Password', required: true }),
+            h('button', { type: 'submit', className: 'aw-btn-submit', disabled: loading },
+              loading ? 'Logging in...' : 'Login'),
+            h('a', { className: 'aw-back', onClick: () => this.setState({ view: 'main', error: '' }) }, '\u2190 Back')
+          ),
+
+          // API Key view
+          h('form', {
+            style: view !== 'apikey' ? 'display:none' : '',
+            onSubmit: this.bind(this.submitApiKey),
+          },
+            h('input', { type: 'text', name: 'apikey', placeholder: 'API Key', required: true }),
+            h('button', { type: 'submit', className: 'aw-btn-submit', disabled: loading },
+              loading ? 'Logging in...' : 'Login'),
+            h('a', { className: 'aw-back', onClick: () => this.setState({ view: 'main', error: '' }) }, '\u2190 Back')
+          )
+        )
       )
     );
   }
