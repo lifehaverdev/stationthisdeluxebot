@@ -90,57 +90,42 @@ export class WindowRenderer extends Component {
 
   static get styles() {
     return `
+      /* Visual chrome lives in toolWindow.css — these styles handle
+         renderer-specific positioning and connection anchor interaction. */
       .nw-root {
         position: absolute;
-        background: #1a1a1a;
-        border: 1px solid #333;
-        border-radius: 8px;
-        min-width: 280px;
-        max-width: 400px;
-        box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-        z-index: 10;
+        z-index: var(--z-node);
+        pointer-events: auto;
       }
-      .nw-root:hover { border-color: #444; }
-      .nw-root--selected { border-color: #90caf9; box-shadow: 0 0 0 2px rgba(144,202,249,0.3); }
 
-      .nw-header {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 12px;
-        background: rgba(255,255,255,0.03);
-        border-bottom: 1px solid #333;
-        border-radius: 8px 8px 0 0;
-        cursor: grab;
-        user-select: none;
-      }
-      .nw-header:active { cursor: grabbing; }
-      .nw-title { font-weight: 600; font-size: 13px; color: #e0e0e0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .nw-close { background: none; border: none; color: #666; font-size: 16px; cursor: pointer; padding: 2px 6px; border-radius: 4px; line-height: 1; }
-      .nw-close:hover { color: #fff; background: rgba(255,255,255,0.08); }
-
-      .nw-body { padding: 12px; max-height: 500px; overflow-y: auto; }
-
+      /* ── Output anchor (right side) ─────────────── */
       .nw-anchor-output {
         position: absolute;
-        right: -16px;
+        right: -8px;
         top: 50%;
         transform: translateY(-50%);
-        font-size: 16px;
+        width: 8px;
+        height: 8px;
+        background: var(--surface-2);
+        border: var(--border-width) solid var(--border-hover);
         cursor: crosshair;
         z-index: 5;
-        padding: 4px;
-        border-radius: 50%;
-        background: #222;
-        border: 1px solid #444;
-        line-height: 1;
         user-select: none;
+        transition:
+          background  var(--dur-micro) var(--ease),
+          border-color var(--dur-micro) var(--ease),
+          transform    var(--dur-micro) var(--ease);
       }
-      .nw-anchor-output:hover { border-color: #90caf9; background: #2a2a3a; }
+      .nw-anchor-output:hover {
+        background: var(--accent);
+        border-color: var(--accent);
+        transform: translateY(-50%) scale(1.5);
+      }
 
+      /* ── Input anchors (left side) ──────────────── */
       .nw-anchors-input {
         position: absolute;
-        left: -16px;
+        left: -8px;
         top: 50%;
         transform: translateY(-50%);
         display: flex;
@@ -149,50 +134,59 @@ export class WindowRenderer extends Component {
         z-index: 5;
       }
       .nw-anchor-input {
-        font-size: 14px;
-        padding: 3px;
-        border-radius: 50%;
-        background: #222;
-        border: 1px solid #444;
-        line-height: 1;
+        width: 8px;
+        height: 8px;
+        background: var(--surface-2);
+        border: var(--border-width) solid var(--border-hover);
+        cursor: crosshair;
         user-select: none;
-        transition: border-color 0.12s, background 0.12s, box-shadow 0.12s;
+        transition:
+          background  var(--dur-micro) var(--ease),
+          border-color var(--dur-micro) var(--ease),
+          transform    var(--dur-micro) var(--ease);
       }
-      .nw-anchor-input--connected { border-color: #90caf9; background: #1a1a2e; }
+      .nw-anchor-input--connected {
+        background: var(--accent-dim);
+        border-color: var(--accent-border);
+      }
 
-      /* Highlight all input anchors while dragging a connection */
+      /* Highlight all input anchors while a connection drag is in progress */
       [data-connecting-type] .nw-anchor-input {
-        border-color: rgba(255,255,255,0.35);
-        background: #2a2a2a;
+        border-color: var(--border-hover);
         cursor: crosshair;
       }
 
-      /* Stronger highlight when the anchor type matches the dragged output type */
+      /* Accent highlight when anchor type matches dragged output type */
       [data-connecting-type="image"] .nw-anchor-input[data-type="image"],
       [data-connecting-type="text"]  .nw-anchor-input[data-type="text"],
       [data-connecting-type="video"] .nw-anchor-input[data-type="video"],
       [data-connecting-type="audio"] .nw-anchor-input[data-type="audio"] {
-        border-color: #90caf9;
-        background: #1a2035;
-        box-shadow: 0 0 0 3px rgba(144,202,249,0.25), 0 0 8px rgba(144,202,249,0.2);
+        background: var(--accent-dim);
+        border-color: var(--accent-border);
+        box-shadow: 0 0 0 2px var(--accent-glow);
+        transform: scale(1.4);
         cursor: crosshair;
       }
 
-      /* Dim the source window's own output anchor while dragging so it reads as "in use" */
-      [data-connecting-type] .nw-anchor-output {
-        opacity: 0.5;
-      }
+      /* Dim source window's output anchor while dragging */
+      [data-connecting-type] .nw-anchor-output { opacity: 0.4; }
     `;
   }
 
   render() {
     const { win, selected, bodyContent, onClose, onVersionChange } = this.props;
-    const cls = `nw-root${selected ? ' nw-root--selected' : ''}`;
+    const cls = `nw-root${selected ? ' selected' : ''}`;
     const style = `left:${win.x}px;top:${win.y}px`;
     const outputType = this._getOutputType();
     const inputAnchors = this._getInputAnchors();
 
     return h('div', { className: cls, style, id: win.id },
+
+      // Corner bracket spans for complete four-corner selection indicator
+      // (::before/::after pseudo-elements cover top-left and bottom-right;
+      //  these spans cover top-right and bottom-left)
+      h('span', { className: 'nw-bracket-tr' }),
+      h('span', { className: 'nw-bracket-bl' }),
 
       // Header (drag handle)
       h('div', { className: 'nw-header', onmousedown: this.bind(this._onHeaderMouseDown) },

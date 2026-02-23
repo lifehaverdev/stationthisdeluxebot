@@ -47,11 +47,11 @@ export class ParameterForm extends Component {
     // Connected from upstream — show indicator instead of input
     if (mapping && mapping.type === 'nodeOutput') {
       const sourceName = this._getSourceName(mapping);
-      return h('div', { className: 'pf-param pf-param--connected', key },
+      return h('div', { className: 'pf-param', key },
         h('label', { className: 'pf-label' }, param.name),
         h('div', { className: 'pf-connected' },
-          h('span', { className: 'pf-connected-icon' }, '\u26A1'),
-          h('span', null, `from ${sourceName || mapping.nodeId}.${mapping.outputKey || 'output'}`)
+          h('span', { className: 'pf-connected-dot' }),
+          h('span', null, `${sourceName || mapping.nodeId} / ${mapping.outputKey || 'output'}`)
         )
       );
     }
@@ -110,18 +110,126 @@ export class ParameterForm extends Component {
 
   static get styles() {
     return `
-      .pf-section { display: flex; flex-direction: column; gap: 8px; }
-      .pf-param { display: flex; flex-direction: column; gap: 4px; }
-      .pf-param--connected { opacity: 0.7; }
-      .pf-label { font-size: 11px; color: #888; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
-      .pf-input { width: 100%; padding: 6px 10px; background: #222; border: 1px solid #444; border-radius: 4px; color: #e0e0e0; font-size: 13px; box-sizing: border-box; }
-      .pf-input:focus { border-color: #90caf9; outline: none; }
-      .pf-select { width: 100%; padding: 6px 10px; background: #222; border: 1px solid #444; border-radius: 4px; color: #e0e0e0; font-size: 13px; }
-      .pf-connected { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #90caf9; font-style: italic; padding: 4px 0; }
-      .pf-connected-icon { font-size: 14px; }
-      .pf-toggle { background: none; border: 1px solid #444; color: #888; padding: 4px 12px; border-radius: 4px; font-size: 11px; cursor: pointer; margin-top: 4px; align-self: flex-start; }
-      .pf-toggle:hover { border-color: #666; color: #ccc; }
-      .pf-toggle--active { color: #90caf9; border-color: #90caf9; }
+      .pf-root {
+        padding: 0;
+        font-family: var(--ff-sans);
+      }
+
+      .pf-section {
+        border-bottom: var(--border-width) solid var(--border);
+      }
+
+      .pf-section-header {
+        padding: 6px 10px;
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wider);
+        text-transform: uppercase;
+        color: var(--text-label);
+        background: var(--surface-1);
+        cursor: default;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .pf-param {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 8px 10px;
+        border-bottom: var(--border-width) solid var(--border);
+      }
+
+      .pf-param:last-child { border-bottom: none; }
+
+      .pf-label {
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        color: var(--text-label);
+        letter-spacing: var(--ls-wide);
+        text-transform: uppercase;
+      }
+
+      .pf-label.required { color: var(--text-secondary); }
+
+      .pf-input {
+        background: var(--surface-2);
+        border: var(--border-width) solid var(--border);
+        color: var(--text-primary);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-sm);
+        padding: 5px 8px;
+        width: 100%;
+        outline: none;
+        transition: border-color var(--dur-micro) var(--ease);
+        resize: vertical;
+        min-height: 28px;
+      }
+
+      .pf-input:focus {
+        border-color: var(--accent-border);
+        background: var(--surface-1);
+      }
+
+      .pf-input::placeholder { color: var(--text-label); }
+
+      .pf-select {
+        background: var(--surface-2);
+        border: var(--border-width) solid var(--border);
+        color: var(--text-primary);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-sm);
+        padding: 5px 8px;
+        width: 100%;
+        outline: none;
+        cursor: pointer;
+        -webkit-appearance: none;
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='rgba(221,223,224,0.33)'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 8px center;
+        padding-right: 24px;
+        transition: border-color var(--dur-micro) var(--ease);
+      }
+      .pf-select:focus { border-color: var(--accent-border); }
+
+      .pf-connected {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 8px;
+        background: var(--accent-dim);
+        border: var(--border-width) solid var(--accent-border);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        color: var(--accent);
+        letter-spacing: var(--ls-wide);
+      }
+
+      .pf-connected-dot {
+        width: 4px; height: 4px;
+        background: var(--accent);
+        flex-shrink: 0;
+      }
+
+      .pf-toggle {
+        background: none;
+        border: none;
+        color: var(--text-label);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        cursor: pointer;
+        padding: 6px 10px;
+        width: 100%;
+        text-align: left;
+        letter-spacing: var(--ls-wide);
+        text-transform: uppercase;
+        border-top: var(--border-width) solid var(--border);
+        transition: color var(--dur-micro) var(--ease);
+      }
+      .pf-toggle:hover { color: var(--text-secondary); }
+      .pf-toggle--active { color: var(--accent); }
     `;
   }
 
@@ -146,7 +254,7 @@ export class ParameterForm extends Component {
 
     const { showOptional } = this.state;
 
-    return h('div', { className: 'pf-section' },
+    return h('div', { className: 'pf-root' },
       // Required params
       ...required.map(([key, param]) => this._renderInput(key, param)),
 
@@ -155,7 +263,7 @@ export class ParameterForm extends Component {
         ? h('button', {
           className: `pf-toggle${showOptional ? ' pf-toggle--active' : ''}`,
           onclick: () => this.setState({ showOptional: !showOptional }),
-        }, showOptional ? 'show less' : 'show more')
+        }, showOptional ? '− fewer options' : '+ more options')
         : null,
 
       // Optional params (hidden by default)

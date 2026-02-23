@@ -76,7 +76,7 @@ export class ResultDisplay extends Component {
 
   _renderImage(output) {
     const url = output.url;
-    return h('div', { className: 'rd-image' },
+    return [
       h('img', {
         src: url,
         className: 'rd-img',
@@ -85,32 +85,30 @@ export class ResultDisplay extends Component {
       }),
       this.props.onDuplicate
         ? h('button', { className: 'rd-action', onclick: this.props.onDuplicate }, '\u21BB Rerun')
-        : null
-    );
+        : null,
+    ];
   }
 
   _renderText(output) {
     const text = output.text || '';
-    return h('div', { className: 'rd-text' },
+    return [
       h('div', {
         className: 'rd-text-content',
         onclick: () => this._copyText(text),
         title: 'Click to copy',
       }, text),
-      h('div', { className: 'rd-text-hint' }, this.state.copied ? 'Copied!' : 'Click to copy')
-    );
+      h('div', { className: 'rd-text-hint' }, this.state.copied ? 'Copied!' : 'Click to copy'),
+    ];
   }
 
   _renderVideo(output) {
     const url = output.url;
-    return h('div', { className: 'rd-video' },
-      h('video', {
-        src: url,
-        controls: true,
-        className: 'rd-vid',
-        onclick: (e) => { e.preventDefault(); this.props.onVideoClick?.(url); },
-      })
-    );
+    return h('video', {
+      src: url,
+      controls: true,
+      className: 'rd-vid',
+      onclick: (e) => { e.preventDefault(); this.props.onVideoClick?.(url); },
+    });
   }
 
   _renderFiles(output) {
@@ -165,31 +163,107 @@ export class ResultDisplay extends Component {
 
   static get styles() {
     return `
-      .rd-image { text-align: center; }
-      .rd-img { max-width: 100%; max-height: 300px; border-radius: 6px; cursor: pointer; transition: opacity 0.15s; }
-      .rd-img:hover { opacity: 0.9; }
+      .rd-root {
+        position: relative;
+        background: var(--surface-1);
+        border-top: var(--border-width) solid var(--border);
+        overflow: hidden;
+      }
 
-      .rd-text-content { background: #222; border: 1px solid #333; border-radius: 6px; padding: 10px; font-size: 13px; color: #e0e0e0; white-space: pre-wrap; word-break: break-word; cursor: pointer; max-height: 200px; overflow-y: auto; line-height: 1.5; }
-      .rd-text-content:hover { border-color: #90caf9; }
-      .rd-text-hint { font-size: 11px; color: #666; text-align: right; margin-top: 4px; }
+      .rd-empty {
+        padding: 16px 10px;
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        color: var(--text-label);
+        letter-spacing: var(--ls-wider);
+        text-transform: uppercase;
+        text-align: center;
+      }
 
-      .rd-video { text-align: center; }
-      .rd-vid { max-width: 100%; max-height: 300px; border-radius: 6px; }
+      /* Image fades in — no pop */
+      .rd-img {
+        display: block;
+        width: 100%;
+        height: auto;
+        animation: fadeIn var(--dur-panel) var(--ease);
+        cursor: pointer;
+      }
+      .rd-img:hover { opacity: 0.92; }
 
-      .rd-files { display: flex; flex-direction: column; gap: 6px; }
-      .rd-file-item { padding: 6px 0; }
-      .rd-file-link { color: #90caf9; font-size: 13px; text-decoration: none; }
-      .rd-file-link:hover { text-decoration: underline; }
+      .rd-text-content {
+        padding: 10px;
+        font-family: var(--ff-mono);
+        font-size: var(--fs-sm);
+        color: var(--text-primary);
+        line-height: 1.6;
+        white-space: pre-wrap;
+        word-break: break-word;
+        animation: fadeIn var(--dur-trans) var(--ease);
+        cursor: pointer;
+        max-height: 240px;
+        overflow-y: auto;
+      }
+      .rd-text-content:hover { color: var(--accent); }
+      .rd-text-hint {
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        color: var(--text-label);
+        text-align: right;
+        padding: 0 10px 6px;
+        letter-spacing: var(--ls-wide);
+      }
 
-      .rd-spell-tabs { display: flex; gap: 4px; margin-bottom: 8px; flex-wrap: wrap; }
-      .rd-spell-tab { background: #222; border: 1px solid #444; color: #888; padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; }
-      .rd-spell-tab:hover { border-color: #666; color: #ccc; }
-      .rd-spell-tab--active { background: #3f51b5; border-color: #3f51b5; color: #fff; }
+      .rd-vid { display: block; width: 100%; }
 
-      .rd-empty { color: #666; font-size: 13px; text-align: center; padding: 16px; }
+      .rd-files { display: flex; flex-direction: column; }
+      .rd-file-item { padding: 6px 10px; border-bottom: var(--border-width) solid var(--border); }
+      .rd-file-link {
+        color: var(--accent);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        text-decoration: none;
+        letter-spacing: var(--ls-wide);
+      }
+      .rd-file-link:hover { color: var(--text-primary); }
 
-      .rd-action { background: none; border: 1px solid #444; color: #888; padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; margin-top: 8px; }
-      .rd-action:hover { border-color: #666; color: #ccc; }
+      .rd-spell-tabs {
+        display: flex;
+        border-bottom: var(--border-width) solid var(--border);
+        overflow-x: auto;
+      }
+      .rd-spell-tab {
+        background: none;
+        border: none;
+        border-right: var(--border-width) solid var(--border);
+        color: var(--text-label);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wide);
+        text-transform: uppercase;
+        padding: 4px 10px;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: color var(--dur-micro) var(--ease);
+      }
+      .rd-spell-tab:hover { color: var(--text-secondary); }
+      .rd-spell-tab--active { color: var(--accent); border-bottom: 1px solid var(--accent); }
+
+      .rd-action {
+        background: none;
+        border: var(--border-width) solid var(--border);
+        color: var(--text-label);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wide);
+        text-transform: uppercase;
+        cursor: pointer;
+        padding: 4px 10px;
+        margin: 8px 10px;
+        transition:
+          color var(--dur-micro) var(--ease),
+          border-color var(--dur-micro) var(--ease);
+      }
+      .rd-action:hover { color: var(--text-primary); border-color: var(--border-hover); }
     `;
   }
 
@@ -199,17 +273,19 @@ export class ResultDisplay extends Component {
     const output = this._normalize(this.props.output);
     if (!output) return h('div', { style: 'display:none' });
 
+    let inner;
     switch (output.type) {
-      case 'image': return this._renderImage(output);
-      case 'text': return this._renderText(output);
-      case 'video': return this._renderVideo(output);
-      case 'file': return this._renderFiles(output);
-      case 'spell-steps': return this._renderSpellSteps(output);
+      case 'image':      inner = this._renderImage(output); break;
+      case 'text':       inner = this._renderText(output); break;
+      case 'video':      inner = this._renderVideo(output); break;
+      case 'file':       inner = this._renderFiles(output); break;
+      case 'spell-steps': inner = this._renderSpellSteps(output); break;
       default:
-        // Unknown type — show raw JSON
-        return h('div', { className: 'rd-text' },
-          h('div', { className: 'rd-text-content' }, JSON.stringify(output, null, 2))
-        );
+        inner = h('div', { className: 'rd-text-content' }, JSON.stringify(output, null, 2));
     }
+
+    return h('div', { className: 'rd-root' },
+      ...(Array.isArray(inner) ? inner : [inner])
+    );
   }
 }
