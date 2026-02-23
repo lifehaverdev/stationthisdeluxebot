@@ -230,28 +230,68 @@ export class Landing extends Component {
 
       /* ── Buttons ────────────────────────────────────────── */
 
+      @keyframes lp-btn-scan {
+        from { left: -60%; opacity: 1; }
+        to   { left: 120%; opacity: 1; }
+      }
+
+      /* CTA — solid teal that wipes to dark on hover */
       .lp-btn-cta {
+        position: relative;
+        overflow: hidden;
         font-family: var(--ff-mono);
         font-size: 10px;
         font-weight: 600;
         letter-spacing: 0.18em;
         text-transform: uppercase;
+        /* Gradient: dark left half, teal right half — 201% wide */
+        background: linear-gradient(
+          to right,
+          var(--canvas-bg) 50%,
+          var(--accent) 50%
+        );
+        background-size: 201% 100%;
+        background-position: 100% center; /* shows teal */
         color: var(--canvas-bg);
-        background: var(--accent);
         border: var(--border-width) solid var(--accent);
         padding: 10px 26px;
         cursor: pointer;
         text-decoration: none;
         transition:
-          background   var(--dur-interact) var(--ease),
-          color        var(--dur-interact) var(--ease);
-      }
-      .lp-btn-cta:hover {
-        background: transparent;
-        color: var(--accent);
+          background-position 0.38s cubic-bezier(0.4, 0, 0.2, 1),
+          color               0.2s  var(--ease);
       }
 
+      /* Glint sweep — fires on hover, passes over both bg states */
+      .lp-btn-cta::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: -60%;
+        width: 40%;
+        background: linear-gradient(
+          90deg,
+          transparent 0%,
+          rgba(255,255,255,0.18) 50%,
+          transparent 100%
+        );
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .lp-btn-cta:hover {
+        background-position: 0% center; /* reveals dark side */
+        color: var(--accent);
+      }
+      .lp-btn-cta:hover::after {
+        animation: lp-btn-scan 0.42s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      }
+
+      /* Ghost — outline button with teal scan on hover */
       .lp-btn-ghost {
+        position: relative;
+        overflow: hidden;
         font-family: var(--ff-mono);
         font-size: 10px;
         letter-spacing: 0.18em;
@@ -263,12 +303,34 @@ export class Landing extends Component {
         cursor: pointer;
         text-decoration: none;
         transition:
-          color        var(--dur-interact) var(--ease),
-          border-color var(--dur-interact) var(--ease);
+          color        0.2s var(--ease),
+          border-color 0.2s var(--ease);
       }
+
+      /* Teal scanline on ghost */
+      .lp-btn-ghost::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: -60%;
+        width: 40%;
+        background: linear-gradient(
+          90deg,
+          transparent 0%,
+          rgba(0,223,200,0.2) 50%,
+          transparent 100%
+        );
+        opacity: 0;
+        pointer-events: none;
+      }
+
       .lp-btn-ghost:hover {
         color: var(--text-secondary);
-        border-color: var(--border-hover);
+        border-color: var(--accent-border);
+      }
+      .lp-btn-ghost:hover::after {
+        animation: lp-btn-scan 0.42s cubic-bezier(0.4, 0, 0.2, 1) forwards;
       }
 
       /* ── Section divider ────────────────────────────────── */
