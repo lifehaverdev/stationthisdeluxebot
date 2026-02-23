@@ -3,7 +3,6 @@ import { route, startRouter } from './router.js';
 import { Nav } from './components/Nav.js';
 import { Footer } from './components/Footer.js';
 import { Landing } from './pages/Landing.js';
-import { Pricing } from './pages/Pricing.js';
 import { Docs } from './pages/Docs.js';
 import './style/main.css';
 
@@ -46,8 +45,8 @@ if (isAppSubdomain) {
 } else {
   // Main domain: marketing site — full-screen, no Nav/Footer chrome
   route('/', () => renderSandbox(Landing));
-  route('/pricing', () => renderPage(Pricing));
-  route('/docs', () => renderPage(Docs));
+  route('/pricing', () => { location.href = '/docs#pricing'; });
+  route('/docs', () => renderSandbox(Docs));
 
   // Lazy-load admin (ethers + chart.js are heavy)
   route('/admin', async () => {

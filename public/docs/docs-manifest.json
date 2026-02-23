@@ -8,5 +8,6 @@
   { "id": "spells", "title": "Spells", "file": "/docs/content/spells.md" },
   { "id": "training", "title": "Training", "file": "/docs/content/training.md" },
   { "id": "collection-mode", "title": "Collection Mode", "file": "/docs/content/collection-mode.md" },
-  { "id": "api", "title": "API", "file": "/docs/content/api.md" }
-] 
+  { "id": "api", "title": "API", "file": "/docs/content/api.md" },
+  { "id": "pricing", "title": "Pricing", "special": "pricing-renderer" }
+]

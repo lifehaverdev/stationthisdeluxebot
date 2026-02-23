@@ -11,7 +11,9 @@ export class Docs extends Component {
       currentIndex: -1,
       contentHtml: '',
       loading: true,
-      sidebarOpen: false,
+      pricingData: null,
+      pricingLoading: false,
+      pricingError: null,
     };
   }
 
@@ -41,10 +43,12 @@ export class Docs extends Component {
     const sectionIdx = idx === -1 ? 0 : idx;
     const section = sections[sectionIdx];
 
-    this.setState({ currentIndex: sectionIdx, loading: true, sidebarOpen: false });
+    this.setState({ currentIndex: sectionIdx, loading: true });
 
     if (section.special === 'tools-renderer') {
       await this.renderTools();
+    } else if (section.special === 'pricing-renderer') {
+      await this.renderPricing();
     } else {
       await this.renderMarkdown(section.file);
     }
@@ -85,6 +89,32 @@ export class Docs extends Component {
     }
   }
 
+  async renderPricing() {
+    this.setState({ loading: false, pricingLoading: true, pricingError: null });
+    try {
+      const data = await fetchJson('/api/v1/points/supported-assets');
+      const tokens = Array.isArray(data.tokens) ? data.tokens : [];
+      tokens.sort((a, b) => (1 - (a.fundingRate || 0)) - (1 - (b.fundingRate || 0)));
+
+      const grouped = {};
+      tokens.forEach(tk => {
+        const pct = typeof tk.fundingRate === 'number'
+          ? ((1 - tk.fundingRate) * 100).toFixed(0)
+          : '?';
+        if (!grouped[pct]) grouped[pct] = [];
+        grouped[pct].push(tk);
+      });
+
+      const tiers = Object.entries(grouped)
+        .sort(([a], [b]) => parseFloat(a) - parseFloat(b))
+        .map(([fee, tks], i) => ({ fee, tokens: tks, tier: i + 1 }));
+
+      this.setState({ pricingData: tiers, pricingLoading: false });
+    } catch (err) {
+      this.setState({ pricingLoading: false, pricingError: err.message });
+    }
+  }
+
   renderParamsTable(schema) {
     if (!schema || Object.keys(schema).length === 0) return '';
     let t = '<h3>Parameters</h3><table><thead><tr><th>Name</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody>';
@@ -104,176 +134,383 @@ export class Docs extends Component {
     location.hash = id;
   }
 
+  _renderPricingContent() {
+    const { pricingData, pricingLoading, pricingError } = this.state;
+
+    if (pricingLoading) {
+      return h('p', { className: 'docs-loading-text' }, 'Loading assets...');
+    }
+    if (pricingError) {
+      return h('p', { className: 'docs-error-text' }, 'Error loading assets.');
+    }
+
+    return h('div', { className: 'docs-pricing' },
+      h('h1', null, 'Pricing & Tokenomics'),
+      h('p', null, 'Points are the core unit for compute, generation, and platform features. Fund your account with supported crypto assets to receive points.'),
+
+      h('h2', null, 'Supported Assets & Funding Fees'),
+      h('p', null, 'Funding fees are automatically deducted from every contribution. Lower fees mean more points.'),
+
+      pricingData ? pricingData.map(t =>
+        h('div', { className: 'docs-tier-group', key: t.tier },
+          h('div', { className: 'docs-tier-heading' }, `Tier ${t.tier} — ${t.fee}% fee`),
+          h('div', { className: 'docs-assets-grid' },
+            ...t.tokens.map(tk =>
+              h('div', { className: 'docs-asset-card', key: tk.symbol || tk.name },
+                tk.iconUrl ? h('img', { src: tk.iconUrl, alt: tk.symbol || tk.name }) : null,
+                h('div', { className: 'docs-asset-symbol' }, tk.symbol || tk.name),
+                h('div', { className: 'docs-asset-fee' }, `${t.fee}% fee`),
+              )
+            )
+          )
+        )
+      ) : null,
+
+      h('h2', null, 'Withdrawals & Refunds'),
+      h('p', null, 'If you purchase more points than you need, you can withdraw your remaining balance. Withdrawals are subject to a processing fee to cover operational and gas costs.'),
+
+      h('h2', null, 'Gas Fees & Operational Costs'),
+      h('p', null, 'Gas fees for on-chain operations (like crediting points or withdrawals) are deducted from your offchain credit. This ensures the platform remains sustainable and transparent.'),
+
+      h('h2', null, 'Referral Vaults'),
+      h('p', null, 'Create a referral vault to earn rewards: when someone uses your referral code, their contribution is directed to your vault and you receive 5% of that contribution. Rewards are distributed automatically on-chain.'),
+    );
+  }
+
   static get styles() {
     return `
-      .docs-layout {
+      /* ── Shell ──────────────────────────────────────────── */
+      .docs-shell {
         display: flex;
-        min-height: calc(100vh - 120px);
+        flex-direction: column;
+        height: 100vh;
+        overflow: hidden;
+        background: var(--canvas-bg);
       }
-      .docs-sidebar {
-        width: 220px;
+
+      /* ── Header ─────────────────────────────────────────── */
+      .docs-header {
+        height: var(--header-height, 44px);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 16px;
+        border-bottom: var(--border-width) solid var(--border);
+        background: var(--surface-1);
         flex-shrink: 0;
-        border-right: 1px solid #1a1a1a;
-        padding: 1rem 0;
-        overflow-y: auto;
       }
+
+      .docs-header-wordmark {
+        font-family: var(--ff-display);
+        font-size: 15px;
+        font-weight: var(--fw-bold);
+        letter-spacing: var(--ls-widest);
+        text-transform: uppercase;
+        color: var(--text-primary);
+      }
+
+      .docs-header-home {
+        font-family: var(--ff-condensed);
+        font-size: var(--fs-xs);
+        font-weight: var(--fw-medium);
+        letter-spacing: var(--ls-widest);
+        text-transform: uppercase;
+        color: var(--text-label);
+        text-decoration: none;
+        transition: color var(--dur-micro) var(--ease);
+      }
+      .docs-header-home:hover { color: var(--text-secondary); }
+
+      /* ── Body ───────────────────────────────────────────── */
+      .docs-body {
+        display: flex;
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      /* ── Sidebar ────────────────────────────────────────── */
+      .docs-sidebar {
+        width: 200px;
+        flex-shrink: 0;
+        border-right: var(--border-width) solid var(--border);
+        overflow-y: auto;
+        background: var(--surface-1);
+        padding: 8px 0;
+      }
+
       .docs-sidebar a {
         display: block;
-        padding: 0.4rem 1rem;
-        color: #888;
+        padding: 6px 16px;
+        font-family: var(--ff-condensed);
+        font-size: var(--fs-xs);
+        font-weight: var(--fw-medium);
+        letter-spacing: var(--ls-wider);
+        text-transform: uppercase;
+        color: var(--text-label);
         text-decoration: none;
-        font-size: 0.9rem;
+        cursor: pointer;
+        transition: color var(--dur-micro) var(--ease);
       }
-      .docs-sidebar a:hover { color: #fff; }
+      .docs-sidebar a:hover { color: var(--text-secondary); }
       .docs-sidebar a.active {
-        color: #fff;
-        border-left: 2px solid #fff;
-        padding-left: calc(1rem - 2px);
+        color: var(--accent);
+        border-left: 2px solid var(--accent);
+        padding-left: 14px;
       }
+
+      /* ── Content ─────────────────────────────────────────── */
       .docs-content {
         flex: 1;
-        padding: 1.5rem 2rem;
-        max-width: 740px;
         overflow-y: auto;
+        padding: 32px 48px;
+        max-width: 760px;
       }
-      .docs-content h1 { color: #fff; font-size: 1.8rem; margin-bottom: 1rem; }
-      .docs-content h2 { color: #e0e0e0; font-size: 1.3rem; margin: 1.5rem 0 0.5rem; }
-      .docs-content h3 { color: #ccc; font-size: 1.1rem; margin: 1rem 0 0.5rem; }
-      .docs-content p { color: #888; line-height: 1.7; margin-bottom: 0.75rem; }
-      .docs-content a { color: #90caf9; }
+
+      .docs-content h1 {
+        font-family: var(--ff-display);
+        font-size: 1.6rem;
+        font-weight: var(--fw-bold);
+        letter-spacing: var(--ls-widest);
+        text-transform: uppercase;
+        color: var(--text-primary);
+        margin: 0 0 20px;
+      }
+      .docs-content h2 {
+        font-family: var(--ff-condensed);
+        font-size: 1rem;
+        font-weight: var(--fw-medium);
+        letter-spacing: var(--ls-widest);
+        text-transform: uppercase;
+        color: var(--text-secondary);
+        margin: 28px 0 10px;
+      }
+      .docs-content h3 {
+        font-family: var(--ff-condensed);
+        font-size: var(--fs-xs);
+        font-weight: var(--fw-medium);
+        letter-spacing: var(--ls-wider);
+        text-transform: uppercase;
+        color: var(--text-label);
+        margin: 20px 0 8px;
+      }
+      .docs-content p {
+        font-family: var(--ff-condensed);
+        font-size: 13px;
+        letter-spacing: var(--ls-wide);
+        color: var(--text-label);
+        line-height: 1.7;
+        margin-bottom: 12px;
+      }
+      .docs-content a { color: var(--accent); }
       .docs-content code {
-        background: #1a1a1a;
-        padding: 0.15rem 0.35rem;
-        border-radius: 3px;
-        font-size: 0.85em;
-        color: #ccc;
+        background: var(--surface-3);
+        border: var(--border-width) solid var(--border);
+        padding: 0.1rem 0.3rem;
+        font-family: var(--ff-mono);
+        font-size: 0.8em;
+        color: var(--text-secondary);
       }
       .docs-content pre {
-        background: #111;
-        padding: 1rem;
-        border-radius: 6px;
+        background: var(--surface-2);
+        border: var(--border-width) solid var(--border);
+        padding: 16px;
         overflow-x: auto;
-        margin-bottom: 1rem;
+        margin-bottom: 16px;
       }
       .docs-content pre code {
         background: none;
+        border: none;
         padding: 0;
+        font-size: 0.85em;
       }
       .docs-content ul, .docs-content ol {
-        color: #888;
-        padding-left: 1.5rem;
-        margin-bottom: 0.75rem;
+        padding-left: 1.2rem;
+        margin-bottom: 12px;
       }
-      .docs-content li { margin-bottom: 0.3rem; line-height: 1.6; }
+      .docs-content li {
+        font-family: var(--ff-condensed);
+        font-size: 13px;
+        letter-spacing: var(--ls-wide);
+        color: var(--text-label);
+        margin-bottom: 4px;
+        line-height: 1.6;
+      }
       .docs-content table {
         width: 100%;
         border-collapse: collapse;
-        margin-bottom: 1rem;
+        margin-bottom: 16px;
       }
       .docs-content th, .docs-content td {
         text-align: left;
-        padding: 0.4rem 0.6rem;
-        border-bottom: 1px solid #1e1e1e;
-        color: #aaa;
-        font-size: 0.85rem;
+        padding: 6px 10px;
+        border-bottom: var(--border-width) solid var(--border);
+        font-family: var(--ff-mono);
+        font-size: 11px;
+        letter-spacing: var(--ls-wide);
+        color: var(--text-label);
       }
-      .docs-content th { color: #ccc; }
-      .docs-content strong { color: #ccc; }
+      .docs-content th {
+        color: var(--text-secondary);
+        border-bottom-color: var(--border-hover);
+      }
+      .docs-content strong { color: var(--text-secondary); }
+
+      /* Tool cards */
+      .doc-tool-card {
+        border: var(--border-width) solid var(--border);
+        background: var(--surface-1);
+        padding: 14px;
+        margin-bottom: 12px;
+      }
+      .doc-tool-card h2 { margin-top: 0; }
+      .doc-tool-meta {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 8px;
+      }
+      .doc-tool-cmd, .doc-tool-cat {
+        font-family: var(--ff-mono);
+        font-size: 10px;
+        letter-spacing: var(--ls-wide);
+        text-transform: uppercase;
+        padding: 2px 6px;
+        background: var(--surface-3);
+        border: var(--border-width) solid var(--border);
+        color: var(--text-label);
+      }
+
+      /* Pricing section */
+      .docs-pricing h1, .docs-pricing h2 {
+        font-family: var(--ff-display);
+        letter-spacing: var(--ls-widest);
+        text-transform: uppercase;
+      }
+      .docs-tier-group { margin-bottom: 24px; }
+      .docs-tier-heading {
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-widest);
+        text-transform: uppercase;
+        color: var(--accent);
+        margin-bottom: 10px;
+      }
+      .docs-assets-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 8px;
+      }
+      .docs-asset-card {
+        background: var(--surface-2);
+        border: var(--border-width) solid var(--border);
+        padding: 10px;
+        text-align: center;
+      }
+      .docs-asset-card img {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: var(--surface-3);
+        margin-bottom: 6px;
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
+      }
+      .docs-asset-symbol {
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wide);
+        color: var(--text-secondary);
+      }
+      .docs-asset-fee {
+        font-family: var(--ff-mono);
+        font-size: 10px;
+        letter-spacing: var(--ls-wide);
+        color: var(--text-label);
+        margin-top: 2px;
+      }
+
+      /* Misc */
+      .docs-loading-text, .docs-error-text {
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wide);
+        text-transform: uppercase;
+        padding: 20px 0;
+      }
+      .docs-loading-text { color: var(--text-label); }
+      .docs-error-text { color: var(--danger); }
+
+      /* Nav footer */
       .docs-nav-footer {
         display: flex;
         justify-content: space-between;
-        padding: 1rem 0;
-        margin-top: 1rem;
-        border-top: 1px solid #1a1a1a;
+        padding: 20px 0;
+        margin-top: 16px;
+        border-top: var(--border-width) solid var(--border);
       }
       .docs-nav-footer a {
-        color: #90caf9;
+        font-family: var(--ff-condensed);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-widest);
+        text-transform: uppercase;
+        color: var(--text-label);
         text-decoration: none;
-        font-size: 0.9rem;
         cursor: pointer;
+        transition: color var(--dur-micro) var(--ease);
       }
-      .docs-nav-footer a:hover { color: #fff; }
+      .docs-nav-footer a:hover { color: var(--accent); }
       .docs-nav-footer a[hidden] { visibility: hidden; }
-
-      .doc-tool-card {
-        border: 1px solid #1e1e1e;
-        border-radius: 6px;
-        padding: 1rem;
-        margin-bottom: 1rem;
-        background: #111;
-      }
-      .doc-tool-card h2 { margin-top: 0; font-size: 1.1rem; }
-      .doc-tool-meta {
-        display: flex;
-        gap: 0.5rem;
-        margin-bottom: 0.5rem;
-      }
-      .doc-tool-cmd, .doc-tool-cat {
-        font-size: 0.75rem;
-        padding: 0.15rem 0.4rem;
-        border-radius: 3px;
-        background: #1a1a1a;
-        color: #888;
-      }
-
-      /* Mobile sidebar toggle */
-      .docs-sidebar-toggle {
-        display: none;
-        background: none;
-        border: 1px solid #333;
-        color: #aaa;
-        padding: 0.3rem 0.6rem;
-        border-radius: 4px;
-        cursor: pointer;
-        margin-bottom: 0.5rem;
-      }
-      @media (max-width: 768px) {
-        .docs-sidebar { display: none; }
-        .docs-sidebar.open { display: block; position: fixed; left: 0; top: 0; bottom: 0; background: #0a0a0a; z-index: 100; }
-        .docs-sidebar-toggle { display: inline-block; }
-      }
     `;
   }
 
   render() {
-    const { sections, currentIndex, contentHtml, loading, sidebarOpen } = this.state;
+    const { sections, currentIndex, contentHtml, loading } = this.state;
+    const section = sections[currentIndex];
+    const isPricing = section?.special === 'pricing-renderer';
     const prevSection = currentIndex > 0 ? sections[currentIndex - 1] : null;
     const nextSection = currentIndex < sections.length - 1 ? sections[currentIndex + 1] : null;
 
-    return h('div', { className: 'docs-layout' },
-      // Sidebar
-      h('aside', { className: `docs-sidebar${sidebarOpen ? ' open' : ''}` },
-        ...sections.map((s, i) =>
-          h('a', {
-            key: s.id,
-            href: `#${s.id}`,
-            className: i === currentIndex ? 'active' : '',
-            onClick: () => this.setState({ sidebarOpen: false })
-          }, s.title)
-        )
+    return h('div', { className: 'docs-shell' },
+
+      /* Header */
+      h('header', { className: 'docs-header' },
+        h('span', { className: 'docs-header-wordmark' }, 'NOEMA'),
+        h('a', { href: '/', className: 'docs-header-home' }, 'Home'),
       ),
 
-      // Content
-      h('div', { className: 'docs-content' },
-        h('button', {
-          className: 'docs-sidebar-toggle',
-          onClick: () => this.setState({ sidebarOpen: !sidebarOpen })
-        }, '\u2630 Sections'),
+      /* Body */
+      h('div', { className: 'docs-body' },
 
-        loading
-          ? h('p', { style: { color: '#666' } }, 'Loading...')
-          : h(RawHtml, { html: contentHtml }),
+        /* Sidebar */
+        h('aside', { className: 'docs-sidebar' },
+          ...sections.map((s, i) =>
+            h('a', {
+              key: s.id,
+              href: `#${s.id}`,
+              className: i === currentIndex ? 'active' : '',
+            }, s.title)
+          )
+        ),
 
-        // Prev / Next
-        !loading ? h('div', { className: 'docs-nav-footer' },
-          prevSection
-            ? h('a', { onClick: () => this.navigateTo(prevSection.id) }, `\u2190 ${prevSection.title}`)
-            : h('a', { hidden: true }),
-          nextSection
-            ? h('a', { onClick: () => this.navigateTo(nextSection.id) }, `${nextSection.title} \u2192`)
-            : h('a', { hidden: true })
-        ) : null
-      )
+        /* Content */
+        h('div', { className: 'docs-content' },
+          loading
+            ? h('p', { className: 'docs-loading-text' }, 'Loading...')
+            : isPricing
+              ? this._renderPricingContent()
+              : h(RawHtml, { html: contentHtml }),
+
+          !loading ? h('div', { className: 'docs-nav-footer' },
+            prevSection
+              ? h('a', { onclick: () => this.navigateTo(prevSection.id) }, `\u2190 ${prevSection.title}`)
+              : h('a', { hidden: true }),
+            nextSection
+              ? h('a', { onclick: () => this.navigateTo(nextSection.id) }, `${nextSection.title} \u2192`)
+              : h('a', { hidden: true }),
+          ) : null,
+        ),
+      ),
     );
   }
 }
