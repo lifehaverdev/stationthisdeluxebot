@@ -27,8 +27,6 @@ export default defineConfig({
       '/js': BACKEND,
       // Images and static assets
       '/images': BACKEND,
-      // Spell pages
-      '/spells': BACKEND,
       // Auth endpoints (logout, landing)
       '/logout': BACKEND,
       '/landing': BACKEND,

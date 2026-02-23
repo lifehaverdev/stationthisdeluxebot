@@ -37,6 +37,12 @@ if (isAppSubdomain) {
     const { Sandbox } = await import('./pages/Sandbox.js');
     renderSandbox(Sandbox);
   });
+
+  // Spell execution page
+  route('/spells/:slug', async () => {
+    const { SpellPage } = await import('./pages/SpellPage.js');
+    renderPage(SpellPage);
+  });
 } else {
   // Main domain: marketing site
   route('/', () => renderPage(Landing));

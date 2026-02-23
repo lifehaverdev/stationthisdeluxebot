@@ -4,10 +4,16 @@
  */
 
 const routes = new Map();
+const paramRoutes = []; // { regex, handler } — for paths containing :param segments
 let currentCleanup = null;
 
 export function route(path, handler) {
-  routes.set(path, handler);
+  if (path.includes(':')) {
+    const regex = new RegExp('^' + path.replace(/:([^/]+)/g, '[^/]+') + '$');
+    paramRoutes.push({ regex, handler });
+  } else {
+    routes.set(path, handler);
+  }
 }
 
 export function navigate(path) {
@@ -23,7 +29,14 @@ export async function resolve() {
   }
 
   const path = window.location.pathname;
-  const handler = routes.get(path);
+  let handler = routes.get(path);
+
+  // Try parameterized routes if no exact match
+  if (!handler) {
+    for (const pr of paramRoutes) {
+      if (pr.regex.test(path)) { handler = pr.handler; break; }
+    }
+  }
 
   if (handler) {
     try {

@@ -159,9 +159,9 @@ function initializeWebPlatform(services, options = {}) {
 
       // /pricing, /docs, /admin on app subdomain fall through to SPA catch-all
 
-      // Spell Execution Page
+      // Spell Execution Page — served by the SPA; router intercepts /spells/:slug
       app.get('/spells/:slug', (req, res) => {
-        res.sendFile(path.join(publicPath, 'spell.html'));
+        res.sendFile(frontendIndexHtml);
       });
 
       // Health check
