@@ -1,5 +1,5 @@
 /**
- * ExecutionClient — Vite-bundled replacement for client/src/sandbox/executionClient.js
+ * ExecutionClient — lightweight API client for tool execution and spell casting.
  *
  * Lightweight API client for tool execution and spell casting.
  * Uses the shared CSRF-aware fetch helpers from lib/api.js.

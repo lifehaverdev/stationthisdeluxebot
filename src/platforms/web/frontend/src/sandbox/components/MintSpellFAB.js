@@ -41,8 +41,6 @@ export class MintSpellFAB extends Component {
     if (ids.size < 2) return;
     this.setState({ visible: false });
 
-    // Dynamic import — subgraph serializer is served from /sandbox/
-    
     const { serializeSubgraph } = await import('../subgraph.js');
     const subgraph = serializeSubgraph(ids);
 

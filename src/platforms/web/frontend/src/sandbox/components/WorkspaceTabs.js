@@ -14,10 +14,6 @@ function tabLabel(t) {
 
 /**
  * WorkspaceTabs — save/load/switch workspace tabs.
- *
- * During Phase 0-1, this component still delegates to the old
- * workspaces.js functions which are loaded at runtime from /sandbox/.
- * We use dynamic import to avoid bundling them.
  */
 export class WorkspaceTabs extends Component {
   constructor(props) {

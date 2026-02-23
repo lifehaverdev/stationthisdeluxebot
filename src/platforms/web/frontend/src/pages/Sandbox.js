@@ -36,17 +36,10 @@ export class Sandbox extends Component {
       textEdit: { visible: false, windowId: null, value: '', displayName: '', kind: 'primitive', paramKey: null },
       resultOverlay: { visible: false, output: null, displayName: '', copied: false },
     };
-    this._cssLink = null;
   }
 
   didMount() {
     window.__SANDBOX_SPA_MANAGED__ = true;
-
-    // Load sandbox CSS (served from /index.css via Express static)
-    this._cssLink = document.createElement('link');
-    this._cssLink.rel = 'stylesheet';
-    this._cssLink.href = '/index.css';
-    document.head.appendChild(this._cssLink);
 
     document.body.style.overflow = 'hidden';
     document.documentElement.style.overflow = 'hidden';
@@ -108,7 +101,6 @@ export class Sandbox extends Component {
     if (this._onCanvasTap)     eventBus.off('sandbox:canvasTap',         this._onCanvasTap);
     if (this._onOpenTextEdit)       eventBus.off('sandbox:openTextEdit',       this._onOpenTextEdit);
     if (this._onOpenResultOverlay)  eventBus.off('sandbox:openResultOverlay',  this._onOpenResultOverlay);
-    if (this._cssLink?.parentNode) this._cssLink.parentNode.removeChild(this._cssLink);
     document.body.style.overflow = '';
     document.documentElement.style.overflow = '';
     delete window.__SANDBOX_SPA_MANAGED__;

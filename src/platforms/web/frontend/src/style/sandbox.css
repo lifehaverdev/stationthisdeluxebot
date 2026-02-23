@@ -1,0 +1,226 @@
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Barlow:wght@300;400;500;600&family=Barlow+Condensed:wght@400;500;600&family=Martian+Mono:wght@300;400;500&display=swap');
+
+/* ── Design tokens ─────────────────────────── */
+:root {
+  /* Surfaces */
+  --canvas-bg:      #0B0C0D;
+  --surface-1:      #111315;
+  --surface-2:      #161819;
+  --surface-3:      #1A1C1E;
+  --modal-bg:       rgba(11, 12, 13, 0.82);
+
+  /* Borders */
+  --border:         rgba(255, 255, 255, 0.07);
+  --border-hover:   rgba(255, 255, 255, 0.13);
+  --border-active:  rgba(0, 223, 200, 0.28);
+  --border-width:   1px;
+
+  /* Text */
+  --text-primary:   #DDDFE0;
+  --text-secondary: rgba(221, 223, 224, 0.50);
+  --text-label:     rgba(221, 223, 224, 0.33);
+
+  /* Accent */
+  --accent:         #00DFC8;
+  --accent-dim:     rgba(0, 223, 200, 0.12);
+  --accent-glow:    rgba(0, 223, 200, 0.22);
+  --accent-border:  rgba(0, 223, 200, 0.28);
+
+  /* Semantic */
+  --danger:         rgba(255, 75, 75, 0.85);
+  --danger-dim:     rgba(255, 75, 75, 0.12);
+  --success:        rgba(0, 223, 200, 0.90);
+
+  /* Typography */
+  --ff-display:     'Syne', sans-serif;
+  --ff-sans:        'Barlow', sans-serif;
+  --ff-condensed:   'Barlow Condensed', sans-serif;
+  --ff-mono:        'Martian Mono', monospace;
+
+  --fs-xs:    12px;
+  --fs-sm:    13px;
+  --fs-base:  16px;
+  --fs-md:    17px;
+  --fs-lg:    19px;
+  --fs-xl:    24px;
+  --fs-2xl:   34px;
+  --fs-3xl:   48px;
+
+  --fw-light:   300;
+  --fw-regular: 400;
+  --fw-medium:  500;
+  --fw-semibold:600;
+  --fw-bold:    700;
+
+  --ls-tight:  -0.02em;
+  --ls-normal:  0em;
+  --ls-wide:    0.06em;
+  --ls-wider:   0.12em;
+  --ls-widest:  0.2em;
+
+  /* Motion */
+  --ease:          cubic-bezier(0.25, 0, 0, 1);
+  --dur-micro:     80ms;
+  --dur-interact:  150ms;
+  --dur-trans:     250ms;
+  --dur-panel:     300ms;
+  --dur-entry:     400ms;
+
+  /* Legacy aliases */
+  --transition-speed:   var(--dur-trans);
+  --transition-timing:  var(--ease);
+  --sandbox-bg:         var(--canvas-bg);
+  --border-color:       var(--border);
+  --border-color-hover: var(--border-hover);
+  --text-color:         var(--text-primary);
+  --text-color-muted:   var(--text-secondary);
+  --backdrop-blur:      blur(12px);
+
+  /* Geometry */
+  --border-radius:  0;
+  --node-width:     340px;
+  --sidebar-width:  280px;
+  --header-height:  44px;
+  --modal-padding:  20px;
+
+  /* Z-index layers */
+  --z-canvas:     1;
+  --z-node:       100;
+  --z-connection: 200;
+  --z-hud:        300;
+  --z-sidebar:    400;
+  --z-overlay:    800;
+  --z-modal:      1000;
+  --z-radial:     1100;
+  --z-toast:      1200;
+
+  /* Grid */
+  --grid-unit:    32px;
+  --grid-opacity: 1;
+}
+
+/* ── Base reset ────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  border-radius: 0 !important;
+}
+
+body {
+  margin: 0;
+  font-family: var(--ff-sans);
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--canvas-bg);
+  color: var(--text-primary);
+}
+
+/* ── Scrollbars ────────────────────────────── */
+::-webkit-scrollbar { width: 3px; height: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,0.12); }
+::-webkit-scrollbar-thumb:hover { background-color: rgba(255,255,255,0.22); }
+
+/* ── Layout primitives ─────────────────────── */
+.sandbox-main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.sandbox-content {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  min-height: 100%;
+  background-color: var(--canvas-bg);
+  cursor: crosshair;
+}
+
+/* ── Lasso selection ───────────────────────── */
+.lasso-rect {
+  position: fixed;
+  border: 1px solid var(--accent-border);
+  background-color: var(--accent-dim);
+  pointer-events: none;
+  z-index: 9999;
+  display: none;
+}
+
+/* ── Keyframes ─────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes accentPulse {
+  0%   { opacity: 1; }
+  50%  { opacity: 0.4; }
+  100% { opacity: 1; }
+}
+
+@keyframes borderFlash {
+  0%   { border-color: var(--accent-border); }
+  40%  { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-glow); }
+  100% { border-color: var(--border); box-shadow: none; }
+}
+
+@keyframes signalFlow {
+  from { stroke-dashoffset: 24; }
+  to   { stroke-dashoffset: 0;  }
+}
+
+/* ── Utility classes ───────────────────────── */
+.hidden        { display: none !important; }
+.flex          { display: flex; }
+.flex-col      { flex-direction: column; }
+.items-center  { align-items: center; }
+.justify-between { justify-content: space-between; }
+.gap-2         { gap: 8px; }
+.gap-4         { gap: 16px; }
+.p-4           { padding: 16px; }
+.font-mono     { font-family: var(--ff-mono); }
+.text-sm       { font-size: var(--fs-sm); }
+.text-label {
+  font-family: var(--ff-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--ls-wider);
+  text-transform: uppercase;
+  color: var(--text-label);
+}
+.text-accent   { color: var(--accent); }
+.border        { border: var(--border-width) solid var(--border); }
+.bg-surface    { background-color: var(--surface-1); }
+
+/* ── Instrument divider ────────────────────── */
+.instr-line {
+  height: 1px;
+  background: var(--border);
+  margin: 0;
+}
+
+/* ── Corner bracket selection indicator ────── */
+.corner-brackets { position: relative; }
+.corner-brackets::before,
+.corner-brackets::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-color: var(--accent);
+  border-style: solid;
+  pointer-events: none;
+  z-index: 10;
+}
+.corner-brackets::before { top: -1px; left: -1px; border-width: 1px 0 0 1px; }
+.corner-brackets::after  { bottom: -1px; right: -1px; border-width: 0 1px 1px 0; }

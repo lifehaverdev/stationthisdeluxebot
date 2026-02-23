@@ -5,6 +5,7 @@ import { Footer } from './components/Footer.js';
 import { Landing } from './pages/Landing.js';
 import { Docs } from './pages/Docs.js';
 import './style/main.css';
+import './style/sandbox.css';
 
 const app = document.getElementById('app');
 

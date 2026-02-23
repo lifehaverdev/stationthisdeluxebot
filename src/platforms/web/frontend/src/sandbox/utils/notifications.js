@@ -1,4 +1,3 @@
-// src/platforms/web/client/src/sandbox/utils/notifications.js
 // Simple notification system for workspace operations
 
 /**

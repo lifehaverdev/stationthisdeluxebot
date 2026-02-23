@@ -1,4 +1,3 @@
-// src/platforms/web/client/src/sandbox/workspaces.js
 import { getConnections, getToolWindows, persistState, pushHistory } from './state.js';
 import { showNotification, showLoading } from './utils/notifications.js';
 

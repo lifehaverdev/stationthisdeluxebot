@@ -188,11 +188,6 @@ function initializeWebPlatform(services, options = {}) {
       }
 
       // --- Static File Serving ---
-      const clientSrc = path.join(__dirname, 'client', 'src');
-
-      // Serve sandbox source modules as ESM (old vanilla code loaded at runtime)
-      app.use('/sandbox', express.static(path.join(clientSrc, 'sandbox')));
-      app.get('/index.css', (req, res) => res.sendFile(path.join(clientSrc, 'index.css')));
 
       // Serve frontend SPA assets (both domains — JS/CSS bundles from frontend/dist)
       app.use(express.static(frontendDist));
