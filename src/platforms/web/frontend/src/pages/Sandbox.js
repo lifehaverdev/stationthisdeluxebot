@@ -72,7 +72,7 @@ export class Sandbox extends Component {
   _onCanvasClick(e) {
     // Only handle clicks on the canvas background — not on windows or other UI
     if (!e.target.closest('.sc-root')) return;
-    if (e.target.closest('.nw-root, .act-modal, #sidebar, .sidebar-toggle, .cost-hud, .sb-header, .ws-suite, .cdp-root')) return;
+    if (e.target.closest('.nw-root, .am-root, .am-upload-panel, .am-tools-panel, #sidebar, .sidebar-toggle, .cost-hud, .sb-header, .ws-suite, .cdp-root')) return;
 
     // Spec 3: an anchor was just dropped on empty canvas — the drop picker is
     // handling this click, don't also open the ActionModal.
@@ -88,15 +88,14 @@ export class Sandbox extends Component {
     const canvas = window.sandboxCanvas;
     const workspacePos = canvas ? canvas.screenToWorkspace(e.clientX, e.clientY) : { x: 200, y: 200 };
 
-    // Position the modal near the click, clamped to viewport
+    // Position the radial menu centered on the click, clamped to viewport
     const canvasEl = document.querySelector('.sc-root');
     if (!canvasEl) return;
     const rect = canvasEl.getBoundingClientRect();
-    const pad = 20;
+    const pad = 80; // radial radius + margin
     let mx = e.clientX;
-    let my = e.clientY - 80;
-    if (my < rect.top + pad) my = e.clientY + pad;
-    mx = Math.max(rect.left + pad, Math.min(rect.right - pad - 120, mx));
+    let my = e.clientY;
+    mx = Math.max(rect.left + pad, Math.min(rect.right - pad, mx));
     my = Math.max(rect.top + pad, Math.min(rect.bottom - pad, my));
 
     this.setState({ actionModal: { visible: true, x: mx, y: my, workspacePos } });
