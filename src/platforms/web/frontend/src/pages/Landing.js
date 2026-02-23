@@ -66,11 +66,12 @@ export class Landing extends Component {
       }
 
       .lp-tagline {
-        font-family: var(--ff-sans);
-        font-size: var(--fs-md);
-        font-weight: var(--fw-light);
-        color: var(--text-secondary);
-        letter-spacing: var(--ls-wide);
+        font-family: var(--ff-condensed);
+        font-size: var(--fs-xs);
+        font-weight: var(--fw-medium);
+        letter-spacing: var(--ls-widest);
+        text-transform: uppercase;
+        color: var(--text-label);
         margin: 0;
         animation: fadeIn var(--dur-entry) var(--ease) 0.25s both;
       }

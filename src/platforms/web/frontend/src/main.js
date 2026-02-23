@@ -44,8 +44,8 @@ if (isAppSubdomain) {
     renderPage(SpellPage);
   });
 } else {
-  // Main domain: marketing site
-  route('/', () => renderPage(Landing));
+  // Main domain: marketing site — full-screen, no Nav/Footer chrome
+  route('/', () => renderSandbox(Landing));
   route('/pricing', () => renderPage(Pricing));
   route('/docs', () => renderPage(Docs));
 
