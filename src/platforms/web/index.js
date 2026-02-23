@@ -151,13 +151,7 @@ function initializeWebPlatform(services, options = {}) {
           res.redirect(process.env.NODE_ENV === 'production' ? 'https://noema.art' : '/');
       });
 
-      // Legacy landing fallback (app subdomain only)
-      app.get('/landing', (req, res, next) => {
-        if (!isAppSubdomain(req)) return next();
-        res.sendFile(path.join(publicPath, 'landing.html'));
-      });
-
-      // /pricing, /docs, /admin on app subdomain fall through to SPA catch-all
+      // /landing, /pricing, /docs, /admin, /spells/:slug all fall through to SPA catch-all
 
       // Spell Execution Page — served by the SPA; router intercepts /spells/:slug
       app.get('/spells/:slug', (req, res) => {
@@ -199,7 +193,7 @@ function initializeWebPlatform(services, options = {}) {
       // Serve frontend SPA assets (both domains — JS/CSS bundles from frontend/dist)
       app.use(express.static(frontendDist));
 
-      // Then serve assets from the public directory (images, landing pages, etc.)
+      // Then serve assets from the public directory (images, fonts, docs content, etc.)
       app.use(express.static(publicPath));
 
       // Then serve from the regular static path if specified
@@ -210,11 +204,7 @@ function initializeWebPlatform(services, options = {}) {
       // Handle SPA routing — both domains serve the microact SPA
       app.get('*', (req, res) => {
         if (req.accepts('html')) {
-          if (fs.existsSync(frontendIndexHtml)) {
-            res.sendFile(frontendIndexHtml);
-          } else {
-            res.sendFile(path.join(publicPath, 'landing.html'));
-          }
+          res.sendFile(frontendIndexHtml);
         } else {
           res.status(404).json({ error: 'Not found' });
         }

@@ -47,23 +47,22 @@ if [ -f "$FRONTEND_DIR/package.json" ]; then
   # Build once for Express fallback (production-like static serving)
   echo "[run-dev.sh] Building frontend (initial)..."
   (cd "$FRONTEND_DIR" && npm run build)
-
-  # Start Vite dev server in background for HMR
-  echo "[run-dev.sh] Starting Vite dev server on :5173..."
-  (cd "$FRONTEND_DIR" && npx vite --host) &
-  VITE_PID=$!
 fi
 
-# Cleanup Vite on exit
+# Cleanup on exit — kill both Express and Vite
 cleanup() {
   if [ -n "$VITE_PID" ]; then
     echo "[run-dev.sh] Stopping Vite dev server..."
     kill "$VITE_PID" 2>/dev/null || true
   fi
+  if [ -n "$EXPRESS_PID" ]; then
+    echo "[run-dev.sh] Stopping Express..."
+    kill "$EXPRESS_PID" 2>/dev/null || true
+  fi
 }
 trap cleanup EXIT
 
-# Run the Express backend
+# Start Express in background first
 # Express :4000 → API, WebSocket, sandbox ESM, auth
 # Vite :5173    → Frontend with HMR (proxies to Express)
 #
@@ -73,4 +72,24 @@ trap cleanup EXIT
 #   localhost:4000        → same but without HMR (static build)
 #   app.localhost:4000    → same but without HMR (static build)
 echo "[run-dev.sh] Starting Express on :4000..."
-node app.js
+node app.js &
+EXPRESS_PID=$!
+
+# Wait for Express to accept connections before starting Vite
+echo "[run-dev.sh] Waiting for Express to be ready on :4000..."
+MAX_WAIT=60
+WAITED=0
+while ! (echo >/dev/tcp/localhost/4000) 2>/dev/null; do
+  if [ $WAITED -ge $MAX_WAIT ]; then
+    echo "[run-dev.sh] ERROR: Express did not start within ${MAX_WAIT}s. Check logs above."
+    exit 1
+  fi
+  sleep 1
+  WAITED=$((WAITED + 1))
+done
+echo "[run-dev.sh] Express is ready (${WAITED}s). Starting Vite dev server on :5173..."
+
+if [ -f "$FRONTEND_DIR/package.json" ]; then
+  # Run Vite in foreground — script stays alive as long as Vite runs
+  (cd "$FRONTEND_DIR" && npx vite --host)
+fi

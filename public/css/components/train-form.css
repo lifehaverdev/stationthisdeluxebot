@@ -1,6 +1,0 @@
-.img-upload-section{margin:10px 0;font-size:14px}
-.img-upload-section .dropzone{border:2px dashed var(--border-color,#999);padding:20px;text-align:center;border-radius:6px;cursor:pointer;color:#666;background:#fafafa;transition:border-color .2s}
-.img-upload-section .dropzone.dragover{border-color:#08f;color:#08f;background:#f0f8ff}
-.thumb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:8px;margin-top:12px}
-.thumb-grid img.thumb{width:100%;height:80px;object-fit:cover;border-radius:4px}
-.thumb-grid img.thumb.new{outline:3px solid #4caf50}

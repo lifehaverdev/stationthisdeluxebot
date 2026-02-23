@@ -88,6 +88,7 @@ export class SandboxCanvas extends Component {
         import('../node/websocketHandlers.js'),
       ]);
       wsModule.websocketClient?.connect?.();
+      wsHandlers.registerWebSocketHandlers?.();
       this._wsHandlers = wsHandlers;
     } catch (e) {
       console.warn('[SandboxCanvas] WS init failed:', e);
