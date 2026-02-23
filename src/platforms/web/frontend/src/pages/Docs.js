@@ -14,6 +14,7 @@ export class Docs extends Component {
       pricingData: null,
       pricingLoading: false,
       pricingError: null,
+      mobileSidebarOpen: false,
     };
   }
 
@@ -258,6 +259,46 @@ export class Docs extends Component {
         padding-left: 14px;
       }
 
+      /* Mobile sidebar toggle */
+      .docs-sidebar-toggle {
+        display: none;
+        align-items: center;
+        background: none;
+        border: none;
+        border-left: var(--border-width) solid var(--border);
+        color: var(--text-label);
+        font-family: var(--ff-mono);
+        font-size: 10px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        cursor: pointer;
+        padding: 0 12px;
+        height: 100%;
+        transition: color var(--dur-micro) var(--ease);
+      }
+      .docs-sidebar-toggle:hover { color: var(--text-secondary); }
+      .docs-sidebar-toggle.open  { color: var(--accent); }
+
+      @media (max-width: 640px) {
+        .docs-sidebar-toggle { display: flex; }
+
+        .docs-sidebar {
+          position: fixed;
+          top: var(--header-height, 44px);
+          left: 0;
+          right: 0;
+          bottom: 0;
+          width: 100%;
+          z-index: 200;
+          border-right: none;
+          display: none;
+          overflow-y: auto;
+        }
+        .docs-sidebar.open { display: block; }
+
+        .docs-content { padding: 24px 20px; }
+      }
+
       /* ── Content ─────────────────────────────────────────── */
       .docs-content {
         flex: 1;
@@ -464,7 +505,7 @@ export class Docs extends Component {
   }
 
   render() {
-    const { sections, currentIndex, contentHtml, loading } = this.state;
+    const { sections, currentIndex, contentHtml, loading, mobileSidebarOpen } = this.state;
     const section = sections[currentIndex];
     const isPricing = section?.special === 'pricing-renderer';
     const prevSection = currentIndex > 0 ? sections[currentIndex - 1] : null;
@@ -475,18 +516,23 @@ export class Docs extends Component {
       /* Header */
       h('header', { className: 'docs-header' },
         h('a', { href: '/', className: 'docs-header-wordmark' }, 'NOEMA'),
+        h('button', {
+          className: `docs-sidebar-toggle${mobileSidebarOpen ? ' open' : ''}`,
+          onclick: () => this.setState({ mobileSidebarOpen: !mobileSidebarOpen }),
+        }, mobileSidebarOpen ? 'Close' : 'Sections'),
       ),
 
       /* Body */
       h('div', { className: 'docs-body' },
 
         /* Sidebar */
-        h('aside', { className: 'docs-sidebar' },
+        h('aside', { className: `docs-sidebar${mobileSidebarOpen ? ' open' : ''}` },
           ...sections.map((s, i) =>
             h('a', {
               key: s.id,
               href: `#${s.id}`,
               className: i === currentIndex ? 'active' : '',
+              onclick: () => this.setState({ mobileSidebarOpen: false }),
             }, s.title)
           )
         ),

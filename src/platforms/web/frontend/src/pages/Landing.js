@@ -375,6 +375,16 @@ export class Landing extends Component {
       .lp-cap-item:last-child { border-bottom: none; }
       .lp-cap-item:hover { background: var(--surface-1); }
 
+      @media (max-width: 640px) {
+        .lp-cap-item {
+          grid-template-columns: 1fr;
+          gap: 6px;
+          padding: 14px 24px;
+          min-height: unset;
+        }
+        .lp-cap-desc { opacity: 1; }
+      }
+
       .lp-cap-label {
         font-family: var(--ff-mono);
         font-size: var(--fs-xs);
@@ -464,6 +474,16 @@ export class Landing extends Component {
         letter-spacing: 0.14em;
         text-transform: uppercase;
         color: var(--text-secondary);
+      }
+
+      @media (max-width: 640px) {
+        .lp-hero-body  { padding: 0 24px; }
+        .lp-wordmark   { font-size: clamp(56px, 18vw, 96px); }
+        .lp-section-bar,
+        .lp-signal-item,
+        .lp-philosophy { padding-left: 24px; padding-right: 24px; }
+        .lp-cta        { padding: 64px 24px 56px; }
+        .lp-hero-readout { display: none; }
       }
 
       /* ── Final CTA ──────────────────────────────────────── */
