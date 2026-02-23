@@ -1,112 +1,73 @@
 /* cookMenuModal.css */
 .cook-modal-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.85);
+    inset: 0;
+    background: rgba(11, 12, 13, 0.72);
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 1002;
-    backdrop-filter: blur(12px);
-    animation: modalOverlayFadeIn 0.3s ease-out;
+    z-index: var(--z-modal);
+    backdrop-filter: blur(2px);
+    animation: fadeIn var(--dur-trans) var(--ease);
     overflow-y: auto;
     padding: 40px 20px;
     box-sizing: border-box;
 }
 
-@keyframes modalOverlayFadeIn {
-    from {
-        opacity: 0;
-        backdrop-filter: blur(0px);
-    }
-    to {
-        opacity: 1;
-        backdrop-filter: blur(12px);
-    }
-}
-
 .cook-modal-container {
-    background: linear-gradient(135deg, #1a1a1a 0%, #1f1f1f 100%);
-    color: #e0e0e0;
-    padding: 32px;
-    border-radius: 20px;
+    background: var(--surface-2);
+    color: var(--text-primary);
+    padding: 0;
     width: 90%;
     max-width: 850px;
     position: relative;
-    box-shadow: 
-        0 25px 70px rgba(0, 0, 0, 0.6),
-        0 0 0 1px rgba(255, 255, 255, 0.08) inset,
-        0 2px 0 rgba(255, 255, 255, 0.12) inset;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: var(--border-width) solid var(--border);
     max-height: calc(100vh - 80px);
     overflow-y: auto;
-    animation: modalSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-    transform-origin: center;
+    animation: fadeUp var(--dur-trans) var(--ease);
     margin: auto;
     box-sizing: border-box;
 }
 
 .cook-modal-container h2 {
-    margin: 0 0 24px 0;
-    font-size: 24px;
-    font-weight: 700;
-    color: #fff;
-    letter-spacing: -0.5px;
-    background: linear-gradient(135deg, #fff 0%, #e0e0e0 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    margin: 0;
+    font-family: var(--ff-condensed);
+    font-size: var(--fs-md);
+    font-weight: var(--fw-medium);
+    letter-spacing: var(--ls-widest);
+    text-transform: uppercase;
+    color: var(--text-primary);
+    padding: 10px 20px;
+    border-bottom: var(--border-width) solid var(--border);
+    background: var(--surface-3);
 }
 
 .cook-modal-container hr {
     border: none;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
-    margin: 32px 0;
-}
-
-@keyframes modalSlideIn {
-    from {
-        opacity: 0;
-        transform: scale(0.95) translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1) translateY(0);
-    }
+    height: var(--border-width);
+    background: var(--border);
+    margin: 0;
 }
 
 .cook-modal-container .close-btn {
     position: absolute;
-    top: 16px;
-    right: 16px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: #aaa;
-    font-size: 22px;
+    top: 10px;
+    right: 10px;
+    background: none;
+    border: var(--border-width) solid transparent;
+    color: var(--text-label);
+    font-size: 12px;
     cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 8px;
-    line-height: 1;
+    font-family: var(--ff-mono);
+    transition: color var(--dur-micro) var(--ease), border-color var(--dur-micro) var(--ease);
+    width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0;
 }
 
 .cook-modal-container .close-btn:hover {
-    color: #fff;
-    background: rgba(231, 76, 60, 0.2);
-    border-color: rgba(231, 76, 60, 0.4);
-    transform: rotate(90deg) scale(1.1);
-}
-
-.cook-modal-container .close-btn:active {
-    transform: rotate(90deg) scale(0.95);
+    color: var(--danger);
+    border-color: var(--danger);
 }
 
 .cook-status-item {

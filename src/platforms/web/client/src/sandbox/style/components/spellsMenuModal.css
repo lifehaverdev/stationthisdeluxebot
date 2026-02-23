@@ -1,93 +1,53 @@
 /* src/platforms/web/client/src/sandbox/style/components/spellsMenuModal.css */
 .spells-modal-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.75);
+    inset: 0;
+    background: rgba(11, 12, 13, 0.72);
     display: flex;
     justify-content: center;
     align-items: flex-start;
     overflow-y: auto;
     padding: 40px 20px;
-    z-index: 1001;
-    backdrop-filter: blur(8px);
+    z-index: var(--z-modal);
+    backdrop-filter: blur(2px);
     box-sizing: border-box;
-    animation: modalOverlayFadeIn 0.3s ease-out;
-}
-
-@keyframes modalOverlayFadeIn {
-    from {
-        opacity: 0;
-        backdrop-filter: blur(0px);
-    }
-    to {
-        opacity: 1;
-        backdrop-filter: blur(8px);
-    }
+    animation: fadeIn var(--dur-trans) var(--ease);
 }
 
 .spells-modal-container {
-    background: linear-gradient(135deg, #1a1a1a 0%, #1f1f1f 100%);
-    color: #f0f0f0;
-    padding: 24px;
-    border-radius: 16px;
+    background: var(--surface-2);
+    color: var(--text-primary);
+    padding: 0;
     width: 90%;
     max-width: 600px;
     max-height: calc(100vh - 80px);
     position: relative;
-    box-shadow: 
-        0 20px 60px rgba(0, 0, 0, 0.5),
-        0 0 0 1px rgba(255, 255, 255, 0.05) inset,
-        0 1px 0 rgba(255, 255, 255, 0.1) inset;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: var(--border-width) solid var(--border);
     overflow-y: auto;
     margin: 0 auto;
     box-sizing: border-box;
-    animation: modalSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-    transform-origin: center top;
-}
-
-@keyframes modalSlideIn {
-    from {
-        opacity: 0;
-        transform: translateY(-20px) scale(0.95);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
+    animation: fadeUp var(--dur-trans) var(--ease);
 }
 
 .spells-modal-container .close-btn {
     position: absolute;
-    top: 16px;
-    right: 16px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: #aaa;
-    font-size: 22px;
+    top: 10px;
+    right: 10px;
+    background: none;
+    border: var(--border-width) solid transparent;
+    color: var(--text-label);
+    font-size: 12px;
     cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 8px;
-    line-height: 1;
+    font-family: var(--ff-mono);
+    transition: color var(--dur-micro) var(--ease), border-color var(--dur-micro) var(--ease);
+    width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0;
 }
 
 .spells-modal-container .close-btn:hover {
-    color: #fff;
-    background: rgba(231, 76, 60, 0.2);
-    border-color: rgba(231, 76, 60, 0.4);
-    transform: rotate(90deg) scale(1.1);
-}
-
-.spells-modal-container .close-btn:active {
-    transform: rotate(90deg) scale(0.95);
+    color: var(--danger);
+    border-color: var(--danger);
 }
 
 .spells-modal-content h2 {
@@ -99,9 +59,9 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-bottom: 1px solid #333;
-    padding-bottom: 15px;
-    margin-bottom: 15px;
+    border-bottom: var(--border-width) solid var(--border);
+    padding: 10px 20px;
+    background: var(--surface-3);
 }
 
 .spells-main-actions {
@@ -119,25 +79,16 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 14px 16px;
-    border-radius: 10px;
-    background: linear-gradient(135deg, #2a2a2a 0%, #252525 100%);
-    margin-bottom: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    padding: 10px 12px;
+    background: var(--surface-1);
+    border-bottom: var(--border-width) solid var(--border);
+    transition: background var(--dur-micro) var(--ease);
     cursor: pointer;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .spell-item:hover {
-    background: linear-gradient(135deg, #333 0%, #2a2a2a 100%);
-    border-color: rgba(74, 144, 226, 0.4);
-    transform: translateX(4px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-.spell-item:active {
-    transform: translateX(2px);
+    background: var(--surface-2);
+    border-color: var(--border-hover);
 }
 
 .empty-list-message {
@@ -147,64 +98,39 @@
 }
 
 .action-button, .action-button-secondary {
-    border: none;
-    padding: 10px 20px;
-    border-radius: 8px;
+    border: var(--border-width) solid var(--border);
+    padding: 5px 14px;
     cursor: pointer;
-    font-weight: 600;
-    font-size: 0.95em;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    position: relative;
-    overflow: hidden;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    font-family: var(--ff-condensed);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-medium);
+    letter-spacing: var(--ls-widest);
+    text-transform: uppercase;
+    height: 28px;
+    display: inline-flex; align-items: center;
+    transition: background var(--dur-micro) var(--ease), color var(--dur-micro) var(--ease), border-color var(--dur-micro) var(--ease);
 }
 
 .action-button {
-    background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
-    color: white;
-}
-
-.action-button::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-    transition: left 0.5s;
+    background: var(--accent-dim);
+    border-color: var(--accent-border);
+    color: var(--accent);
 }
 
 .action-button:hover {
-    background: linear-gradient(135deg, #5aa1f2 0%, #4a90e2 100%);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(74, 144, 226, 0.4);
-}
-
-.action-button:hover::before {
-    left: 100%;
-}
-
-.action-button:active {
-    transform: translateY(0);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    background: rgba(0,223,200,0.2);
+    border-color: var(--accent);
 }
 
 .action-button-secondary {
-    background: linear-gradient(135deg, #3a3a3a 0%, #2a2a2a 100%);
-    color: #f0f0f0;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--surface-1);
+    color: var(--text-secondary);
 }
 
 .action-button-secondary:hover {
-    background: linear-gradient(135deg, #4a4a4a 0%, #3a3a3a 100%);
-    border-color: rgba(255, 255, 255, 0.2);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-.action-button-secondary:active {
-    transform: translateY(0);
+    background: var(--surface-2);
+    color: var(--text-primary);
+    border-color: var(--border-hover);
 }
 
 /* Spell Creation Form Styles */

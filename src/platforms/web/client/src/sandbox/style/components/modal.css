@@ -1,148 +1,153 @@
-.action-modal {
-    position: fixed;
-    background: rgba(255, 255, 255, 0.9);
-    backdrop-filter: var(--backdrop-blur);
-    border: 2px solid rgba(255, 255, 255, 0.95);
-    border-radius: var(--border-radius);
-    padding: 8px;
-    z-index: var(--z-modal);
-    transform: translate(-50%, -50%);
-    box-shadow: var(--box-shadow);
-    display: none;
-    gap: 8px;
-    font-family: var(--font-family-mono);
+/* ── Backdrop ───────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 12, 13, 0.72);
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn var(--dur-trans) var(--ease);
+  backdrop-filter: blur(2px);
 }
 
-.action-modal.active {
-    display: flex;
+/* Grid remains faintly visible — feel of panel extension, not interruption */
+.modal-overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    repeating-linear-gradient(90deg, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px, transparent 1px, transparent 32px),
+    repeating-linear-gradient(0deg,  rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px, transparent 1px, transparent 32px);
+  pointer-events: none;
 }
 
-.action-modal button {
-    background: transparent;
-    border: 1px solid rgba(0, 0, 0, 0.2);
-    border-radius: 8px;
-    padding: 8px 16px;
-    cursor: pointer;
-    font-family: inherit;
-    transition: all var(--transition-speed) var(--transition-timing);
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    position: relative;
+/* ── Panel container ────────────────────────── */
+.modal-container {
+  position: relative;
+  background: var(--surface-2);
+  border: var(--border-width) solid var(--border);
+  min-width: 360px;
+  max-width: 560px;
+  width: 100%;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  animation: fadeUp var(--dur-trans) var(--ease);
 }
 
-.action-modal button:hover {
-    background: rgba(255, 255, 255, 0.95);
-    border-color: rgba(0, 0, 0, 0.3);
+/* Corner bracket indicators — top-left and bottom-right via pseudo */
+.modal-container::before,
+.modal-container::after {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-color: var(--border-hover);
+  border-style: solid;
+  pointer-events: none;
+  z-index: 1;
+}
+.modal-container::before { top: -1px; left: -1px; border-width: 1px 0 0 1px; }
+.modal-container::after  { bottom: -1px; right: -1px; border-width: 0 1px 1px 0; }
+
+/* ── Modal header ───────────────────────────── */
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px var(--modal-padding);
+  border-bottom: var(--border-width) solid var(--border);
+  background: var(--surface-3);
+  flex-shrink: 0;
 }
 
-.action-modal button:active {
-    transform: translateY(1px);
+.modal-title {
+  font-family: var(--ff-condensed);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--ls-widest);
+  text-transform: uppercase;
+  color: var(--text-primary);
 }
 
-.create-submenu {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    margin-top: 8px;
-    background: rgba(255, 255, 255, 0.9);
-    backdrop-filter: var(--backdrop-blur);
-    border: 2px solid rgba(255, 255, 255, 0.95);
-    border-radius: var(--border-radius);
-    padding: 8px;
-    display: none;
-    flex-direction: column;
-    gap: 8px;
-    min-width: 140px;
+.modal-close {
+  background: none;
+  border: var(--border-width) solid transparent;
+  color: var(--text-label);
+  cursor: pointer;
+  font-size: 12px;
+  width: 22px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--ff-mono);
+  transition:
+    color var(--dur-micro) var(--ease),
+    border-color var(--dur-micro) var(--ease);
+  padding: 0;
+  flex-shrink: 0;
+}
+.modal-close:hover {
+  color: var(--danger);
+  border-color: var(--danger);
 }
 
-.create-submenu.active {
-    display: flex;
-    animation: fadeIn var(--transition-speed) var(--transition-timing);
+/* ── Modal body ─────────────────────────────── */
+.modal-body {
+  padding: var(--modal-padding);
+  overflow-y: auto;
+  flex: 1;
 }
 
-.create-submenu button {
-    width: 100%;
-    justify-content: flex-start;
-    white-space: nowrap;
-    font-size: var(--font-size-small);
+/* ── Modal footer ───────────────────────────── */
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px var(--modal-padding);
+  border-top: var(--border-width) solid var(--border);
+  background: var(--surface-2);
+  flex-shrink: 0;
 }
 
-.output-tools-modal {
-    position: fixed;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    background: var(--modal-bg);
-    backdrop-filter: var(--backdrop-blur);
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius);
-    padding: var(--modal-padding);
-    color: var(--text-color);
-    font-family: var(--font-family-mono);
-    z-index: var(--z-modal);
-    min-width: 240px;
-    animation: modalFadeIn var(--transition-speed) var(--transition-timing);
-    max-height: 80vh;
-    overflow-y: auto;
+/* ── Shared button primitives ───────────────── */
+.modal-btn {
+  background: var(--surface-1);
+  border: var(--border-width) solid var(--border);
+  color: var(--text-secondary);
+  font-family: var(--ff-condensed);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--ls-widest);
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 5px 14px;
+  height: 28px;
+  display: flex; align-items: center;
+  transition:
+    background  var(--dur-micro) var(--ease),
+    color       var(--dur-micro) var(--ease),
+    border-color var(--dur-micro) var(--ease);
+}
+.modal-btn:hover {
+  background: var(--surface-2);
+  color: var(--text-primary);
+  border-color: var(--border-hover);
 }
 
-.output-tools-modal .header {
-    padding: 8px;
-    border-bottom: 1px solid var(--border-color);
-    margin-bottom: 12px;
-    font-weight: bold;
-    font-size: var(--font-size-large);
+.modal-btn.primary {
+  background: var(--accent-dim);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+.modal-btn.primary:hover {
+  background: rgba(0,223,200,0.2);
+  border-color: var(--accent);
 }
 
-.output-tools-modal button {
-    width: 100%;
-    padding: 12px;
-    margin: 4px 0;
-    background: transparent;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    color: var(--text-color);
-    cursor: pointer;
-    text-align: left;
-    font-family: var(--font-family-mono);
-    transition: all var(--transition-speed) var(--transition-timing);
-    display: flex;
-    align-items: center;
-    gap: 12px;
+.modal-btn.danger {
+  background: var(--danger-dim);
+  border-color: var(--danger);
+  color: var(--danger);
 }
-
-.output-tools-modal button:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: var(--border-color-hover);
-}
-
-.output-tools-modal button:active {
-    transform: scale(0.98);
-}
-
-.upload-area {
-    padding: 20px;
-    border: 2px dashed var(--border-color);
-    border-radius: var(--border-radius);
-    text-align: center;
-    cursor: pointer;
-    transition: all var(--transition-speed) var(--transition-timing);
-}
-
-.upload-area:hover,
-.upload-area.active {
-    border-color: var(--border-color-hover);
-    background: rgba(255, 255, 255, 0.05);
-}
-
-@keyframes modalFadeIn {
-    from {
-        opacity: 0;
-        transform: translate(-50%, -50%) scale(0.95);
-    }
-    to {
-        opacity: 1;
-        transform: translate(-50%, -50%) scale(1);
-    }
-} 
