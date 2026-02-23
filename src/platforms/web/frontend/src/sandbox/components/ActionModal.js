@@ -164,7 +164,7 @@ export class ActionModal extends Component {
       }
       .am-center:hover { fill: var(--surface-2); }
 
-      /* Upload view — panel fallback (drag-drop can't be radial) */
+      /* Panel fallback — used for upload and tools list */
       .am-upload-panel {
         position: fixed;
         z-index: var(--z-radial);
@@ -216,6 +216,83 @@ export class ActionModal extends Component {
         text-transform: uppercase;
         letter-spacing: var(--ls-wide);
       }
+
+      /* Tools list panel */
+      .am-tools-panel {
+        position: fixed;
+        z-index: var(--z-radial);
+        background: var(--surface-2);
+        border: var(--border-width) solid var(--border);
+        min-width: 200px;
+        max-width: 280px;
+        transform: translate(-50%, -50%);
+        animation: fadeUp var(--dur-trans) var(--ease);
+      }
+      .am-tools-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-bottom: var(--border-width) solid var(--border);
+        background: var(--surface-3);
+      }
+      .am-tools-back {
+        background: none;
+        border: none;
+        color: var(--text-label);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wide);
+        text-transform: uppercase;
+        cursor: pointer;
+        padding: 0;
+        flex-shrink: 0;
+        transition: color var(--dur-micro) var(--ease);
+      }
+      .am-tools-back:hover { color: var(--text-secondary); }
+      .am-tools-title {
+        font-family: var(--ff-condensed);
+        font-size: var(--fs-xs);
+        font-weight: var(--fw-medium);
+        letter-spacing: var(--ls-widest);
+        text-transform: uppercase;
+        color: var(--text-secondary);
+      }
+      .am-tools-list {
+        max-height: 240px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+      }
+      .am-tool-item {
+        background: none;
+        border: none;
+        border-bottom: var(--border-width) solid var(--border);
+        color: var(--text-secondary);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wide);
+        text-align: left;
+        padding: 8px 12px;
+        cursor: pointer;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        transition: background var(--dur-micro) var(--ease), color var(--dur-micro) var(--ease);
+      }
+      .am-tool-item:last-child { border-bottom: none; }
+      .am-tool-item:hover {
+        background: var(--accent-dim);
+        color: var(--accent);
+      }
+      .am-tools-empty {
+        padding: 12px;
+        color: var(--text-label);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wide);
+        text-transform: uppercase;
+      }
     `;
   }
 
@@ -252,7 +329,34 @@ export class ActionModal extends Component {
       );
     }
 
-    // Build items for radial segments from current view
+    // Tools view: too many items for radial — render as scrollable panel
+    if (view === 'tools') {
+      const filtered = tools.filter(t => t.category === selectedCategory.category);
+      return h('div', {
+        className: 'am-tools-panel',
+        style: `left:${x}px;top:${y}px`,
+        onclick: (e) => e.stopPropagation(),
+      },
+        h('div', { className: 'am-tools-header' },
+          h('button', { className: 'am-tools-back', onclick: (e) => this._back(e) }, '←'),
+          h('span', { className: 'am-tools-title' }, selectedCategory.label),
+        ),
+        filtered.length === 0
+          ? h('div', { className: 'am-tools-empty' }, 'no tools')
+          : h('div', { className: 'am-tools-list' },
+            ...filtered.map(tool =>
+              h('button', {
+                className: 'am-tool-item',
+                key: tool.toolId || tool.displayName,
+                title: tool.description || tool.displayName,
+                onclick: (e) => this._selectTool(tool, e),
+              }, tool.displayName)
+            )
+          )
+      );
+    }
+
+    // Build items for radial segments — root and categories only
     let items = [];
     if (view === 'root') {
       items = [
@@ -263,12 +367,6 @@ export class ActionModal extends Component {
       items = [
         { label: 'back', fn: (e) => this._back(e) },
         ...CATEGORIES.map(c => ({ label: c.label, fn: (e) => this._selectCategory(c, e) })),
-      ];
-    } else if (view === 'tools') {
-      const filtered = tools.filter(t => t.category === selectedCategory.category);
-      items = [
-        { label: 'back', fn: (e) => this._back(e) },
-        ...filtered.slice(0, 4).map(tool => ({ label: tool.displayName, fn: (e) => this._selectTool(tool, e) })),
       ];
     }
 
