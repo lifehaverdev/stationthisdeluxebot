@@ -18,6 +18,12 @@ export class Docs extends Component {
   }
 
   async didMount() {
+    // Load NOEMA design-system CSS (same mechanism as Sandbox)
+    this._cssLink = document.createElement('link');
+    this._cssLink.rel = 'stylesheet';
+    this._cssLink.href = '/index.css';
+    document.head.appendChild(this._cssLink);
+
     try {
       const sections = await fetchJson('/docs/docs-manifest.json');
       this.setState({ sections });
@@ -30,6 +36,7 @@ export class Docs extends Component {
 
   willUnmount() {
     window.removeEventListener('hashchange', this.bind(this.onHashChange));
+    if (this._cssLink?.parentNode) this._cssLink.parentNode.removeChild(this._cssLink);
   }
 
   onHashChange() {
