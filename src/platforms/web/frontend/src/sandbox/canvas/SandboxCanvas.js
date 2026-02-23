@@ -183,6 +183,10 @@ export class SandboxCanvas extends Component {
     const newPanY = mouseY - (mouseY - viewport.panY) * scaleRatio;
 
     this.setState({ viewport: { panX: newPanX, panY: newPanY, scale: newScale } });
+
+    // Grid fades as you zoom out (feels infinite rather than bounded)
+    const gridOpacity = Math.min(1, Math.max(0.15, (newScale - 0.2) / 0.8));
+    this._rootEl && this._rootEl.style.setProperty('--grid-opacity', gridOpacity);
   }
 
   /** Convert screen coordinates to workspace (canvas) coordinates. */
@@ -562,24 +566,75 @@ export class SandboxCanvas extends Component {
         width: 100%;
         height: 100%;
         overflow: hidden;
-        background: #0a0a0a;
-        background-image: radial-gradient(circle, rgba(255,255,255,0.04) 1px, transparent 1px);
-        cursor: default;
+        background-color: var(--canvas-bg);
       }
-      .sc-root--panning { cursor: grabbing; }
+
+      /* ── Ether grid ─────────────────────────────── */
       .sc-viewport {
         position: absolute;
         inset: 0;
         transform-origin: 0 0;
+        will-change: transform;
+
+        /* Orthogonal grid — 32px, very low contrast */
+        --grid-color-ortho: rgba(255,255,255,calc(0.028 * var(--grid-opacity, 1)));
+        /* Isometric diagonals — even fainter */
+        --grid-color-iso:   rgba(255,255,255,calc(0.016 * var(--grid-opacity, 1)));
+
+        background-image:
+          /* Orthogonal vertical lines */
+          repeating-linear-gradient(
+            90deg,
+            var(--grid-color-ortho) 0px,
+            var(--grid-color-ortho) 1px,
+            transparent 1px,
+            transparent var(--grid-unit, 32px)
+          ),
+          /* Orthogonal horizontal lines */
+          repeating-linear-gradient(
+            0deg,
+            var(--grid-color-ortho) 0px,
+            var(--grid-color-ortho) 1px,
+            transparent 1px,
+            transparent var(--grid-unit, 32px)
+          ),
+          /* Isometric diagonal A — 30° */
+          repeating-linear-gradient(
+            30deg,
+            var(--grid-color-iso) 0px,
+            var(--grid-color-iso) 1px,
+            transparent 1px,
+            transparent calc(var(--grid-unit, 32px) * 1.155)
+          ),
+          /* Isometric diagonal B — 150° */
+          repeating-linear-gradient(
+            150deg,
+            var(--grid-color-iso) 0px,
+            var(--grid-color-iso) 1px,
+            transparent 1px,
+            transparent calc(var(--grid-unit, 32px) * 1.155)
+          );
+
+        background-size:
+          var(--grid-unit, 32px) var(--grid-unit, 32px),
+          var(--grid-unit, 32px) var(--grid-unit, 32px),
+          auto, auto;
       }
+
+      /* ── Node layer ─────────────────────────────── */
+      .sc-nodes {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      .sc-root--panning { cursor: grabbing; }
     `;
   }
 
   render() {
     const { windows, connections, selection, viewport, activeConnection, activePan, pendingAnchorDrop } = this.state;
     const transform = `translate(${viewport.panX}px, ${viewport.panY}px) scale(${viewport.scale})`;
-    const bgSize = GRID_SIZE * viewport.scale;
-    const bgPos = `${viewport.panX}px ${viewport.panY}px`;
     const rootCls = `sc-root sandbox-canvas${activePan ? ' sc-root--panning' : ''}`;
 
     // data-connecting-type drives CSS-only highlight on compatible input anchors
@@ -592,7 +647,6 @@ export class SandboxCanvas extends Component {
       ref: (el) => { this._rootEl = el; },
       onmousedown: this.bind(this._onCanvasMouseDown),
       onwheel: this.bind(this._onWheel),
-      style: `background-size: ${bgSize}px ${bgSize}px; background-position: ${bgPos}`,
       ...connectingAttr,
     },
       h('div', { className: 'sc-viewport', style: `transform: ${transform}` },
