@@ -36,7 +36,7 @@ export default class CollectionWindow extends BaseWindow {
       background: rgba(100, 100, 100, 0.1);
       border-radius: 8px;
       border: 1px solid rgba(255, 255, 255, 0.1);
-      font-size: 12px;
+      font-size: 14px;
     `;
     
     const title = document.createElement('div');
@@ -102,7 +102,7 @@ export default class CollectionWindow extends BaseWindow {
             border-radius: 4px;
             color: #88aaff;
             cursor: pointer;
-            font-size: 11px;
+            font-size: 13px;
           `;
           viewFullBtn.onmouseover = () => {
             viewFullBtn.style.background = 'rgba(100, 150, 255, 0.3)';
@@ -388,12 +388,12 @@ export default class CollectionWindow extends BaseWindow {
   _renderCullSummaryBlocks() {
     const summary = document.createElement('div');
     summary.className = 'cull-summary';
-    summary.style.cssText = 'padding: 8px 12px; margin-bottom: 8px; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 13px; color: #d0d0d0;';
+    summary.style.cssText = 'padding: 8px 12px; margin-bottom: 8px; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 16px; color: #d0d0d0;';
     summary.textContent = 'Loading supply stats…';
     this.body.appendChild(summary);
     const deltaBanner = document.createElement('div');
     deltaBanner.className = 'cull-target-delta';
-    deltaBanner.style.cssText = 'padding: 6px 10px; margin-bottom: 12px; background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 13px; color: #fff;';
+    deltaBanner.style.cssText = 'padding: 6px 10px; margin-bottom: 12px; background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 16px; color: #fff;';
     deltaBanner.textContent = 'Calculating target gap…';
     this.body.appendChild(deltaBanner);
     this._cullSummaryEl = summary;
@@ -411,7 +411,7 @@ export default class CollectionWindow extends BaseWindow {
     const body = container || this._resetReviewContentRoot();
     const intro = document.createElement('div');
     intro.className = 'review-intro';
-    intro.style.cssText = 'padding: 8px 12px; background: rgba(255,255,255,0.05); border-radius: 6px; margin-bottom: 8px; font-size: 13px; line-height: 1.4;';
+    intro.style.cssText = 'padding: 8px 12px; background: rgba(255,255,255,0.05); border-radius: 6px; margin-bottom: 8px; font-size: 16px; line-height: 1.4;';
     if (this.isCullMode) {
       intro.innerHTML = `<strong>Second Pass:</strong> Keep or drop each approved piece so the final manifest matches your desired supply. Drop extras until you are comfortable with the kept count.`;
     } else {
@@ -838,11 +838,11 @@ export default class CollectionWindow extends BaseWindow {
     if (!Array.isArray(this._reviveItems)) this._reviveItems = [];
     const intro = document.createElement('div');
     intro.className = 'revive-intro';
-    intro.style.cssText = 'padding: 8px 12px; background: rgba(255,255,255,0.05); border-radius: 6px; margin-bottom: 8px; font-size: 13px; line-height: 1.4;';
+    intro.style.cssText = 'padding: 8px 12px; background: rgba(255,255,255,0.05); border-radius: 6px; margin-bottom: 8px; font-size: 16px; line-height: 1.4;';
     intro.innerHTML = '<strong>Revive excluded pieces.</strong> Browse dropped items and mark specific ones as keep to bring them back.';
     body.appendChild(intro);
     const counter = document.createElement('div');
-    counter.style.cssText = 'margin-bottom: 8px; font-size: 13px; color: #d0d0d0;';
+    counter.style.cssText = 'margin-bottom: 8px; font-size: 16px; color: #d0d0d0;';
     counter.textContent = this._reviveCompleted ? 'All excluded pieces reviewed.' : 'Loading excluded pieces…';
     body.appendChild(counter);
     this._reviveCounterEl = counter;
@@ -864,7 +864,7 @@ export default class CollectionWindow extends BaseWindow {
     this._reviveKeepBtn = keepBtn;
     this._reviveSkipBtn = skipBtn;
     const emptyMessage = document.createElement('div');
-    emptyMessage.style.cssText = 'margin-top: 10px; font-size: 14px; color: #9ac899;';
+    emptyMessage.style.cssText = 'margin-top: 10px; font-size: 17px; color: #9ac899;';
     body.appendChild(emptyMessage);
     this._reviveEmptyEl = emptyMessage;
     this._loadNextRevive();
@@ -1059,7 +1059,7 @@ export default class CollectionWindow extends BaseWindow {
 
     const infoPanel = document.createElement('div');
     infoPanel.className = 'review-info-panel';
-    infoPanel.style.cssText = 'margin: 12px 0; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 12px;';
+    infoPanel.style.cssText = 'margin: 12px 0; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 14px;';
 
     // Extract traits from metadata
     const traits = gen.metadata?.selectedTraits || gen.metadata?.traitSel || {};
@@ -1085,7 +1085,7 @@ export default class CollectionWindow extends BaseWindow {
 
       for (const [category, value] of Object.entries(traits)) {
         const traitChip = document.createElement('span');
-        traitChip.style.cssText = 'background: rgba(154,200,153,0.2); color: #d0d0d0; padding: 2px 8px; border-radius: 4px; font-size: 11px;';
+        traitChip.style.cssText = 'background: rgba(154,200,153,0.2); color: #d0d0d0; padding: 2px 8px; border-radius: 4px; font-size: 13px;';
         traitChip.textContent = `${category}: ${value}`;
         traitsList.appendChild(traitChip);
       }
@@ -1115,7 +1115,7 @@ export default class CollectionWindow extends BaseWindow {
 
       if (prompt.length > 80) {
         const viewFullBtn = document.createElement('button');
-        viewFullBtn.style.cssText = 'background: rgba(154,200,153,0.3); border: none; color: #9ac899; padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 11px;';
+        viewFullBtn.style.cssText = 'background: rgba(154,200,153,0.3); border: none; color: #9ac899; padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 13px;';
         viewFullBtn.textContent = 'View Full';
         viewFullBtn.onclick = (e) => {
           e.preventDefault();

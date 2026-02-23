@@ -13,10 +13,11 @@ import { Component, h } from '@monygroupcorp/microact';
  *   onRemoveConnection — (connId) => void
  */
 
-const ANCHOR_OFFSET_X_OUTPUT = 14;  // how far right of window edge
-const ANCHOR_OFFSET_X_INPUT = -14;  // how far left of window edge
-const DEFAULT_WINDOW_WIDTH = 300;
-const DEFAULT_WINDOW_HEIGHT = 200;
+// Fallback offsets used only when the DOM element can't be found yet
+const FALLBACK_ANCHOR_OFFSET_OUTPUT = 4;  // right edge + half anchor width
+const FALLBACK_ANCHOR_OFFSET_INPUT  = -4; // left edge - half anchor width
+const FALLBACK_WINDOW_WIDTH  = 280;
+const FALLBACK_WINDOW_HEIGHT = 180;
 
 export class ConnectionLayer extends Component {
   shouldUpdate(oldProps, newProps) {
@@ -25,19 +26,31 @@ export class ConnectionLayer extends Component {
         || oldProps.activeConnection !== newProps.activeConnection;
   }
 
-  _getOutputAnchorPos(win) {
+  // Read anchor center from the live DOM, converted to workspace coords.
+  // getAnchorPos(windowId, type, paramKey?) is passed from SandboxCanvas.
+  _getOutputAnchorPos(win, getAnchorPos) {
     if (!win) return { x: 0, y: 0 };
-    const w = win.width || DEFAULT_WINDOW_WIDTH;
-    const h = win.height || DEFAULT_WINDOW_HEIGHT;
-    return { x: win.x + w + ANCHOR_OFFSET_X_OUTPUT, y: win.y + h / 2 };
+    if (getAnchorPos) {
+      const pos = getAnchorPos(win.id, 'output');
+      if (pos) return pos;
+    }
+    // Fallback: approximate from stored position + default size
+    return {
+      x: win.x + FALLBACK_WINDOW_WIDTH + FALLBACK_ANCHOR_OFFSET_OUTPUT,
+      y: win.y + FALLBACK_WINDOW_HEIGHT / 2,
+    };
   }
 
-  _getInputAnchorPos(win, paramKey) {
+  _getInputAnchorPos(win, paramKey, getAnchorPos) {
     if (!win) return { x: 0, y: 0 };
-    const h = win.height || DEFAULT_WINDOW_HEIGHT;
-    // Stack input anchors vertically. For now, center them.
-    // TODO: Calculate per-anchor Y offset based on parameter index
-    return { x: win.x + ANCHOR_OFFSET_X_INPUT, y: win.y + h / 2 };
+    if (getAnchorPos) {
+      const pos = getAnchorPos(win.id, 'input', paramKey);
+      if (pos) return pos;
+    }
+    return {
+      x: win.x + FALLBACK_ANCHOR_OFFSET_INPUT,
+      y: win.y + FALLBACK_WINDOW_HEIGHT / 2,
+    };
   }
 
   _bezier(fromX, fromY, toX, toY) {
@@ -57,14 +70,29 @@ export class ConnectionLayer extends Component {
         overflow: visible;
       }
 
-      /* Default connection — quiet, barely visible */
+      /* Default connection — quiet, barely visible. No pointer events (handled by hit path). */
       .cl-path {
         fill: none;
         stroke: rgba(255,255,255,0.18);
         stroke-width: 1px;
+        pointer-events: none;
+        transition: stroke var(--dur-micro) var(--ease), stroke-width var(--dur-micro) var(--ease);
+      }
+
+      /* Wide transparent hit area — forgiving click/hover target */
+      .cl-path-hit {
+        fill: none;
+        stroke: transparent;
+        stroke-width: 20px;
         pointer-events: stroke;
         cursor: pointer;
-        transition: stroke var(--dur-micro) var(--ease);
+      }
+
+      /* When hovering the hit path, style the adjacent visible path red */
+      .cl-path-hit:hover + .cl-path,
+      .cl-path-hit:hover ~ .cl-path {
+        stroke: var(--danger);
+        stroke-width: 1.5px;
       }
 
       /* Active / data-flowing connection — accent signal */
@@ -83,12 +111,6 @@ export class ConnectionLayer extends Component {
         animation: signalFlow 0.4s linear infinite;
       }
 
-      /* Hover to remove */
-      .cl-path:hover {
-        stroke: var(--danger);
-        stroke-width: 1.5px;
-      }
-
       /* Connector dots at endpoints */
       .cl-dot {
         fill: rgba(255,255,255,0.18);
@@ -99,32 +121,36 @@ export class ConnectionLayer extends Component {
   }
 
   render() {
-    const { connections, windows, activeConnection, onRemoveConnection } = this.props;
+    const { connections, windows, activeConnection, onRemoveConnection, getAnchorPos } = this.props;
 
-    const paths = (connections || []).map(conn => {
+    const paths = (connections || []).flatMap(conn => {
       const fromWin = windows.get(conn.fromWindowId);
       const toWin = windows.get(conn.toWindowId);
-      if (!fromWin || !toWin) return null;
+      if (!fromWin || !toWin) return [];
 
-      const from = this._getOutputAnchorPos(fromWin);
-      const to = this._getInputAnchorPos(toWin, conn.toInput);
+      const from = this._getOutputAnchorPos(fromWin, getAnchorPos);
+      const to = this._getInputAnchorPos(toWin, conn.toInput, getAnchorPos);
       const d = this._bezier(from.x, from.y, to.x, to.y);
 
-      return h('path', {
-        key: conn.id,
-        d,
-        className: 'cl-path',
-        style: 'pointer-events: stroke',
-        onclick: (e) => { e.stopPropagation(); onRemoveConnection?.(conn.id); },
-      });
-    }).filter(Boolean);
+      // Two paths per connection: visible thin line + wide invisible hit area on top.
+      // The hit path uses the CSS sibling selector trick: hit:hover + visible → red.
+      return [
+        h('path', { key: conn.id + '-vis', d, className: 'cl-path' }),
+        h('path', {
+          key: conn.id + '-hit',
+          d,
+          className: 'cl-path-hit',
+          onclick: (e) => { e.stopPropagation(); onRemoveConnection?.(conn.id); },
+        }),
+      ];
+    });
 
     // Temp drag line
     let tempPath = null;
     if (activeConnection) {
       const fromWin = windows.get(activeConnection.fromWindowId);
       if (fromWin) {
-        const from = this._getOutputAnchorPos(fromWin);
+        const from = this._getOutputAnchorPos(fromWin, getAnchorPos);
         const d = this._bezier(from.x, from.y, activeConnection.mouseX, activeConnection.mouseY);
         tempPath = h('path', { d, className: 'cl-path pending' });
       }

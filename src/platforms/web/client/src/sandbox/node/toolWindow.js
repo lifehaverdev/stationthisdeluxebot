@@ -351,7 +351,7 @@ function createWindowHeader(title) {
     costElement.className = 'window-cost-display';
     costElement.innerHTML = '<span class="cost-icon">💲</span><span class="cost-amount">0 POINTS</span>';
     costElement.style.cssText = `
-        font-size: 11px;
+        font-size: 13px;
         color: #888;
         margin-left: 8px;
         display: flex;

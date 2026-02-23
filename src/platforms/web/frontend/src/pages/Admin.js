@@ -39,7 +39,9 @@ export class Admin extends Component {
         period: 'daily',
         startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
         endDate: new Date()
-      }
+      },
+      // Withdrawal confirmation state: { tokenAddress, vaultAddress, amount, symbol, decimals } | null
+      pendingWithdrawal: null,
     };
   }
 
@@ -119,21 +121,23 @@ export class Admin extends Component {
     });
   }
 
-  async handleWithdraw(tokenAddress, vaultAddress, amount, symbol, decimals) {
-    const { signer } = this.state;
-    if (!signer) return;
+  handleWithdraw(tokenAddress, vaultAddress, amount, symbol, decimals) {
+    // Show inline confirmation instead of browser confirm()
+    this.setState({ pendingWithdrawal: { tokenAddress, vaultAddress, amount, symbol, decimals } });
+  }
 
-    const confirmed = confirm(`Request withdrawal of ${symbol} from vault?`);
-    if (!confirmed) return;
-
+  async _confirmWithdraw() {
+    const { signer, pendingWithdrawal: w } = this.state;
+    if (!signer || !w) return;
+    this.setState({ pendingWithdrawal: null });
     try {
       let contract;
-      if (vaultAddress.toLowerCase() === FOUNDATION_ADDRESS.toLowerCase()) {
+      if (w.vaultAddress.toLowerCase() === FOUNDATION_ADDRESS.toLowerCase()) {
         contract = new ethers.Contract(FOUNDATION_ADDRESS, FOUNDATION_ABI, signer);
       } else {
-        contract = new ethers.Contract(vaultAddress, CHARTERED_FUND_ABI, signer);
+        contract = new ethers.Contract(w.vaultAddress, CHARTERED_FUND_ABI, signer);
       }
-      const tx = await contract.requestRescission(tokenAddress);
+      const tx = await contract.requestRescission(w.tokenAddress);
       await tx.wait();
       await this.loadDashboard();
     } catch (err) {
@@ -159,31 +163,85 @@ export class Admin extends Component {
         max-width: 1200px;
         margin: 0 auto;
         padding: 1rem;
+        color: var(--text-primary);
+        font-family: var(--ff-sans);
       }
       .admin-page h1 {
-        color: #fff;
+        color: var(--text-primary);
         text-align: center;
         margin-bottom: 1.5rem;
+        font-family: var(--ff-display);
         font-size: 1.5rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
       }
       .admin-loading {
         text-align: center;
-        color: #90caf9;
+        color: var(--accent);
         padding: 2rem;
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wider);
+        text-transform: uppercase;
       }
       .admin-error {
-        background: #2a1010;
-        border: 1px solid #5a2020;
-        color: #f88;
+        background: rgba(255,75,75,0.08);
+        border: var(--border-width) solid rgba(255,75,75,0.35);
+        color: var(--danger);
         padding: 0.75rem;
-        border-radius: 4px;
         margin-bottom: 1rem;
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
       }
+      .admin-free-points {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        background: var(--surface-2);
+        border: var(--border-width) solid var(--border);
+        margin-bottom: 1rem;
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wider);
+        color: var(--text-label);
+      }
+      .admin-free-points-val {
+        color: var(--accent);
+        font-weight: 600;
+      }
+      .admin-confirm-banner {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 14px;
+        background: rgba(255,75,75,0.08);
+        border: var(--border-width) solid rgba(255,75,75,0.35);
+        margin-bottom: 1rem;
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        color: var(--text-secondary);
+      }
+      .admin-confirm-banner button {
+        background: none;
+        border: var(--border-width) solid var(--border);
+        color: var(--text-label);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wide);
+        text-transform: uppercase;
+        cursor: pointer;
+        padding: 3px 10px;
+        transition: color var(--dur-micro) var(--ease), border-color var(--dur-micro) var(--ease);
+      }
+      .admin-confirm-banner button:hover { color: var(--text-secondary); border-color: var(--border-hover); }
+      .admin-confirm-banner button.danger { color: var(--danger); border-color: rgba(255,75,75,0.35); }
+      .admin-confirm-banner button.danger:hover { border-color: var(--danger); }
     `;
   }
 
   render() {
-    const { verified, wallet, loading, error, balances, accounts, analytics, withdrawalAnalytics, depositRecovery, activityFeed, alerts } = this.state;
+    const { verified, wallet, loading, error, balances, accounts, freePoints, analytics, withdrawalAnalytics, depositRecovery, activityFeed, alerts, pendingWithdrawal } = this.state;
 
     return h('div', { className: 'admin-page' },
       h('h1', null, 'Admin Dashboard'),
@@ -195,9 +253,30 @@ export class Admin extends Component {
       verified ? h('div', null,
         error ? h('div', { className: 'admin-error' }, error) : null,
 
+        // Inline withdrawal confirmation
+        pendingWithdrawal
+          ? h('div', { className: 'admin-confirm-banner' },
+              h('span', null, `Confirm withdrawal of ${pendingWithdrawal.symbol} from vault?`),
+              h('button', { className: 'danger', onclick: this.bind(this._confirmWithdraw) }, 'Confirm'),
+              h('button', { onclick: () => this.setState({ pendingWithdrawal: null }) }, 'Cancel'),
+            )
+          : null,
+
         loading
           ? h('div', { className: 'admin-loading' }, 'Loading dashboard...')
           : h('div', null,
+              // Free points summary
+              freePoints != null
+                ? h('div', { className: 'admin-free-points' },
+                    h('span', null, 'Circulating free points:'),
+                    h('span', { className: 'admin-free-points-val' },
+                      typeof freePoints === 'object'
+                        ? (freePoints.total ?? freePoints.totalFreePoints ?? JSON.stringify(freePoints))
+                        : freePoints
+                    ),
+                  )
+                : null,
+
               // Deposit recovery
               h(DepositRecovery, {
                 deposits: depositRecovery.deposits,

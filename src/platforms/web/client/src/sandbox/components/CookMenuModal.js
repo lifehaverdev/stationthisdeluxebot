@@ -614,7 +614,7 @@ export default class CookMenuModal {
             return `
                 <div class="loading-container" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 40px; min-height: 200px;">
                     <div class="loading-spinner"></div>
-                    <p style="margin-top: 20px; color: #aaa; font-size: 14px;">Loading collections...</p>
+                    <p style="margin-top: 20px; color: #aaa; font-size: 17px;">Loading collections...</p>
                 </div>
             `;
         }
@@ -881,10 +881,10 @@ export default class CookMenuModal {
         </div>
         <hr style="margin: 20px 0; border: none; border-top: 1px solid rgba(255,255,255,0.1);">
         <div class="collection-lifecycle-actions">
-            <h4 style="margin: 0 0 12px 0; font-size: 14px; color: #888;">Collection Lifecycle</h4>
+            <h4 style="margin: 0 0 12px 0; font-size: 17px; color: #888;">Collection Lifecycle</h4>
             <button class="${archiveButtonClass}" title="${isArchived ? 'Remove from archive and show in Workspace' : 'Hide from Workspace but keep in My Collections'}">${archiveButtonLabel}</button>
             <button class="finalize-btn"${finalizeButtonDisabled} title="${isFinalized ? 'This collection has been finalized' : 'Permanently mark as complete (cannot be undone)'}" style="margin-left:8px;">${finalizeButtonLabel}</button>
-            ${isFinalized ? '<span class="finalized-badge" style="margin-left:8px; color:#27ae60; font-size:12px;">✓ Collection finalized</span>' : ''}
+            ${isFinalized ? '<span class="finalized-badge" style="margin-left:8px; color:#27ae60; font-size:14px;">✓ Collection finalized</span>' : ''}
         </div>`;
     }
 

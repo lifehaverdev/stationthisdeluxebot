@@ -22,7 +22,7 @@ export function showNotification(message, type = 'info', duration = 5000) {
     z-index: 10000;
     max-width: 400px;
     word-wrap: break-word;
-    font-size: 14px;
+    font-size: 17px;
     line-height: 1.5;
     opacity: 0;
     transform: translateX(100%);
@@ -71,7 +71,7 @@ export function showLoading(message = 'Loading...') {
     background: rgba(0,0,0,0.8);
     color: #fff;
     z-index: 10001;
-    font-size: 14px;
+    font-size: 17px;
     display: flex;
     align-items: center;
     gap: 10px;

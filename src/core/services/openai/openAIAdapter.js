@@ -102,20 +102,20 @@ class OpenAIAdapter {
       };
     }
     if (action === 'image') {
-      const { prompt, model, size, quality, responseFormat, costTable } = params;
-      const resultObj = await this.svc.generateImage({ prompt, model, size, quality, responseFormat });
-      
-      // Normalize result
-      const image = resultObj.url ? { url: resultObj.url } : { b64_json: resultObj.b64_json };
-      
-      // Calculate cost based on costTable
+      const { prompt, model, size, quality, costTable } = params;
+      // Always request b64_json — avoids SAS URL entirely (browser auth issues, short-lived tokens).
+      // If R2 is configured, upload from b64 to get a permanent URL; otherwise store the b64 itself.
+      const resultObj = await this.svc.generateImage({ prompt, model, size, quality, responseFormat: 'b64_json' });
+      const permanentUrl = resultObj.b64_json ? await this._uploadB64ToR2(resultObj.b64_json) : null;
+      const image = permanentUrl ? { url: permanentUrl } : { b64_json: resultObj.b64_json };
+
       const costUsd = costTable ? this._calculateImageCost(model || 'dall-e-3', size || '1024x1024', quality || 'standard', costTable) : 0;
-      
-      return { 
-        type: 'image', 
-        data: { images: [image] }, 
+
+      return {
+        type: 'image',
+        data: { images: [image] },
         status: 'succeeded',
-        costUsd 
+        costUsd
       };
     }
     throw new Error(`OpenAIAdapter.execute: unknown action '${action}'`);
@@ -141,9 +141,10 @@ class OpenAIAdapter {
     // Kick off async generation but do not await
     const jobPromise = (async () => {
       try {
-        const { prompt, model, size, quality, responseFormat, costTable } = params;
-        const resultObj = await this.svc.generateImage({ prompt, model, size, quality, responseFormat });
-        const image = resultObj.url ? { url: resultObj.url } : { b64_json: resultObj.b64_json };
+        const { prompt, model, size, quality, costTable } = params;
+        const resultObj = await this.svc.generateImage({ prompt, model, size, quality, responseFormat: 'b64_json' });
+        const permanentUrl = resultObj.b64_json ? await this._uploadB64ToR2(resultObj.b64_json) : null;
+        const image = permanentUrl ? { url: permanentUrl } : { b64_json: resultObj.b64_json };
         
         // Calculate cost based on costTable
         const costUsd = costTable ? this._calculateImageCost(model || 'dall-e-3', size || '1024x1024', quality || 'standard', costTable) : 0;
@@ -188,6 +189,40 @@ class OpenAIAdapter {
     if (record.result) return record.result;
     // not finished yet
     return { type: 'image', data: null, status: 'processing' };
+  }
+
+  // ── R2 upload ─────────────────────────────────────────────
+  // Always request b64_json from OpenAI — never store the short-lived SAS URL.
+  // If R2 is configured, upload the raw bytes and return a permanent URL.
+  // Otherwise return null so the caller stores the b64 itself.
+
+  _getStorageService() {
+    if (this._storage !== undefined) return this._storage;
+    try {
+      const StorageService = require('../storageService');
+      const svc = new StorageService(console);
+      this._storage = svc.s3Client ? svc : null;
+    } catch {
+      this._storage = null;
+    }
+    return this._storage;
+  }
+
+  async _uploadB64ToR2(b64) {
+    const storage = this._getStorageService();
+    if (!storage) return null; // R2 not configured — caller stores b64
+    try {
+      const { Readable } = require('stream');
+      const { randomUUID } = require('crypto');
+      const buf = Buffer.from(b64, 'base64');
+      const stream = Readable.from(buf);
+      const key = `dalle3/generations/${randomUUID()}.png`;
+      const { permanentUrl } = await storage.uploadFromStream(stream, key, 'image/png', 'uploads');
+      return permanentUrl;
+    } catch (err) {
+      console.warn('[OpenAIAdapter] R2 upload failed, storing b64:', err.message);
+      return null; // graceful fallback — caller stores b64
+    }
   }
 
   /**

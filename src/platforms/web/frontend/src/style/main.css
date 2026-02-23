@@ -27,7 +27,7 @@ body {
 }
 
 .nav-logo {
-  font-size: 1.25rem;
+  font-size: 1.5rem;
   font-weight: 700;
   color: #fff;
   text-decoration: none;
@@ -42,7 +42,7 @@ body {
 .nav-links a {
   color: #aaa;
   text-decoration: none;
-  font-size: 0.9rem;
+  font-size: 1.08rem;
 }
 
 .nav-links a:hover {
@@ -68,5 +68,5 @@ body {
   border-top: 1px solid #1a1a1a;
   text-align: center;
   color: #555;
-  font-size: 0.85rem;
+  font-size: 1.02rem;
 }

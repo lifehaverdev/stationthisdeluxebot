@@ -34,14 +34,14 @@
   --ff-condensed:   'Barlow Condensed', sans-serif;
   --ff-mono:        'Martian Mono', monospace;
 
-  --fs-xs:    10px;
-  --fs-sm:    11px;
-  --fs-base:  13px;
-  --fs-md:    14px;
-  --fs-lg:    16px;
-  --fs-xl:    20px;
-  --fs-2xl:   28px;
-  --fs-3xl:   40px;
+  --fs-xs:    12px;
+  --fs-sm:    13px;
+  --fs-base:  16px;
+  --fs-md:    17px;
+  --fs-lg:    19px;
+  --fs-xl:    24px;
+  --fs-2xl:   34px;
+  --fs-3xl:   48px;
 
   --fw-light:   300;
   --fw-regular: 400;

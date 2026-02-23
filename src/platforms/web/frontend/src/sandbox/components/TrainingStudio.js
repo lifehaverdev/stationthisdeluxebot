@@ -698,7 +698,7 @@ export class TrainingStudio extends Component {
           h(AsyncButton, { onclick: () => this._openWizard(selectedDatasetId), label: 'Train' })
         )
       ),
-      ds.description ? h('p', { style: 'color:#aaa;font-size:13px;margin:8px 0' }, ds.description) : null,
+      ds.description ? h('p', { style: 'color:#aaa;font-size:16px;margin:8px 0' }, ds.description) : null,
 
       // Images gallery
       h('div', { className: 'ts-section' },
@@ -963,7 +963,7 @@ export class TrainingStudio extends Component {
     const { datasets, wizardDatasetId } = this.state;
     return h('div', null,
       h('h4', { style: 'color:#fff' }, 'Select a Dataset'),
-      h('p', { style: 'color:#aaa;font-size:13px' }, 'Choose the dataset of images you want to train on.'),
+      h('p', { style: 'color:#aaa;font-size:16px' }, 'Choose the dataset of images you want to train on.'),
       h('div', { className: 'ts-wiz-grid' },
         ...datasets.map(ds => {
           const dsId = normalizeId(ds._id);
@@ -1070,7 +1070,7 @@ export class TrainingStudio extends Component {
 
     return h('div', null,
       h('h4', { style: 'color:#fff' }, 'Select Caption Set'),
-      h('p', { style: 'color:#aaa;font-size:13px;margin-bottom:12px' }, rec),
+      h('p', { style: 'color:#aaa;font-size:16px;margin-bottom:12px' }, rec),
       wizardCaptionSets.length > 0
         ? h('div', { className: 'ts-wiz-grid' },
           ...wizardCaptionSets.map(cs => {
@@ -1165,7 +1165,7 @@ export class TrainingStudio extends Component {
 
   static get styles() {
     return `
-      .ts-back { background:none; border:none; color:#90caf9; cursor:pointer; font-size:13px; padding:0; margin-bottom:8px; }
+      .ts-back { background:none; border:none; color:#90caf9; cursor:pointer; font-size:16px; padding:0; margin-bottom:8px; }
       .ts-back:hover { text-decoration:underline; }
 
       .ts-header-bar { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:8px; }
@@ -1173,29 +1173,29 @@ export class TrainingStudio extends Component {
 
       .ts-section { margin-bottom:20px; }
       .ts-section-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
-      .ts-section-head h4 { margin:0; color:#fff; font-size:14px; }
-      .ts-empty { color:#888; font-size:13px; text-align:center; padding:16px 0; }
+      .ts-section-head h4 { margin:0; color:#fff; font-size:17px; }
+      .ts-empty { color:#888; font-size:16px; text-align:center; padding:16px 0; }
 
       /* Datasets grid */
       .ts-ds-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:8px; }
       .ts-ds-card { background:#222; border:1px solid #333; border-radius:8px; padding:12px; }
       .ts-ds-preview { display:flex; gap:4px; margin-bottom:8px; }
       .ts-ds-thumb { width:40px; height:40px; border-radius:4px; object-fit:cover; }
-      .ts-ds-info h4 { margin:0; font-size:14px; color:#fff; }
-      .ts-ds-meta { font-size:11px; color:#888; }
+      .ts-ds-info h4 { margin:0; font-size:17px; color:#fff; }
+      .ts-ds-meta { font-size:13px; color:#888; }
       .ts-ds-actions { display:flex; gap:4px; margin-top:8px; flex-wrap:wrap; }
 
       /* Training cards */
       .ts-training-card { background:#222; border:1px solid #333; border-radius:8px; padding:12px; margin-bottom:8px; }
       .ts-training-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
-      .ts-training-name { font-weight:600; font-size:14px; color:#fff; }
-      .ts-training-meta { display:flex; gap:12px; font-size:12px; color:#888; margin-bottom:6px; }
+      .ts-training-name { font-weight:600; font-size:17px; color:#fff; }
+      .ts-training-meta { display:flex; gap:12px; font-size:14px; color:#888; margin-bottom:6px; }
       .ts-training-actions { display:flex; gap:4px; margin-top:8px; }
 
       .ts-progress { margin:8px 0; }
       .ts-progress-bar { height:4px; background:#333; border-radius:2px; overflow:hidden; }
       .ts-progress-fill { height:100%; background:#90caf9; border-radius:2px; transition:width 0.3s; }
-      .ts-progress-text { font-size:11px; color:#888; margin-top:4px; }
+      .ts-progress-text { font-size:13px; color:#888; margin-top:4px; }
 
       /* Detail */
       .ts-detail-header { display:flex; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap; }
@@ -1207,40 +1207,40 @@ export class TrainingStudio extends Component {
       /* Caption cards */
       .ts-caption-card { display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-bottom:1px solid #222; flex-wrap:wrap; gap:8px; }
       .ts-caption-info { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-      .ts-caption-method { font-size:13px; color:#e0e0e0; font-weight:500; }
-      .ts-caption-meta { font-size:11px; color:#888; }
+      .ts-caption-method { font-size:16px; color:#e0e0e0; font-weight:500; }
+      .ts-caption-meta { font-size:13px; color:#888; }
       .ts-caption-actions { display:flex; gap:4px; flex-wrap:wrap; }
 
       /* Caption viewer */
       .ts-caption-viewer-list { max-height:400px; overflow-y:auto; }
       .ts-cv-row { display:flex; gap:12px; padding:8px 0; border-bottom:1px solid #222; }
       .ts-cv-img { width:60px; height:60px; border-radius:4px; object-fit:cover; flex-shrink:0; }
-      .ts-cv-placeholder { width:60px; height:60px; background:#333; border-radius:4px; display:flex; align-items:center; justify-content:center; color:#666; font-size:12px; flex-shrink:0; }
+      .ts-cv-placeholder { width:60px; height:60px; background:#333; border-radius:4px; display:flex; align-items:center; justify-content:center; color:#666; font-size:14px; flex-shrink:0; }
       .ts-cv-text-block { flex:1; min-width:0; }
-      .ts-cv-caption { font-size:13px; color:#ccc; line-height:1.4; }
-      .ts-cv-edit-btn { background:none; border:none; color:#90caf9; cursor:pointer; font-size:11px; padding:2px 0; }
-      .ts-cv-textarea { width:100%; padding:6px; background:#222; border:1px solid #444; border-radius:4px; color:#e0e0e0; font-size:13px; min-height:40px; resize:vertical; box-sizing:border-box; }
+      .ts-cv-caption { font-size:16px; color:#ccc; line-height:1.4; }
+      .ts-cv-edit-btn { background:none; border:none; color:#90caf9; cursor:pointer; font-size:13px; padding:2px 0; }
+      .ts-cv-textarea { width:100%; padding:6px; background:#222; border:1px solid #444; border-radius:4px; color:#e0e0e0; font-size:16px; min-height:40px; resize:vertical; box-sizing:border-box; }
       .ts-cv-edit-actions { display:flex; gap:6px; margin-top:6px; }
 
       /* Control viewer */
       .ts-control-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
       .ts-control-pair { display:flex; gap:8px; }
-      .ts-control-label { font-size:11px; color:#888; margin-bottom:4px; }
+      .ts-control-label { font-size:13px; color:#888; margin-bottom:4px; }
       .ts-control-img { width:100%; max-width:200px; border-radius:4px; }
-      .ts-control-placeholder { width:100px; height:100px; background:#333; border-radius:4px; display:flex; align-items:center; justify-content:center; color:#666; font-size:12px; }
+      .ts-control-placeholder { width:100px; height:100px; background:#333; border-radius:4px; display:flex; align-items:center; justify-content:center; color:#666; font-size:14px; }
 
       /* Form */
       .ts-form-group { margin-bottom:14px; }
-      .ts-form-group label { display:block; margin-bottom:6px; color:#aaa; font-weight:600; font-size:13px; }
-      .ts-input { width:100%; padding:8px 12px; background:#222; border:1px solid #444; border-radius:6px; color:#e0e0e0; font-size:14px; box-sizing:border-box; }
+      .ts-form-group label { display:block; margin-bottom:6px; color:#aaa; font-weight:600; font-size:16px; }
+      .ts-input { width:100%; padding:8px 12px; background:#222; border:1px solid #444; border-radius:6px; color:#e0e0e0; font-size:17px; box-sizing:border-box; }
       .ts-input:focus { border-color:#90caf9; outline:none; }
-      .ts-textarea { width:100%; padding:8px 12px; background:#222; border:1px solid #444; border-radius:6px; color:#e0e0e0; font-size:14px; min-height:60px; resize:vertical; box-sizing:border-box; font-family:inherit; }
+      .ts-textarea { width:100%; padding:8px 12px; background:#222; border:1px solid #444; border-radius:6px; color:#e0e0e0; font-size:17px; min-height:60px; resize:vertical; box-sizing:border-box; font-family:inherit; }
       .ts-textarea:focus { border-color:#90caf9; outline:none; }
       .ts-form-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:16px; }
 
       /* Upload */
       .ts-upload-tabs { display:flex; gap:0; margin-bottom:12px; }
-      .ts-upload-tab { background:none; border:none; border-bottom:2px solid transparent; color:#888; padding:8px 16px; font-size:13px; cursor:pointer; }
+      .ts-upload-tab { background:none; border:none; border-bottom:2px solid transparent; color:#888; padding:8px 16px; font-size:16px; cursor:pointer; }
       .ts-upload-tab:hover { color:#ccc; }
       .ts-upload-tab--active { color:#fff; border-bottom-color:#90caf9; }
       .ts-upload-area { margin-bottom:12px; }
@@ -1250,15 +1250,15 @@ export class TrainingStudio extends Component {
       .ts-image-preview { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
       .ts-image-item { position:relative; }
       .ts-preview-thumb { width:60px; height:60px; border-radius:4px; object-fit:cover; }
-      .ts-remove-img { position:absolute; top:-4px; right:-4px; background:#333; border:none; color:#e74c3c; width:18px; height:18px; border-radius:50%; cursor:pointer; font-size:12px; line-height:1; padding:0; }
+      .ts-remove-img { position:absolute; top:-4px; right:-4px; background:#333; border:none; color:#e74c3c; width:18px; height:18px; border-radius:50%; cursor:pointer; font-size:14px; line-height:1; padding:0; }
 
       /* Wizard */
       .ts-wizard-bar { display:flex; align-items:center; gap:8px; margin-bottom:20px; }
       .ts-step { display:flex; align-items:center; gap:4px; }
-      .ts-step-num { width:24px; height:24px; border-radius:50%; background:#333; color:#888; font-size:12px; display:flex; align-items:center; justify-content:center; }
+      .ts-step-num { width:24px; height:24px; border-radius:50%; background:#333; color:#888; font-size:14px; display:flex; align-items:center; justify-content:center; }
       .ts-step--active .ts-step-num { background:#3f51b5; color:#fff; }
       .ts-step--done .ts-step-num { background:#2ecc71; color:#fff; }
-      .ts-step-label { font-size:12px; color:#888; }
+      .ts-step-label { font-size:14px; color:#888; }
       .ts-step--active .ts-step-label { color:#fff; }
 
       .ts-wizard-footer { display:flex; justify-content:space-between; margin-top:20px; }
@@ -1269,22 +1269,22 @@ export class TrainingStudio extends Component {
       .ts-wiz-card:hover { border-color:#555; }
       .ts-wiz-card--sel { border-color:#3f51b5; background:rgba(63,81,181,0.08); }
       .ts-wiz-card--new { border-style:dashed; text-align:center; }
-      .ts-wiz-new-icon { font-size:24px; color:#666; margin-bottom:4px; }
-      .ts-wiz-card h4 { margin:4px 0 0; font-size:13px; color:#fff; }
-      .ts-wiz-card-name { font-size:15px; font-weight:600; color:#fff; margin-bottom:4px; }
-      .ts-wiz-card-desc { font-size:12px; color:#999; line-height:1.4; }
+      .ts-wiz-new-icon { font-size:29px; color:#666; margin-bottom:4px; }
+      .ts-wiz-card h4 { margin:4px 0 0; font-size:16px; color:#fff; }
+      .ts-wiz-card-name { font-size:18px; font-weight:600; color:#fff; margin-bottom:4px; }
+      .ts-wiz-card-desc { font-size:14px; color:#999; line-height:1.4; }
 
       /* Summary */
       .ts-summary { background:#1e1e2e; border:1px solid #333; border-radius:8px; padding:14px; margin-bottom:16px; }
-      .ts-summary-row { display:flex; justify-content:space-between; padding:3px 0; font-size:13px; }
+      .ts-summary-row { display:flex; justify-content:space-between; padding:3px 0; font-size:16px; }
       .ts-summary-row span:first-child { color:#888; }
       .ts-summary-row span:last-child { color:#e0e0e0; }
 
       /* Advanced */
       .ts-advanced { margin-top:12px; }
-      .ts-advanced summary { cursor:pointer; color:#90caf9; font-size:13px; }
+      .ts-advanced summary { cursor:pointer; color:#90caf9; font-size:16px; }
       .ts-param-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; }
-      .ts-param label { display:block; margin-bottom:4px; color:#aaa; font-size:12px; }
+      .ts-param label { display:block; margin-bottom:4px; color:#aaa; font-size:14px; }
     `;
   }
 

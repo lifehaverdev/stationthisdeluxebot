@@ -1,27 +1,45 @@
 import { Component, h, eventBus } from '@monygroupcorp/microact';
-import { subscribe, getSelectedNodeIds } from '../store.js';
 
 /**
- * MintSpellFAB — floating action button shown when 2+ nodes are selected.
+ * MintSpellFAB — floating action button shown when 2+ connected nodes are selected.
  * Clicking serializes the selected subgraph and emits an event for
  * SandboxHeader to open SpellsModal in create mode.
+ *
+ * Visibility driven by sandbox:selectionChanged events emitted by SandboxCanvas.
+ * Requires: selection has 2+ nodes AND at least one connection between them.
  */
 export class MintSpellFAB extends Component {
   constructor(props) {
     super(props);
-    this.state = { visible: false };
+    this.state = { visible: false, x: 0, y: 0 };
+    this._selectedIds = new Set();
   }
 
   didMount() {
-    this.registerCleanup(subscribe('selection', () => {
-      const count = getSelectedNodeIds().size;
-      this.setState({ visible: count >= 2 });
-    }));
+    this._onSelectionChanged = ({ ids, count, hasConnections, pos }) => {
+      this._selectedIds = ids;
+      const visible = count >= 2 && hasConnections;
+      if (visible && pos) {
+        // Clamp to viewport so button stays fully on screen
+        const btnW = 148, btnH = 30;
+        const x = Math.min(pos.x + 12, window.innerWidth  - btnW - 8);
+        const y = Math.min(Math.max(8, pos.y - btnH / 2), window.innerHeight - btnH - 8);
+        this.setState({ visible, x, y });
+      } else {
+        this.setState({ visible: false });
+      }
+    };
+    eventBus.on('sandbox:selectionChanged', this._onSelectionChanged);
+  }
+
+  willUnmount() {
+    eventBus.off('sandbox:selectionChanged', this._onSelectionChanged);
   }
 
   async _handleClick() {
-    const ids = getSelectedNodeIds();
+    const ids = this._selectedIds;
     if (ids.size < 2) return;
+    this.setState({ visible: false });
 
     // Dynamic import — subgraph serializer is served from /sandbox/
     
@@ -36,8 +54,6 @@ export class MintSpellFAB extends Component {
     return `
       .mint-fab {
         position: fixed;
-        bottom: 16px;
-        right: 16px;
         z-index: var(--z-hud);
         background: var(--surface-2);
         border: var(--border-width) solid var(--border-hover);
@@ -62,7 +78,7 @@ export class MintSpellFAB extends Component {
       .mint-fab::before {
         content: '+';
         font-family: var(--ff-mono);
-        font-size: 14px;
+        font-size: 17px;
         color: var(--accent);
         font-weight: var(--fw-light);
         flex-shrink: 0;
@@ -80,7 +96,9 @@ export class MintSpellFAB extends Component {
   }
 
   render() {
-    const cls = `mint-fab${this.state.visible ? '' : ' mint-fab--hidden'}`;
-    return h('button', { className: cls, onclick: this.bind(this._handleClick) }, 'Compose Spell');
+    const { visible, x, y } = this.state;
+    const cls = `mint-fab${visible ? '' : ' mint-fab--hidden'}`;
+    const style = `left:${x}px;top:${y}px`;
+    return h('button', { className: cls, style, onclick: this.bind(this._handleClick) }, 'Compose Spell');
   }
 }

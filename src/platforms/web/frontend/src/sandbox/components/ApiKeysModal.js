@@ -59,21 +59,21 @@ export class ApiKeysModal extends Component {
   static get styles() {
     return `
       .ak-create { display: flex; gap: 8px; margin: 16px 0; }
-      .ak-create input { flex: 1; background: #222; border: 1px solid #444; color: #e0e0e0; padding: 8px 12px; border-radius: 6px; font-size: 14px; }
+      .ak-create input { flex: 1; background: #222; border: 1px solid #444; color: #e0e0e0; padding: 8px 12px; border-radius: 6px; font-size: 17px; }
       .ak-create button { background: #333; border: 1px solid #555; color: #e0e0e0; padding: 8px 16px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
       .ak-create button:disabled { opacity: 0.4; cursor: default; }
       .ak-create button:not(:disabled):hover { background: #444; }
       .ak-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #222; }
       .ak-info { display: flex; flex-direction: column; gap: 2px; }
-      .ak-name { font-weight: 600; font-size: 14px; }
-      .ak-prefix { font-family: monospace; font-size: 12px; color: #888; }
-      .ak-meta { font-size: 11px; color: #666; }
-      .ak-del { background: none; border: 1px solid #633; color: #c66; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+      .ak-name { font-weight: 600; font-size: 17px; }
+      .ak-prefix { font-family: monospace; font-size: 14px; color: #888; }
+      .ak-meta { font-size: 13px; color: #666; }
+      .ak-del { background: none; border: 1px solid #633; color: #c66; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 14px; }
       .ak-del:hover { background: #311; }
       .ak-newkey { background: #111; border: 1px solid #333; border-radius: 6px; padding: 12px; margin: 12px 0; display: flex; gap: 8px; align-items: center; }
-      .ak-newkey code { flex: 1; word-break: break-all; font-size: 13px; color: #4f4; }
+      .ak-newkey code { flex: 1; word-break: break-all; font-size: 16px; color: #4f4; }
       .ak-newkey button { background: #333; border: 1px solid #555; color: #ccc; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
-      .ak-warn { color: #fa4; font-size: 13px; margin-bottom: 8px; }
+      .ak-warn { color: #fa4; font-size: 16px; margin-bottom: 8px; }
       .ak-done { background: #333; border: 1px solid #555; color: #ccc; padding: 8px 20px; border-radius: 6px; cursor: pointer; margin-top: 12px; }
     `;
   }
@@ -109,7 +109,7 @@ export class ApiKeysModal extends Component {
         }, creating ? 'Creating...' : 'Create Key')
       ),
       keys.length === 0
-        ? h('p', { style: 'color:#666;font-size:14px;padding:12px 0' }, 'No API keys yet.')
+        ? h('p', { style: 'color:#666;font-size:17px;padding:12px 0' }, 'No API keys yet.')
         : keys.map(key =>
           h('div', { className: 'ak-item', key: key.keyPrefix },
             h('div', { className: 'ak-info' },

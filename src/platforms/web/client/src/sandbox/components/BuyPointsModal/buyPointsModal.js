@@ -428,7 +428,7 @@ function renderReviewStep() {
     reviewSummary.innerHTML = `
         <div>Asset: ${buyPointsState.selectedAsset.symbol || buyPointsState.selectedAsset.name}</div>
         <div>Amount: ${buyPointsState.amount}</div>
-        <div>Points: <b style="color:#4caf50;">${q.pointsCredited}</b>${buyPointsState.mode==='donate' ? ' <span style="font-size:12px;color:#90caf9;">(boosted)</span>' : ''}</div>
+        <div>Points: <b style="color:#4caf50;">${q.pointsCredited}</b>${buyPointsState.mode==='donate' ? ' <span style="font-size:14px;color:#90caf9;">(boosted)</span>' : ''}</div>
         <hr>
         <div>Gross USD: <b>$${safeToFixed(b.grossUsd ?? q.usdValue?.gross)}</b></div>
         <div>Funding Rate Deduction: <b>-$${safeToFixed(b.fundingRateDeduction ?? 0)}</b></div>
@@ -471,7 +471,7 @@ function renderTxStatusStep() {
                 </div>
                 <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
             ` : ''}
-            <div style="font-size:18px;color:${statusColor};font-weight:bold;margin-bottom:8px;">
+            <div style="font-size:22px;color:${statusColor};font-weight:bold;margin-bottom:8px;">
                 ${s.status === 'submitted' ? 'Transaction Submitted' :
                   s.status === 'pending' ? 'Transaction Pending' :
                   s.status === 'confirming' ? 'Confirming...' :
@@ -479,19 +479,19 @@ function renderTxStatusStep() {
                   s.status === 'Failed' ? 'Transaction Failed' :
                   s.status || 'Processing'}
             </div>
-            ${s.message ? `<p style="color:#aaa;font-size:14px;margin:8px 0;">${s.message}</p>` : ''}
+            ${s.message ? `<p style="color:#aaa;font-size:17px;margin:8px 0;">${s.message}</p>` : ''}
         </div>
         <div style="background:#1a1a1a;padding:12px;border-radius:6px;margin-top:12px;">
-            <div style="font-size:12px;color:#666;margin-bottom:4px;">Transaction Hash</div>
-            <div style="font-family:monospace;font-size:13px;word-break:break-all;color:#90caf9;" class="copyable" title="Click to copy">${s.txHash}</div>
+            <div style="font-size:14px;color:#666;margin-bottom:4px;">Transaction Hash</div>
+            <div style="font-family:monospace;font-size:16px;word-break:break-all;color:#90caf9;" class="copyable" title="Click to copy">${s.txHash}</div>
         </div>
     `;
 
     if (s.confirmationTxHash) {
         html += `
             <div style="background:#1a1a1a;padding:12px;border-radius:6px;margin-top:8px;">
-                <div style="font-size:12px;color:#666;margin-bottom:4px;">Confirmation Tx</div>
-                <div style="font-family:monospace;font-size:13px;word-break:break-all;color:#4caf50;" class="copyable" title="Click to copy">${s.confirmationTxHash}</div>
+                <div style="font-size:14px;color:#666;margin-bottom:4px;">Confirmation Tx</div>
+                <div style="font-family:monospace;font-size:16px;word-break:break-all;color:#4caf50;" class="copyable" title="Click to copy">${s.confirmationTxHash}</div>
             </div>
         `;
     }
@@ -501,7 +501,7 @@ function renderTxStatusStep() {
     }
 
     if (isProcessing) {
-        html += `<p style="text-align:center;color:#666;font-size:12px;margin-top:16px;">This usually takes 15-60 seconds. You can close this modal - your points will be credited automatically.</p>`;
+        html += `<p style="text-align:center;color:#666;font-size:14px;margin-top:16px;">This usually takes 15-60 seconds. You can close this modal - your points will be credited automatically.</p>`;
     }
 
     txStatusDisplay.innerHTML = html;
@@ -1316,7 +1316,7 @@ const buyPointsModalHTML = `
 <!-- Buy Points Modal -->
 <div id="buy-points-modal" class="modal-overlay" style="display: none;">
     <div class="modal-content">
-        <div id="wallet-info" style="font-size:12px;color:#90caf9;margin-bottom:6px;"></div>
+        <div id="wallet-info" style="font-size:14px;color:#90caf9;margin-bottom:6px;"></div>
         <button class="modal-close-btn">&times;</button>
         
         <!-- Step 1: Select Asset -->
@@ -1372,12 +1372,12 @@ const buyPointsModalHTML = `
         <!-- Loading Spinner with Status -->
         <div id="modal-loader" style="display: none;">
             <div class="spinner"></div>
-            <div id="loader-status" style="margin-top:12px;text-align:center;color:#90caf9;font-size:14px;"></div>
+            <div id="loader-status" style="margin-top:12px;text-align:center;color:#90caf9;font-size:17px;"></div>
             <div id="loader-progress-container" style="display:none;margin-top:8px;width:100%;max-width:200px;">
                 <div style="background:#333;border-radius:4px;height:6px;overflow:hidden;">
                     <div id="loader-progress-bar" style="background:#4caf50;height:100%;width:0%;transition:width 0.3s ease;"></div>
                 </div>
-                <div id="loader-phase" style="margin-top:4px;font-size:11px;color:#666;text-align:center;"></div>
+                <div id="loader-phase" style="margin-top:4px;font-size:13px;color:#666;text-align:center;"></div>
             </div>
         </div>
 

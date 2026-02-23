@@ -268,7 +268,7 @@ export class Docs extends Component {
         border-left: var(--border-width) solid var(--border);
         color: var(--text-label);
         font-family: var(--ff-mono);
-        font-size: 10px;
+        font-size: 12px;
         letter-spacing: 0.18em;
         text-transform: uppercase;
         cursor: pointer;
@@ -336,7 +336,7 @@ export class Docs extends Component {
       }
       .docs-content p {
         font-family: var(--ff-condensed);
-        font-size: 13px;
+        font-size: 16px;
         letter-spacing: var(--ls-wide);
         color: var(--text-label);
         line-height: 1.7;
@@ -370,7 +370,7 @@ export class Docs extends Component {
       }
       .docs-content li {
         font-family: var(--ff-condensed);
-        font-size: 13px;
+        font-size: 16px;
         letter-spacing: var(--ls-wide);
         color: var(--text-label);
         margin-bottom: 4px;
@@ -386,7 +386,7 @@ export class Docs extends Component {
         padding: 6px 10px;
         border-bottom: var(--border-width) solid var(--border);
         font-family: var(--ff-mono);
-        font-size: 11px;
+        font-size: 13px;
         letter-spacing: var(--ls-wide);
         color: var(--text-label);
       }
@@ -411,7 +411,7 @@ export class Docs extends Component {
       }
       .doc-tool-cmd, .doc-tool-cat {
         font-family: var(--ff-mono);
-        font-size: 10px;
+        font-size: 12px;
         letter-spacing: var(--ls-wide);
         text-transform: uppercase;
         padding: 2px 6px;
@@ -464,7 +464,7 @@ export class Docs extends Component {
       }
       .docs-asset-fee {
         font-family: var(--ff-mono);
-        font-size: 10px;
+        font-size: 12px;
         letter-spacing: var(--ls-wide);
         color: var(--text-label);
         margin-top: 2px;

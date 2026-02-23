@@ -195,7 +195,7 @@ export class AuthWidget extends Component {
         background: none;
         border: var(--border-width) solid transparent;
         color: var(--text-label);
-        font-size: 13px;
+        font-size: 16px;
         cursor: pointer;
         padding: 0;
         width: 22px; height: 22px;

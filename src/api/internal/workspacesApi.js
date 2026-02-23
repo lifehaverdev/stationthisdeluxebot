@@ -108,18 +108,19 @@ function createWorkspacesApi(deps = {}) {
     next();
   });
 
-  // GET /            – list current user's workspaces
+  // GET /            – list current user's workspaces; ?walletAddress= narrows to one wallet
   router.get('/', async (req, res) => {
     const userId = req.user?.id || req.userId || req.query.userId;
     if (!userId) return res.json({ workspaces: [] });
-    const docs = await workspacesDb.listWorkspacesByOwner(userId, { limit: 100 });
+    const walletAddress = req.query.walletAddress || null;
+    const docs = await workspacesDb.listWorkspacesByOwnerAndWallet(userId, walletAddress, { limit: 100 });
     res.json({ workspaces: docs });
   });
 
   // POST /           – create workspace (or update if slug provided and owned)
   router.post('/', async (req, res) => {
     try {
-      const { slug, snapshot, name = '', visibility = 'public' } = req.body;
+      const { slug, snapshot, name = '', visibility = 'public', walletAddress = null, origin = null } = req.body;
       const userId = req.user?.id || req.userId || req.body.userId;
       
       // Validate required fields
@@ -165,7 +166,7 @@ function createWorkspacesApi(deps = {}) {
         
         // Attempt update if owner
         try {
-          await workspacesDb.updateSnapshot(slug.trim(), snapshot, userId);
+          await workspacesDb.updateSnapshot(slug.trim(), snapshot, userId, name || undefined);
           return res.json({ slug: slug.trim(), updated: true });
         } catch (e) {
           if (e.message === 'Forbidden') {
@@ -178,11 +179,29 @@ function createWorkspacesApi(deps = {}) {
         }
       }
 
-      const doc = await workspacesDb.createWorkspace({ 
-        snapshot, 
-        name: (name || '').trim(), 
-        ownerId: userId, 
-        visibility 
+      // Resolve authoritative provenance from the original doc (don't trust client-supplied ids)
+      let resolvedOrigin = null;
+      if (origin && origin.slug) {
+        const originalDoc = await workspacesDb.findBySlug(origin.slug);
+        if (originalDoc) {
+          resolvedOrigin = {
+            slug: originalDoc.slug,
+            ownerId: originalDoc.ownerId || null,
+            walletAddress: originalDoc.walletAddress || null,
+          };
+        } else {
+          // Original no longer exists — preserve the slug reference only
+          resolvedOrigin = { slug: origin.slug, ownerId: null, walletAddress: null };
+        }
+      }
+
+      const doc = await workspacesDb.createWorkspace({
+        snapshot,
+        name: (name || '').trim(),
+        ownerId: userId,
+        walletAddress: walletAddress || null,
+        origin: resolvedOrigin,
+        visibility
       });
       return res.status(201).json(doc);
     } catch (err) {

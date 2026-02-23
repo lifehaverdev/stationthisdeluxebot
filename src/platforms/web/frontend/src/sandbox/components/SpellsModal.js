@@ -670,7 +670,7 @@ export class SpellsModal extends Component {
       potentialInputs.length > 0
         ? h('div', { className: 'sm-create-exposed' },
           h('div', { className: 'sm-exposed-title' }, 'Expose Inputs'),
-          h('p', { style: 'color:#888;font-size:12px;margin:0 0 8px' }, 'Exposed inputs can be overridden when someone casts your spell.'),
+          h('p', { style: 'color:#888;font-size:14px;margin:0 0 8px' }, 'Exposed inputs can be overridden when someone casts your spell.'),
           ...potentialInputs.map(inp =>
             h('label', { className: 'sm-checkbox-row', key: inp.key },
               h('input', {
@@ -786,14 +786,14 @@ export class SpellsModal extends Component {
       h('div', { className: 'sm-quote' },
         h('div', { className: 'sm-quote-title' }, 'Estimated Cost'),
         quoteLoading
-          ? h('span', { style: 'color:#888;font-size:13px' }, 'Calculating...')
+          ? h('span', { style: 'color:#888;font-size:16px' }, 'Calculating...')
           : quote
             ? h('div', { className: 'sm-quote-body' },
               h('span', null, `${quote.totalCostPts?.toFixed(1) || '?'} pts`),
               h('span', { className: 'sm-quote-usd' }, `~$${((quote.totalCostPts || 0) * POINTS_TO_USD).toFixed(4)}`),
               quote.totalRuntimeMs ? h('span', { className: 'sm-quote-time' }, `~${(quote.totalRuntimeMs / 1000).toFixed(1)}s`) : null
             )
-            : h('span', { style: 'color:#666;font-size:13px' }, 'No estimate available')
+            : h('span', { style: 'color:#666;font-size:16px' }, 'No estimate available')
       ),
 
       // Steps
@@ -839,63 +839,63 @@ export class SpellsModal extends Component {
     return `
       /* List */
       .sm-list-header { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
-      .sm-filter-input { flex: 1; background: #222; border: 1px solid #444; color: #e0e0e0; padding: 8px 12px; border-radius: 6px; font-size: 13px; }
+      .sm-filter-input { flex: 1; background: #222; border: 1px solid #444; color: #e0e0e0; padding: 8px 12px; border-radius: 6px; font-size: 16px; }
       .sm-filter-input:focus { border-color: #90caf9; outline: none; }
-      .sm-no-results { color: #666; font-size: 14px; text-align: center; padding: 20px 0; }
+      .sm-no-results { color: #666; font-size: 17px; text-align: center; padding: 20px 0; }
 
       /* Cards */
       .sm-card { background: #222; border: 1px solid #333; border-radius: 8px; padding: 14px 16px; margin-bottom: 8px; cursor: pointer; transition: border-color 0.15s; }
       .sm-card:hover { border-color: #555; }
       .sm-card--market { border-left: 3px solid #6366f1; }
       .sm-card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
-      .sm-card-name { font-weight: 600; font-size: 15px; color: #fff; }
+      .sm-card-name { font-weight: 600; font-size: 18px; color: #fff; }
       .sm-card-meta { display: flex; gap: 8px; align-items: center; }
-      .sm-card-steps { font-size: 11px; color: #888; }
-      .sm-card-uses { font-size: 11px; color: #90caf9; }
-      .sm-card-desc { font-size: 13px; color: #999; line-height: 1.4; margin-bottom: 8px; }
+      .sm-card-steps { font-size: 13px; color: #888; }
+      .sm-card-uses { font-size: 13px; color: #90caf9; }
+      .sm-card-desc { font-size: 16px; color: #999; line-height: 1.4; margin-bottom: 8px; }
       .sm-card-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
       .sm-card-actions { display: flex; justify-content: flex-end; }
-      .sm-card-add { background: none; border: 1px solid #444; color: #90caf9; padding: 4px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+      .sm-card-add { background: none; border: 1px solid #444; color: #90caf9; padding: 4px 12px; border-radius: 4px; font-size: 14px; cursor: pointer; }
       .sm-card-add:hover { border-color: #90caf9; background: rgba(144,202,249,0.05); }
 
       /* Detail */
-      .sm-back { background: none; border: none; color: #90caf9; cursor: pointer; font-size: 13px; padding: 0; margin-bottom: 16px; }
+      .sm-back { background: none; border: none; color: #90caf9; cursor: pointer; font-size: 16px; padding: 0; margin-bottom: 16px; }
       .sm-back:hover { text-decoration: underline; }
       .sm-detail-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-      .sm-detail-name { margin: 0; font-size: 18px; color: #fff; }
-      .sm-detail-desc { color: #aaa; font-size: 14px; line-height: 1.5; margin: 0 0 16px; }
-      .sm-detail-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; }
+      .sm-detail-name { margin: 0; font-size: 22px; color: #fff; }
+      .sm-detail-desc { color: #aaa; font-size: 17px; line-height: 1.5; margin: 0 0 16px; }
+      .sm-detail-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 16px; }
       .sm-detail-label { color: #888; min-width: 80px; }
-      .sm-detail-mono { font-family: monospace; color: #ccc; font-size: 12px; }
-      .sm-detail-price { color: #f39c12; font-size: 12px; }
+      .sm-detail-mono { font-family: monospace; color: #ccc; font-size: 14px; }
+      .sm-detail-price { color: #f39c12; font-size: 14px; }
       .sm-detail-actions { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
 
       /* Steps */
       .sm-steps { margin: 16px 0; }
-      .sm-steps-title { font-size: 13px; color: #888; font-weight: 600; margin-bottom: 8px; }
-      .sm-step { display: flex; gap: 8px; padding: 6px 0; font-size: 13px; color: #ccc; border-bottom: 1px solid #222; }
+      .sm-steps-title { font-size: 16px; color: #888; font-weight: 600; margin-bottom: 8px; }
+      .sm-step { display: flex; gap: 8px; padding: 6px 0; font-size: 16px; color: #ccc; border-bottom: 1px solid #222; }
       .sm-step-num { color: #666; min-width: 20px; }
 
       /* Exposed */
       .sm-exposed { margin: 16px 0; }
-      .sm-exposed-title { font-size: 13px; color: #888; font-weight: 600; margin-bottom: 8px; }
-      .sm-exposed-item { font-size: 13px; color: #aaa; padding: 4px 0; }
+      .sm-exposed-title { font-size: 16px; color: #888; font-weight: 600; margin-bottom: 8px; }
+      .sm-exposed-item { font-size: 16px; color: #aaa; padding: 4px 0; }
       .sm-exposed-item strong { color: #90caf9; }
 
       /* Edit / Create form */
       .sm-edit { margin: 16px 0; }
       .sm-form-group { margin-bottom: 14px; }
-      .sm-form-group label { display: block; margin-bottom: 6px; color: #aaa; font-weight: 600; font-size: 13px; }
-      .sm-input { width: 100%; padding: 8px 12px; background: #222; border: 1px solid #444; border-radius: 6px; color: #e0e0e0; font-size: 14px; box-sizing: border-box; }
+      .sm-form-group label { display: block; margin-bottom: 6px; color: #aaa; font-weight: 600; font-size: 16px; }
+      .sm-input { width: 100%; padding: 8px 12px; background: #222; border: 1px solid #444; border-radius: 6px; color: #e0e0e0; font-size: 17px; box-sizing: border-box; }
       .sm-input:focus { border-color: #90caf9; outline: none; }
-      .sm-textarea { width: 100%; padding: 8px 12px; background: #222; border: 1px solid #444; border-radius: 6px; color: #e0e0e0; font-size: 14px; min-height: 60px; resize: vertical; box-sizing: border-box; font-family: inherit; }
+      .sm-textarea { width: 100%; padding: 8px 12px; background: #222; border: 1px solid #444; border-radius: 6px; color: #e0e0e0; font-size: 17px; min-height: 60px; resize: vertical; box-sizing: border-box; font-family: inherit; }
       .sm-textarea:focus { border-color: #90caf9; outline: none; }
-      .sm-select { width: 100%; padding: 8px 12px; background: #222; border: 1px solid #444; border-radius: 6px; color: #e0e0e0; font-size: 14px; }
+      .sm-select { width: 100%; padding: 8px 12px; background: #222; border: 1px solid #444; border-radius: 6px; color: #e0e0e0; font-size: 17px; }
       .sm-edit-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
       .sm-nav { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
 
       /* Checkbox rows */
-      .sm-checkbox-row { display: flex; gap: 8px; align-items: center; padding: 4px 0; font-size: 13px; color: #ccc; cursor: pointer; }
+      .sm-checkbox-row { display: flex; gap: 8px; align-items: center; padding: 4px 0; font-size: 16px; color: #ccc; cursor: pointer; }
       .sm-checkbox-row input[type=checkbox] { accent-color: #90caf9; }
 
       /* Create steps */
@@ -903,17 +903,17 @@ export class SpellsModal extends Component {
       .sm-create-exposed { margin: 16px 0; }
 
       /* Marketplace meta */
-      .sm-market-meta { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; font-size: 13px; color: #888; }
+      .sm-market-meta { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; font-size: 16px; color: #888; }
 
       /* Quote */
       .sm-quote { background: #1e1e2e; border: 1px solid #333; border-radius: 8px; padding: 14px; margin: 16px 0; }
-      .sm-quote-title { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
-      .sm-quote-body { display: flex; gap: 16px; font-size: 15px; color: #fff; }
-      .sm-quote-usd { color: #888; font-size: 13px; }
-      .sm-quote-time { color: #90caf9; font-size: 13px; }
+      .sm-quote-title { font-size: 14px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+      .sm-quote-body { display: flex; gap: 16px; font-size: 18px; color: #fff; }
+      .sm-quote-usd { color: #888; font-size: 16px; }
+      .sm-quote-time { color: #90caf9; font-size: 16px; }
 
       /* Cast result */
-      .sm-cast-result { margin-top: 12px; padding: 10px 14px; border-radius: 6px; font-size: 13px; color: #2ecc71; background: rgba(46,204,113,0.08); }
+      .sm-cast-result { margin-top: 12px; padding: 10px 14px; border-radius: 6px; font-size: 16px; color: #2ecc71; background: rgba(46,204,113,0.08); }
       .sm-cast-result--err { color: #e74c3c; background: rgba(231,76,60,0.08); }
     `;
   }

@@ -23,7 +23,7 @@ export async function execute(payload) {
   const final = data.status === 'completed' || data.deliveryMode === 'immediate' || data.status === 'success';
   const outputs = data.outputs || (data.response ? { response: data.response } : undefined);
 
-  return { final, status: data.status, generationId: data.generationId, outputs, raw: data };
+  return { final, status: data.status, generationId: data.generationId, outputs, costUsd: data.costUsd, raw: data };
 }
 
 export async function castSpell({ slug, context = {} }) {

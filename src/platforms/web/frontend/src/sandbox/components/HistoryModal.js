@@ -62,10 +62,10 @@ export class HistoryModal extends Component {
       .history-nav button { background: #222; border: 1px solid #444; color: #ccc; padding: 4px 10px; border-radius: 4px; cursor: pointer; }
       .history-nav button:disabled { opacity: 0.3; cursor: default; }
       .history-nav button:not(:disabled):hover { background: #333; }
-      .date-range { font-size: 13px; color: #888; }
-      .history-summary { margin: 12px 0; font-size: 14px; }
+      .date-range { font-size: 16px; color: #888; }
+      .history-summary { margin: 12px 0; font-size: 17px; }
       .history-details ul { list-style: none; padding: 0; }
-      .history-details li { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #222; font-size: 13px; }
+      .history-details li { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #222; font-size: 16px; }
     `;
   }
 

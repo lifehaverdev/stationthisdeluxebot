@@ -4,26 +4,26 @@ import { Sigil } from '../sandbox/components/Sigil.js';
 
 const CAPABILITIES = [
   {
-    label: '/Generation',
-    desc: 'Compose chains of image, audio, video, and text tools into production workflows.',
+    label: '/Node Canvas',
+    desc: 'Wire AI tools together visually. Connect outputs to inputs across image, text, audio, and video nodes.',
   },
   {
     label: '/Model Training',
     desc: 'Fine-tune and deploy custom models directly from the workspace.',
   },
   {
-    label: '/NFT Systems',
-    desc: 'Publish workflows as on-chain spells — discoverable, executable, tradeable.',
+    label: '/Spells',
+    desc: 'Publish multi-step workflows as on-chain spells — discoverable, executable, tradeable.',
   },
   {
     label: '/Shared Workspaces',
-    desc: 'Share entire systems, not just outputs. Collaborate on live production environments.',
+    desc: 'Share entire node graphs, not just outputs. Restore any saved workspace by ID.',
   },
 ];
 
 const SIGNALS = [
-  'Open workflows. No closed pipelines.',
-  'Wallet-native collaboration.',
+  'Node canvas — composable, not conversational.',
+  'Wallet-native. No walled garden.',
   'Designed for production, not prompts.',
 ];
 
@@ -76,7 +76,7 @@ export class Landing extends Component {
 
       .lp-sysbar span {
         font-family: var(--ff-mono);
-        font-size: 9px;
+        font-size: 11px;
         letter-spacing: 0.18em;
         text-transform: uppercase;
         color: rgba(221,223,224,0.18);
@@ -151,7 +151,7 @@ export class Landing extends Component {
 
       .lp-hero-eyebrow {
         font-family: var(--ff-mono);
-        font-size: 9px;
+        font-size: 11px;
         letter-spacing: 0.22em;
         text-transform: uppercase;
         color: var(--accent);
@@ -221,7 +221,7 @@ export class Landing extends Component {
       }
       .lp-readout-line {
         font-family: var(--ff-mono);
-        font-size: 9px;
+        font-size: 11px;
         letter-spacing: 0.16em;
         text-transform: uppercase;
         color: rgba(221,223,224,0.18);
@@ -240,7 +240,7 @@ export class Landing extends Component {
         position: relative;
         overflow: hidden;
         font-family: var(--ff-mono);
-        font-size: 10px;
+        font-size: 12px;
         font-weight: 600;
         letter-spacing: 0.18em;
         text-transform: uppercase;
@@ -293,7 +293,7 @@ export class Landing extends Component {
         position: relative;
         overflow: hidden;
         font-family: var(--ff-mono);
-        font-size: 10px;
+        font-size: 12px;
         letter-spacing: 0.18em;
         text-transform: uppercase;
         color: var(--text-label);
@@ -346,14 +346,14 @@ export class Landing extends Component {
       }
       .lp-section-num {
         font-family: var(--ff-mono);
-        font-size: 9px;
+        font-size: 11px;
         letter-spacing: 0.22em;
         text-transform: uppercase;
         color: var(--accent);
       }
       .lp-section-label {
         font-family: var(--ff-mono);
-        font-size: 9px;
+        font-size: 11px;
         letter-spacing: 0.22em;
         text-transform: uppercase;
         color: var(--text-label);
@@ -416,7 +416,7 @@ export class Landing extends Component {
 
       .lp-cap-desc {
         font-family: var(--ff-condensed);
-        font-size: 12px;
+        font-size: 14px;
         letter-spacing: 0.04em;
         color: var(--text-label);
         line-height: 1.45;
@@ -462,7 +462,7 @@ export class Landing extends Component {
 
       .lp-signal-num {
         font-family: var(--ff-mono);
-        font-size: 9px;
+        font-size: 11px;
         letter-spacing: 0.2em;
         color: var(--accent);
         flex-shrink: 0;
@@ -470,7 +470,7 @@ export class Landing extends Component {
       }
       .lp-signal-text {
         font-family: var(--ff-mono);
-        font-size: 11px;
+        font-size: 13px;
         letter-spacing: 0.14em;
         text-transform: uppercase;
         color: var(--text-secondary);
@@ -512,7 +512,7 @@ export class Landing extends Component {
 
       .lp-cta-sub {
         font-family: var(--ff-mono);
-        font-size: 10px;
+        font-size: 12px;
         letter-spacing: 0.2em;
         text-transform: uppercase;
         color: var(--text-label);
@@ -540,7 +540,7 @@ export class Landing extends Component {
           h('h1', { className: 'lp-wordmark' }, 'NOEMA'),
           h('div', { className: 'lp-hero-rule' }),
           h('p', { className: 'lp-hero-sub' },
-            'Build, train, and publish AI workflows.'
+            'Wire AI tools into production workflows on a node canvas.'
           ),
           h('div', { className: 'lp-hero-actions' },
             h('button', { className: 'lp-btn-cta', onclick: this.bind(this._onEnter) }, 'Enter Console'),
@@ -577,9 +577,9 @@ export class Landing extends Component {
       ),
       h('section', { className: 'lp-philosophy' },
         h('p', null,
-          'Noema is an open composable environment for building ',
-          h('em', null, 'production-ready AI workflows.'),
-          ' Use any model. Connect any tool. ',
+          'Noema is an open ',
+          h('em', null, 'node-based canvas'),
+          ' for building production AI workflows. Drop tools onto the canvas, wire outputs to inputs, execute the graph. ',
           h('em', null, 'Share entire systems, not just outputs.')
         ),
       ),

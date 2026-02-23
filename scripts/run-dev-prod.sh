@@ -45,5 +45,6 @@ if [ -f "$FRONTEND_DIR/package.json" ]; then
   (cd "$FRONTEND_DIR" && npm run build)
 fi
 
+export NODE_ENV=production
 echo "[run-dev-prod] Starting Express on :4000 (production-like)..."
 node app.js

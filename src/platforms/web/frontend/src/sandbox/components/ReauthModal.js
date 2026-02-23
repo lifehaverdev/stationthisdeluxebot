@@ -112,20 +112,20 @@ export class ReauthModal extends Component {
       }
       .reauth-wallet-btn:hover { background: #444; }
       .reauth-wallet-btn:disabled { opacity: 0.5; cursor: default; }
-      .reauth-alt { font-size: 13px; color: #888; }
+      .reauth-alt { font-size: 16px; color: #888; }
       .reauth-alt a { color: #90caf9; cursor: pointer; text-decoration: none; }
       .reauth-alt a:hover { text-decoration: underline; }
       .reauth-form { display: flex; flex-direction: column; gap: 12px; }
       .reauth-form input {
         background: #222; border: 1px solid #444; color: #e0e0e0;
-        padding: 10px 14px; border-radius: 6px; font-size: 14px;
+        padding: 10px 14px; border-radius: 6px; font-size: 17px;
       }
       .reauth-form button[type="submit"] {
         background: #333; border: 1px solid #555; color: #fff;
         padding: 10px; border-radius: 6px; cursor: pointer; font-weight: 600;
       }
       .reauth-form button[type="submit"]:disabled { opacity: 0.5; }
-      .reauth-back { color: #888; font-size: 13px; cursor: pointer; background: none; border: none; }
+      .reauth-back { color: #888; font-size: 16px; cursor: pointer; background: none; border: none; }
       .reauth-back:hover { color: #ccc; }
     `;
   }

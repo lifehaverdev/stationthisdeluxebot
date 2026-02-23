@@ -201,7 +201,7 @@ export class Sidebar extends Component {
         justify-content: center;
         cursor: pointer;
         color: var(--text-label);
-        font-size: 8px;
+        font-size: 10px;
         font-family: var(--ff-mono);
         transition: background var(--dur-micro) var(--ease);
       }

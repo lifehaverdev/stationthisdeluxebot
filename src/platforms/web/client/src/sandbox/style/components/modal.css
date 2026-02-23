@@ -77,7 +77,7 @@
   border: var(--border-width) solid transparent;
   color: var(--text-label);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 14px;
   width: 22px; height: 22px;
   display: flex; align-items: center; justify-content: center;
   font-family: var(--ff-mono);

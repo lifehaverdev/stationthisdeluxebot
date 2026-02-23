@@ -20,12 +20,22 @@ export class CostHUD extends Component {
   }
 
   didMount() {
-    this.registerCleanup(subscribe('costs', () => {
-      this.setState({ totals: getTotalWorkspaceCost() });
+    this.registerCleanup(subscribe('costs', (totals) => {
+      this.setState({ totals });
     }));
     this.setState({ totals: getTotalWorkspaceCost() });
     this._fetchRates();
     this._ratesInterval = this.setInterval(() => this._fetchRates(), RATES_TTL);
+
+    // Stay in sync with per-window CostDisplay denomination toggles
+    this._onDenomChange = (e) => {
+      if (e.detail?.denomination && e.detail.denomination !== this.state.denomination) {
+        localStorage.setItem(DENOM_KEY, e.detail.denomination);
+        this.setState({ denomination: e.detail.denomination });
+      }
+    };
+    window.addEventListener('denominationChange', this._onDenomChange);
+    this.registerCleanup(() => window.removeEventListener('denominationChange', this._onDenomChange));
   }
 
   _loadCachedRates() {
@@ -77,6 +87,7 @@ export class CostHUD extends Component {
     const next = DENOMINATIONS[(i + 1) % DENOMINATIONS.length];
     localStorage.setItem(DENOM_KEY, next);
     this.setState({ denomination: next });
+    window.dispatchEvent(new CustomEvent('denominationChange', { detail: { denomination: next } }));
   }
 
   _reset(e) {
@@ -151,7 +162,7 @@ export class CostHUD extends Component {
         border: none;
         color: var(--text-label);
         cursor: pointer;
-        font-size: 13px;
+        font-size: 16px;
         padding: 0;
         margin-left: auto;
         line-height: 1;

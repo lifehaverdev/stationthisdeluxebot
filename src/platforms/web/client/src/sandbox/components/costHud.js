@@ -78,7 +78,7 @@ class CostHUD {
                 padding: 12px 16px;
                 color: white;
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                font-size: 14px;
+                font-size: 17px;
                 min-width: 150px;
                 backdrop-filter: blur(10px);
                 box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
@@ -105,7 +105,7 @@ class CostHUD {
             }
 
             .cost-hud-title {
-                font-size: 11px;
+                font-size: 13px;
                 font-weight: 600;
                 text-transform: uppercase;
                 letter-spacing: 0.5px;
@@ -117,7 +117,7 @@ class CostHUD {
                 border: none;
                 color: #888;
                 cursor: pointer;
-                font-size: 16px;
+                font-size: 19px;
                 padding: 2px 4px;
                 border-radius: 3px;
                 transition: all 0.2s ease;
@@ -129,14 +129,14 @@ class CostHUD {
             }
 
             .cost-hud-amount {
-                font-size: 18px;
+                font-size: 22px;
                 font-weight: 700;
                 color: #fff;
                 line-height: 1.2;
             }
 
             .cost-hud-details {
-                font-size: 11px;
+                font-size: 13px;
                 color: #888;
                 line-height: 1.3;
             }

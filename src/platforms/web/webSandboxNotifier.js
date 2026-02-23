@@ -116,6 +116,7 @@ class WebSandboxNotifier {
         generationId: (generationRecord._id || generationRecord.id)?.toString(),
         runId: generationRecord.metadata?.run_id || null,
         status: generationRecord.status,
+        error: generationRecord.metadata?.error?.message || generationRecord.metadata?.errorMessage || null,
         outputs: webOutputs,
         toolId: generationRecord.toolId,
         spellId: generationRecord.spellId || generationRecord.metadata?.spellId || generationRecord.metadata?.spell?._id || null,

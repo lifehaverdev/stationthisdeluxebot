@@ -29,7 +29,7 @@
     background: none;
     border: none;
     color: #888;
-    font-size: 24px;
+    font-size: 29px;
     cursor: pointer;
     transition: color 0.2s;
 }
@@ -45,7 +45,7 @@
     display: block;
     margin: 20px auto 0;
     padding: 10px 20px;
-    font-size: 16px;
+    font-size: 19px;
     border: 1px solid #444;
     border-radius: 8px;
 }
@@ -74,7 +74,7 @@
     background: rgba(255,255,255,0.04);
     padding: 10px 12px;
     border-radius: 8px;
-    font-size: 14px;
+    font-size: 17px;
     border: 1px solid rgba(255,255,255,0.05);
 }
 .connect-wallet-btn {
@@ -102,7 +102,7 @@
 .asset-tier-heading {
     font-weight: 600;
     text-transform: uppercase;
-    font-size: 12px;
+    font-size: 14px;
     letter-spacing: 0.08em;
     color: #7ab6ff;
     margin-bottom: 4px;
@@ -116,7 +116,7 @@
     border-radius: 8px;
     cursor: pointer;
     transition: background-color 0.2s, border-color 0.2s;
-    font-size: 14px;
+    font-size: 17px;
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -141,7 +141,7 @@
     background: #222;
 }
 .asset-balance-pill {
-    font-size: 12px;
+    font-size: 14px;
     padding: 3px 8px;
     border-radius: 999px;
     background: rgba(112, 161, 255, 0.15);
@@ -156,7 +156,7 @@ input[type="text"] {
     border: 1px solid #444;
     border-radius: 8px;
     color: #f0f0f0;
-    font-size: 16px;
+    font-size: 19px;
     margin-bottom: 20px;
 }
 
@@ -181,7 +181,7 @@ input[type="text"] {
     border-radius: 8px;
     border: none;
     cursor: pointer;
-    font-size: 16px;
+    font-size: 19px;
     transition: background-color 0.2s;
 }
 .modal-back-btn {

@@ -368,7 +368,7 @@ export class VaultModal extends Component {
 
     return h('div', null,
       h('button', { className: 'vm-back', onclick: this.bind(this._goList) }, '\u2190 Back'),
-      h('p', { style: 'color:#aaa;font-size:14px;margin:12px 0' }, 'Create a unique code name for your referral vault. When someone uses your code, their contribution goes to your vault and you earn 5% rewards.'),
+      h('p', { style: 'color:#aaa;font-size:17px;margin:12px 0' }, 'Create a unique code name for your referral vault. When someone uses your code, their contribution goes to your vault and you earn 5% rewards.'),
       h('div', { className: 'vm-form' },
         h('label', null, 'Vault Code Name'),
         h('input', {
@@ -408,7 +408,7 @@ export class VaultModal extends Component {
     const { deployMessage, deployTxHash } = this.state;
     return h('div', { className: 'vm-deploy' },
       h(Loader, { message: deployMessage }),
-      deployTxHash ? h('p', { style: 'font-size:12px;color:#666;word-break:break-all;margin-top:8px' }, `Tx: ${deployTxHash}`) : null
+      deployTxHash ? h('p', { style: 'font-size:14px;color:#666;word-break:break-all;margin-top:8px' }, `Tx: ${deployTxHash}`) : null
     );
   }
 
@@ -433,18 +433,18 @@ export class VaultModal extends Component {
       .vm-card { background: #222; border: 1px solid #333; border-radius: 8px; padding: 14px 16px; margin-bottom: 8px; cursor: pointer; transition: border-color 0.15s; }
       .vm-card:hover { border-color: #555; }
       .vm-card--pending { opacity: 0.6; }
-      .vm-card-name { font-weight: 600; font-size: 15px; color: #fff; margin-bottom: 4px; }
-      .vm-card-addr { font-family: monospace; font-size: 12px; color: #888; }
-      .vm-card-badge { display: inline-block; font-size: 10px; color: #f39c12; background: rgba(243,156,18,0.1); padding: 2px 8px; border-radius: 4px; margin-top: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+      .vm-card-name { font-weight: 600; font-size: 18px; color: #fff; margin-bottom: 4px; }
+      .vm-card-addr { font-family: monospace; font-size: 14px; color: #888; }
+      .vm-card-badge { display: inline-block; font-size: 12px; color: #f39c12; background: rgba(243,156,18,0.1); padding: 2px 8px; border-radius: 4px; margin-top: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
 
       /* Detail */
-      .vm-back { background: none; border: none; color: #90caf9; cursor: pointer; font-size: 13px; padding: 0; margin-bottom: 16px; }
+      .vm-back { background: none; border: none; color: #90caf9; cursor: pointer; font-size: 16px; padding: 0; margin-bottom: 16px; }
       .vm-back:hover { text-decoration: underline; }
       .vm-detail-header { margin-bottom: 20px; }
-      .vm-detail-name { margin: 0 0 12px; font-size: 18px; color: #fff; }
-      .vm-detail-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 13px; }
+      .vm-detail-name { margin: 0 0 12px; font-size: 22px; color: #fff; }
+      .vm-detail-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 16px; }
       .vm-detail-label { color: #888; min-width: 90px; }
-      .vm-detail-mono { font-family: monospace; color: #ccc; font-size: 12px; }
+      .vm-detail-mono { font-family: monospace; color: #ccc; font-size: 14px; }
 
       /* Tokens */
       .vm-tokens { margin-bottom: 16px; }
@@ -452,24 +452,24 @@ export class VaultModal extends Component {
       .vm-token-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
       .vm-token-icon { width: 24px; height: 24px; border-radius: 50%; }
       .vm-token-icon--placeholder { background: #444; }
-      .vm-token-symbol { font-weight: 600; font-size: 15px; color: #fff; }
-      .vm-token-stat { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
+      .vm-token-symbol { font-weight: 600; font-size: 18px; color: #fff; }
+      .vm-token-stat { display: flex; justify-content: space-between; padding: 4px 0; font-size: 16px; }
       .vm-token-stat span:first-child { color: #999; }
       .vm-token-stat span:last-child { color: #e0e0e0; }
       .vm-token-val--has { color: #2ecc71 !important; font-weight: 600; }
-      .vm-no-tokens { color: #888; font-size: 14px; padding: 20px 0; text-align: center; }
+      .vm-no-tokens { color: #888; font-size: 17px; padding: 20px 0; text-align: center; }
 
       /* Withdraw */
       .vm-withdraw { margin-top: 16px; display: flex; justify-content: flex-end; }
-      .vm-withdraw-result { margin-top: 12px; padding: 10px 14px; border-radius: 6px; font-size: 13px; color: #2ecc71; background: rgba(46,204,113,0.08); }
+      .vm-withdraw-result { margin-top: 12px; padding: 10px 14px; border-radius: 6px; font-size: 16px; color: #2ecc71; background: rgba(46,204,113,0.08); }
       .vm-withdraw-result--err { color: #e74c3c; background: rgba(231,76,60,0.08); }
 
       /* Create */
       .vm-form { margin: 16px 0; }
-      .vm-form label { display: block; margin-bottom: 8px; color: #aaa; font-weight: 600; font-size: 13px; }
-      .vm-form input { width: 100%; padding: 10px 14px; background: #222; border: 1px solid #444; border-radius: 6px; color: #e0e0e0; font-size: 14px; box-sizing: border-box; }
+      .vm-form label { display: block; margin-bottom: 8px; color: #aaa; font-weight: 600; font-size: 16px; }
+      .vm-form input { width: 100%; padding: 10px 14px; background: #222; border: 1px solid #444; border-radius: 6px; color: #e0e0e0; font-size: 17px; box-sizing: border-box; }
       .vm-form input:focus { border-color: #90caf9; outline: none; }
-      .vm-status { font-size: 13px; margin-top: 8px; min-height: 1.2em; }
+      .vm-status { font-size: 16px; margin-top: 8px; min-height: 1.2em; }
       .vm-status--checking { color: #f39c12; }
       .vm-status--ok { color: #2ecc71; }
       .vm-status--bad { color: #e74c3c; }
@@ -479,7 +479,7 @@ export class VaultModal extends Component {
       .vm-deploy { text-align: center; padding: 24px 0; }
       .vm-receipt { text-align: center; }
       .vm-receipt h3 { color: #2ecc71; margin-bottom: 12px; }
-      .vm-receipt-addr { font-family: monospace; font-size: 13px; color: #90caf9; word-break: break-all; }
+      .vm-receipt-addr { font-family: monospace; font-size: 16px; color: #90caf9; word-break: break-all; }
     `;
   }
 

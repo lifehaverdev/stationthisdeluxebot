@@ -120,6 +120,10 @@ function initializeWebPlatform(services, options = {}) {
       const frontendDist = path.join(__dirname, 'frontend', 'dist');
       const frontendIndexHtml = path.join(frontendDist, 'index.html');
 
+      if (!fs.existsSync(frontendIndexHtml)) {
+        throw new Error(`Frontend not built: ${frontendIndexHtml} not found. Run 'npm run build' in src/platforms/web/frontend/ first.`);
+      }
+
       const isAppSubdomain = (req) => {
         return req.hostname.startsWith('app.');
       };

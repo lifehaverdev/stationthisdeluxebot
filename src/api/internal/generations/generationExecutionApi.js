@@ -456,7 +456,8 @@ module.exports = function generationExecutionApi(dependencies) {
                   const updatePayload = {
                     status: finalStatus,
                     responsePayload: [ { type: pollRes.type, data: finalData } ],
-                    costUsd: pollRes.costUsd || null
+                    costUsd: pollRes.costUsd || null,
+                    ...(pollRes.error ? { 'metadata.error': { message: pollRes.error, step: 'adapter_poll' } } : {}),
                   };
                   await db.generationOutputs.updateGenerationOutput(generationRecord._id, updatePayload);
                   const notificationEvents = require('../../../core/events/notificationEvents');

@@ -18,7 +18,7 @@
 .workspace-suite .ws-btn {
   background: transparent;
   border: none;
-  font-size: 20px;
+  font-size: 24px;
   cursor: pointer;
   padding: 4px 6px;
 }
@@ -67,7 +67,7 @@
 
 .workspace-tab-add {
   font-family: var(--ff-mono);
-  font-size: 14px;
+  font-size: 17px;
   color: var(--text-label);
   background: none;
   border: none;

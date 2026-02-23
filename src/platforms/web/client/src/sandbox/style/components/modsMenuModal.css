@@ -32,7 +32,7 @@
     background: none;
     border: var(--border-width) solid transparent;
     color: var(--text-label);
-    font-size: 12px;
+    font-size: 14px;
     cursor: pointer;
     font-family: var(--ff-mono);
     transition: color var(--dur-micro) var(--ease), border-color var(--dur-micro) var(--ease);
@@ -112,15 +112,15 @@
     background: rgba(0,223,200,0.2);
     border-color: var(--accent);
 }
-.mods-size { font-size: 12px; color: #aaa; margin-left: 8px; }
+.mods-size { font-size: 14px; color: #aaa; margin-left: 8px; }
 .loading-spinner { text-align:center; padding:20px; }
 .error-message { color:#ff4d4d; text-align:center; padding:10px; }
 .empty-message { text-align:center; color:#888; padding:20px; }
 .intro-placeholder { text-align:center; color:#888; padding:20px; }
 
-.mods-tags { margin-top:4px; font-size:12px; }
+.mods-tags { margin-top:4px; font-size:14px; }
 .tag { background:#444; padding:2px 6px; border-radius:4px; margin-right:4px; }
-.tag-toggle { background:none; border:none; color:#8ab4ff; cursor:pointer; font-size:12px; }
+.tag-toggle { background:none; border:none; color:#8ab4ff; cursor:pointer; font-size:14px; }
 .tag-toggle:hover { text-decoration:underline; }
 
 /* ---------------- Import Overlay ---------------- */
@@ -168,7 +168,7 @@
     border-radius: 6px;
     color: #fff;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 17px;
 }
 
 .import-dialog button[disabled] { opacity: 0.6; cursor: not-allowed; }
@@ -197,31 +197,31 @@
 }
 
 .detail-header { display:flex; justify-content: space-between; align-items:center; margin-bottom:12px; }
-.detail-header h3 { margin:0; font-size:20px; }
-.detail-close-btn { background:none; border:none; color:#888; font-size:24px; cursor:pointer; }
+.detail-header h3 { margin:0; font-size:24px; }
+.detail-close-btn { background:none; border:none; color:#888; font-size:29px; cursor:pointer; }
 .detail-close-btn:hover { color:#fff; }
 
 .detail-body { display:flex; gap:20px; flex-wrap:wrap; }
 .carousel { position:relative; flex:1 1 300px; max-width:320px; }
 .carousel-img { width:100%; border-radius:8px; border:1px solid #444; }
-.img-nav { position:absolute; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.5); border:none; color:#fff; font-size:24px; width:32px; height:48px; cursor:pointer; }
+.img-nav { position:absolute; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.5); border:none; color:#fff; font-size:29px; width:32px; height:48px; cursor:pointer; }
 .img-nav.prev { left:-16px; }
 .img-nav.next { right:-16px; }
 .thumb-strip { display:flex; gap:6px; margin-top:8px; overflow-x:auto; }
 .thumb { width:48px; height:48px; object-fit:cover; border:2px solid transparent; border-radius:4px; cursor:pointer; }
 .thumb.active { border-color:#4a90e2; }
 
-.detail-meta { flex:1 1 280px; font-size:14px; }
+.detail-meta { flex:1 1 280px; font-size:17px; }
 .meta-field { margin-bottom:8px; }
 .meta-label { color:#aaa; margin-right:4px; }
 .badge { background:#444; padding:2px 6px; border-radius:4px; margin-right:4px; }
 
-.rating-stars { margin-right:auto; font-size:22px; cursor:pointer; }
+.rating-stars { margin-right:auto; font-size:26px; cursor:pointer; }
 .rating-stars .star { margin-right:4px; color:#f5d742; }
 .rating-stars .star:hover { transform:scale(1.2); }
 
 .detail-footer { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; flex-wrap:wrap; }
-.detail-footer button { background:#4a90e2; border:none; color:#fff; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:14px; }
+.detail-footer button { background:#4a90e2; border:none; color:#fff; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:17px; }
 .detail-footer .fav-toggle-btn { background:#555; }
 .detail-footer .fav-toggle-btn:hover { background:#666; }
 
@@ -237,7 +237,7 @@
 .form-section h3 {
   margin: 0 0 15px 0;
   color: #90caf9;
-  font-size: 16px;
+  font-size: 19px;
 }
 
 .param-row {
@@ -262,7 +262,7 @@
   display: flex;
   justify-content: space-between;
   font-weight: bold;
-  font-size: 18px;
+  font-size: 22px;
 }
 
 .cost-value {
@@ -272,7 +272,7 @@
 .train-form label {
   display: block;
   margin-bottom: 8px;
-  font-size: 14px;
+  font-size: 17px;
   color: #f0f0f0;
 }
 
@@ -284,7 +284,7 @@
   border: 1px solid #444;
   background: #2a2a2a;
   color: #f0f0f0;
-  font-size: 14px;
+  font-size: 17px;
 }
 
 .train-form input:focus, .train-form select:focus, .train-form textarea:focus {
@@ -300,7 +300,7 @@
   border-radius: 6px;
   color: #fff;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 17px;
   margin-right: 10px;
 }
 
@@ -360,14 +360,14 @@
 
 .training-header h4 {
   margin: 0;
-  font-size: 16px;
+  font-size: 19px;
   color: #f0f0f0;
 }
 
 .status-badge {
   padding: 4px 8px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: bold;
   text-transform: uppercase;
 }
@@ -388,7 +388,7 @@
   display: flex;
   align-items: center;
   margin-bottom: 8px;
-  font-size: 14px;
+  font-size: 17px;
 }
 
 .detail-item .label {
@@ -417,7 +417,7 @@
 }
 
 .progress-text {
-  font-size: 12px;
+  font-size: 14px;
   color: #aaa;
   min-width: 35px;
 }
@@ -433,7 +433,7 @@
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 500;
   transition: all 0.2s ease;
 }
@@ -452,7 +452,7 @@
 .hf-link {
   color: #ffca28;
   text-decoration: none;
-  font-size: 12px;
+  font-size: 14px;
   transition: color 0.2s ease;
 }
 
@@ -467,7 +467,7 @@
   background: rgba(255, 255, 255, 0.1);
   padding: 2px 6px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 /* Image Preview */
@@ -501,7 +501,7 @@
   width: 20px;
   height: 20px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -519,7 +519,7 @@
 .caption-options label {
   display: block;
   margin-bottom: 8px;
-  font-size: 14px;
+  font-size: 17px;
   color: #f0f0f0;
 }
 
@@ -554,7 +554,7 @@
   background: #2a2a2a;
   color: #f0f0f0;
   font-family: monospace;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .add-images-btn {
@@ -564,7 +564,7 @@
   border-radius: 6px;
   color: #fff;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 17px;
   margin-top: 8px;
 }
 
@@ -628,12 +628,12 @@
 }
 
 .upload-icon {
-  font-size: 48px;
+  font-size: 58px;
   opacity: 0.7;
 }
 
 .upload-hint {
-  font-size: 12px;
+  font-size: 14px;
   color: #999;
   margin-top: 5px;
 }
@@ -676,7 +676,7 @@
 .upload-progress .progress-text {
   text-align: center;
   margin-top: 8px;
-  font-size: 14px;
+  font-size: 17px;
   color: #ccc;
 }
 
@@ -704,12 +704,12 @@
 }
 
 .paste-icon {
-  font-size: 48px;
+  font-size: 58px;
   opacity: 0.7;
 }
 
 .paste-hint {
-  font-size: 12px;
+  font-size: 14px;
   color: #999;
   margin-top: 5px;
 }
@@ -754,7 +754,7 @@
   width: 24px;
   height: 24px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 17px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -811,7 +811,7 @@
   color: #aaa;
   padding: 10px 20px;
   cursor: pointer;
-  font-size: 16px;
+  font-size: 19px;
   border-bottom: 2px solid transparent;
   transition: all 0.2s ease;
 }
@@ -840,7 +840,7 @@
 .train-section-header h3 {
   margin: 0;
   color: #f0f0f0;
-  font-size: 18px;
+  font-size: 22px;
 }
 
 .add-dataset-btn, .add-training-btn, .add-caption-btn {
@@ -850,7 +850,7 @@
   padding: 8px 16px;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 17px;
 }
 
 .add-dataset-btn:hover, .add-training-btn:hover, .add-caption-btn:hover {
@@ -912,7 +912,7 @@
 .param-group h4 {
   color: #90caf9;
   margin-bottom: 10px;
-  font-size: 14px;
+  font-size: 17px;
 }
 
 /* Dataset & Caption Grid */
@@ -955,7 +955,7 @@
 }
 
 .selected-indicator {
-  font-size: 11px;
+  font-size: 13px;
   padding: 2px 8px;
   border-radius: 999px;
   border: 1px solid rgba(255, 213, 79, 0.5);
@@ -986,7 +986,7 @@
   background: rgba(0, 0, 0, 0.7);
   color: white;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .dataset-stats {
@@ -999,7 +999,7 @@
 .stat-item {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .stat-item .label {
@@ -1033,13 +1033,13 @@
   border: 1px solid #444;
   background: #2a2a2a;
   color: #f0f0f0;
-  font-size: 14px;
+  font-size: 17px;
 }
 
 .visibility-badge {
   padding: 2px 6px;
   border-radius: 4px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: bold;
   text-transform: uppercase;
 }
@@ -1096,18 +1096,18 @@
 .analytics-card h4 {
   color: #90caf9;
   margin-bottom: 10px;
-  font-size: 14px;
+  font-size: 17px;
 }
 
 .metric-value {
-  font-size: 24px;
+  font-size: 29px;
   font-weight: bold;
   color: #fff;
   margin-bottom: 5px;
 }
 
 .metric-change {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 500;
 }
 
@@ -1135,7 +1135,7 @@
 .chart-container h4 {
   color: #90caf9;
   margin-bottom: 15px;
-  font-size: 14px;
+  font-size: 17px;
 }
 
 .chart-container canvas {
@@ -1155,7 +1155,7 @@
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 500;
   transition: all 0.2s ease;
 }
@@ -1190,12 +1190,12 @@
 
 .caption-header h4 {
   margin: 0;
-  font-size: 14px;
+  font-size: 17px;
   color: #f0f0f0;
 }
 
 .caption-meta {
-  font-size: 12px;
+  font-size: 14px;
   color: #ccc;
   margin-bottom: 10px;
 }
@@ -1211,7 +1211,7 @@
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 500;
   transition: all 0.2s ease;
 }
@@ -1248,12 +1248,12 @@
 }
 
 .caption-progress-method {
-  font-size: 12px;
+  font-size: 14px;
   color: #999;
 }
 
 .caption-progress-status {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   color: #f5c16c;
 }
@@ -1290,7 +1290,7 @@
 }
 
 .caption-progress-text {
-  font-size: 12px;
+  font-size: 14px;
   color: #b5b5b5;
   margin-top: 6px;
 }
@@ -1304,7 +1304,7 @@
 
 .caption-progress-footer .btn-danger {
   padding: 4px 10px;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .caption-viewer-dialog {
@@ -1325,14 +1325,14 @@
   background: none;
   border: none;
   color: #f0f0f0;
-  font-size: 24px;
+  font-size: 29px;
   cursor: pointer;
 }
 
 .caption-viewer-meta {
   display: flex;
   gap: 24px;
-  font-size: 13px;
+  font-size: 16px;
   color: #b5b5b5;
   margin-top: 4px;
 }
@@ -1374,7 +1374,7 @@
 }
 
 .caption-row-title {
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 600;
   color: #dedede;
 }
@@ -1389,7 +1389,7 @@
   color: #f6f6f6;
   padding: 8px;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 16px;
 }
 
 .caption-generator-dialog .cap-parameter-section {
@@ -1401,7 +1401,7 @@
 }
 
 .caption-generator-dialog .cap-param-info {
-  font-size: 13px;
+  font-size: 16px;
   color: #c4c4c4;
   margin-bottom: 10px;
   line-height: 1.4;
@@ -1447,7 +1447,7 @@
   background: transparent;
   border: none;
   color: #7bdcff;
-  font-size: 13px;
+  font-size: 16px;
   cursor: pointer;
   padding: 0;
   text-align: left;
@@ -1466,7 +1466,7 @@
 }
 
 .caption-generator-dialog .cap-spell-preview-content {
-  font-size: 13px;
+  font-size: 16px;
   color: #d0d0d0;
   display: flex;
   flex-direction: column;
@@ -1503,17 +1503,17 @@
 }
 
 .caption-generator-dialog .cap-spell-preview-step {
-  font-size: 12px;
+  font-size: 14px;
   color: #9f9f9f;
 }
 
 .caption-generator-dialog .cap-spell-preview-desc {
-  font-size: 13px;
+  font-size: 16px;
 }
 
 .caption-generator-dialog .cap-spell-preview-loading,
 .caption-generator-dialog .cap-spell-preview-empty {
-  font-size: 13px;
+  font-size: 16px;
   color: #8a8a8a;
 }
 
@@ -1524,7 +1524,7 @@
 }
 
 .caption-generator-dialog .cap-spell-template-label {
-  font-size: 12px;
+  font-size: 14px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: #8a8a8a;
@@ -1539,7 +1539,7 @@
   color: #f6f6f6;
   padding: 8px;
   font-family: inherit;
-  font-size: 12px;
+  font-size: 14px;
   resize: vertical;
 }
 
@@ -1596,7 +1596,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 17px;
   font-weight: 600;
   border: 2px solid #444;
   transition: all 0.3s ease;
@@ -1616,7 +1616,7 @@
 }
 
 .wizard-step-label {
-  font-size: 11px;
+  font-size: 13px;
   color: #888;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -1651,7 +1651,7 @@
 .wizard-body h3 {
   margin: 0 0 8px 0;
   color: #f0f0f0;
-  font-size: 18px;
+  font-size: 22px;
 }
 
 /* Wizard Footer */
@@ -1701,12 +1701,12 @@
 
 .wizard-dataset-card h4 {
   margin: 8px 0 4px;
-  font-size: 14px;
+  font-size: 17px;
   color: #f0f0f0;
 }
 
 .wizard-card-meta {
-  font-size: 12px;
+  font-size: 14px;
   color: #999;
 }
 
@@ -1731,14 +1731,14 @@
 }
 
 .wizard-new-icon {
-  font-size: 32px;
+  font-size: 38px;
   color: #666;
   line-height: 1;
 }
 
 .wizard-new-dataset-card h4 {
   margin: 0;
-  font-size: 14px;
+  font-size: 17px;
   color: #888;
 }
 
@@ -1772,21 +1772,21 @@
 }
 
 .model-name {
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 700;
   color: #f0f0f0;
   margin-bottom: 8px;
 }
 
 .model-desc {
-  font-size: 13px;
+  font-size: 16px;
   color: #bbb;
   line-height: 1.4;
   margin-bottom: 10px;
 }
 
 .model-defaults {
-  font-size: 11px;
+  font-size: 13px;
   color: #888;
   font-family: monospace;
   background: rgba(0, 0, 0, 0.3);
@@ -1824,14 +1824,14 @@
 }
 
 .mode-name {
-  font-size: 16px;
+  font-size: 19px;
   font-weight: 700;
   color: #f0f0f0;
   margin-bottom: 6px;
 }
 
 .mode-desc {
-  font-size: 12px;
+  font-size: 14px;
   color: #aaa;
   line-height: 1.4;
 }
@@ -1868,7 +1868,7 @@
 
 .wizard-control-dataset-card h4 {
   margin: 8px 0 4px;
-  font-size: 13px;
+  font-size: 16px;
   color: #f0f0f0;
 }
 
@@ -1930,19 +1930,19 @@
 }
 
 .wizard-caption-method {
-  font-size: 14px;
+  font-size: 17px;
   font-weight: 600;
   color: #f0f0f0;
 }
 
 .wizard-caption-meta {
-  font-size: 12px;
+  font-size: 14px;
   color: #999;
 }
 
 .wizard-caption-recommendation {
   color: #90caf9;
-  font-size: 13px;
+  font-size: 16px;
   margin-bottom: 12px;
   font-style: italic;
 }
@@ -1996,7 +1996,7 @@
 
 .wizard-control-prompt {
   color: #aaa;
-  font-size: 12px;
+  font-size: 14px;
   font-style: italic;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2016,7 +2016,7 @@
   justify-content: space-between;
   padding: 6px 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  font-size: 14px;
+  font-size: 17px;
 }
 
 .wizard-summary-row:last-child {
@@ -2041,7 +2041,7 @@
   border: 1px solid #444;
   background: #2a2a2a;
   color: #f0f0f0;
-  font-size: 14px;
+  font-size: 17px;
   box-sizing: border-box;
 }
 
@@ -2138,7 +2138,7 @@ textarea.wizard-input {
 
 .compact-dataset-info h4 {
   margin: 0 0 2px 0;
-  font-size: 13px;
+  font-size: 16px;
   color: #f0f0f0;
   white-space: nowrap;
   overflow: hidden;
@@ -2153,7 +2153,7 @@ textarea.wizard-input {
 
 .compact-dataset-card .dataset-actions button {
   padding: 3px 6px;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 /* History Section */
@@ -2171,7 +2171,7 @@ textarea.wizard-input {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid #2a2a2a;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: 16px;
   flex-wrap: wrap;
   transition: background 0.2s ease;
 }
@@ -2192,12 +2192,12 @@ textarea.wizard-input {
 
 .history-model {
   color: #888;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .history-date {
   color: #666;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .history-item .training-actions {
@@ -2207,7 +2207,7 @@ textarea.wizard-input {
 
 .history-item .training-actions button {
   padding: 3px 6px;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 /* Dashboard Header Bar */
@@ -2222,7 +2222,7 @@ textarea.wizard-input {
 
 .dashboard-header-bar h2 {
   margin: 0;
-  font-size: 22px;
+  font-size: 26px;
   color: #f0f0f0;
   letter-spacing: 0.5px;
 }
@@ -2235,7 +2235,7 @@ textarea.wizard-input {
 .dashboard-actions-bar .btn-primary,
 .dashboard-actions-bar .btn-secondary {
   padding: 8px 16px;
-  font-size: 13px;
+  font-size: 16px;
   border-radius: 6px;
   cursor: pointer;
   border: none;
@@ -2287,7 +2287,7 @@ textarea.wizard-input {
   border-radius: 11px;
   background: #42a5f5;
   color: #fff;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   margin-left: 8px;
 }
@@ -2302,7 +2302,7 @@ textarea.wizard-input {
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.1);
   color: #888;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 500;
   margin-left: 8px;
 }
@@ -2317,12 +2317,12 @@ textarea.wizard-input {
 
 .detail-header-left h3 {
   margin: 0;
-  font-size: 20px;
+  font-size: 24px;
 }
 
 .detail-description {
   color: #ccc;
-  font-size: 14px;
+  font-size: 17px;
   margin: 8px 0 4px;
   line-height: 1.5;
 }
@@ -2339,7 +2339,7 @@ textarea.wizard-input {
   color: #ddd;
   padding: 2px 8px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .detail-section {
@@ -2348,7 +2348,7 @@ textarea.wizard-input {
 
 .detail-section h3 {
   margin: 0 0 10px;
-  font-size: 16px;
+  font-size: 19px;
   color: #f0f0f0;
 }
 
@@ -2399,13 +2399,13 @@ textarea.wizard-input {
 }
 
 .detail-caption-method {
-  font-size: 14px;
+  font-size: 17px;
   font-weight: 600;
   color: #f0f0f0;
 }
 
 .detail-caption-meta {
-  font-size: 12px;
+  font-size: 14px;
   color: #999;
   margin-top: 2px;
 }
@@ -2420,7 +2420,7 @@ textarea.wizard-input {
   display: inline-block;
   background: rgba(102, 187, 106, 0.2);
   color: #66bb6a;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 999px;
@@ -2472,7 +2472,7 @@ textarea.wizard-input {
   }
 
   .wizard-step-label {
-    font-size: 9px;
+    font-size: 11px;
   }
 
   .wizard-dataset-grid.compact {
@@ -2488,7 +2488,7 @@ textarea.wizard-input {
 .caption-choice-desc {
   color: #aaa;
   margin-bottom: 20px;
-  font-size: 14px;
+  font-size: 17px;
 }
 
 .caption-choice-options {
@@ -2518,19 +2518,19 @@ textarea.wizard-input {
 }
 
 .caption-choice-icon {
-  font-size: 24px;
+  font-size: 29px;
   margin-bottom: 8px;
 }
 
 .caption-choice-label {
-  font-size: 16px;
+  font-size: 19px;
   font-weight: 600;
   color: #f0f0f0;
   margin-bottom: 4px;
 }
 
 .caption-choice-hint {
-  font-size: 13px;
+  font-size: 16px;
   color: #888;
 }
 
@@ -2547,7 +2547,7 @@ textarea.wizard-input {
   resize: vertical;
   min-height: 80px;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 16px;
   padding: 10px;
   border-radius: 6px;
   transition: border-color 0.2s;
@@ -2563,7 +2563,7 @@ textarea.wizard-input {
 }
 
 .caption-save-status {
-  font-size: 12px;
+  font-size: 14px;
   color: #8b5cf6;
 }
 
@@ -2578,7 +2578,7 @@ textarea.wizard-input {
   border-radius: 8px;
   padding: 12px 16px;
   color: #c4b5fd;
-  font-size: 13px;
+  font-size: 16px;
   line-height: 1.5;
 }
 
@@ -2596,7 +2596,7 @@ textarea.wizard-input {
 }
 
 .caption-generator-dialog .cap-user-input label {
-  font-size: 14px;
+  font-size: 17px;
   font-weight: 500;
   color: #e0e0e0;
 }
@@ -2611,7 +2611,7 @@ textarea.wizard-input {
   color: #f0f0f0;
   padding: 10px 12px;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: 17px;
   transition: border-color 0.2s;
 }
 
@@ -2625,7 +2625,7 @@ textarea.wizard-input {
 }
 
 .caption-generator-dialog .cap-input-hint {
-  font-size: 12px;
+  font-size: 14px;
   color: #777;
   line-height: 1.4;
 }
@@ -2637,7 +2637,7 @@ textarea.wizard-input {
 
 .control-generator-dialog .dialog-description {
   color: #aaa;
-  font-size: 13px;
+  font-size: 16px;
   line-height: 1.5;
   margin-bottom: 16px;
 }
@@ -2646,7 +2646,7 @@ textarea.wizard-input {
   display: block;
   margin-bottom: 12px;
   color: #ccc;
-  font-size: 13px;
+  font-size: 16px;
 }
 
 .control-generator-dialog .control-dataset-name {
@@ -2656,7 +2656,7 @@ textarea.wizard-input {
   border: 1px solid #444;
   border-radius: 6px;
   color: #888;
-  font-size: 13px;
+  font-size: 16px;
   margin-top: 4px;
 }
 
@@ -2667,7 +2667,7 @@ textarea.wizard-input {
   border: 1px solid #444;
   border-radius: 6px;
   color: #f0f0f0;
-  font-size: 13px;
+  font-size: 16px;
   margin-top: 4px;
   cursor: pointer;
 }
@@ -2684,7 +2684,7 @@ textarea.wizard-input {
   border: 1px solid #444;
   border-radius: 6px;
   color: #f0f0f0;
-  font-size: 13px;
+  font-size: 16px;
   margin-top: 4px;
   resize: vertical;
   min-height: 80px;
@@ -2701,7 +2701,7 @@ textarea.wizard-input {
 }
 
 .control-generator-dialog .input-hint {
-  font-size: 12px;
+  font-size: 14px;
   color: #888;
   margin-top: 4px;
   margin-bottom: 16px;
@@ -2713,7 +2713,7 @@ textarea.wizard-input {
   color: #e74c3c;
   padding: 10px 12px;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: 16px;
   margin-bottom: 12px;
 }
 
@@ -2731,7 +2731,7 @@ textarea.wizard-input {
   padding: 10px 20px;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 17px;
   font-weight: 500;
 }
 
@@ -2751,7 +2751,7 @@ textarea.wizard-input {
   padding: 10px 20px;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 17px;
 }
 
 .control-generator-dialog .btn-secondary:hover {
@@ -2786,7 +2786,7 @@ textarea.wizard-input {
 .wizard-progress-label {
   font-weight: 600;
   color: #e67e22;
-  font-size: 13px;
+  font-size: 16px;
 }
 
 .wizard-progress-card.status-completed .wizard-progress-label {
@@ -2794,7 +2794,7 @@ textarea.wizard-input {
 }
 
 .wizard-progress-count {
-  font-size: 12px;
+  font-size: 14px;
   color: #aaa;
 }
 
@@ -2839,7 +2839,7 @@ textarea.wizard-input {
 }
 
 .detail-control-meta {
-  font-size: 12px;
+  font-size: 14px;
   color: #888;
   margin-top: 4px;
 }
@@ -2875,7 +2875,7 @@ textarea.wizard-input {
   background: none;
   border: none;
   color: #888;
-  font-size: 24px;
+  font-size: 29px;
   cursor: pointer;
   padding: 0;
   line-height: 1;
@@ -2888,7 +2888,7 @@ textarea.wizard-input {
 .control-viewer-meta {
   display: flex;
   gap: 16px;
-  font-size: 13px;
+  font-size: 16px;
   color: #888;
   margin-bottom: 16px;
 }
@@ -2920,7 +2920,7 @@ textarea.wizard-input {
 }
 
 .control-image-label {
-  font-size: 11px;
+  font-size: 13px;
   color: #888;
   text-transform: uppercase;
   margin-bottom: 6px;
@@ -2936,7 +2936,7 @@ textarea.wizard-input {
 
 .control-arrow {
   color: #e67e22;
-  font-size: 24px;
+  font-size: 29px;
   font-weight: bold;
 }
 
@@ -2950,7 +2950,7 @@ textarea.wizard-input {
   border: 2px dashed #444;
   border-radius: 6px;
   color: #666;
-  font-size: 13px;
+  font-size: 16px;
 }
 
 .control-row-actions {
@@ -2980,7 +2980,7 @@ textarea.wizard-input {
 
 .caption-row-actions .btn-small {
   padding: 4px 10px;
-  font-size: 11px;
+  font-size: 13px;
   border-radius: 4px;
   border: none;
   cursor: pointer;
@@ -3029,7 +3029,7 @@ textarea.wizard-input {
   border: 1px solid #444;
   border-radius: 6px;
   color: #f0f0f0;
-  font-size: 13px;
+  font-size: 16px;
   resize: vertical;
   transition: border-color 0.2s ease;
 }

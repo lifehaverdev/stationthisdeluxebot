@@ -22,7 +22,7 @@ export class CopyButton extends Component {
 
   static get styles() {
     return `
-      .mk-copy { background: none; border: none; color: #90caf9; cursor: pointer; font-size: 12px; padding: 2px 6px; border-radius: 3px; }
+      .mk-copy { background: none; border: none; color: #90caf9; cursor: pointer; font-size: 14px; padding: 2px 6px; border-radius: 3px; }
       .mk-copy:hover { background: rgba(144,202,249,0.1); }
       .mk-copy--done { color: #2ecc71; }
     `;
@@ -52,7 +52,7 @@ export class CopyButton extends Component {
 export class AsyncButton extends Component {
   static get styles() {
     return `
-      .mk-btn { padding: 8px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; }
+      .mk-btn { padding: 8px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 17px; display: inline-flex; align-items: center; gap: 6px; }
       .mk-btn:disabled { opacity: 0.4; cursor: default; }
       .mk-btn--primary { background: #3f51b5; color: #fff; }
       .mk-btn--primary:not(:disabled):hover { background: #4a5bc7; }
@@ -94,9 +94,9 @@ export class EmptyState extends Component {
   static get styles() {
     return `
       .mk-empty { text-align: center; padding: 32px 16px; color: #888; }
-      .mk-empty-icon { font-size: 32px; margin-bottom: 12px; }
-      .mk-empty-msg { font-size: 14px; margin-bottom: 16px; line-height: 1.5; }
-      .mk-empty-cta { background: #3f51b5; color: #fff; border: none; padding: 10px 24px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+      .mk-empty-icon { font-size: 38px; margin-bottom: 12px; }
+      .mk-empty-msg { font-size: 17px; margin-bottom: 16px; line-height: 1.5; }
+      .mk-empty-cta { background: #3f51b5; color: #fff; border: none; padding: 10px 24px; border-radius: 6px; cursor: pointer; font-size: 17px; }
       .mk-empty-cta:hover { background: #4a5bc7; }
     `;
   }
@@ -133,7 +133,7 @@ export class TabBar extends Component {
   static get styles() {
     return `
       .mk-tabs { display: flex; gap: 0; border-bottom: 1px solid #333; margin-bottom: 16px; }
-      .mk-tab { background: none; border: none; border-bottom: 2px solid transparent; color: #888; padding: 10px 20px; font-size: 14px; cursor: pointer; transition: color 0.15s, border-color 0.15s; }
+      .mk-tab { background: none; border: none; border-bottom: 2px solid transparent; color: #888; padding: 10px 20px; font-size: 17px; cursor: pointer; transition: color 0.15s, border-color 0.15s; }
       .mk-tab:hover { color: #ccc; }
       .mk-tab--active { color: #fff; border-bottom-color: #90caf9; }
     `;
@@ -165,9 +165,9 @@ export class SearchBar extends Component {
   static get styles() {
     return `
       .mk-search { display: flex; gap: 8px; margin-bottom: 12px; }
-      .mk-search-input { flex: 1; background: #222; border: 1px solid #444; color: #e0e0e0; padding: 8px 12px; border-radius: 6px; font-size: 14px; }
+      .mk-search-input { flex: 1; background: #222; border: 1px solid #444; color: #e0e0e0; padding: 8px 12px; border-radius: 6px; font-size: 17px; }
       .mk-search-input:focus { border-color: #90caf9; outline: none; }
-      .mk-search-btn { background: #333; border: 1px solid #555; color: #ccc; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+      .mk-search-btn { background: #333; border: 1px solid #555; color: #ccc; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 16px; }
       .mk-search-btn:hover { background: #444; }
     `;
   }
@@ -200,7 +200,7 @@ export class TagPills extends Component {
   static get styles() {
     return `
       .mk-pills { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
-      .mk-pill { background: #222; border: 1px solid #444; color: #aaa; padding: 4px 12px; border-radius: 16px; font-size: 12px; cursor: pointer; transition: all 0.15s; }
+      .mk-pill { background: #222; border: 1px solid #444; color: #aaa; padding: 4px 12px; border-radius: 16px; font-size: 14px; cursor: pointer; transition: all 0.15s; }
       .mk-pill:hover { border-color: #666; color: #ccc; }
       .mk-pill--active { background: #3f51b5; border-color: #3f51b5; color: #fff; }
     `;
@@ -233,7 +233,7 @@ export class TagPills extends Component {
 export class Badge extends Component {
   static get styles() {
     return `
-      .mk-badge { display: inline-block; font-size: 10px; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+      .mk-badge { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
       .mk-badge--default { background: rgba(255,255,255,0.08); color: #999; }
       .mk-badge--success { background: rgba(46,204,113,0.12); color: #2ecc71; }
       .mk-badge--warning { background: rgba(243,156,18,0.12); color: #f39c12; }
@@ -251,7 +251,7 @@ export class ConfirmInline extends Component {
   static get styles() {
     return `
       .mk-confirm { background: rgba(255,255,255,0.04); border: 1px solid #444; border-radius: 8px; padding: 16px; margin: 12px 0; }
-      .mk-confirm-msg { font-size: 14px; color: #ccc; margin-bottom: 12px; }
+      .mk-confirm-msg { font-size: 17px; color: #ccc; margin-bottom: 12px; }
       .mk-confirm-btns { display: flex; gap: 8px; justify-content: flex-end; }
     `;
   }

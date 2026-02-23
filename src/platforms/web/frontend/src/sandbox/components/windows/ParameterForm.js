@@ -1,4 +1,4 @@
-import { Component, h } from '@monygroupcorp/microact';
+import { Component, h, eventBus } from '@monygroupcorp/microact';
 
 /**
  * ParameterForm — renders parameter inputs from a tool's inputSchema.
@@ -93,18 +93,24 @@ export class ParameterForm extends Component {
       );
     }
 
-    // Default: text input
+    // Default: text input — click opens full-screen overlay
+    const strVal = value !== undefined && value !== null ? String(value) : '';
     return h('div', { className: 'pf-param', key, style: visible ? '' : 'display:none' },
       h('label', { className: 'pf-label', title: param.description || '' }, param.name),
-      h('input', {
-        className: 'pf-input',
-        type: 'text',
-        name: key,
-        value: value,
-        placeholder: param.description || param.name,
-        oninput: (e) => this._handleChange(key, e.target.value),
-        title: param.description || '',
-      })
+      h('div', {
+        className: `pf-input pf-input--text-preview${strVal ? '' : ' pf-input--empty'}`,
+        title: param.description || 'Click to edit',
+        onclick: (e) => {
+          e.stopPropagation();
+          eventBus.emit('sandbox:openTextEdit', {
+            windowId: this.props.windowId,
+            value: strVal,
+            displayName: param.name,
+            kind: 'param',
+            paramKey: key,
+          });
+        },
+      }, strVal || param.description || param.name)
     );
   }
 
@@ -173,6 +179,27 @@ export class ParameterForm extends Component {
       }
 
       .pf-input::placeholder { color: var(--text-label); }
+
+      /* Text preview — click to open overlay */
+      .pf-input--text-preview {
+        cursor: text;
+        min-height: 28px;
+        max-height: 56px;
+        overflow: hidden;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .pf-input--text-preview:hover {
+        border-color: var(--accent-border);
+        background: var(--surface-1);
+      }
+      .pf-input--empty {
+        color: var(--text-label);
+        font-style: italic;
+      }
 
       .pf-select {
         background: var(--surface-2);

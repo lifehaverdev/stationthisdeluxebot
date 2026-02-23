@@ -49,13 +49,13 @@ export class Modal extends Component {
       @keyframes modal-slidein { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
       .modal-close {
         position: absolute; top: 12px; right: 12px;
-        background: none; border: none; color: #666; font-size: 20px;
+        background: none; border: none; color: #666; font-size: 24px;
         cursor: pointer; padding: 4px 8px; border-radius: 4px;
         line-height: 1;
       }
       .modal-close:hover { color: #fff; background: rgba(255,255,255,0.08); }
-      .modal-title { font-size: 18px; font-weight: 600; margin-bottom: 16px; color: #fff; }
-      .modal-error { color: #f44; font-size: 13px; margin-bottom: 12px; padding: 8px 12px; background: rgba(255,68,68,0.1); border-radius: 6px; }
+      .modal-title { font-size: 22px; font-weight: 600; margin-bottom: 16px; color: #fff; }
+      .modal-error { color: #f44; font-size: 16px; margin-bottom: 12px; padding: 8px 12px; background: rgba(255,68,68,0.1); border-radius: 6px; }
     `;
   }
 
@@ -90,7 +90,7 @@ export class Loader extends Component {
         margin: 0 auto 12px;
       }
       @keyframes mk-loader-spin { to { transform: rotate(360deg); } }
-      .mk-loader-msg { font-size: 13px; margin-top: 8px; }
+      .mk-loader-msg { font-size: 16px; margin-top: 8px; }
       .mk-loader-bar { height: 4px; background: #222; border-radius: 2px; margin-top: 12px; overflow: hidden; }
       .mk-loader-fill { height: 100%; background: #90caf9; border-radius: 2px; transition: width 0.3s; }
     `;

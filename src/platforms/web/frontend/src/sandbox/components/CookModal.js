@@ -587,7 +587,7 @@ export class CookModal extends Component {
 
     return h('div', null,
       // Workspace section
-      h('h3', { style: 'color:#fff;margin:0 0 12px;font-size:16px' }, 'Workspace'),
+      h('h3', { style: 'color:#fff;margin:0 0 12px;font-size:19px' }, 'Workspace'),
       workspace.length === 0
         ? h(EmptyState, { message: 'No collections in workspace. Create one below!' })
         : h('div', { style: 'display:flex;flex-direction:column;gap:8px' },
@@ -597,12 +597,12 @@ export class CookModal extends Component {
       h('hr', { style: 'margin:20px 0;border:none;border-top:1px solid #333' }),
 
       // All collections grid
-      h('h3', { style: 'color:#fff;margin:0 0 12px;font-size:16px' }, 'My Collections'),
+      h('h3', { style: 'color:#fff;margin:0 0 12px;font-size:19px' }, 'My Collections'),
       h('div', { style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px' },
         ...collections.map(c =>
           h('div', {
             key: c.collectionId,
-            style: 'background:#222;border:1px solid #333;border-radius:8px;padding:12px;cursor:pointer;font-size:13px;color:#ccc;transition:border-color 0.15s',
+            style: 'background:#222;border:1px solid #333;border-radius:8px;padding:12px;cursor:pointer;font-size:16px;color:#ccc;transition:border-color 0.15s',
             onclick: () => this._openDetail(c),
           },
             c.name || 'Untitled',
@@ -611,7 +611,7 @@ export class CookModal extends Component {
           )
         ),
         h('div', {
-          style: 'background:#1a1a2e;border:1px dashed #444;border-radius:8px;padding:12px;cursor:pointer;font-size:20px;color:#666;display:flex;align-items:center;justify-content:center;transition:border-color 0.15s',
+          style: 'background:#1a1a2e;border:1px dashed #444;border-radius:8px;padding:12px;cursor:pointer;font-size:24px;color:#666;display:flex;align-items:center;justify-content:center;transition:border-color 0.15s',
           onclick: this.bind(this._goCreate),
         }, '+')
       ),
@@ -639,7 +639,7 @@ export class CookModal extends Component {
     }
 
     const advisory = target > 0 && stats.approvedCount > 0
-      ? h('div', { style: 'font-size:11px;color:#888;margin-top:4px' }, `${stats.approvedCount}/${target} toward target`)
+      ? h('div', { style: 'font-size:13px;color:#888;margin-top:4px' }, `${stats.approvedCount}/${target} toward target`)
       : null;
 
     return h('div', {
@@ -647,10 +647,10 @@ export class CookModal extends Component {
       style: 'background:#222;border:1px solid #333;border-radius:8px;padding:14px 16px',
     },
       h('div', { style: 'display:flex;justify-content:space-between;align-items:center;margin-bottom:6px' },
-        h('div', { style: 'font-weight:600;font-size:15px;color:#fff' }, c.name || 'Untitled'),
-        isRunning ? h('span', { title: 'Cooking in progress', style: 'font-size:16px' }, '\uD83D\uDD25') : null
+        h('div', { style: 'font-weight:600;font-size:18px;color:#fff' }, c.name || 'Untitled'),
+        isRunning ? h('span', { title: 'Cooking in progress', style: 'font-size:19px' }, '\uD83D\uDD25') : null
       ),
-      h('div', { style: 'font-size:13px;color:#aaa' }, statusText),
+      h('div', { style: 'font-size:16px;color:#aaa' }, statusText),
       advisory,
       h('div', { style: 'display:flex;gap:8px;margin-top:10px;flex-wrap:wrap' },
         isRunning
@@ -674,10 +674,10 @@ export class CookModal extends Component {
     },
       h('div', { style: 'background:#1a1a1a;border:1px solid #333;border-radius:12px;padding:24px;width:300px' },
         h('h3', { style: 'color:#fff;margin:0 0 12px' }, 'Start Cook'),
-        h('p', { style: 'color:#aaa;font-size:13px;margin:0 0 12px' }, 'How many pieces to generate?'),
+        h('p', { style: 'color:#aaa;font-size:16px;margin:0 0 12px' }, 'How many pieces to generate?'),
         h('input', {
           type: 'number', min: 1, max: 1000, value: this.state.batchSize,
-          style: 'width:100%;background:#222;border:1px solid #444;color:#e0e0e0;padding:8px 12px;border-radius:6px;font-size:14px;box-sizing:border-box',
+          style: 'width:100%;background:#222;border:1px solid #444;color:#e0e0e0;padding:8px 12px;border-radius:6px;font-size:17px;box-sizing:border-box',
           oninput: (e) => this.setState({ batchSize: Number(e.target.value) }),
           onkeydown: (e) => {
             if (e.key === 'Enter') this._startCook(this.state.batchCollectionId, this.state.batchSize);
@@ -741,7 +741,7 @@ export class CookModal extends Component {
 
     return h('div', null,
       h('button', { className: 'sm-back', onclick: this.bind(this._goHome) }, '\u2190 Back'),
-      h('h3', { style: 'color:#fff;margin:0 0 4px;font-size:18px' }, selectedCollection.name || 'Untitled'),
+      h('h3', { style: 'color:#fff;margin:0 0 4px;font-size:22px' }, selectedCollection.name || 'Untitled'),
       h(TabBar, { tabs, active: detailTab, onChange: this.bind(this._switchDetailTab) }),
       tabContent
     );
@@ -758,7 +758,7 @@ export class CookModal extends Component {
 
     if (showGenPicker) return this._renderGenPicker();
 
-    const rowStyle = 'display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #222;font-size:13px';
+    const rowStyle = 'display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #222;font-size:16px';
     const labelStyle = 'color:#888;min-width:120px';
 
     return h('div', null,
@@ -786,7 +786,7 @@ export class CookModal extends Component {
       ),
       // Param overrides (collapsible)
       paramOptions.length > 0 ? h('details', { style: 'margin-top:8px' },
-        h('summary', { style: 'color:#888;font-size:13px;cursor:pointer' }, `Generator Parameters (${paramOptions.length})`),
+        h('summary', { style: 'color:#888;font-size:16px;cursor:pointer' }, `Generator Parameters (${paramOptions.length})`),
         h('div', { style: 'padding:8px 0' },
           ...paramOptions.map(p => {
             const val = displayOverrides[p] || '';
@@ -805,7 +805,7 @@ export class CookModal extends Component {
       ) : null,
 
       // Unsaved changes warning + save
-      overviewDirty ? h('div', { style: 'color:#f39c12;font-size:12px;margin-top:8px' }, 'You have unsaved changes') : null,
+      overviewDirty ? h('div', { style: 'color:#f39c12;font-size:14px;margin-top:8px' }, 'You have unsaved changes') : null,
 
       // Action buttons
       h('div', { style: 'display:flex;gap:8px;margin-top:16px;flex-wrap:wrap' },
@@ -833,11 +833,11 @@ export class CookModal extends Component {
     return h('div', null,
       h('h4', { style: 'color:#fff;margin:0 0 12px' }, 'Select Generator'),
       h('div', { style: 'display:flex;gap:12px;margin-bottom:12px' },
-        h('label', { style: 'color:#ccc;font-size:13px;display:flex;align-items:center;gap:4px;cursor:pointer' },
+        h('label', { style: 'color:#ccc;font-size:16px;display:flex;align-items:center;gap:4px;cursor:pointer' },
           h('input', { type: 'radio', name: 'gen-type', checked: type === 'tool', onchange: () => this.setState({ generatorType: 'tool' }) }),
           'Tool'
         ),
-        h('label', { style: 'color:#ccc;font-size:13px;display:flex;align-items:center;gap:4px;cursor:pointer' },
+        h('label', { style: 'color:#ccc;font-size:16px;display:flex;align-items:center;gap:4px;cursor:pointer' },
           h('input', { type: 'radio', name: 'gen-type', checked: type === 'spell', onchange: () => this.setState({ generatorType: 'spell' }) }),
           'Spell'
         )
@@ -898,9 +898,9 @@ export class CookModal extends Component {
 
     const statCard = (label, value, sub) =>
       h('div', { style: 'background:#1e1e2e;border:1px solid #333;border-radius:8px;padding:14px;text-align:center' },
-        h('div', { style: 'font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px' }, label),
-        h('div', { style: 'font-size:20px;color:#fff;font-weight:600' }, value),
-        sub ? h('div', { style: 'font-size:11px;color:#666;margin-top:2px' }, sub) : null
+        h('div', { style: 'font-size:13px;color:#888;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px' }, label),
+        h('div', { style: 'font-size:24px;color:#fff;font-weight:600' }, value),
+        sub ? h('div', { style: 'font-size:13px;color:#666;margin-top:2px' }, sub) : null
       );
 
     // Trait rarity
@@ -925,14 +925,14 @@ export class CookModal extends Component {
       // Trait rarity
       h('h4', { style: 'color:#fff;margin:16px 0 8px' }, 'Trait Rarity Breakdown'),
       rarity.length === 0
-        ? h('div', { style: 'color:#666;font-size:13px' }, 'No trait usage tracked yet.')
+        ? h('div', { style: 'color:#666;font-size:16px' }, 'No trait usage tracked yet.')
         : h('div', null,
           ...Array.from(grouped.entries()).map(([category, entries]) =>
             h('details', { key: category, style: 'margin-bottom:8px' },
-              h('summary', { style: 'color:#ccc;font-size:13px;cursor:pointer;font-weight:600' }, category),
+              h('summary', { style: 'color:#ccc;font-size:16px;cursor:pointer;font-weight:600' }, category),
               h('div', { style: 'padding:4px 0 4px 16px' },
                 ...entries.map(e =>
-                  h('div', { key: e.name, style: 'display:flex;justify-content:space-between;font-size:12px;color:#aaa;padding:2px 0' },
+                  h('div', { key: e.name, style: 'display:flex;justify-content:space-between;font-size:14px;color:#aaa;padding:2px 0' },
                     h('span', null, e.name),
                     h('span', null, `${e.approved || 0}/${e.total || 0} (${e.total ? ((e.approved / e.total) * 100).toFixed(1) : '0'}%)`)
                   )
@@ -953,15 +953,15 @@ export class CookModal extends Component {
 
   static get styles() {
     return `
-      .sm-back { background: none; border: none; color: #90caf9; cursor: pointer; font-size: 13px; padding: 0; margin-bottom: 16px; }
+      .sm-back { background: none; border: none; color: #90caf9; cursor: pointer; font-size: 16px; padding: 0; margin-bottom: 16px; }
       .sm-back:hover { text-decoration: underline; }
       .sm-form-group { margin-bottom: 14px; }
-      .sm-form-group label { display: block; margin-bottom: 6px; color: #aaa; font-weight: 600; font-size: 13px; }
-      .sm-input { width: 100%; padding: 8px 12px; background: #222; border: 1px solid #444; border-radius: 6px; color: #e0e0e0; font-size: 14px; box-sizing: border-box; }
+      .sm-form-group label { display: block; margin-bottom: 6px; color: #aaa; font-weight: 600; font-size: 16px; }
+      .sm-input { width: 100%; padding: 8px 12px; background: #222; border: 1px solid #444; border-radius: 6px; color: #e0e0e0; font-size: 17px; box-sizing: border-box; }
       .sm-input:focus { border-color: #90caf9; outline: none; }
-      .sm-textarea { width: 100%; padding: 8px 12px; background: #222; border: 1px solid #444; border-radius: 6px; color: #e0e0e0; font-size: 14px; min-height: 60px; resize: vertical; box-sizing: border-box; font-family: inherit; }
+      .sm-textarea { width: 100%; padding: 8px 12px; background: #222; border: 1px solid #444; border-radius: 6px; color: #e0e0e0; font-size: 17px; min-height: 60px; resize: vertical; box-sizing: border-box; font-family: inherit; }
       .sm-textarea:focus { border-color: #90caf9; outline: none; }
-      .sm-select { width: 100%; padding: 8px 12px; background: #222; border: 1px solid #444; border-radius: 6px; color: #e0e0e0; font-size: 14px; }
+      .sm-select { width: 100%; padding: 8px 12px; background: #222; border: 1px solid #444; border-radius: 6px; color: #e0e0e0; font-size: 17px; }
     `;
   }
 

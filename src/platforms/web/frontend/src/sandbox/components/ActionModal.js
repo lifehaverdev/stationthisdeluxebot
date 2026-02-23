@@ -67,6 +67,13 @@ export class ActionModal extends Component {
     this.setState({ view: 'categories' });
   }
 
+  _createPrimitive(outputType, e) {
+    e.stopPropagation();
+    const canvas = window.sandboxCanvas;
+    if (canvas) canvas.addPrimitiveWindow(outputType, this.props.workspacePosition);
+    this._close();
+  }
+
   _selectCategory(cat, e) {
     e.stopPropagation();
     this.setState({ view: 'tools', selectedCategory: cat });
@@ -143,7 +150,7 @@ export class ActionModal extends Component {
       /* Labels inside segments */
       .am-label {
         font-family: var(--ff-mono);
-        font-size: 9px;
+        font-size: 11px;
         letter-spacing: 0.08em;
         text-transform: uppercase;
         fill: var(--text-label);
@@ -285,6 +292,14 @@ export class ActionModal extends Component {
         background: var(--accent-dim);
         color: var(--accent);
       }
+      .am-tool-item--primitive {
+        color: var(--text-label);
+        border-bottom-color: var(--border);
+      }
+      .am-tool-item--primitive:hover {
+        background: var(--accent-dim);
+        color: var(--accent);
+      }
       .am-tools-empty {
         padding: 12px;
         color: var(--text-label);
@@ -332,6 +347,8 @@ export class ActionModal extends Component {
     // Tools view: too many items for radial — render as scrollable panel
     if (view === 'tools') {
       const filtered = tools.filter(t => t.category === selectedCategory.category);
+      // For the text category, prepend a plain text primitive option
+      const isText = selectedCategory.type === 'text';
       return h('div', {
         className: 'am-tools-panel',
         style: `left:${x}px;top:${y}px`,
@@ -341,9 +358,17 @@ export class ActionModal extends Component {
           h('button', { className: 'am-tools-back', onclick: (e) => this._back(e) }, '←'),
           h('span', { className: 'am-tools-title' }, selectedCategory.label),
         ),
-        filtered.length === 0
+        (!isText && filtered.length === 0)
           ? h('div', { className: 'am-tools-empty' }, 'no tools')
           : h('div', { className: 'am-tools-list' },
+            isText
+              ? h('button', {
+                  className: 'am-tool-item am-tool-item--primitive',
+                  key: '__text-primitive',
+                  title: 'Plain text input — no generation, anchors directly',
+                  onclick: (e) => this._createPrimitive('text', e),
+                }, 'Text Input')
+              : null,
             ...filtered.map(tool =>
               h('button', {
                 className: 'am-tool-item',

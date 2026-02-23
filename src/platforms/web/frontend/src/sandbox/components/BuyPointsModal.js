@@ -702,7 +702,7 @@ export class BuyPointsModal extends Component {
           h('div', null, `USD Value: $${safeToFixed(quote.usdValue?.gross)}`),
           h('div', null, `Fees: $${safeToFixed(quote.fees?.totalFeesUsd)}`)
         )
-        : h('div', { style: 'color:#888;font-size:13px' }, 'Enter an amount to get a quote.');
+        : h('div', { style: 'color:#888;font-size:16px' }, 'Enter an amount to get a quote.');
 
     // Donate deal banner
     const isEligible = mode === 'contribute' && quote && donateQuote && donateQuote.pointsCredited > quote.pointsCredited;
@@ -754,7 +754,7 @@ export class BuyPointsModal extends Component {
         h('div', null, `Asset: ${sym}`),
         h('div', null, `Amount: ${amount}`),
         h('div', null, 'Points: ', h('b', { style: 'color:#4caf50' }, q.pointsCredited),
-          mode === 'donate' ? h('span', { style: 'font-size:12px;color:#90caf9;margin-left:6px' }, '(boosted)') : null
+          mode === 'donate' ? h('span', { style: 'font-size:14px;color:#90caf9;margin-left:6px' }, '(boosted)') : null
         ),
         h('hr', { style: 'border-color:#333;margin:12px 0' }),
         h('div', null, 'Gross USD: ', h('b', null, `$${safeToFixed(b.grossUsd ?? q.usdValue?.gross)}`)),
@@ -805,23 +805,23 @@ export class BuyPointsModal extends Component {
         isProcessing
           ? h('div', { className: 'bp-spinner-large', style: `border-top-color:${color}` })
           : null,
-        h('div', { style: `font-size:18px;color:${color};font-weight:bold;margin-bottom:8px` },
+        h('div', { style: `font-size:22px;color:${color};font-weight:bold;margin-bottom:8px` },
           statusLabels[txStatus.status] || txStatus.status || 'Processing'
         ),
-        txStatus.message ? h('p', { style: 'color:#aaa;font-size:14px;margin:8px 0' }, txStatus.message) : null
+        txStatus.message ? h('p', { style: 'color:#aaa;font-size:17px;margin:8px 0' }, txStatus.message) : null
       ),
       h('div', { className: 'bp-hash-box' },
-        h('div', { style: 'font-size:12px;color:#666;margin-bottom:4px' }, 'Transaction Hash'),
+        h('div', { style: 'font-size:14px;color:#666;margin-bottom:4px' }, 'Transaction Hash'),
         h('div', { style: 'display:flex;align-items:center;gap:8px' },
-          h('code', { style: 'font-size:13px;word-break:break-all;color:#90caf9;flex:1' }, txStatus.txHash),
+          h('code', { style: 'font-size:16px;word-break:break-all;color:#90caf9;flex:1' }, txStatus.txHash),
           h(CopyButton, { text: txStatus.txHash })
         )
       ),
       txStatus.confirmationTxHash
         ? h('div', { className: 'bp-hash-box' },
-          h('div', { style: 'font-size:12px;color:#666;margin-bottom:4px' }, 'Confirmation Tx'),
+          h('div', { style: 'font-size:14px;color:#666;margin-bottom:4px' }, 'Confirmation Tx'),
           h('div', { style: 'display:flex;align-items:center;gap:8px' },
-            h('code', { style: 'font-size:13px;word-break:break-all;color:#4caf50;flex:1' }, txStatus.confirmationTxHash),
+            h('code', { style: 'font-size:16px;word-break:break-all;color:#4caf50;flex:1' }, txStatus.confirmationTxHash),
             h(CopyButton, { text: txStatus.confirmationTxHash })
           )
         )
@@ -830,7 +830,7 @@ export class BuyPointsModal extends Component {
         ? h('div', { style: 'background:#3d1a1a;color:#e74c3c;padding:12px;border-radius:6px;margin-top:12px' }, txStatus.failureReason)
         : null,
       isProcessing
-        ? h('p', { style: 'text-align:center;color:#666;font-size:12px;margin-top:16px' }, 'This usually takes 15-60 seconds. You can close this modal - your points will be credited automatically.')
+        ? h('p', { style: 'text-align:center;color:#666;font-size:14px;margin-top:16px' }, 'This usually takes 15-60 seconds. You can close this modal - your points will be credited automatically.')
         : null,
       h('div', { className: 'bp-nav', style: 'margin-top:16px' },
         h(AsyncButton, { variant: 'secondary', onclick: this.bind(this._manualRefresh), label: 'Refresh' })
@@ -855,14 +855,14 @@ export class BuyPointsModal extends Component {
       h('div', null, `Asset: ${sym}`),
       h('div', null, `Amount: ${amount}`),
       h('div', { style: 'margin-top:12px' },
-        h('span', { style: 'color:#888;font-size:12px' }, 'Your Tx Hash: '),
-        h('code', { style: 'font-size:12px;word-break:break-all;color:#90caf9' }, txStatus.txHash),
+        h('span', { style: 'color:#888;font-size:14px' }, 'Your Tx Hash: '),
+        h('code', { style: 'font-size:14px;word-break:break-all;color:#90caf9' }, txStatus.txHash),
         h(CopyButton, { text: txStatus.txHash })
       ),
       r.confirmation_tx_hash
         ? h('div', { style: 'margin-top:6px' },
-          h('span', { style: 'color:#888;font-size:12px' }, 'Confirmation Tx: '),
-          h('code', { style: 'font-size:12px;word-break:break-all;color:#4caf50' }, r.confirmation_tx_hash),
+          h('span', { style: 'color:#888;font-size:14px' }, 'Confirmation Tx: '),
+          h('code', { style: 'font-size:14px;word-break:break-all;color:#4caf50' }, r.confirmation_tx_hash),
           h(CopyButton, { text: r.confirmation_tx_hash })
         )
         : null,
@@ -877,45 +877,45 @@ export class BuyPointsModal extends Component {
   static get styles() {
     return `
       /* Wallet summary */
-      .bp-wallet-summary { font-size:13px; color:#90caf9; margin-bottom:12px; }
+      .bp-wallet-summary { font-size:16px; color:#90caf9; margin-bottom:12px; }
 
       /* Tiers */
       .bp-tier { margin-bottom:12px; }
-      .bp-tier-heading { font-size:12px; color:#888; text-transform:uppercase; letter-spacing:0.5px; font-weight:600; margin-bottom:6px; padding-bottom:4px; border-bottom:1px solid #222; }
+      .bp-tier-heading { font-size:14px; color:#888; text-transform:uppercase; letter-spacing:0.5px; font-weight:600; margin-bottom:6px; padding-bottom:4px; border-bottom:1px solid #222; }
 
       /* Asset button */
       .bp-asset-btn {
         display:flex; align-items:center; justify-content:space-between; width:100%; padding:10px 14px;
         background:#222; border:1px solid #333; border-radius:8px; color:#e0e0e0; cursor:pointer;
-        font-size:14px; margin-bottom:6px; transition:border-color 0.15s;
+        font-size:17px; margin-bottom:6px; transition:border-color 0.15s;
       }
       .bp-asset-btn:hover { border-color:#555; }
       .bp-asset-main { display:flex; align-items:center; gap:10px; }
       .bp-asset-icon { width:24px; height:24px; border-radius:50%; }
-      .bp-asset-bal { font-size:12px; color:#888; background:#1a1a1a; padding:2px 8px; border-radius:4px; }
+      .bp-asset-bal { font-size:14px; color:#888; background:#1a1a1a; padding:2px 8px; border-radius:4px; }
 
       /* Amount step */
-      .bp-selected { font-size:14px; color:#ccc; margin-bottom:12px; }
+      .bp-selected { font-size:17px; color:#ccc; margin-bottom:12px; }
       .bp-input {
         width:100%; padding:10px 14px; background:#222; border:1px solid #444; border-radius:6px;
-        color:#e0e0e0; font-size:14px; box-sizing:border-box; margin-bottom:12px;
+        color:#e0e0e0; font-size:17px; box-sizing:border-box; margin-bottom:12px;
       }
       .bp-input:focus { border-color:#90caf9; outline:none; }
-      .bp-quote { background:#1a1a1a; padding:12px; border-radius:6px; font-size:13px; line-height:1.8; }
+      .bp-quote { background:#1a1a1a; padding:12px; border-radius:6px; font-size:16px; line-height:1.8; }
       .bp-donate-banner {
         display:flex; align-items:center; justify-content:space-between; gap:12px;
         background:#263238; padding:10px 14px; border-radius:6px; margin-top:10px; color:#fff;
       }
 
       /* Review */
-      .bp-review { background:#1a1a1a; padding:16px; border-radius:8px; font-size:14px; line-height:1.8; }
+      .bp-review { background:#1a1a1a; padding:16px; border-radius:8px; font-size:17px; line-height:1.8; }
 
       /* Navigation */
       .bp-nav { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
 
       /* Tx status */
       .bp-status-center { text-align:center; padding:24px 0; }
-      .bp-phase { font-size:12px; color:#888; margin-top:8px; }
+      .bp-phase { font-size:14px; color:#888; margin-top:8px; }
       .bp-spinner-large {
         width:60px; height:60px; margin:0 auto 16px; border:3px solid #333;
         border-radius:50%; animation:bp-spin 1s linear infinite;
@@ -924,7 +924,7 @@ export class BuyPointsModal extends Component {
       .bp-hash-box { background:#1a1a1a; padding:12px; border-radius:6px; margin-top:12px; }
 
       /* Receipt */
-      .bp-receipt { line-height:1.8; font-size:14px; }
+      .bp-receipt { line-height:1.8; font-size:17px; }
     `;
   }
 

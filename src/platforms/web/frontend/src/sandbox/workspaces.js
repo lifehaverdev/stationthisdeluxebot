@@ -6,7 +6,7 @@ import { showNotification, showLoading } from './utils/notifications.js';
 let workspaceOperationLock = false;
 const workspaceOperationQueue = [];
 
-async function getCsrfToken() {
+export async function getCsrfToken() {
   if (window.__csrfToken) return window.__csrfToken;
   try {
     const res = await fetch('/api/v1/csrf-token', { credentials: 'include' });
@@ -101,42 +101,48 @@ function calculateSnapshotSize(snapshot) {
 const MAX_SNAPSHOT_SIZE = 900 * 1024; // 900KB (leave 100KB buffer for 1MB limit)
 
 function buildSnapshot() {
-  // Make serializable clones like persistState does
-  const connections = getConnections().map(({ element, ...rest }) => rest);
-  const toolWindows = getToolWindows().map(w => {
-    const base = {
-      id: w.id,
-      workspaceX: w.workspaceX,
-      workspaceY: w.workspaceY,
-      output: sanitiseOutput(w.output),
-      // keep at most 5 recent versions and sanitise
-      outputVersions: (w.outputVersions || []).slice(-5).map(v => ({
-        ...v,
-        output: sanitiseOutput(v.output)
-      })),
-      currentVersionIndex: w.currentVersionIndex ?? -1,
-      parameterMappings: w.parameterMappings || {}
-    };
-    if (w.isSpell) {
-      return { ...base, isSpell: true, spell: { _id: w.spell._id, name: w.spell.name } };
-    }
-    if (w.type === 'collection') {
-      return { ...base, type: 'collection', mode: w.mode, collection: { collectionId: w.collection?.collectionId, name: w.collection?.name } };
-    }
-    return { ...base, displayName: w.tool?.displayName || '', toolId: w.tool?.toolId || '' };
-  });
-  
-  const snapshot = { connections, toolWindows };
-  
+  // Delegate to the new SandboxCanvas public API if available.
+  // Falls back to the old state system for legacy compatibility.
+  const canvas = window.sandboxCanvas;
+  let snapshot;
+  if (canvas && typeof canvas.getSnapshot === 'function') {
+    snapshot = canvas.getSnapshot();
+  } else {
+    // Legacy fallback (old state system)
+    const connections = getConnections().map(({ element, ...rest }) => rest);
+    const toolWindows = getToolWindows().map(w => {
+      const base = {
+        id: w.id,
+        workspaceX: w.workspaceX,
+        workspaceY: w.workspaceY,
+        output: sanitiseOutput(w.output),
+        outputVersions: (w.outputVersions || []).slice(-5).map(v => ({
+          ...v,
+          output: sanitiseOutput(v.output)
+        })),
+        currentVersionIndex: w.currentVersionIndex ?? -1,
+        parameterMappings: w.parameterMappings || {}
+      };
+      if (w.isSpell) {
+        return { ...base, isSpell: true, spell: { _id: w.spell._id, name: w.spell.name } };
+      }
+      if (w.type === 'collection') {
+        return { ...base, type: 'collection', mode: w.mode, collection: { collectionId: w.collection?.collectionId, name: w.collection?.name } };
+      }
+      return { ...base, displayName: w.tool?.displayName || '', toolId: w.tool?.toolId || '' };
+    });
+    snapshot = { connections, toolWindows };
+  }
+
   // Validate snapshot structure
   validateSnapshot(snapshot);
-  
+
   // Check size before returning
   const size = calculateSnapshotSize(snapshot);
   if (size > MAX_SNAPSHOT_SIZE) {
     throw new Error(`Workspace is too large (${Math.round(size / 1024)}KB). Maximum size is ${Math.round(MAX_SNAPSHOT_SIZE / 1024)}KB. Please remove some tool windows or outputs.`);
   }
-  
+
   return snapshot;
 }
 
@@ -201,29 +207,32 @@ async function hydrateSnapshot(snapshot, slug = null) {
   } catch (e) {
     throw new Error(`Invalid snapshot format: ${e.message}`);
   }
-  
-  const CONNECTIONS_KEY = 'sandbox_connections';
-  const TOOL_WINDOWS_KEY = 'sandbox_tool_windows';
-  
-  try {
-    localStorage.setItem(CONNECTIONS_KEY, JSON.stringify(snapshot.connections || []));
-    localStorage.setItem(TOOL_WINDOWS_KEY, JSON.stringify(snapshot.toolWindows || []));
-  } catch (e) {
-    throw new Error(`Failed to save to localStorage: ${e.message}`);
-  }
 
-  // Wait for reload to complete before continuing
-  if (typeof window.__reloadSandboxState === 'function') {
-    try {
-      await window.__reloadSandboxState();
-    } catch (e) {
-      console.error('[hydrateSnapshot] reload error', e);
-      throw new Error(`Failed to reload workspace state: ${e.message}`);
-    }
+  const canvas = window.sandboxCanvas;
+  if (canvas && typeof canvas.loadFromSnapshot === 'function') {
+    // New microact SandboxCanvas path — update state directly, no reload needed
+    canvas.loadFromSnapshot(snapshot);
   } else {
-    // Fallback: dispatch event and wait a bit
-    window.dispatchEvent(new Event('sandboxSnapshotUpdated'));
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // Legacy fallback: write to old localStorage keys and trigger reload
+    const CONNECTIONS_KEY = 'sandbox_connections';
+    const TOOL_WINDOWS_KEY = 'sandbox_tool_windows';
+    try {
+      localStorage.setItem(CONNECTIONS_KEY, JSON.stringify(snapshot.connections || []));
+      localStorage.setItem(TOOL_WINDOWS_KEY, JSON.stringify(snapshot.toolWindows || []));
+    } catch (e) {
+      throw new Error(`Failed to save to localStorage: ${e.message}`);
+    }
+    if (typeof window.__reloadSandboxState === 'function') {
+      try {
+        await window.__reloadSandboxState();
+      } catch (e) {
+        console.error('[hydrateSnapshot] reload error', e);
+        throw new Error(`Failed to reload workspace state: ${e.message}`);
+      }
+    } else {
+      window.dispatchEvent(new Event('sandboxSnapshotUpdated'));
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
   }
 
   // Update URL (historic state) if slug provided
@@ -268,10 +277,11 @@ async function getErrorMessage(res) {
   return `Failed to save workspace (${res.status}). Please try again.`;
 }
 
-export async function saveWorkspace(existingSlug = null, { silent = false } = {}) {
+export async function saveWorkspace(existingSlug = null, { silent = false, walletAddress = null, name = undefined } = {}) {
   return queueWorkspaceOperation(async () => {
     let loadingDismiss = null;
-    
+    let forking = false;
+
     try {
       // Build and validate snapshot
       let snapshot;
@@ -285,70 +295,97 @@ export async function saveWorkspace(existingSlug = null, { silent = false } = {}
         if (!silent) showNotification(`Failed to create snapshot: ${e.message}`, 'error');
         throw e;
       }
-      
+
       // avoid saving completely empty workspaces
       if (snapshot.toolWindows.length === 0 && snapshot.connections.length === 0) {
-        if (!silent) {
-          showNotification('Nothing to save yet! Add some tools first.', 'info');
-        }
+        if (!silent) showNotification('Nothing to save yet! Add some tools first.', 'info');
         return null;
       }
-      
+
       if (!silent) {
         loadingDismiss = showLoading(existingSlug ? 'Updating workspace...' : 'Saving workspace...');
       }
-      
-      // Retry with exponential backoff for transient failures
-      const result = await retryWithBackoff(async () => {
+
+      // --- Phase 1: If we have a slug, try to update it ---
+      // A 403 means we don't own it — fork instead of failing.
+      let originSlug = null;
+      if (existingSlug) {
         const csrf = await getCsrfToken();
+        const body = { snapshot, slug: existingSlug };
+        if (walletAddress) body.walletAddress = walletAddress.toLowerCase();
+        if (typeof name === 'string') body.name = name;
         const res = await fetch('/api/v1/workspaces', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrf },
-          body: JSON.stringify({ snapshot, slug: existingSlug || undefined })
+          body: JSON.stringify(body)
         });
-        
-        if (!res.ok) {
-          const errorMsg = await getErrorMessage(res);
-          throw new Error(errorMsg);
+
+        if (res.ok) {
+          const savedSlug = (await res.json()).slug || existingSlug;
+          const url = new URL(window.location.href);
+          url.searchParams.set('workspace', savedSlug);
+          window.history.pushState({}, '', url);
+          if (!silent) {
+            loadingDismiss?.();
+            showNotification('Workspace updated successfully.', 'success');
+          }
+          return savedSlug;
         }
-        
-        const data = await res.json();
-        return data;
+
+        if (res.status !== 403) {
+          throw new Error(await getErrorMessage(res));
+        }
+
+        // 403 — not our workspace, fork it
+        forking = true;
+        originSlug = existingSlug;
+        if (!silent) {
+          loadingDismiss?.();
+          loadingDismiss = showLoading('Forking workspace...');
+        }
+      }
+
+      // --- Phase 2: Create new workspace (first save or fork) ---
+      const result = await retryWithBackoff(async () => {
+        const csrf = await getCsrfToken();
+        const body = { snapshot };
+        if (walletAddress) body.walletAddress = walletAddress.toLowerCase();
+        if (originSlug) body.origin = { slug: originSlug };
+        if (typeof name === 'string') body.name = name;
+        const res = await fetch('/api/v1/workspaces', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrf },
+          body: JSON.stringify(body)
+        });
+        if (!res.ok) throw new Error(await getErrorMessage(res));
+        return await res.json();
       }, 3, 1000);
-      
-      const savedSlug = result.slug || existingSlug;
-      
-      // Update URL
+
+      const savedSlug = result.slug;
       const url = new URL(window.location.href);
       url.searchParams.set('workspace', savedSlug);
       window.history.pushState({}, '', url);
-      
+
       if (!silent) {
         loadingDismiss?.();
-        if (!existingSlug) {
-          try {
-            await navigator.clipboard.writeText(url.toString());
-            showNotification('Workspace saved! Link copied to clipboard.', 'success');
-          } catch (e) {
-            showNotification(`Workspace saved! Share link: ${url}`, 'success', 10000);
-          }
-        } else {
-          showNotification('Workspace updated successfully.', 'success');
+        const msg = forking ? 'Workspace forked! Link copied to clipboard.' : 'Workspace saved! Link copied to clipboard.';
+        const fallback = forking ? `Workspace forked! Your copy: ${url}` : `Workspace saved! Share link: ${url}`;
+        try {
+          await navigator.clipboard.writeText(url.toString());
+          showNotification(msg, 'success');
+        } catch (e) {
+          showNotification(fallback, 'success', 10000);
         }
       }
-      
+
       return savedSlug;
     } catch (e) {
       loadingDismiss?.();
       console.error('[saveWorkspace] error', e);
-      
-      if (!silent) {
-        const errorMsg = e.message || 'Failed to save workspace. Please try again.';
-        showNotification(errorMsg, 'error', 8000);
-      }
-      
-      throw e; // Re-throw so caller can handle if needed
+      if (!silent) showNotification(e.message || 'Failed to save workspace. Please try again.', 'error', 8000);
+      throw e;
     }
   });
 }
@@ -394,13 +431,13 @@ export async function loadWorkspace(slug, { silent = false } = {}) {
       
       // Hydrate snapshot (async now)
       await hydrateSnapshot(result.snapshot, slug);
-      
+
       if (!silent) {
         loadingDismiss?.();
         showNotification('Workspace loaded successfully.', 'success');
       }
-      
-      return slug;
+
+      return { slug, name: result.name || null };
     } catch (e) {
       loadingDismiss?.();
       console.error('[loadWorkspace] error', e);

@@ -7,8 +7,9 @@ const crypto = require('crypto');
  * Schema (Mongo):
  * {
  *   _id: ObjectId,
- *   slug: String,           // unique shareable id (8-12 chars)
- *   ownerId: ObjectId|null, // null for anonymous
+ *   slug: String,              // unique shareable id (8-12 chars)
+ *   ownerId: ObjectId|null,    // null for anonymous
+ *   walletAddress: String|null, // lowercase wallet address; enables per-wallet workspaces
  *   name: String,
  *   visibility: 'public'|'private',
  *   snapshot: {
@@ -16,7 +17,12 @@ const crypto = require('crypto');
  *     toolWindows: Array
  *   },
  *   sizeBytes: Number,
- *   version: Number,        // schema versioning for migrations
+ *   version: Number,           // schema versioning for migrations
+ *   origin: {                  // set when forked from another workspace
+ *     slug: String,            // original workspace slug
+ *     ownerId: ObjectId|null,  // original owner
+ *     walletAddress: String|null // original wallet
+ *   } | null,
  *   createdAt: Date,
  *   updatedAt: Date
  * }
@@ -40,10 +46,11 @@ class WorkspacesDB extends BaseDB {
    * @param {Object} params.snapshot – { connections, toolWindows }
    * @param {String} [params.name]
    * @param {String} [params.ownerId]
+   * @param {String} [params.walletAddress] – lowercase wallet address
    * @param {'public'|'private'} [params.visibility]
    * @returns {Promise<{_id:ObjectId,slug:string}>}
    */
-  async createWorkspace({ snapshot, name = '', ownerId = null, visibility = 'public' } = {}) {
+  async createWorkspace({ snapshot, name = '', ownerId = null, walletAddress = null, origin = null, visibility = 'public' } = {}) {
     if (!snapshot || typeof snapshot !== 'object') {
       throw new Error('snapshot is required');
     }
@@ -71,11 +78,13 @@ class WorkspacesDB extends BaseDB {
     const doc = {
       slug,
       ownerId: ownerId ? new ObjectId(ownerId) : null,
+      walletAddress: walletAddress ? walletAddress.toLowerCase() : null,
       name: (name || '').trim(),
       visibility,
       snapshot,
       sizeBytes: bytes,
       version: this.schemaVersion,
+      origin: origin || null,
       createdAt: now,
       updatedAt: now,
     };
@@ -88,14 +97,14 @@ class WorkspacesDB extends BaseDB {
     return this.findOne({ slug });
   }
 
-  async updateSnapshot(slug, snapshot, requesterId = null) {
+  async updateSnapshot(slug, snapshot, requesterId = null, name = undefined) {
     if (!snapshot || typeof snapshot !== 'object') {
       throw new Error('snapshot is required');
     }
-    
+
     const ws = await this.findBySlug(slug);
     if (!ws) throw new Error('Workspace not found');
-    
+
     // Authorization: allow update if workspace has no owner (anonymous) OR requester is owner
     if (ws.ownerId) {
       // Workspace has owner - require matching requesterId
@@ -108,13 +117,14 @@ class WorkspacesDB extends BaseDB {
       }
     }
     // If no ownerId, allow update (anonymous workspace)
-    
+
     // Use Buffer.byteLength for accurate UTF-8 byte count
     const bytes = Buffer.byteLength(JSON.stringify(snapshot), 'utf8');
-    
-    const result = await this.updateOne({ slug }, {
-      $set: { snapshot, sizeBytes: bytes, updatedAt: new Date() }
-    });
+
+    const $set = { snapshot, sizeBytes: bytes, updatedAt: new Date() };
+    if (typeof name === 'string') $set.name = name.trim();
+
+    const result = await this.updateOne({ slug }, { $set });
     
     if (result.matchedCount === 0) {
       throw new Error('Workspace not found');
@@ -125,6 +135,18 @@ class WorkspacesDB extends BaseDB {
 
   async listWorkspacesByOwner(ownerId, { limit = 50, skip = 0 } = {}) {
     return this.findMany({ ownerId: new ObjectId(ownerId) }, { limit, skip, sort: { updatedAt: -1 } });
+  }
+
+  /**
+   * List workspaces for a specific wallet address owned by a user.
+   * Falls back to all owner workspaces if walletAddress is null.
+   */
+  async listWorkspacesByOwnerAndWallet(ownerId, walletAddress, { limit = 50, skip = 0 } = {}) {
+    const filter = { ownerId: new ObjectId(ownerId) };
+    if (walletAddress) {
+      filter.walletAddress = walletAddress.toLowerCase();
+    }
+    return this.findMany(filter, { limit, skip, sort: { updatedAt: -1 } });
   }
 
   async deleteWorkspace(slug, requesterId) {

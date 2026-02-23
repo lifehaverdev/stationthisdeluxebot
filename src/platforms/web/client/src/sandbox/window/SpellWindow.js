@@ -147,11 +147,11 @@ export default class SpellWindow extends ToolWindow {
     this.el.classList.add('spell-locked');
     this.body.innerHTML = `
       <div style="padding: 24px; text-align: center; color: #999; min-height: 120px; display: flex; flex-direction: column; justify-content: center;">
-        <div style="font-size: 32px; margin-bottom: 12px; opacity: 0.7;">🔒</div>
-        <div style="font-weight: bold; margin-bottom: 8px; color: #666; font-size: 16px;">Private Spell</div>
-        <div style="font-size: 14px; margin-bottom: 4px; color: #888;">${this.accessError || 'You do not have permission to view this spell.'}</div>
-        <div style="font-size: 12px; margin-top: 12px; color: #999; font-family: monospace;">${spellName}</div>
-        <div style="font-size: 11px; margin-top: 4px; color: #aaa; font-family: monospace;">ID: ${spellId}</div>
+        <div style="font-size: 38px; margin-bottom: 12px; opacity: 0.7;">🔒</div>
+        <div style="font-weight: bold; margin-bottom: 8px; color: #666; font-size: 19px;">Private Spell</div>
+        <div style="font-size: 17px; margin-bottom: 4px; color: #888;">${this.accessError || 'You do not have permission to view this spell.'}</div>
+        <div style="font-size: 14px; margin-top: 12px; color: #999; font-family: monospace;">${spellName}</div>
+        <div style="font-size: 13px; margin-top: 4px; color: #aaa; font-family: monospace;">ID: ${spellId}</div>
       </div>
     `;
     
@@ -173,10 +173,10 @@ export default class SpellWindow extends ToolWindow {
     this.el.classList.add('spell-error');
     this.body.innerHTML = `
       <div style="padding: 24px; text-align: center; color: #999; min-height: 120px; display: flex; flex-direction: column; justify-content: center;">
-        <div style="font-size: 32px; margin-bottom: 12px; opacity: 0.7;">⚠️</div>
-        <div style="font-weight: bold; margin-bottom: 8px; color: #666; font-size: 16px;">Failed to Load Spell</div>
-        <div style="font-size: 14px; margin-bottom: 4px; color: #888;">${this.accessError || 'Unable to load spell details.'}</div>
-        <div style="font-size: 11px; margin-top: 12px; color: #aaa; font-family: monospace;">ID: ${spellId}</div>
+        <div style="font-size: 38px; margin-bottom: 12px; opacity: 0.7;">⚠️</div>
+        <div style="font-weight: bold; margin-bottom: 8px; color: #666; font-size: 19px;">Failed to Load Spell</div>
+        <div style="font-size: 17px; margin-bottom: 4px; color: #888;">${this.accessError || 'Unable to load spell details.'}</div>
+        <div style="font-size: 13px; margin-top: 12px; color: #aaa; font-family: monospace;">ID: ${spellId}</div>
       </div>
     `;
     

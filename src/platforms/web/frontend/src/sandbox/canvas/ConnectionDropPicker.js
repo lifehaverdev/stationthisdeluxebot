@@ -95,7 +95,7 @@ export class ConnectionDropPicker extends Component {
         to   { opacity: 1; transform: scale(1) translateY(0); }
       }
       .cdp-label {
-        font-size: 10px;
+        font-size: 12px;
         color: #666;
         text-transform: uppercase;
         letter-spacing: 0.08em;
@@ -109,7 +109,7 @@ export class ConnectionDropPicker extends Component {
         border: 1px solid rgba(255,255,255,0.1);
         border-radius: 5px;
         color: #ddd;
-        font-size: 12px;
+        font-size: 14px;
         padding: 5px 8px;
         margin-bottom: 6px;
         font-family: inherit;
@@ -130,7 +130,7 @@ export class ConnectionDropPicker extends Component {
         color: #ccc;
         padding: 7px 10px;
         cursor: pointer;
-        font-size: 12px;
+        font-size: 14px;
         font-family: monospace;
         text-align: left;
         white-space: nowrap;
@@ -145,7 +145,7 @@ export class ConnectionDropPicker extends Component {
       }
       .cdp-empty {
         color: #555;
-        font-size: 12px;
+        font-size: 14px;
         padding: 10px 8px;
         text-align: center;
       }

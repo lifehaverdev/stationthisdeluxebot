@@ -220,11 +220,11 @@ export class TraitTreeEditor extends Component {
     const preview = this._computeRangePreview(gen, 5).join(', ');
 
     const numInput = (label, field, val) =>
-      h('label', { style: 'display:flex;flex-direction:column;gap:2px;font-size:12px;color:#888' },
+      h('label', { style: 'display:flex;flex-direction:column;gap:2px;font-size:14px;color:#888' },
         label,
         h('input', {
           type: 'number', value: Number.isFinite(val) ? val : '',
-          style: 'width:80px;background:#222;border:1px solid #444;color:#e0e0e0;padding:4px 6px;border-radius:4px;font-size:13px',
+          style: 'width:80px;background:#222;border:1px solid #444;color:#e0e0e0;padding:4px 6px;border-radius:4px;font-size:16px',
           oninput: (e) => {
             const v = e.target.value === '' ? undefined : Number(e.target.value);
             this._updateGenerator(catIdx, field, v);
@@ -238,7 +238,7 @@ export class TraitTreeEditor extends Component {
         numInput('End', 'end', gen.end),
         numInput('Step', 'step', gen.step),
         numInput('Zero Pad', 'zeroPad', gen.zeroPad),
-        h('label', { style: 'display:flex;align-items:center;gap:4px;font-size:12px;color:#888' },
+        h('label', { style: 'display:flex;align-items:center;gap:4px;font-size:14px;color:#888' },
           h('input', {
             type: 'checkbox', checked: !!gen.uniqueAcrossCook,
             onchange: (e) => this._updateGenerator(catIdx, 'uniqueAcrossCook', e.target.checked),
@@ -247,7 +247,7 @@ export class TraitTreeEditor extends Component {
         ),
         numInput('Shuffle Seed', 'shuffleSeed', gen.shuffleSeed),
       ),
-      h('div', { style: 'margin-top:8px;color:#666;font-size:12px' }, `Count: ${count} | Preview: ${preview}`),
+      h('div', { style: 'margin-top:8px;color:#666;font-size:14px' }, `Count: ${count} | Preview: ${preview}`),
       h('div', { style: 'margin-top:8px' },
         h(AsyncButton, { variant: 'secondary', onclick: () => this._editCategoryJson(catIdx), label: 'Edit JSON' })
       )
@@ -259,13 +259,13 @@ export class TraitTreeEditor extends Component {
     const nt = this.state.newTraits[catIdx] || { name: '', value: '', rarity: '' };
     const newErrors = this.state.validationErrors[`${catIdx}:new`] || [];
 
-    const inputStyle = 'background:#222;border:1px solid #444;color:#e0e0e0;padding:4px 8px;border-radius:4px;font-size:13px;width:100%;box-sizing:border-box';
+    const inputStyle = 'background:#222;border:1px solid #444;color:#e0e0e0;padding:4px 8px;border-radius:4px;font-size:16px;width:100%;box-sizing:border-box';
     const cellStyle = 'padding:4px 4px;vertical-align:top';
 
     return h('div', { style: 'padding:8px 0' },
       h('table', { style: 'width:100%;border-collapse:collapse' },
         h('thead', null,
-          h('tr', { style: 'font-size:12px;color:#888;text-align:left' },
+          h('tr', { style: 'font-size:14px;color:#888;text-align:left' },
             h('th', { style: 'padding:4px;width:30%' }, 'Name *'),
             h('th', { style: 'padding:4px;width:40%' }, 'Value'),
             h('th', { style: 'padding:4px;width:15%' }, 'Rarity %'),
@@ -281,7 +281,7 @@ export class TraitTreeEditor extends Component {
                   type: 'text', value: tr.name || '', maxlength: 50, style: inputStyle,
                   oninput: (e) => this._updateTraitField(catIdx, tIdx, 'name', e.target.value),
                 }),
-                errs.length ? h('div', { style: 'color:#f44;font-size:11px;margin-top:2px' }, errs.join(', ')) : null
+                errs.length ? h('div', { style: 'color:#f44;font-size:13px;margin-top:2px' }, errs.join(', ')) : null
               ),
               h('td', { style: cellStyle },
                 h('input', {
@@ -297,11 +297,11 @@ export class TraitTreeEditor extends Component {
               ),
               h('td', { style: cellStyle + ';white-space:nowrap' },
                 h('button', {
-                  style: 'background:none;border:none;color:#888;cursor:pointer;font-size:14px;padding:2px 4px',
+                  style: 'background:none;border:none;color:#888;cursor:pointer;font-size:17px;padding:2px 4px',
                   title: 'Clone', onclick: () => this._cloneTrait(catIdx, tIdx),
                 }, '\u29C9'),
                 h('button', {
-                  style: 'background:none;border:none;color:#f44;cursor:pointer;font-size:14px;padding:2px 4px',
+                  style: 'background:none;border:none;color:#f44;cursor:pointer;font-size:17px;padding:2px 4px',
                   title: 'Delete', onclick: () => this._deleteTrait(catIdx, tIdx),
                 }, '\u2715')
               )
@@ -314,7 +314,7 @@ export class TraitTreeEditor extends Component {
                 type: 'text', value: nt.name, maxlength: 50, placeholder: 'Trait name', style: inputStyle,
                 oninput: (e) => this.setState({ newTraits: { ...this.state.newTraits, [catIdx]: { ...nt, name: e.target.value } } }),
               }),
-              newErrors.length ? h('div', { style: 'color:#f44;font-size:11px;margin-top:2px' }, newErrors.join(', ')) : null
+              newErrors.length ? h('div', { style: 'color:#f44;font-size:13px;margin-top:2px' }, newErrors.join(', ')) : null
             ),
             h('td', { style: cellStyle },
               h('input', {
@@ -330,14 +330,14 @@ export class TraitTreeEditor extends Component {
             ),
             h('td', { style: cellStyle },
               h('button', {
-                style: 'background:none;border:1px solid #444;color:#90caf9;cursor:pointer;padding:4px 8px;border-radius:4px;font-size:13px',
+                style: 'background:none;border:1px solid #444;color:#90caf9;cursor:pointer;padding:4px 8px;border-radius:4px;font-size:16px',
                 title: 'Add trait', onclick: () => this._addTrait(catIdx),
               }, '+')
             )
           )
         )
       ),
-      this.state.isDirty ? h('div', { style: 'color:#f39c12;font-size:12px;margin-top:8px' }, 'You have unsaved changes') : null,
+      this.state.isDirty ? h('div', { style: 'color:#f39c12;font-size:14px;margin-top:8px' }, 'You have unsaved changes') : null,
       h('div', { style: 'margin-top:8px' },
         h(AsyncButton, { variant: 'secondary', onclick: () => this._editCategoryJson(catIdx), label: 'Edit JSON' })
       )
@@ -356,17 +356,17 @@ export class TraitTreeEditor extends Component {
         style: 'display:flex;align-items:center;gap:8px;padding:10px 12px;background:#1e1e2e;cursor:pointer',
         onclick: () => this.setState({ expandedIdx: expanded ? null : idx }),
       },
-        h('span', { style: 'color:#888;font-size:12px;min-width:16px' }, expanded ? '\u25BC' : '\u25B6'),
+        h('span', { style: 'color:#888;font-size:14px;min-width:16px' }, expanded ? '\u25BC' : '\u25B6'),
         h('input', {
           type: 'text', value: cat.name || '',
-          style: 'flex:1;background:transparent;border:1px solid transparent;color:#fff;font-size:14px;font-weight:600;padding:2px 6px;border-radius:4px',
+          style: 'flex:1;background:transparent;border:1px solid transparent;color:#fff;font-size:17px;font-weight:600;padding:2px 6px;border-radius:4px',
           onclick: (e) => e.stopPropagation(),
           onfocus: (e) => { e.target.style.borderColor = '#444'; },
           onblur: (e) => { e.target.style.borderColor = 'transparent'; },
           oninput: (e) => this._updateCategoryName(idx, e.target.value),
         }),
         h('select', {
-          style: 'background:#222;border:1px solid #444;color:#ccc;padding:2px 6px;border-radius:4px;font-size:12px',
+          style: 'background:#222;border:1px solid #444;color:#ccc;padding:2px 6px;border-radius:4px;font-size:14px',
           value: mode,
           onclick: (e) => e.stopPropagation(),
           onchange: (e) => this._changeCategoryMode(idx, e.target.value),
@@ -375,7 +375,7 @@ export class TraitTreeEditor extends Component {
           h('option', { value: 'generated' }, 'Generated')
         ),
         h('button', {
-          style: 'background:none;border:none;color:#f44;cursor:pointer;font-size:16px;padding:2px 6px',
+          style: 'background:none;border:none;color:#f44;cursor:pointer;font-size:19px;padding:2px 6px',
           title: 'Delete category',
           onclick: (e) => { e.stopPropagation(); this._deleteCategory(idx); },
         }, '\u2715')
@@ -390,7 +390,7 @@ export class TraitTreeEditor extends Component {
     return `
       .tte-root { }
       .tte-add-row { display: flex; gap: 8px; margin-top: 12px; align-items: center; }
-      .tte-add-input { flex: 1; background: #222; border: 1px solid #444; color: #e0e0e0; padding: 8px 12px; border-radius: 6px; font-size: 13px; }
+      .tte-add-input { flex: 1; background: #222; border: 1px solid #444; color: #e0e0e0; padding: 8px 12px; border-radius: 6px; font-size: 16px; }
       .tte-add-input:focus { border-color: #90caf9; outline: none; }
       .tte-footer { display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end; }
     `;
@@ -400,9 +400,9 @@ export class TraitTreeEditor extends Component {
     const { categories, newCatName, saving, isDirty } = this.state;
 
     return h('div', { className: 'tte-root' },
-      h('h3', { style: 'color:#fff;margin:0 0 12px;font-size:15px' }, 'Trait Categories'),
+      h('h3', { style: 'color:#fff;margin:0 0 12px;font-size:18px' }, 'Trait Categories'),
       categories.length === 0
-        ? h('div', { style: 'color:#666;font-size:13px;padding:12px 0' }, 'No categories yet. Add one below.')
+        ? h('div', { style: 'color:#666;font-size:16px;padding:12px 0' }, 'No categories yet. Add one below.')
         : null,
       ...categories.map((cat, idx) => this._renderCategory(cat, idx)),
       h('div', { className: 'tte-add-row' },
@@ -416,7 +416,7 @@ export class TraitTreeEditor extends Component {
         h(AsyncButton, { variant: 'secondary', onclick: this.bind(this._addCategory), label: 'Add Category' })
       ),
       h('div', { className: 'tte-footer' },
-        isDirty ? h('span', { style: 'color:#f39c12;font-size:12px;align-self:center' }, 'Unsaved changes') : null,
+        isDirty ? h('span', { style: 'color:#f39c12;font-size:14px;align-self:center' }, 'Unsaved changes') : null,
         h(AsyncButton, { loading: saving, onclick: this.bind(this._save), label: 'Save Changes' })
       )
     );

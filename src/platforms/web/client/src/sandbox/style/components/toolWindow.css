@@ -108,7 +108,7 @@
   border: var(--border-width) solid transparent;
   color: var(--text-label);
   cursor: pointer;
-  font-size: 10px;
+  font-size: 12px;
   display: flex;
   align-items: center;
   justify-content: center;

@@ -108,8 +108,11 @@ class ResponsePayloadNormalizer {
             }
             return { type: item.type || 'unknown', data: item.data };
           }
-          // If it's an object without data, wrap it
-          return { type: item.type || 'unknown', data: item };
+          // data is null/falsy — preserve the declared type without wrapping the whole item
+          if (item.type) {
+            return { type: item.type, data: null };
+          }
+          return { type: 'unknown', data: item };
         }
         return item;
       });
@@ -465,14 +468,14 @@ class ResponsePayloadNormalizer {
         };
       }
       
-      // Image output
-      if (item.type === 'image' && item.data && item.data.images) {
-        const images = item.data.images;
-        if (images.length > 0) {
-          return { 
-            images: images 
-          };
+      // Image output — even if data is null/empty, return {} so we never fall
+      // through to returning the full normalizedPayload array (which causes
+      // _awaitCompletion to spread it and produce a { "0": ... } unknown output)
+      if (item.type === 'image') {
+        if (item.data && item.data.images && item.data.images.length > 0) {
+          return { images: item.data.images };
         }
+        return {};
       }
       
       // Video output

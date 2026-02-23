@@ -56,7 +56,7 @@
     background: none;
     border: var(--border-width) solid transparent;
     color: var(--text-label);
-    font-size: 12px;
+    font-size: 14px;
     cursor: pointer;
     font-family: var(--ff-mono);
     transition: color var(--dur-micro) var(--ease), border-color var(--dur-micro) var(--ease);
@@ -114,7 +114,7 @@
     padding: 8px 16px;
     border-radius: 6px;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 16px;
     font-weight: 600;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     margin-left: 8px;
@@ -182,7 +182,7 @@
     border: 2px dashed #4a90e2;
     background: none;
     color: #4a90e2;
-    font-size: 24px;
+    font-size: 29px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -208,7 +208,7 @@
     padding: 8px 16px;
     border-radius: 6px;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 16px;
     font-weight: 500;
     transition: all 0.2s ease;
 }
@@ -222,13 +222,13 @@
 
 /* -- Trait Tree Editor styles -- */
 .trait-tree-editor {
-    font-size: 14px;
+    font-size: 17px;
     color: #e0e0e0;
 }
 
 .trait-tree-editor h3 {
     margin: 12px 0 16px;
-    font-size: 18px;
+    font-size: 22px;
     font-weight: 600;
     color: #fff;
     border-bottom: 2px solid #4a90e2;
@@ -277,7 +277,7 @@
     color: #fff;
     padding: 6px 10px;
     border-radius: 4px;
-    font-size: 14px;
+    font-size: 17px;
     transition: all 0.2s ease;
 }
 
@@ -289,7 +289,7 @@
 
 .cat-toggle {
     cursor: pointer;
-    font-size: 14px;
+    font-size: 17px;
     color: #4a90e2;
     user-select: none;
     width: 24px;
@@ -310,7 +310,7 @@
     border-collapse: separate;
     border-spacing: 0;
     margin-top: 8px;
-    font-size: 13px;
+    font-size: 16px;
     background: #1a1a1a;
     border-radius: 6px;
     overflow: hidden;
@@ -350,7 +350,7 @@
     font-weight: 600;
     color: #4a90e2;
     text-transform: uppercase;
-    font-size: 12px;
+    font-size: 14px;
     letter-spacing: 0.5px;
 }
 
@@ -361,7 +361,7 @@
     color: #fff;
     padding: 6px 10px;
     border-radius: 4px;
-    font-size: 13px;
+    font-size: 16px;
     transition: all 0.2s ease;
 }
 
@@ -388,7 +388,7 @@
     color: #fff;
     padding: 8px 12px;
     border-radius: 4px;
-    font-size: 14px;
+    font-size: 17px;
     transition: all 0.2s ease;
 }
 
@@ -406,7 +406,7 @@
     padding: 6px 12px;
     border-radius: 4px;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 16px;
     font-weight: 500;
     transition: all 0.2s ease;
     display: inline-flex;
@@ -443,7 +443,7 @@
 .trait-tree-editor .save-traits-btn {
     background: #27ae60;
     padding: 8px 16px;
-    font-size: 14px;
+    font-size: 17px;
     margin-top: 20px;
 }
 
@@ -467,7 +467,7 @@
     padding: 10px 20px;
     border-radius: 8px 8px 0 0;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 17px;
     font-weight: 500;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
@@ -523,14 +523,14 @@
 
 .validation-error {
     color: #ff6b6b;
-    font-size: 11px;
+    font-size: 13px;
     margin-top: 4px;
     line-height: 1.2;
 }
 
 .required {
     color: #ff6b6b;
-    font-size: 14px;
+    font-size: 17px;
     margin-left: 2px;
 }
 
@@ -540,7 +540,7 @@
     padding: 8px;
     margin-top: 8px;
     border-radius: 4px;
-    font-size: 12px;
+    font-size: 14px;
     text-align: center;
 }
 
@@ -639,7 +639,7 @@
 }
 
 .error-icon, .success-icon {
-    font-size: 16px;
+    font-size: 19px;
 }
 
 @keyframes pulse {
@@ -662,7 +662,7 @@
     padding: 8px 16px;
     border-radius: 8px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 17px;
     font-weight: 500;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     margin-bottom: 20px;
@@ -725,7 +725,7 @@
     padding: 6px 14px;
     border-radius: 6px;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 16px;
     font-weight: 500;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -742,7 +742,7 @@
     padding: 10px 20px;
     border-radius: 8px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 17px;
     font-weight: 600;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     border: none;
@@ -829,7 +829,7 @@
     padding: 10px 18px;
     border-radius: 8px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 17px;
     font-weight: 600;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);
@@ -863,7 +863,7 @@
     text-align: center;
     color: #888;
     padding: 48px 24px;
-    font-size: 15px;
+    font-size: 18px;
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.02) 0%, rgba(255, 255, 255, 0.01) 100%);
     border-radius: 12px;
     border: 2px dashed rgba(255, 255, 255, 0.1);
@@ -875,7 +875,7 @@
 .empty-message::before {
     content: '📭';
     display: block;
-    font-size: 48px;
+    font-size: 58px;
     margin-bottom: 12px;
     opacity: 0.5;
     animation: float 3s ease-in-out infinite;
@@ -930,7 +930,7 @@
     margin-bottom: 16px;
     color: #e0e0e0;
     font-weight: 500;
-    font-size: 14px;
+    font-size: 17px;
 }
 
 .create-collection-form input[type="text"],
@@ -942,7 +942,7 @@
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
     color: #fff;
-    font-size: 14px;
+    font-size: 17px;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     box-sizing: border-box;
 }
@@ -975,7 +975,7 @@
     padding: 12px 24px;
     border-radius: 8px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 17px;
     font-weight: 600;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);
@@ -994,7 +994,7 @@
     padding: 12px 24px;
     border-radius: 8px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 17px;
     font-weight: 500;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -1014,7 +1014,7 @@
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
     color: #fff;
-    font-size: 14px;
+    font-size: 17px;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -1066,7 +1066,7 @@
 }
 
 .stat-label {
-    font-size: 12px;
+    font-size: 14px;
     text-transform: uppercase;
     letter-spacing: 0.12em;
     color: rgba(255,255,255,0.6);
@@ -1074,13 +1074,13 @@
 }
 
 .stat-value {
-    font-size: 26px;
+    font-size: 31px;
     font-weight: 700;
     color: #fff;
 }
 
 .stat-sub {
-    font-size: 12px;
+    font-size: 14px;
     color: rgba(255,255,255,0.65);
 }
 
@@ -1107,7 +1107,7 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
-    font-size: 13px;
+    font-size: 16px;
     color: rgba(255,255,255,0.85);
 }
 
@@ -1164,7 +1164,7 @@
 
 .param-details summary::after {
     content: '▾';
-    font-size: 12px;
+    font-size: 14px;
     transition: transform 0.2s ease;
     color: rgba(255,255,255,0.7);
 }
@@ -1215,7 +1215,7 @@
 }
 
 .trait-category-count {
-    font-size: 12px;
+    font-size: 14px;
     color: rgba(255,255,255,0.6);
 }
 
@@ -1234,7 +1234,7 @@
     border-radius: 8px;
     border: 1px solid rgba(255,255,255,0.06);
     background: rgba(255,255,255,0.015);
-    font-size: 12px;
+    font-size: 14px;
 }
 
 .trait-name {
@@ -1244,7 +1244,7 @@
 
 .trait-approvals,
 .trait-rate {
-    font-size: 11px;
+    font-size: 13px;
     color: rgba(255,255,255,0.75);
     text-align: right;
 }
@@ -1256,7 +1256,7 @@
 }
 
 .export-status {
-    font-size: 13px;
+    font-size: 16px;
     color: rgba(255,255,255,0.8);
     padding: 10px 12px;
     border-radius: 10px;
@@ -1291,7 +1291,7 @@
     color: #fff;
     padding: 6px 12px;
     border-radius: 999px;
-    font-size: 12px;
+    font-size: 14px;
     text-decoration: none;
 }
 
@@ -1300,7 +1300,7 @@
 }
 
 .export-expiry {
-    font-size: 12px;
+    font-size: 14px;
     color: rgba(255,255,255,0.7);
 }
 
@@ -1393,13 +1393,13 @@
 .export-lock-note {
     display: block;
     margin-top: 4px;
-    font-size: 12px;
+    font-size: 14px;
     color: rgba(255,255,255,0.6);
 }
 
 .publish-base {
     margin-top: 6px;
-    font-size: 12px;
+    font-size: 14px;
     color: rgba(255,255,255,0.65);
 }
 
@@ -1407,7 +1407,7 @@
     background: rgba(255,255,255,0.08);
     padding: 2px 6px;
     border-radius: 4px;
-    font-size: 12px;
+    font-size: 14px;
 }
 
 .cancel-export-btn {
@@ -1457,11 +1457,11 @@
     
     .tab-btn {
         padding: 8px 16px;
-        font-size: 13px;
+        font-size: 16px;
     }
     
     .meta-table {
-        font-size: 13px;
+        font-size: 16px;
     }
     
     .meta-table td {
@@ -1512,7 +1512,7 @@
 
 .batch-size-modal h3 {
     margin: 0 0 8px 0;
-    font-size: 20px;
+    font-size: 24px;
     font-weight: 600;
     color: #fff;
 }
@@ -1520,13 +1520,13 @@
 .batch-size-modal p {
     margin: 0 0 20px 0;
     color: #aaa;
-    font-size: 14px;
+    font-size: 17px;
 }
 
 .batch-size-input {
     width: 100%;
     padding: 14px 16px;
-    font-size: 18px;
+    font-size: 22px;
     background: #2a2a2a;
     border: 2px solid rgba(255, 255, 255, 0.15);
     border-radius: 10px;
@@ -1552,7 +1552,7 @@
 .batch-size-actions button {
     flex: 1;
     padding: 12px 20px;
-    font-size: 15px;
+    font-size: 18px;
     font-weight: 600;
     border-radius: 10px;
     cursor: pointer;
@@ -1612,7 +1612,7 @@
 
 .cook-advisory {
     display: block;
-    font-size: 12px;
+    font-size: 14px;
     color: #888;
     margin-top: 6px;
     font-style: italic;
@@ -1653,7 +1653,7 @@
 /* Collection badges */
 .coll-badge {
     display: inline-block;
-    font-size: 10px;
+    font-size: 12px;
     padding: 2px 6px;
     border-radius: 4px;
     margin-left: 6px;

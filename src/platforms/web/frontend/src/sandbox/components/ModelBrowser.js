@@ -236,7 +236,7 @@ export class ModelBrowser extends Component {
     if (countsLoading) return h(Loader, { message: 'Loading categories...' });
 
     return h('div', null,
-      h('p', { style: 'color:#aaa;font-size:13px;margin:0 0 16px' }, 'Browse the models available on StationThis. Select a category to see assets.'),
+      h('p', { style: 'color:#aaa;font-size:16px;margin:0 0 16px' }, 'Browse the models available on StationThis. Select a category to see assets.'),
       h('div', { className: 'mb-cat-grid' },
         ...CATEGORIES.map(cat =>
           h('button', {
@@ -444,22 +444,22 @@ export class ModelBrowser extends Component {
 
   static get styles() {
     return `
-      .mb-back { background:none; border:none; color:#90caf9; cursor:pointer; font-size:13px; padding:0; margin-bottom:16px; }
+      .mb-back { background:none; border:none; color:#90caf9; cursor:pointer; font-size:16px; padding:0; margin-bottom:16px; }
       .mb-back:hover { text-decoration:underline; }
 
       /* Category Grid */
       .mb-cat-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:8px; }
       .mb-cat-card { background:#222; border:1px solid #333; border-radius:8px; padding:16px; cursor:pointer; text-align:center; transition:border-color 0.15s; }
       .mb-cat-card:hover { border-color:#555; }
-      .mb-cat-name { font-size:14px; font-weight:600; color:#fff; text-transform:capitalize; margin-bottom:4px; }
-      .mb-cat-count { font-size:12px; color:#888; }
+      .mb-cat-name { font-size:17px; font-weight:600; color:#fff; text-transform:capitalize; margin-bottom:4px; }
+      .mb-cat-count { font-size:14px; color:#888; }
 
       /* List header */
       .mb-list-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
 
       /* LoRA bar */
       .mb-lora-bar { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
-      .mb-lora-btn { background:#222; border:1px solid #444; color:#aaa; padding:4px 12px; border-radius:16px; font-size:12px; cursor:pointer; }
+      .mb-lora-btn { background:#222; border:1px solid #444; color:#aaa; padding:4px 12px; border-radius:16px; font-size:14px; cursor:pointer; }
       .mb-lora-btn:hover { border-color:#666; color:#ccc; }
       .mb-lora-btn--active { background:#3f51b5; border-color:#3f51b5; color:#fff; }
 
@@ -468,16 +468,16 @@ export class ModelBrowser extends Component {
       .mb-model-row { display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-bottom:1px solid #222; cursor:pointer; transition:background 0.1s; }
       .mb-model-row:hover { background:rgba(255,255,255,0.03); }
       .mb-model-info { flex:1; min-width:0; }
-      .mb-model-name { font-size:14px; color:#e0e0e0; font-weight:500; }
-      .mb-model-size { font-size:11px; color:#888; margin-left:8px; }
+      .mb-model-name { font-size:17px; color:#e0e0e0; font-weight:500; }
+      .mb-model-size { font-size:13px; color:#888; margin-left:8px; }
       .mb-model-tags { display:flex; gap:4px; flex-wrap:wrap; margin-top:4px; }
-      .mb-tag { font-size:10px; color:#aaa; background:#2a2a2a; padding:2px 6px; border-radius:3px; }
-      .mb-fav-btn { background:none; border:none; font-size:16px; cursor:pointer; padding:4px; }
+      .mb-tag { font-size:12px; color:#aaa; background:#2a2a2a; padding:2px 6px; border-radius:3px; }
+      .mb-fav-btn { background:none; border:none; font-size:19px; cursor:pointer; padding:4px; }
 
       /* Detail */
       .mb-carousel { position:relative; margin-bottom:16px; text-align:center; }
       .mb-carousel-img { max-width:100%; max-height:300px; border-radius:8px; object-fit:contain; }
-      .mb-carousel-nav { position:absolute; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.5); border:none; color:#fff; font-size:24px; padding:8px 12px; cursor:pointer; border-radius:4px; z-index:1; }
+      .mb-carousel-nav { position:absolute; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.5); border:none; color:#fff; font-size:29px; padding:8px 12px; cursor:pointer; border-radius:4px; z-index:1; }
       .mb-carousel-nav:first-child { left:4px; }
       .mb-carousel-nav:last-of-type { right:4px; }
       .mb-thumb-strip { display:flex; gap:4px; justify-content:center; margin-top:8px; }
@@ -485,24 +485,24 @@ export class ModelBrowser extends Component {
       .mb-thumb--active { opacity:1; border-color:#90caf9; }
 
       .mb-meta { margin-bottom:16px; }
-      .mb-meta-row { display:flex; gap:8px; padding:4px 0; font-size:13px; }
+      .mb-meta-row { display:flex; gap:8px; padding:4px 0; font-size:16px; }
       .mb-meta-label { color:#888; min-width:100px; flex-shrink:0; }
       .mb-meta-val { color:#ccc; word-break:break-word; }
 
       .mb-triggers { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
-      .mb-trigger-badge { font-family:monospace; font-size:12px; background:#2a2a3a; color:#90caf9; padding:2px 8px; border-radius:4px; }
+      .mb-trigger-badge { font-family:monospace; font-size:14px; background:#2a2a3a; color:#90caf9; padding:2px 8px; border-radius:4px; }
 
       .mb-detail-tags { display:flex; gap:4px; flex-wrap:wrap; margin-bottom:12px; }
 
       .mb-detail-actions { display:flex; gap:8px; margin-top:16px; }
-      .mb-fav-toggle { background:none; border:1px solid #444; color:#ccc; padding:6px 16px; border-radius:6px; cursor:pointer; font-size:13px; }
+      .mb-fav-toggle { background:none; border:1px solid #444; color:#ccc; padding:6px 16px; border-radius:6px; cursor:pointer; font-size:16px; }
       .mb-fav-toggle:hover { border-color:#666; }
       .mb-fav-toggle--active { border-color:#e74c3c; color:#e74c3c; }
 
       /* Import */
       .mb-form-group { margin-bottom:14px; }
-      .mb-form-group label { display:block; margin-bottom:6px; color:#aaa; font-weight:600; font-size:13px; }
-      .mb-input { width:100%; padding:8px 12px; background:#222; border:1px solid #444; border-radius:6px; color:#e0e0e0; font-size:14px; box-sizing:border-box; }
+      .mb-form-group label { display:block; margin-bottom:6px; color:#aaa; font-weight:600; font-size:16px; }
+      .mb-input { width:100%; padding:8px 12px; background:#222; border:1px solid #444; border-radius:6px; color:#e0e0e0; font-size:17px; box-sizing:border-box; }
       .mb-input:focus { border-color:#90caf9; outline:none; }
       .mb-import-actions { display:flex; gap:8px; justify-content:flex-end; }
     `;

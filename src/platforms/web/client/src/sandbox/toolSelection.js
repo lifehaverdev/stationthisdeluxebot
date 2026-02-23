@@ -157,7 +157,7 @@ export function renderSidebarTools() {
                 border: 1px solid rgba(0, 255, 0, 0.4);
                 border-radius: 4px;
                 padding: 2px 6px;
-                font-size: 10px;
+                font-size: 12px;
                 color: #00ff00;
                 font-family: monospace;
             `;

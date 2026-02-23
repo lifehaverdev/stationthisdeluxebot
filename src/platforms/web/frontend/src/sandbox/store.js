@@ -125,11 +125,13 @@ export function dispatch(action, payload) {
     case 'RESET_COST': {
       stateModule.resetWindowCost(payload);
       notify('costs', stateModule.getTotalWorkspaceCost());
+      window.dispatchEvent(new CustomEvent('costReset', { detail: { windowId: payload } }));
       return;
     }
     case 'RESET_ALL_COSTS': {
       stateModule.resetAllCosts();
       notify('costs', stateModule.getTotalWorkspaceCost());
+      window.dispatchEvent(new CustomEvent('costReset'));
       return;
     }
 
@@ -182,6 +184,10 @@ export function getOutputTypeMapping()  { return stateModule?.OUTPUT_TYPE_MAPPIN
 export function getCreationTypeMap()    { return stateModule?.CREATION_TYPE_TO_CATEGORY ?? {}; }
 
 // ── Lifecycle ────────────────────────────────────────────────────────
+
+// Direct cost notification — used by SandboxCanvas which manages its own window Map
+// and cannot go through state.js's activeToolWindows.
+export function emitCosts(totals) { notify('costs', totals); }
 
 export function initState() { return stateModule?.initState(); }
 export function persistState() { return stateModule?.persistState(); }

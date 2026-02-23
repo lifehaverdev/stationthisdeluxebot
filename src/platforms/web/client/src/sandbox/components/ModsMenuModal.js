@@ -1866,7 +1866,7 @@ export default class ModsMenuModal {
       ${wizardModelType === 'KONTEXT' ? `
         <div class="wizard-mode-section" style="margin-top:24px;">
           <h4 style="margin-bottom:8px;">Training Mode</h4>
-          <p style="color:#aaa;margin-bottom:12px;font-size:13px;">Choose how you want to train your KONTEXT LoRA.</p>
+          <p style="color:#aaa;margin-bottom:12px;font-size:16px;">Choose how you want to train your KONTEXT LoRA.</p>
           <div class="wizard-mode-grid">
             ${kontextModes.map(m => {
               const sel = wizardTrainingMode === m.mode ? ' selected' : '';
@@ -1881,7 +1881,7 @@ export default class ModsMenuModal {
           <div class="wizard-control-section" style="margin-top:24px;">
             <div class="wizard-control-info" style="background:#2a3a2a;border:1px solid #3a5a3a;padding:12px;border-radius:8px;">
               <strong style="color:#8f8;">Concept Training Selected</strong>
-              <p style="color:#aaa;font-size:12px;margin:4px 0 0;">In the next step, you'll select which control image set to use. The transformation prompt from that set will be used for all training captions.</p>
+              <p style="color:#aaa;font-size:14px;margin:4px 0 0;">In the next step, you'll select which control image set to use. The transformation prompt from that set will be used for all training captions.</p>
             </div>
           </div>
         ` : ''}
@@ -1918,7 +1918,7 @@ export default class ModsMenuModal {
             const promptPreview = prompt.length > 80 ? prompt.slice(0, 80) + '...' : prompt;
             return `<div class="wizard-control-set-card${sel}" data-control-id="${csId}">
               <div class="wizard-caption-method">${cs.method || 'Control'}</div>
-              <div class="wizard-control-prompt" style="font-size:12px;color:#aaa;margin:4px 0;font-style:italic;">"${promptPreview}"</div>
+              <div class="wizard-control-prompt" style="font-size:14px;color:#aaa;margin:4px 0;font-style:italic;">"${promptPreview}"</div>
               <div class="wizard-caption-meta">${count} image${count !== 1 ? 's' : ''} &middot; ${date}</div>
             </div>`;
           }).join('')}
