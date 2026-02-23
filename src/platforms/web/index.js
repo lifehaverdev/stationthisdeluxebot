@@ -148,7 +148,7 @@ function initializeWebPlatform(services, options = {}) {
             sameSite: 'lax',
             ...(process.env.NODE_ENV === 'production' && { domain: '.noema.art' })
           });
-          res.redirect(process.env.NODE_ENV === 'production' ? 'https://noema.art' : '/landing');
+          res.redirect(process.env.NODE_ENV === 'production' ? 'https://noema.art' : '/');
       });
 
       // Legacy landing fallback (app subdomain only)

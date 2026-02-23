@@ -25,6 +25,17 @@ fi
 # Skip credit service in dev by default (no keystore needed)
 export SKIP_CREDIT_SERVICE="${SKIP_CREDIT_SERVICE:-1}"
 
+# --- Mainnet enforcement ---
+# run-dev.sh always targets Ethereum mainnet.
+# For local Anvil/fork dev, use run-dev-anvil.sh instead.
+export ETHEREUM_CHAIN_ID=1
+if [ -z "$ETHEREUM_RPC_URL" ]; then
+  echo "[run-dev.sh] ERROR: ETHEREUM_RPC_URL is not set. Add it to your .env (Alchemy/Infura mainnet endpoint)."
+  exit 1
+fi
+echo "[run-dev.sh] Network: Ethereum Mainnet (chainId=1)"
+echo "[run-dev.sh] RPC: $ETHEREUM_RPC_URL"
+
 # --- Frontend setup ---
 FRONTEND_DIR="src/platforms/web/frontend"
 if [ -f "$FRONTEND_DIR/package.json" ]; then

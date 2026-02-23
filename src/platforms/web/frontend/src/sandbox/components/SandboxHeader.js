@@ -3,6 +3,7 @@ import { AccountDropdown } from './AccountDropdown.js';
 import { SpellsModal } from './SpellsModal.js';
 import { CookModal } from './CookModal.js';
 import { ModsModal } from './ModsModal.js';
+import { getLandingUrl } from '../../lib/urls.js';
 
 /**
  * SandboxHeader — top navigation bar for the sandbox.
@@ -76,7 +77,7 @@ export class SandboxHeader extends Component {
     return h('header', { className: headerClass },
       h('button', { className: 'sb-burger', onclick: this.bind(this._toggleMobile) }, '\u2630'),
       h('div', { className: 'sb-logo' },
-        h('a', { href: '/landing' }, 'NOEMA')
+        h('a', { href: getLandingUrl(), target: '_blank', rel: 'noopener noreferrer' }, 'NOEMA')
       ),
       h('nav', { className: 'sb-nav main-nav' },
         h('a', { href: '#spells', onclick: (e) => this._navClick('spells', e) }, 'cast'),

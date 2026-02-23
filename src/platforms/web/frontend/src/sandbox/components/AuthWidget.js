@@ -18,9 +18,10 @@ export class AuthWidget extends Component {
     super(props);
     this.state = {
       mode: props?.initialMode || 'card',  // 'card' | 'badge' | 'hidden'
-      view: 'main',                         // 'main' | 'password' | 'apikey'
       error: '',
       loading: false,
+      showPicker: false,
+      availableWallets: {},
     };
     this.walletService = new WalletService(eventBus);
   }
@@ -35,11 +36,11 @@ export class AuthWidget extends Component {
     });
   }
 
-  _minimize() { this.setState({ mode: 'badge', error: '' }); }
+  _minimize() { this.setState({ mode: 'badge', error: '', showPicker: false }); }
   _expand()   { this.setState({ mode: 'card' }); }
 
   _success() {
-    this.setState({ mode: 'hidden' });
+    this.setState({ mode: 'hidden', showPicker: false });
     eventBus.emit('auth:success');
     if (this.props.onSuccess) this.props.onSuccess();
   }
@@ -47,57 +48,76 @@ export class AuthWidget extends Component {
   async connectWallet() {
     this.setState({ loading: true, error: '' });
     try {
+      // Re-trigger EIP-6963 discovery and wait for announcements.
+      // Wallets must respond to eip6963:requestProvider per spec; this ensures
+      // any wallet that announced before our listener was ready gets captured.
+      window.dispatchEvent(new Event('eip6963:requestProvider'));
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      // Diagnostics — check the raw eip6963Providers map and window injections
+      const eip6963Entries = [...this.walletService.eip6963Providers.entries()]
+        .map(([uuid, { info }]) => ({ uuid, rdns: info.rdns, name: info.name }));
+      console.log('[AuthWidget] eip6963Providers:', eip6963Entries);
+      console.log('[AuthWidget] window.phantom:', !!window.phantom, '| .ethereum:', !!window.phantom?.ethereum);
+      console.log('[AuthWidget] window.ethereum:', !!window.ethereum, '| isMetaMask:', !!window.ethereum?.isMetaMask);
+
       const wallets = this.walletService.getAvailableWallets();
-      if (!wallets || wallets.length === 0) {
-        this.setState({ error: 'No wallet detected. Please install a wallet extension.', loading: false });
+      const keys = Object.keys(wallets || {});
+      console.log('[AuthWidget] getAvailableWallets() keys:', keys);
+
+      if (keys.length === 0) {
+        // Phantom installed but Ethereum not enabled (SES lockdown conflict or EVM disabled in settings)
+        const phantomNoEvm = window.phantom && !window.phantom.ethereum;
+        this.setState({
+          error: phantomNoEvm
+            ? 'Phantom detected but Ethereum is not enabled. In Phantom, go to Settings → Networks and enable Ethereum. Alternatively, install Rabby.'
+            : 'No wallet extension found. Install Rabby or MetaMask to continue.',
+          loading: false,
+        });
         return;
       }
-      await this.walletService.connect();
-      const address = this.walletService.getAddress();
 
-      const nonceRes = await postWithCsrf('/api/v1/auth/web3/nonce', { address });
-      if (!nonceRes.ok) { const e = await nonceRes.json(); throw new Error(e.error?.message || 'Failed to get nonce.'); }
-      const { nonce } = await nonceRes.json();
+      if (keys.length > 1) {
+        // Sort so Rabby appears first
+        const sorted = {};
+        const rabbyKey = keys.find(k => k === 'rabby' || k.includes('rabby'));
+        if (rabbyKey) sorted[rabbyKey] = wallets[rabbyKey];
+        for (const k of keys) { if (k !== rabbyKey) sorted[k] = wallets[k]; }
+        this.setState({ availableWallets: sorted, showPicker: true, loading: false });
+        return;
+      }
 
-      const provider = this.walletService.ethersProvider;
-      const signer = await provider.getSigner();
-      const signature = await signer.signMessage(nonce);
-
-      const verifyRes = await postWithCsrf('/api/v1/auth/web3/verify', { address, signature });
-      if (!verifyRes.ok) { const e = await verifyRes.json(); throw new Error(e.error?.message || 'Verification failed.'); }
-
-      this._success();
+      await this._connectWithKey(keys[0]);
     } catch (err) {
       this.setState({ error: err.message || 'Connection failed.', loading: false });
     }
   }
 
-  async submitPassword(e) {
-    e.preventDefault();
-    this.setState({ loading: true, error: '' });
+  async _connectWithKey(walletKey) {
+    this.setState({ loading: true, error: '', showPicker: false });
     try {
-      const form = e.target;
-      const username = form.querySelector('[name="username"]').value;
-      const password = form.querySelector('[name="password"]').value;
-      const res = await postWithCsrf('/api/v1/auth/password', { username, password });
-      if (!res.ok) { const err = await res.json(); throw new Error(err.error?.message || 'Login failed.'); }
-      this._success();
-    } catch (err) {
-      this.setState({ error: err.message || 'Login failed.', loading: false });
-    }
-  }
+      await this.walletService.connect(walletKey);
+      const address = this.walletService.getAddress();
+      console.log('[AuthWidget] connected address:', address);
 
-  async submitApiKey(e) {
-    e.preventDefault();
-    this.setState({ loading: true, error: '' });
-    try {
-      const form = e.target;
-      const apikey = form.querySelector('[name="apikey"]').value;
-      const res = await postWithCsrf('/api/v1/auth/apikey', { apikey });
-      if (!res.ok) { const err = await res.json(); throw new Error(err.error?.message || 'API key login failed.'); }
+      const nonceRes = await postWithCsrf('/api/v1/auth/web3/nonce', { address });
+      if (!nonceRes.ok) { const e = await nonceRes.json(); throw new Error(e.error?.message || 'Failed to get nonce.'); }
+      const { nonce } = await nonceRes.json();
+      console.log('[AuthWidget] got nonce, signing...');
+
+      const provider = this.walletService.ethersProvider;
+      const signer = await provider.getSigner();
+      const signature = await signer.signMessage(nonce);
+      console.log('[AuthWidget] signed, verifying...');
+
+      const verifyRes = await postWithCsrf('/api/v1/auth/web3/verify', { address, signature });
+      console.log('[AuthWidget] verify status:', verifyRes.status);
+      if (!verifyRes.ok) { const e = await verifyRes.json(); throw new Error(e.error?.message || 'Verification failed.'); }
+
+      console.log('[AuthWidget] auth complete, emitting success');
       this._success();
     } catch (err) {
-      this.setState({ error: err.message || 'Login failed.', loading: false });
+      this.setState({ error: err.message || 'Connection failed.', loading: false });
     }
   }
 
@@ -127,31 +147,34 @@ export class AuthWidget extends Component {
         background: #2a1010; border: 1px solid #5a2020; color: #f88;
         padding: 0.5rem 0.75rem; border-radius: 4px; margin-bottom: 1rem; font-size: 0.85rem;
       }
-      .aw-card button, .aw-card input[type="submit"] {
+      .aw-card button {
         width: 100%; padding: 0.65rem; border: none; border-radius: 4px;
         cursor: pointer; font-size: 0.95rem; margin-bottom: 0.5rem;
       }
       .aw-btn-wallet { background: #fff; color: #0a0a0a; font-weight: 600; }
       .aw-btn-wallet:hover { background: #e0e0e0; }
       .aw-btn-wallet:disabled { opacity: 0.5; cursor: wait; }
-      .aw-btn-submit { background: #fff; color: #0a0a0a; font-weight: 600; }
-      .aw-alt { margin-top: 0.75rem; text-align: center; font-size: 0.85rem; color: #888; }
-      .aw-alt a { color: #aaa; text-decoration: underline; cursor: pointer; }
-      .aw-alt a:hover { color: #fff; }
-      .aw-card input[type="text"], .aw-card input[type="password"] {
-        width: 100%; padding: 0.6rem; background: #1a1a1a; border: 1px solid #333;
-        border-radius: 4px; color: #e0e0e0; font-size: 0.95rem; margin-bottom: 0.75rem;
-        box-sizing: border-box;
+      .aw-hint { margin-top: 0.75rem; text-align: center; font-size: 0.8rem; color: #555; }
+      .aw-hint a { color: #666; text-decoration: underline; }
+      .aw-hint a:hover { color: #999; }
+      .aw-picker-list { display: flex; flex-direction: column; gap: 8px; }
+      .aw-wallet-opt {
+        display: flex; align-items: center; gap: 12px;
+        width: 100%; padding: 10px 14px; border: 1px solid #333;
+        border-radius: 8px; background: #1a1a1a; color: #e0e0e0;
+        font-size: 14px; cursor: pointer; text-align: left;
       }
-      .aw-back { display: block; text-align: center; margin-top: 0.75rem; color: #888; font-size: 0.85rem; cursor: pointer; }
-      .aw-back:hover { color: #fff; }
+      .aw-wallet-opt:hover { border-color: #555; background: #222; color: #fff; }
+      .aw-wallet-opt img { width: 28px; height: 28px; border-radius: 4px; flex-shrink: 0; }
+      .aw-wallet-opt span { flex: 1; }
     `;
   }
 
   render() {
-    const { mode, view, error, loading } = this.state;
+    const { mode, error, loading, showPicker, availableWallets } = this.state;
     const isHidden = mode === 'hidden';
     const isBadge = mode === 'badge';
+    const walletEntries = Object.entries(availableWallets);
 
     // Always render the same DOM structure — style attributes control visibility.
     // This prevents microact null→element diff crashes from conditional children.
@@ -171,7 +194,7 @@ export class AuthWidget extends Component {
       },
         h('div', { className: 'aw-card' },
           h('div', { className: 'aw-header' },
-            h('h3', null, 'Sign In'),
+            h('h3', null, showPicker ? 'Select Wallet' : 'Sign In'),
             h('button', { className: 'aw-minimize', onClick: this.bind(this._minimize) }, '\u2212')
           ),
 
@@ -181,41 +204,30 @@ export class AuthWidget extends Component {
             style: error ? '' : 'display:none',
           }, error),
 
-          // Main view
-          h('div', { style: view !== 'main' ? 'display:none' : '' },
+          // Connect button — hidden when picker is showing
+          h('div', { style: showPicker ? 'display:none' : '' },
             h('button', {
               className: 'aw-btn-wallet',
               disabled: loading,
               onClick: this.bind(this.connectWallet),
             }, loading ? 'Connecting...' : 'Connect Wallet'),
-            h('div', { className: 'aw-alt' },
-              h('a', { onClick: () => this.setState({ view: 'password', error: '' }) }, 'Username / Password'),
-              ' or ',
-              h('a', { onClick: () => this.setState({ view: 'apikey', error: '' }) }, 'API Key')
+            h('div', { className: 'aw-hint' },
+              'We recommend ',
+              h('a', { href: 'https://rabby.io', target: '_blank', rel: 'noopener noreferrer' }, 'Rabby Wallet')
             )
           ),
 
-          // Password view
-          h('form', {
-            style: view !== 'password' ? 'display:none' : '',
-            onSubmit: this.bind(this.submitPassword),
-          },
-            h('input', { type: 'text', name: 'username', placeholder: 'Username', required: true }),
-            h('input', { type: 'password', name: 'password', placeholder: 'Password', required: true }),
-            h('button', { type: 'submit', className: 'aw-btn-submit', disabled: loading },
-              loading ? 'Logging in...' : 'Login'),
-            h('a', { className: 'aw-back', onClick: () => this.setState({ view: 'main', error: '' }) }, '\u2190 Back')
-          ),
-
-          // API Key view
-          h('form', {
-            style: view !== 'apikey' ? 'display:none' : '',
-            onSubmit: this.bind(this.submitApiKey),
-          },
-            h('input', { type: 'text', name: 'apikey', placeholder: 'API Key', required: true }),
-            h('button', { type: 'submit', className: 'aw-btn-submit', disabled: loading },
-              loading ? 'Logging in...' : 'Login'),
-            h('a', { className: 'aw-back', onClick: () => this.setState({ view: 'main', error: '' }) }, '\u2190 Back')
+          // Wallet picker list — hidden when not needed
+          h('div', { className: 'aw-picker-list', style: showPicker ? '' : 'display:none' },
+            ...walletEntries.map(([key, w]) =>
+              h('button', {
+                className: 'aw-wallet-opt',
+                onClick: () => this._connectWithKey(key),
+              },
+                h('img', { src: w.icon || '', alt: w.name, style: w.icon ? '' : 'display:none' }),
+                h('span', null, w.name)
+              )
+            )
           )
         )
       )

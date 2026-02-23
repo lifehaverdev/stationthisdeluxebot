@@ -18,7 +18,7 @@ export default defineConfig({
       // API calls
       '/api': BACKEND,
       // WebSocket
-      '/ws': { target: BACKEND, ws: true },
+      '/ws': { target: BACKEND, ws: true, changeOrigin: true },
       // Sandbox ESM modules (old vanilla code loaded at runtime)
       '/sandbox': BACKEND,
       // Sandbox CSS
