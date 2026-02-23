@@ -1,10 +1,9 @@
 import { Component, h } from '@monygroupcorp/microact';
 
 const TABS_KEY = 'sandbox_workspace_tabs';
-const EMOJIS = ['\uD83D\uDDBC\uFE0F','\uD83C\uDFB5','\uD83D\uDCDD','\uD83C\uDFAC','\u2728','\uD83C\uDF1F','\uD83D\uDE80','\uD83D\uDD25','\uD83D\uDCA1','\uD83E\uDDEA','\uD83E\uDDE9'];
-function pickEmoji(str) {
-  let h = 0; for (let i = 0; i < str.length; i++) h = (h << 5) - h + str.charCodeAt(i);
-  return EMOJIS[Math.abs(h) % EMOJIS.length];
+function shortSlug(slug) {
+  if (!slug) return 'new';
+  return slug.length > 18 ? slug.slice(0, 16) + '…' : slug;
 }
 
 /**
@@ -19,14 +18,15 @@ export class WorkspaceTabs extends Component {
     super(props);
     const restored = this._restoreTabs();
     if (restored) {
-      this.state = { tabs: restored.tabs, current: restored.current, switching: false };
+      this.state = { tabs: restored.tabs, current: restored.current, switching: false, open: false };
     } else {
       const url = new URL(window.location.href);
       const slug = url.searchParams.get('workspace');
       this.state = {
-        tabs: [{ slug, emoji: slug ? pickEmoji(slug) : '\uD83C\uDD97' }],
+        tabs: [{ slug }],
         current: 0,
-        switching: false
+        switching: false,
+        open: false,
       };
     }
   }
@@ -43,6 +43,22 @@ export class WorkspaceTabs extends Component {
         console.error('[WorkspaceTabs] initial load failed:', e);
       }
     }
+    // Close panel when clicking outside
+    this._outsideClick = (e) => {
+      if (this.state.open && !e.target.closest('.ws-root')) {
+        this.setState({ open: false });
+      }
+    };
+    document.addEventListener('click', this._outsideClick);
+  }
+
+  willUnmount() {
+    if (this._outsideClick) document.removeEventListener('click', this._outsideClick);
+  }
+
+  _toggle(e) {
+    e.stopPropagation();
+    this.setState({ open: !this.state.open });
   }
 
   async _getWorkspacesModule() {
@@ -86,7 +102,7 @@ export class WorkspaceTabs extends Component {
     const slug = await loadWorkspace(id.trim());
     if (slug) {
       const tabs = [...this.state.tabs];
-      tabs[this.state.current] = { slug, emoji: pickEmoji(slug) };
+      tabs[this.state.current] = { slug };
       this.setState({ tabs });
       this._persistTabs();
     }
@@ -104,7 +120,7 @@ export class WorkspaceTabs extends Component {
       try {
         const slug = await saveWorkspace(tabs[this.state.current].slug || null, { silent: true });
         if (!tabs[this.state.current].slug && slug) {
-          tabs[this.state.current] = { slug, emoji: pickEmoji(slug) };
+          tabs[this.state.current] = { slug };
         }
       } catch {}
 
@@ -123,7 +139,7 @@ export class WorkspaceTabs extends Component {
   }
 
   async _addTab() {
-    const tabs = [...this.state.tabs, { slug: null, emoji: '\uD83C\uDD95' }];
+    const tabs = [...this.state.tabs, { slug: null }];
     this.setState({ tabs });
     await this._switchTab(tabs.length - 1);
   }
@@ -166,42 +182,185 @@ export class WorkspaceTabs extends Component {
 
   static get styles() {
     return `
-      .ws-suite { display: flex; align-items: center; gap: 4px; padding: 0 8px; }
-      .ws-btn { background: none; border: none; font-size: 16px; cursor: pointer; padding: 4px 8px; opacity: 0.7; }
-      .ws-btn:hover { opacity: 1; }
-      .ws-tabs { display: flex; gap: 2px; }
-      .ws-tab { padding: 4px 8px; border: none; cursor: pointer; font-size: 13px; border-radius: 4px 4px 0 0; display: flex; align-items: center; gap: 4px; }
-      .ws-tab--active { background: #333; color: #fff; }
-      .ws-tab--inactive { background: #1a1a1a; color: #888; }
-      .ws-tab--inactive:hover { background: #222; }
-      .ws-tab-close { font-size: 11px; opacity: 0.5; cursor: pointer; margin-left: 2px; }
-      .ws-tab-close:hover { opacity: 1; }
-      .ws-add { padding: 4px 8px; border: none; background: #1a1a1a; color: #666; cursor: pointer; border-radius: 4px 4px 0 0; }
-      .ws-add:hover { background: #222; color: #ccc; }
+      /* Root — anchored to top-left below header */
+      .ws-root {
+        position: fixed;
+        top: var(--header-height, 44px);
+        left: 0;
+        z-index: var(--z-hud);
+      }
+
+      /* Trigger tab */
+      .ws-trigger {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: var(--surface-2);
+        border: var(--border-width) solid var(--border);
+        border-top: none;
+        border-left: none;
+        color: var(--text-label);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wider);
+        text-transform: uppercase;
+        cursor: pointer;
+        padding: 4px 10px;
+        transition:
+          color        var(--dur-micro) var(--ease),
+          border-color var(--dur-micro) var(--ease),
+          background   var(--dur-micro) var(--ease);
+      }
+      .ws-trigger:hover { color: var(--text-secondary); border-color: var(--border-hover); }
+      .ws-trigger.open  { color: var(--text-primary);   border-color: var(--border-hover); background: var(--surface-3); }
+
+      /* Dropdown panel */
+      .ws-panel {
+        background: var(--surface-2);
+        border: var(--border-width) solid var(--border);
+        border-top: none;
+        min-width: 200px;
+        display: none;
+        flex-direction: column;
+        animation: fadeUp var(--dur-trans) var(--ease);
+      }
+      .ws-panel.open { display: flex; }
+
+      /* Panel header row */
+      .ws-panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 6px 10px;
+        border-bottom: var(--border-width) solid var(--border);
+        background: var(--surface-3);
+        gap: 8px;
+      }
+      .ws-panel-label {
+        font-family: var(--ff-condensed);
+        font-size: var(--fs-xs);
+        font-weight: var(--fw-medium);
+        letter-spacing: var(--ls-widest);
+        text-transform: uppercase;
+        color: var(--text-secondary);
+      }
+      .ws-panel-actions { display: flex; gap: 4px; }
+      .ws-action-btn {
+        background: none;
+        border: var(--border-width) solid var(--border);
+        color: var(--text-label);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wide);
+        text-transform: uppercase;
+        cursor: pointer;
+        padding: 2px 8px;
+        transition: color var(--dur-micro) var(--ease), border-color var(--dur-micro) var(--ease);
+      }
+      .ws-action-btn:hover { color: var(--accent); border-color: var(--accent-border); }
+
+      /* Tab list */
+      .ws-tab-list { display: flex; flex-direction: column; }
+
+      .ws-tab-item {
+        display: flex;
+        align-items: center;
+        border-bottom: var(--border-width) solid var(--border);
+      }
+      .ws-tab-item:last-of-type { border-bottom: none; }
+
+      .ws-tab-name {
+        flex: 1;
+        background: none;
+        border: none;
+        color: var(--text-label);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wide);
+        text-transform: uppercase;
+        text-align: left;
+        padding: 7px 10px;
+        cursor: pointer;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        transition: color var(--dur-micro) var(--ease);
+      }
+      .ws-tab-name:hover { color: var(--text-secondary); }
+      .ws-tab-item.active .ws-tab-name { color: var(--accent); }
+
+      .ws-tab-close {
+        background: none;
+        border: none;
+        color: var(--text-label);
+        font-family: var(--ff-mono);
+        font-size: 10px;
+        cursor: pointer;
+        padding: 7px 8px;
+        flex-shrink: 0;
+        transition: color var(--dur-micro) var(--ease);
+      }
+      .ws-tab-close:hover { color: var(--danger); }
+
+      .ws-tab-add {
+        background: none;
+        border: none;
+        border-top: var(--border-width) solid var(--border);
+        color: var(--text-label);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wide);
+        text-transform: uppercase;
+        text-align: left;
+        padding: 6px 10px;
+        cursor: pointer;
+        width: 100%;
+        transition: color var(--dur-micro) var(--ease);
+      }
+      .ws-tab-add:hover { color: var(--accent); }
     `;
   }
 
   render() {
-    const { tabs, current } = this.state;
+    const { tabs, current, open } = this.state;
 
-    return h('div', { className: 'ws-suite' },
-      h('button', { className: 'ws-btn', title: 'Save', onclick: this.bind(this._save) }, '\uD83D\uDCBE'),
-      h('button', { className: 'ws-btn', title: 'Load', onclick: this.bind(this._load) }, '\uD83D\uDCC2'),
-      h('div', { className: 'ws-tabs' },
-        ...tabs.map((t, i) =>
-          h('button', {
-            key: i,
-            className: `ws-tab ${i === current ? 'ws-tab--active' : 'ws-tab--inactive'}`,
-            onclick: () => this._switchTab(i)
-          },
-            h('span', null, t.slug ? t.emoji : '\u2744\uFE0F'),
-            tabs.length > 1
-              ? h('span', { className: 'ws-tab-close', onclick: (e) => { e.stopPropagation(); this._closeTab(i); } }, '\u00D7')
-              : null
-          )
+    return h('div', { className: 'ws-root ws-suite', onclick: (e) => e.stopPropagation() },
+      h('button', {
+        className: `ws-trigger${open ? ' open' : ''}`,
+        onclick: this.bind(this._toggle),
+      },
+        'WS',
+        h('span', null, open ? '▴' : '▾'),
+      ),
+      h('div', { className: `ws-panel${open ? ' open' : ''}` },
+        h('div', { className: 'ws-panel-header' },
+          h('span', { className: 'ws-panel-label' }, 'Workspaces'),
+          h('div', { className: 'ws-panel-actions' },
+            h('button', { className: 'ws-action-btn', onclick: this.bind(this._save) }, 'save'),
+            h('button', { className: 'ws-action-btn', onclick: this.bind(this._load) }, 'load'),
+          ),
         ),
-        h('button', { className: 'ws-add', onclick: this.bind(this._addTab) }, '+')
-      )
+        h('div', { className: 'ws-tab-list' },
+          ...tabs.map((t, i) =>
+            h('div', {
+              className: `ws-tab-item${i === current ? ' active' : ''}`,
+              key: i,
+            },
+              h('button', {
+                className: 'ws-tab-name',
+                onclick: () => this._switchTab(i),
+              }, shortSlug(t.slug)),
+              tabs.length > 1
+                ? h('button', {
+                    className: 'ws-tab-close',
+                    onclick: (e) => { e.stopPropagation(); this._closeTab(i); },
+                  }, '\u00D7')
+                : null,
+            )
+          ),
+          h('button', { className: 'ws-tab-add', onclick: this.bind(this._addTab) }, '+ new'),
+        ),
+      ),
     );
   }
 }
