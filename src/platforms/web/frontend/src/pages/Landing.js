@@ -1,181 +1,147 @@
 import { Component, h } from '@monygroupcorp/microact';
-import { fetchJson } from '../lib/api.js';
 import { getAppUrl } from '../lib/urls.js';
+import { Sigil } from '../sandbox/components/Sigil.js';
 
 export class Landing extends Component {
-  constructor(props) {
-    super(props);
-    this.state = {
-      tools: [],
-      toolsLoading: true,
-      toolsError: null,
-    };
-  }
-
-  async didMount() {
-    try {
-      const payload = await fetchJson('/api/v1/tools/registry');
-      const tools = Array.isArray(payload) ? payload : (payload?.tools || []);
-      // Filter out internal tools
-      const visible = tools.filter(t => {
-        if (t.metadata?.hideFromLanding) return false;
-        const name = t.displayName || '';
-        if (/_COOK|_API/i.test(name)) return false;
-        return true;
-      });
-      this.setState({ tools: visible, toolsLoading: false });
-    } catch (err) {
-      this.setState({ toolsError: err.message, toolsLoading: false });
+  _onEnter(e) {
+    e.preventDefault();
+    const root = e.currentTarget.closest('.lp-root');
+    if (root) {
+      root.classList.add('exiting');
+      setTimeout(() => { window.location.href = getAppUrl(); }, 300);
+    } else {
+      window.location.href = getAppUrl();
     }
   }
 
   static get styles() {
     return `
-      .landing-hero {
+      .lp-root {
+        position: fixed;
+        inset: 0;
+        background: var(--canvas-bg);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+
+      /* Sigil watermark — centered behind content */
+      .lp-sigil {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: var(--text-primary);
+        pointer-events: none;
+      }
+
+      .lp-main {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 48px;
+      }
+
+      .lp-headline {
         text-align: center;
-        padding: 4rem 1rem 2rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
       }
-      .landing-hero h1 {
-        font-size: 3.5rem;
-        font-weight: 800;
-        color: #fff;
-        margin-bottom: 0.5rem;
-      }
-      .landing-hero .subtitle {
-        font-size: 1rem;
-        color: #666;
-        margin-bottom: 0.25rem;
-      }
-      .landing-hero .tagline {
-        font-size: 1.15rem;
-        color: #888;
-        margin-bottom: 2rem;
-      }
-      .landing-cta {
-        display: inline-block;
-        background: #fff;
-        color: #0a0a0a;
-        padding: 0.75rem 2rem;
-        border-radius: 6px;
-        border: none;
-        font-weight: 600;
-        font-size: 1rem;
-        cursor: pointer;
-      }
-      .landing-cta:hover { background: #e0e0e0; }
 
-      .tools-section {
-        padding: 2rem 1rem;
-        max-width: 900px;
-        margin: 0 auto;
-      }
-      .tools-section h2 {
-        color: #fff;
-        margin-bottom: 1rem;
-        font-size: 1.3rem;
-      }
-      .tools-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-        gap: 0.75rem;
-      }
-      .tool-tile {
-        background: #141414;
-        border: 1px solid #1e1e1e;
-        border-radius: 6px;
-        padding: 0.75rem;
-      }
-      .tool-tile h4 {
-        color: #e0e0e0;
-        font-size: 0.9rem;
-        margin-bottom: 0.25rem;
-      }
-      .tool-tile p {
-        color: #666;
-        font-size: 0.8rem;
-        line-height: 1.3;
-      }
-      .tool-tile .tool-category {
-        font-size: 0.7rem;
-        color: #555;
+      .lp-wordmark {
+        font-family: var(--ff-display);
+        font-size: clamp(56px, 8vw, 96px);
+        font-weight: var(--fw-bold);
+        letter-spacing: var(--ls-widest);
         text-transform: uppercase;
-        letter-spacing: 0.05em;
-        margin-bottom: 0.25rem;
+        color: var(--text-primary);
+        margin: 0;
+        line-height: 1;
+        animation: fadeIn var(--dur-entry) var(--ease) 0.1s both;
       }
 
-      .about-section {
-        padding: 2rem 1rem;
-        max-width: 700px;
-        margin: 0 auto;
+      .lp-tagline {
+        font-family: var(--ff-sans);
+        font-size: var(--fs-md);
+        font-weight: var(--fw-light);
+        color: var(--text-secondary);
+        letter-spacing: var(--ls-wide);
+        margin: 0;
+        animation: fadeIn var(--dur-entry) var(--ease) 0.25s both;
       }
-      .about-section h2 {
-        color: #fff;
-        margin-bottom: 1rem;
-        font-size: 1.3rem;
+
+      .lp-nav {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        animation: fadeIn var(--dur-entry) var(--ease) 0.4s both;
       }
-      .about-section p {
-        color: #888;
-        line-height: 1.6;
-        margin-bottom: 1rem;
+
+      .lp-nav-link {
+        font-family: var(--ff-condensed);
+        font-size: var(--fs-xs);
+        font-weight: var(--fw-medium);
+        letter-spacing: var(--ls-widest);
+        text-transform: uppercase;
+        color: var(--text-label);
+        text-decoration: none;
+        padding: 6px 14px;
+        border: var(--border-width) solid var(--border);
+        transition:
+          color       var(--dur-interact) var(--ease),
+          border-color var(--dur-interact) var(--ease);
       }
-      .about-section ul {
-        list-style: none;
-        padding: 0;
+      .lp-nav-link:hover {
+        color: var(--text-secondary);
+        border-color: var(--border-hover);
       }
-      .about-section li {
-        color: #888;
-        padding: 0.4rem 0;
-        line-height: 1.5;
+
+      .lp-nav-cta {
+        font-family: var(--ff-condensed);
+        font-size: var(--fs-xs);
+        font-weight: var(--fw-medium);
+        letter-spacing: var(--ls-widest);
+        text-transform: uppercase;
+        color: var(--accent);
+        background: var(--accent-dim);
+        border: var(--border-width) solid var(--accent-border);
+        padding: 6px 20px;
+        cursor: pointer;
+        transition:
+          background   var(--dur-interact) var(--ease),
+          border-color var(--dur-interact) var(--ease);
       }
-      .about-section li strong {
-        color: #ccc;
+      .lp-nav-cta:hover {
+        background: rgba(0,223,200,0.2);
+        border-color: var(--accent);
+      }
+
+      /* Transition out — landing dissolves into sandbox */
+      .lp-root.exiting {
+        animation: fadeIn var(--dur-panel) var(--ease) reverse forwards;
+        pointer-events: none;
       }
     `;
   }
 
   render() {
-    const { tools, toolsLoading, toolsError } = this.state;
-
-    return h('div', null,
-      // Hero
-      h('section', { className: 'landing-hero' },
-        h('h1', null, 'NOEMA.ART'),
-        h('p', { className: 'subtitle' }, '[Powered by StationThis]'),
-        h('p', { className: 'tagline' }, 'Generative Studio for Manifestation'),
-        h('a', { className: 'landing-cta', href: getAppUrl() }, 'Create Now')
+    return h('div', { className: 'lp-root' },
+      h(Sigil, { size: 480, opacity: 0.04, className: 'lp-sigil' }),
+      h('main', { className: 'lp-main' },
+        h('div', { className: 'lp-headline' },
+          h('h1', { className: 'lp-wordmark' }, 'NOEMA'),
+          h('p',  { className: 'lp-tagline'  }, 'Composable Generative Studio.'),
+        ),
+        h('nav', { className: 'lp-nav' },
+          h('a', { href: '/docs', className: 'lp-nav-link' }, 'Documentation'),
+          h('button', { className: 'lp-nav-cta', onclick: this.bind(this._onEnter) }, 'Enter Console'),
+        ),
       ),
-
-      // Tools
-      h('section', { className: 'tools-section' },
-        h('h2', null, 'Available Tools'),
-        toolsLoading
-          ? h('p', { style: { color: '#666' } }, 'Loading tools...')
-          : toolsError
-            ? h('p', { style: { color: '#f88' } }, 'Failed to load tools.')
-            : h('div', { className: 'tools-grid' },
-                ...tools.map(t =>
-                  h('div', { className: 'tool-tile', key: t.toolId },
-                    h('div', { className: 'tool-category' }, t.category || 'tool'),
-                    h('h4', null, t.displayName || t.toolId),
-                    h('p', null, t.description ? t.description.slice(0, 100) : '')
-                  )
-                )
-              )
-      ),
-
-      // About
-      h('section', { className: 'about-section' },
-        h('h2', null, 'About NOEMA'),
-        h('p', null, 'NOEMA is an independent AI lab that ships uncensored, fully-custom models. Everything we build is open-source and crypto-native.'),
-        h('ul', null,
-          h('li', null, h('strong', null, 'Usage-based pricing.'), ' Buy the points you need; no subscriptions, no lock-ins.'),
-          h('li', null, h('strong', null, 'Creator stack included.'), ' NFT collection generator, model training, and dataset tools built-in.'),
-          h('li', null, h('strong', null, 'Incentive engine.'), ' Contribute datasets or custom workflows and earn automatic rewards.'),
-          h('li', null, h('strong', null, 'Multi-Platform.'), ' Web Canvas, Telegram bot, REST & WebSocket APIs; Discord coming soon.'),
-          h('li', null, h('strong', null, 'Cypherpunk-aligned.'), ' Open repos, transparent weights, zero censorship filters.')
-        )
-      ),
-
     );
   }
 }
