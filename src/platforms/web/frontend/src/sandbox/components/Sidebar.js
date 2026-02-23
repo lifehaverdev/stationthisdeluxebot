@@ -179,6 +179,13 @@ export class Sidebar extends Component {
         overflow: hidden;
       }
 
+      .sb-sidebar-wrap {
+        position: relative;
+        display: flex;
+        align-items: stretch;
+        flex-shrink: 0;
+      }
+
       .sb-handle {
         position: absolute;
         left: -20px;
@@ -237,15 +244,17 @@ export class Sidebar extends Component {
   render() {
     const { collapsed } = this.state;
 
-    return h('aside', {
-      id: 'sidebar',
-      className: `sb-root${collapsed ? ' collapsed' : ''}`,
-    },
-      h('div', { className: 'sb-panel-header' },
-        h('span', { className: 'sb-label' }, 'Tools')
-      ),
-      h('div', { className: 'sb-list' },
-        ...(collapsed ? [] : this._renderTools())
+    return h('div', { className: 'sb-sidebar-wrap' },
+      h('aside', {
+        id: 'sidebar',
+        className: `sb-root sandbox-sidebar${collapsed ? ' collapsed' : ''}`,
+      },
+        h('div', { className: 'sb-panel-header' },
+          h('span', { className: 'sb-label' }, 'Tools')
+        ),
+        h('div', { className: 'sb-list' },
+          ...(collapsed ? [] : this._renderTools())
+        )
       ),
       h('button', {
         className: 'sb-handle',
