@@ -123,50 +123,169 @@ export class AuthWidget extends Component {
 
   static get styles() {
     return `
+      /* Badge — minimized corner state */
       .aw-badge {
-        position: fixed; top: 12px; right: 12px; z-index: 500;
-        background: #1a1a1a; border: 1px solid #333; border-radius: 6px;
-        padding: 6px 12px; color: #888; font-size: 13px; cursor: pointer;
+        position: fixed;
+        top: 12px; right: 12px;
+        z-index: var(--z-modal);
+        background: var(--surface-2);
+        border: var(--border-width) solid var(--border);
+        color: var(--text-label);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wide);
+        text-transform: uppercase;
+        cursor: pointer;
+        padding: 5px 12px;
+        transition: border-color var(--dur-micro) var(--ease), color var(--dur-micro) var(--ease);
       }
-      .aw-badge:hover { border-color: #555; color: #fff; }
+      .aw-badge:hover { border-color: var(--border-hover); color: var(--text-secondary); }
+
+      /* Overlay backdrop */
       .aw-overlay {
-        position: fixed; inset: 0; z-index: 400;
+        position: fixed; inset: 0;
+        z-index: var(--z-modal);
         display: flex; align-items: center; justify-content: center;
-        background: rgba(0,0,0,0.55); pointer-events: all;
+        background: rgba(11,12,13,0.85);
+        pointer-events: all;
+        animation: fadeIn var(--dur-trans) var(--ease);
       }
+
+      /* Instrument panel */
       .aw-card {
-        background: #141414; border: 1px solid #2a2a2a; border-radius: 12px;
-        padding: 2rem; width: 360px;
-        box-shadow: 0 16px 48px rgba(0,0,0,0.8);
+        background: var(--surface-2);
+        border: var(--border-width) solid var(--border);
+        width: 320px;
+        padding: 0;
+        position: relative;
+        animation: fadeUp var(--dur-trans) var(--ease);
       }
-      .aw-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
-      .aw-header h3 { color: #fff; font-size: 1.1rem; margin: 0; }
-      .aw-minimize { background: none; border: none; color: #888; font-size: 1.2rem; cursor: pointer; padding: 0; width: auto; }
-      .aw-minimize:hover { color: #fff; }
+      /* Corner brackets */
+      .aw-card::before,
+      .aw-card::after {
+        content: '';
+        position: absolute;
+        width: 10px; height: 10px;
+        border-color: var(--border-hover);
+        border-style: solid;
+        pointer-events: none;
+      }
+      .aw-card::before { top: -1px; left: -1px; border-width: 1px 0 0 1px; }
+      .aw-card::after  { bottom: -1px; right: -1px; border-width: 0 1px 1px 0; }
+
+      /* Header strip */
+      .aw-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 16px;
+        border-bottom: var(--border-width) solid var(--border);
+        background: var(--surface-3);
+      }
+      .aw-header h3 {
+        font-family: var(--ff-condensed);
+        font-size: var(--fs-sm);
+        font-weight: var(--fw-medium);
+        letter-spacing: var(--ls-widest);
+        text-transform: uppercase;
+        color: var(--text-primary);
+        margin: 0;
+      }
+      .aw-minimize {
+        background: none;
+        border: var(--border-width) solid transparent;
+        color: var(--text-label);
+        font-size: 13px;
+        cursor: pointer;
+        padding: 0;
+        width: 22px; height: 22px;
+        display: flex; align-items: center; justify-content: center;
+        transition: color var(--dur-micro) var(--ease), border-color var(--dur-micro) var(--ease);
+      }
+      .aw-minimize:hover { color: var(--danger); border-color: var(--danger); }
+
+      /* Body */
       .aw-error {
-        background: #2a1010; border: 1px solid #5a2020; color: #f88;
-        padding: 0.5rem 0.75rem; border-radius: 4px; margin-bottom: 1rem; font-size: 0.85rem;
+        background: var(--danger-dim);
+        border: var(--border-width) solid var(--danger);
+        color: var(--danger);
+        padding: 8px 12px;
+        margin: 12px 16px;
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wide);
       }
+
+      /* Action buttons */
       .aw-card button {
-        width: 100%; padding: 0.65rem; border: none; border-radius: 4px;
-        cursor: pointer; font-size: 0.95rem; margin-bottom: 0.5rem;
+        width: 100%;
+        padding: 10px 16px;
+        border: var(--border-width) solid var(--border);
+        cursor: pointer;
+        font-family: var(--ff-condensed);
+        font-size: var(--fs-xs);
+        font-weight: var(--fw-medium);
+        letter-spacing: var(--ls-widest);
+        text-transform: uppercase;
+        background: var(--surface-1);
+        color: var(--text-secondary);
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        transition:
+          background  var(--dur-interact) var(--ease),
+          border-color var(--dur-interact) var(--ease),
+          color       var(--dur-interact) var(--ease);
       }
-      .aw-btn-wallet { background: #fff; color: #0a0a0a; font-weight: 600; }
-      .aw-btn-wallet:hover { background: #e0e0e0; }
-      .aw-btn-wallet:disabled { opacity: 0.5; cursor: wait; }
-      .aw-hint { margin-top: 0.75rem; text-align: center; font-size: 0.8rem; color: #555; }
-      .aw-hint a { color: #666; text-decoration: underline; }
-      .aw-hint a:hover { color: #999; }
-      .aw-picker-list { display: flex; flex-direction: column; gap: 8px; }
+      .aw-card button:hover {
+        background: var(--accent-dim);
+        border-color: var(--accent-border);
+        color: var(--accent);
+      }
+      .aw-btn-wallet:disabled { opacity: 0.35; cursor: not-allowed; }
+      .aw-btn-wallet:disabled:hover {
+        background: var(--surface-1);
+        border-color: var(--border);
+        color: var(--text-secondary);
+      }
+
+      .aw-hint {
+        margin-top: 8px;
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        color: var(--text-label);
+        letter-spacing: var(--ls-wide);
+      }
+      .aw-hint a { color: var(--text-label); text-decoration: underline; }
+      .aw-hint a:hover { color: var(--text-secondary); }
+
+      /* Wallet picker */
+      .aw-picker-list { display: flex; flex-direction: column; gap: 0; }
       .aw-wallet-opt {
         display: flex; align-items: center; gap: 12px;
-        width: 100%; padding: 10px 14px; border: 1px solid #333;
-        border-radius: 8px; background: #1a1a1a; color: #e0e0e0;
-        font-size: 14px; cursor: pointer; text-align: left;
+        width: 100%; padding: 10px 14px;
+        border: var(--border-width) solid var(--border);
+        border-top: none;
+        background: var(--surface-1);
+        color: var(--text-secondary);
+        font-family: var(--ff-condensed);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wider);
+        text-transform: uppercase;
+        cursor: pointer; text-align: left;
+        transition:
+          background  var(--dur-interact) var(--ease),
+          border-color var(--dur-interact) var(--ease),
+          color       var(--dur-interact) var(--ease);
       }
-      .aw-wallet-opt:hover { border-color: #555; background: #222; color: #fff; }
-      .aw-wallet-opt img { width: 28px; height: 28px; border-radius: 4px; flex-shrink: 0; }
+      .aw-wallet-opt:first-child { border-top: var(--border-width) solid var(--border); }
+      .aw-wallet-opt:hover { border-color: var(--accent-border); background: var(--accent-dim); color: var(--accent); }
+      .aw-wallet-opt img { width: 24px; height: 24px; flex-shrink: 0; }
       .aw-wallet-opt span { flex: 1; }
+
+      /* Inner body padding wrapper */
+      .aw-body { padding: 16px; }
     `;
   }
 
