@@ -86,20 +86,78 @@ export class CostHUD extends Component {
 
   static get styles() {
     return `
-      .cost-hud {
-        position: fixed; top: 80px; right: 20px; z-index: 90;
-        background: rgba(0,0,0,0.9); border: 1px solid #333; border-radius: 8px;
-        padding: 12px 16px; color: #fff; font-size: 14px; min-width: 150px;
-        backdrop-filter: blur(10px); box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-        cursor: pointer; transition: all 0.2s ease;
+      .hud-root {
+        position: fixed;
+        bottom: 16px;
+        left: 16px;
+        z-index: var(--z-hud);
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        pointer-events: none;
       }
-      .cost-hud:hover { background: rgba(0,0,0,0.95); border-color: #555; }
-      .cost-hud-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
-      .cost-hud-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #888; }
-      .cost-hud-reset { background: none; border: none; color: #888; cursor: pointer; font-size: 16px; padding: 2px 4px; border-radius: 3px; }
-      .cost-hud-reset:hover { color: #fff; background: rgba(255,255,255,0.1); }
-      .cost-hud-amount { font-size: 18px; font-weight: 700; line-height: 1.2; }
-      .cost-hud-details { font-size: 11px; color: #888; line-height: 1.3; }
+
+      .hud-panel {
+        background: var(--surface-2);
+        border: var(--border-width) solid var(--border);
+        padding: 6px 10px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        pointer-events: auto;
+        cursor: pointer;
+        position: relative;
+        transition: border-color var(--dur-micro) var(--ease);
+      }
+      .hud-panel:hover { border-color: var(--border-hover); }
+
+      /* Top-left corner bracket */
+      .hud-panel::before {
+        content: '';
+        position: absolute;
+        top: -1px; left: -1px;
+        width: 6px; height: 6px;
+        border: 1px solid var(--border-hover);
+        border-right: none;
+        border-bottom: none;
+      }
+
+      .hud-label {
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        color: var(--text-label);
+        letter-spacing: var(--ls-wider);
+        text-transform: uppercase;
+        flex-shrink: 0;
+      }
+
+      .hud-value {
+        font-family: var(--ff-mono);
+        font-size: var(--fs-sm);
+        color: var(--text-primary);
+        font-weight: var(--fw-medium);
+      }
+
+      .hud-unit {
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        color: var(--text-label);
+        text-transform: uppercase;
+        letter-spacing: var(--ls-wide);
+      }
+
+      .hud-reset {
+        background: none;
+        border: none;
+        color: var(--text-label);
+        cursor: pointer;
+        font-size: 13px;
+        padding: 0;
+        margin-left: auto;
+        line-height: 1;
+        transition: color var(--dur-micro) var(--ease);
+      }
+      .hud-reset:hover { color: var(--danger); }
     `;
   }
 
@@ -107,18 +165,18 @@ export class CostHUD extends Component {
     const { denomination, totals } = this.state;
     const usd = totals.usd || 0;
     const main = this._format(this._convert(usd, denomination), denomination);
-    const others = DENOMINATIONS
-      .filter(d => d !== denomination)
-      .map(d => this._format(this._convert(usd, d), d))
-      .join(' | ');
 
-    return h('div', { className: 'cost-hud', onclick: this.bind(this._cycle) },
-      h('div', { className: 'cost-hud-header' },
-        h('span', { className: 'cost-hud-title' }, 'TOTAL COST'),
-        h('button', { className: 'cost-hud-reset', title: 'Reset all costs', onclick: this.bind(this._reset) }, '\u21BB')
-      ),
-      h('div', { className: 'cost-hud-amount' }, main),
-      h('div', { className: 'cost-hud-details' }, others || 'No costs yet')
+    return h('div', { className: 'hud-root' },
+      h('div', { className: 'hud-panel', onclick: this.bind(this._cycle) },
+        h('span', { className: 'hud-label' }, 'cost'),
+        h('span', { className: 'hud-value' }, main),
+        h('span', { className: 'hud-unit' }, denomination),
+        h('button', {
+          className: 'hud-reset',
+          title: 'Reset all costs',
+          onclick: this.bind(this._reset),
+        }, '\u21BB'),
+      )
     );
   }
 }
