@@ -202,24 +202,16 @@ export class Docs extends Component {
 
       .docs-header-wordmark {
         font-family: var(--ff-display);
-        font-size: 15px;
+        font-size: var(--fs-lg);
         font-weight: var(--fw-bold);
         letter-spacing: var(--ls-widest);
         text-transform: uppercase;
         color: var(--text-primary);
-      }
-
-      .docs-header-home {
-        font-family: var(--ff-condensed);
-        font-size: var(--fs-xs);
-        font-weight: var(--fw-medium);
-        letter-spacing: var(--ls-widest);
-        text-transform: uppercase;
-        color: var(--text-label);
         text-decoration: none;
-        transition: color var(--dur-micro) var(--ease);
+        line-height: 1;
+        transition: opacity var(--dur-micro) var(--ease);
       }
-      .docs-header-home:hover { color: var(--text-secondary); }
+      .docs-header-wordmark:hover { opacity: 0.7; }
 
       /* ── Body ───────────────────────────────────────────── */
       .docs-body {
@@ -475,8 +467,7 @@ export class Docs extends Component {
 
       /* Header */
       h('header', { className: 'docs-header' },
-        h('span', { className: 'docs-header-wordmark' }, 'NOEMA'),
-        h('a', { href: '/', className: 'docs-header-home' }, 'Home'),
+        h('a', { href: '/', className: 'docs-header-wordmark' }, 'NOEMA'),
       ),
 
       /* Body */

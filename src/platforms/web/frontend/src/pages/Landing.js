@@ -35,120 +35,231 @@ export class Landing extends Component {
 
   static get styles() {
     return `
+      /* ── Animations ─────────────────────────────────────── */
+
+      @keyframes lp-fade-up {
+        from { opacity: 0; transform: translateY(14px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+
+      @keyframes lp-sigil-drift {
+        from { transform: translate(-38%, -50%) rotate(0deg); }
+        to   { transform: translate(-38%, -50%) rotate(360deg); }
+      }
+
+      @keyframes lp-scanline {
+        0%   { top: -2px; opacity: 0; }
+        4%   { opacity: 1; }
+        96%  { opacity: 1; }
+        100% { top: calc(100% + 2px); opacity: 0; }
+      }
+
       /* ── Root ───────────────────────────────────────────── */
+
       .lp-root {
         background: var(--canvas-bg);
         color: var(--text-primary);
-        font-family: var(--ff-condensed);
+        overflow-x: hidden;
+      }
+
+      /* ── System bar ─────────────────────────────────────── */
+
+      .lp-sysbar {
+        height: 26px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 24px;
+        border-bottom: var(--border-width) solid var(--border);
+        background: var(--surface-1);
+      }
+
+      .lp-sysbar span {
+        font-family: var(--ff-mono);
+        font-size: 9px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: rgba(221,223,224,0.18);
       }
 
       /* ── Hero ───────────────────────────────────────────── */
+
       .lp-hero {
         position: relative;
         min-height: 100vh;
         display: flex;
         align-items: center;
-        justify-content: center;
         overflow: hidden;
+        /* Orthogonal grid — echoes the ether canvas */
+        background-image:
+          linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+        background-size: 48px 48px;
         border-bottom: var(--border-width) solid var(--border);
       }
 
-      .lp-sigil {
+      /* Scanline sweep — implies the system is alive */
+      .lp-hero::after {
+        content: '';
         position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: linear-gradient(
+          90deg,
+          transparent 0%,
+          rgba(0,223,200,0.18) 15%,
+          rgba(0,223,200,0.45) 50%,
+          rgba(0,223,200,0.18) 85%,
+          transparent 100%
+        );
+        top: -2px;
+        animation: lp-scanline 11s linear 1.5s infinite;
         pointer-events: none;
       }
 
+      /* Sigil — dominant, right-offset, slow rotation */
+      .lp-sigil {
+        position: absolute;
+        top: 50%;
+        left: 62%;
+        transform: translate(-38%, -50%) rotate(0deg);
+        animation: lp-sigil-drift 180s linear infinite;
+        pointer-events: none;
+      }
+
+      /* Radial fade from left — keeps text readable */
+      .lp-hero-vignette {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(
+          ellipse 55% 90% at 20% 50%,
+          var(--canvas-bg) 0%,
+          rgba(11,12,13,0.6) 60%,
+          transparent 100%
+        );
+        pointer-events: none;
+      }
+
+      /* Left-anchored content column */
       .lp-hero-body {
         position: relative;
         z-index: 1;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 32px;
-        text-align: center;
-        padding: 0 24px;
+        padding: 0 64px;
+        max-width: 680px;
       }
 
-      .lp-hero-headline {
+      .lp-hero-eyebrow {
+        font-family: var(--ff-mono);
+        font-size: 9px;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin: 0 0 22px;
         display: flex;
-        flex-direction: column;
         align-items: center;
-        gap: 12px;
+        gap: 14px;
+        animation: lp-fade-up var(--dur-entry) var(--ease) 0.05s both;
+      }
+      .lp-hero-eyebrow::before {
+        content: '';
+        display: inline-block;
+        width: 28px;
+        height: 1px;
+        background: var(--accent);
+        flex-shrink: 0;
       }
 
       .lp-wordmark {
         font-family: var(--ff-display);
-        font-size: clamp(56px, 8vw, 96px);
+        font-size: clamp(80px, 12vw, 136px);
         font-weight: var(--fw-bold);
-        letter-spacing: var(--ls-widest);
+        letter-spacing: 0.08em;
         text-transform: uppercase;
         color: var(--text-primary);
         margin: 0;
-        line-height: 1;
-        animation: fadeIn var(--dur-entry) var(--ease) 0.1s both;
+        line-height: 0.88;
+        animation: lp-fade-up var(--dur-entry) var(--ease) 0.12s both;
       }
 
-      .lp-studio-tag {
-        font-family: var(--ff-condensed);
-        font-size: var(--fs-xs);
-        font-weight: var(--fw-medium);
-        letter-spacing: var(--ls-widest);
-        text-transform: uppercase;
-        color: var(--text-label);
-        margin: 0;
-        animation: fadeIn var(--dur-entry) var(--ease) 0.2s both;
+      /* Accent rule below wordmark */
+      .lp-hero-rule {
+        height: 1px;
+        background: linear-gradient(90deg, var(--accent) 0%, rgba(0,223,200,0.2) 50%, transparent 100%);
+        margin: 22px 0;
+        animation: lp-fade-up var(--dur-entry) var(--ease) 0.2s both;
       }
 
       .lp-hero-sub {
         font-family: var(--ff-condensed);
-        font-size: clamp(14px, 2vw, 18px);
+        font-size: clamp(15px, 2vw, 19px);
         font-weight: var(--fw-medium);
-        letter-spacing: var(--ls-wide);
+        letter-spacing: 0.04em;
         color: var(--text-secondary);
-        margin: 0;
-        animation: fadeIn var(--dur-entry) var(--ease) 0.3s both;
+        margin: 0 0 40px;
+        line-height: 1.5;
+        animation: lp-fade-up var(--dur-entry) var(--ease) 0.28s both;
       }
 
       .lp-hero-actions {
         display: flex;
-        gap: 12px;
-        animation: fadeIn var(--dur-entry) var(--ease) 0.45s both;
+        gap: 10px;
+        animation: lp-fade-up var(--dur-entry) var(--ease) 0.38s both;
       }
 
-      .lp-btn-cta {
-        font-family: var(--ff-condensed);
-        font-size: var(--fs-xs);
-        font-weight: var(--fw-medium);
-        letter-spacing: var(--ls-widest);
+      /* Corner readout — bottom-right annotation */
+      .lp-hero-readout {
+        position: absolute;
+        bottom: 24px;
+        right: 28px;
+        z-index: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 5px;
+        animation: lp-fade-up var(--dur-entry) var(--ease) 0.6s both;
+      }
+      .lp-readout-line {
+        font-family: var(--ff-mono);
+        font-size: 9px;
+        letter-spacing: 0.16em;
         text-transform: uppercase;
-        color: var(--accent);
-        background: var(--accent-dim);
-        border: var(--border-width) solid var(--accent-border);
-        padding: 8px 24px;
+        color: rgba(221,223,224,0.18);
+      }
+      .lp-readout-line.hi { color: rgba(0,223,200,0.38); }
+
+      /* ── Buttons ────────────────────────────────────────── */
+
+      .lp-btn-cta {
+        font-family: var(--ff-mono);
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--canvas-bg);
+        background: var(--accent);
+        border: var(--border-width) solid var(--accent);
+        padding: 10px 26px;
         cursor: pointer;
         text-decoration: none;
         transition:
           background   var(--dur-interact) var(--ease),
-          border-color var(--dur-interact) var(--ease);
+          color        var(--dur-interact) var(--ease);
       }
       .lp-btn-cta:hover {
-        background: rgba(0,223,200,0.2);
-        border-color: var(--accent);
+        background: transparent;
+        color: var(--accent);
       }
 
       .lp-btn-ghost {
-        font-family: var(--ff-condensed);
-        font-size: var(--fs-xs);
-        font-weight: var(--fw-medium);
-        letter-spacing: var(--ls-widest);
+        font-family: var(--ff-mono);
+        font-size: 10px;
+        letter-spacing: 0.18em;
         text-transform: uppercase;
         color: var(--text-label);
         background: none;
         border: var(--border-width) solid var(--border);
-        padding: 8px 24px;
+        padding: 10px 26px;
         cursor: pointer;
         text-decoration: none;
         transition:
@@ -160,16 +271,44 @@ export class Landing extends Component {
         border-color: var(--border-hover);
       }
 
-      /* ── Capability Strip ───────────────────────────────── */
-      .lp-capabilities {
+      /* ── Section divider ────────────────────────────────── */
+
+      .lp-section-bar {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        height: 36px;
+        padding: 0 64px;
         border-bottom: var(--border-width) solid var(--border);
+        background: var(--surface-1);
+      }
+      .lp-section-num {
+        font-family: var(--ff-mono);
+        font-size: 9px;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: var(--accent);
+      }
+      .lp-section-label {
+        font-family: var(--ff-mono);
+        font-size: 9px;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: var(--text-label);
       }
 
+      /* ── Capabilities ───────────────────────────────────── */
+
       .lp-cap-item {
+        display: grid;
+        grid-template-columns: 200px 1fr;
+        gap: 48px;
+        align-items: center;
+        padding: 0 64px;
+        min-height: 52px;
         border-bottom: var(--border-width) solid var(--border);
-        padding: 20px 48px;
-        cursor: default;
         transition: background var(--dur-interact) var(--ease);
+        cursor: default;
       }
       .lp-cap-item:last-child { border-bottom: none; }
       .lp-cap-item:hover { background: var(--surface-1); }
@@ -177,83 +316,125 @@ export class Landing extends Component {
       .lp-cap-label {
         font-family: var(--ff-mono);
         font-size: var(--fs-xs);
-        letter-spacing: var(--ls-widest);
+        letter-spacing: 0.12em;
         text-transform: uppercase;
         color: var(--text-secondary);
+        display: flex;
+        align-items: center;
+        gap: 10px;
         transition: color var(--dur-interact) var(--ease);
       }
+      /* Small square indicator */
+      .lp-cap-label::before {
+        content: '';
+        display: inline-block;
+        width: 5px;
+        height: 5px;
+        border: var(--border-width) solid var(--border);
+        flex-shrink: 0;
+        transition:
+          border-color var(--dur-interact) var(--ease),
+          background   var(--dur-interact) var(--ease);
+      }
       .lp-cap-item:hover .lp-cap-label { color: var(--accent); }
+      .lp-cap-item:hover .lp-cap-label::before {
+        border-color: var(--accent);
+        background: var(--accent-dim);
+      }
 
       .lp-cap-desc {
         font-family: var(--ff-condensed);
-        font-size: var(--fs-xs);
-        letter-spacing: var(--ls-wide);
+        font-size: 12px;
+        letter-spacing: 0.04em;
         color: var(--text-label);
-        max-height: 0;
-        overflow: hidden;
-        opacity: 0;
-        transition:
-          max-height 0.28s var(--ease),
-          opacity    0.22s var(--ease),
-          margin-top 0.22s var(--ease);
-        margin-top: 0;
+        line-height: 1.45;
+        transition: color var(--dur-interact) var(--ease);
       }
-      .lp-cap-item:hover .lp-cap-desc {
-        max-height: 3em;
-        opacity: 1;
-        margin-top: 8px;
-      }
+      .lp-cap-item:hover .lp-cap-desc { color: var(--text-secondary); }
 
       /* ── Philosophy ─────────────────────────────────────── */
-      .lp-philosophy {
-        padding: 80px 48px;
-        border-bottom: var(--border-width) solid var(--border);
-        max-width: 640px;
-      }
 
+      .lp-philosophy {
+        padding: 88px 64px;
+        border-bottom: var(--border-width) solid var(--border);
+        background: var(--surface-1);
+      }
       .lp-philosophy p {
         font-family: var(--ff-condensed);
-        font-size: clamp(16px, 2.2vw, 22px);
+        font-size: clamp(17px, 2.4vw, 26px);
         font-weight: var(--fw-medium);
-        letter-spacing: var(--ls-wide);
+        letter-spacing: 0.03em;
         color: var(--text-secondary);
-        line-height: 1.65;
+        line-height: 1.6;
         margin: 0;
+        max-width: 680px;
+      }
+      /* Key phrases in primary */
+      .lp-philosophy em {
+        font-style: normal;
+        color: var(--text-primary);
       }
 
       /* ── Signals ────────────────────────────────────────── */
-      .lp-signals {
-        border-bottom: var(--border-width) solid var(--border);
-      }
 
       .lp-signal-item {
-        padding: 16px 48px;
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        padding: 16px 64px;
         border-bottom: var(--border-width) solid var(--border);
-        font-family: var(--ff-mono);
-        font-size: var(--fs-xs);
-        letter-spacing: var(--ls-widest);
-        text-transform: uppercase;
-        color: var(--text-label);
+        transition: background var(--dur-interact) var(--ease);
       }
       .lp-signal-item:last-child { border-bottom: none; }
+      .lp-signal-item:hover { background: var(--surface-1); }
+
+      .lp-signal-num {
+        font-family: var(--ff-mono);
+        font-size: 9px;
+        letter-spacing: 0.2em;
+        color: var(--accent);
+        flex-shrink: 0;
+        width: 22px;
+      }
+      .lp-signal-text {
+        font-family: var(--ff-mono);
+        font-size: 11px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--text-secondary);
+      }
 
       /* ── Final CTA ──────────────────────────────────────── */
+
       .lp-cta {
-        padding: 100px 48px;
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 32px;
+        position: relative;
+        padding: 112px 64px 100px;
+        overflow: hidden;
+        /* Accent-tinted version of the canvas grid */
+        background-image:
+          linear-gradient(rgba(0,223,200,0.018) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(0,223,200,0.018) 1px, transparent 1px);
+        background-size: 48px 48px;
       }
 
       .lp-cta-headline {
         font-family: var(--ff-display);
-        font-size: clamp(28px, 4vw, 48px);
+        font-size: clamp(36px, 6vw, 76px);
         font-weight: var(--fw-bold);
-        letter-spacing: var(--ls-widest);
+        letter-spacing: 0.07em;
         text-transform: uppercase;
         color: var(--text-primary);
-        margin: 0;
+        margin: 0 0 6px;
+        line-height: 0.92;
+      }
+
+      .lp-cta-sub {
+        font-family: var(--ff-mono);
+        font-size: 10px;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--text-label);
+        margin: 0 0 36px;
       }
     `;
   }
@@ -261,24 +442,44 @@ export class Landing extends Component {
   render() {
     return h('div', { className: 'lp-root' },
 
+      /* System bar */
+      h('div', { className: 'lp-sysbar' },
+        h('span', null, 'SYS.NOEMA.01'),
+        h('span', null, 'Composable Generative Studio'),
+      ),
+
       /* Hero */
       h('section', { className: 'lp-hero' },
-        h(Sigil, { size: 520, opacity: 0.04, className: 'lp-sigil' }),
+        h(Sigil, { size: 920, opacity: 0.055, className: 'lp-sigil' }),
+        h('div', { className: 'lp-hero-vignette' }),
+
         h('div', { className: 'lp-hero-body' },
-          h('div', { className: 'lp-hero-headline' },
-            h('h1', { className: 'lp-wordmark' }, 'NOEMA'),
-            h('p',  { className: 'lp-studio-tag'  }, 'Composable Generative Studio.'),
+          h('p', { className: 'lp-hero-eyebrow' }, 'Composable Generative Studio'),
+          h('h1', { className: 'lp-wordmark' }, 'NOEMA'),
+          h('div', { className: 'lp-hero-rule' }),
+          h('p', { className: 'lp-hero-sub' },
+            'Build, train, and publish AI workflows.'
           ),
-          h('p', { className: 'lp-hero-sub' }, 'Build, train, and publish AI workflows.'),
           h('div', { className: 'lp-hero-actions' },
             h('button', { className: 'lp-btn-cta', onclick: this.bind(this._onEnter) }, 'Enter Console'),
             h('a', { href: '/docs', className: 'lp-btn-ghost' }, 'Documentation'),
           ),
         ),
+
+        /* Corner readout annotation */
+        h('div', { className: 'lp-hero-readout' },
+          h('span', { className: 'lp-readout-line hi' }, 'Status: Online'),
+          h('span', { className: 'lp-readout-line' }, 'Any model'),
+          h('span', { className: 'lp-readout-line' }, 'Any tool'),
+        ),
       ),
 
-      /* Capability Strip */
-      h('section', { className: 'lp-capabilities' },
+      /* Capabilities */
+      h('div', { className: 'lp-section-bar' },
+        h('span', { className: 'lp-section-num' }, '01'),
+        h('span', { className: 'lp-section-label' }, 'Capabilities'),
+      ),
+      h('section', null,
         ...CAPABILITIES.map(c =>
           h('div', { className: 'lp-cap-item', key: c.label },
             h('div', { className: 'lp-cap-label' }, c.label),
@@ -288,23 +489,37 @@ export class Landing extends Component {
       ),
 
       /* Philosophy */
+      h('div', { className: 'lp-section-bar' },
+        h('span', { className: 'lp-section-num' }, '02'),
+        h('span', { className: 'lp-section-label' }, 'About'),
+      ),
       h('section', { className: 'lp-philosophy' },
         h('p', null,
-          'Noema is an open composable environment for building production-ready AI workflows. ',
-          'Use any model. Connect any tool. Share entire systems, not just outputs.'
+          'Noema is an open composable environment for building ',
+          h('em', null, 'production-ready AI workflows.'),
+          ' Use any model. Connect any tool. ',
+          h('em', null, 'Share entire systems, not just outputs.')
         ),
       ),
 
       /* Signals */
-      h('section', { className: 'lp-signals' },
-        ...SIGNALS.map(s =>
-          h('div', { className: 'lp-signal-item', key: s }, s)
+      h('div', { className: 'lp-section-bar' },
+        h('span', { className: 'lp-section-num' }, '03'),
+        h('span', { className: 'lp-section-label' }, 'Principles'),
+      ),
+      h('section', null,
+        ...SIGNALS.map((s, i) =>
+          h('div', { className: 'lp-signal-item', key: s },
+            h('span', { className: 'lp-signal-num' }, `0${i + 1}`),
+            h('span', { className: 'lp-signal-text' }, s),
+          )
         ),
       ),
 
       /* Final CTA */
       h('section', { className: 'lp-cta' },
         h('p', { className: 'lp-cta-headline' }, 'Enter the console.'),
+        h('p', { className: 'lp-cta-sub' }, 'No account required'),
         h('button', { className: 'lp-btn-cta', onclick: this.bind(this._onEnter) }, 'Enter Console'),
       ),
     );
