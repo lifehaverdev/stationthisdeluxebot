@@ -3,6 +3,7 @@ import { ConnectionLayer } from './ConnectionLayer.js';
 import { WindowRenderer } from './WindowRenderer.js';
 import { ToolWindowBody, SpellWindowBody, UploadWindowBody } from './ToolWindowBody.js';
 import { ConnectionDropPicker } from './ConnectionDropPicker.js';
+import { Sigil } from '../components/Sigil.js';
 import * as executionClient from '../executionClient.js';
 
 /**
@@ -183,10 +184,6 @@ export class SandboxCanvas extends Component {
     const newPanY = mouseY - (mouseY - viewport.panY) * scaleRatio;
 
     this.setState({ viewport: { panX: newPanX, panY: newPanY, scale: newScale } });
-
-    // Grid fades as you zoom out (feels infinite rather than bounded)
-    const gridOpacity = Math.min(1, Math.max(0.15, (newScale - 0.2) / 0.8));
-    this._rootEl && this._rootEl.style.setProperty('--grid-opacity', gridOpacity);
   }
 
   /** Convert screen coordinates to workspace (canvas) coordinates. */
@@ -567,69 +564,60 @@ export class SandboxCanvas extends Component {
         height: 100%;
         overflow: hidden;
         background-color: var(--canvas-bg);
+        /*
+         * Grid is applied via inline style in render() so that background-size
+         * and background-position update with pan/zoom. The isometric period
+         * is also scaled by viewport.scale to stay aligned at any zoom level.
+         */
       }
 
-      /* ── Ether grid ─────────────────────────────── */
       .sc-viewport {
         position: absolute;
         inset: 0;
         transform-origin: 0 0;
         will-change: transform;
-
-        /* Orthogonal grid — 32px, very low contrast */
-        --grid-color-ortho: rgba(255,255,255,calc(0.028 * var(--grid-opacity, 1)));
-        /* Isometric diagonals — even fainter */
-        --grid-color-iso:   rgba(255,255,255,calc(0.016 * var(--grid-opacity, 1)));
-
-        background-image:
-          /* Orthogonal vertical lines */
-          repeating-linear-gradient(
-            90deg,
-            var(--grid-color-ortho) 0px,
-            var(--grid-color-ortho) 1px,
-            transparent 1px,
-            transparent var(--grid-unit, 32px)
-          ),
-          /* Orthogonal horizontal lines */
-          repeating-linear-gradient(
-            0deg,
-            var(--grid-color-ortho) 0px,
-            var(--grid-color-ortho) 1px,
-            transparent 1px,
-            transparent var(--grid-unit, 32px)
-          ),
-          /* Isometric diagonal A — 30° */
-          repeating-linear-gradient(
-            30deg,
-            var(--grid-color-iso) 0px,
-            var(--grid-color-iso) 1px,
-            transparent 1px,
-            transparent calc(var(--grid-unit, 32px) * 1.155)
-          ),
-          /* Isometric diagonal B — 150° */
-          repeating-linear-gradient(
-            150deg,
-            var(--grid-color-iso) 0px,
-            var(--grid-color-iso) 1px,
-            transparent 1px,
-            transparent calc(var(--grid-unit, 32px) * 1.155)
-          );
-
-        background-size:
-          var(--grid-unit, 32px) var(--grid-unit, 32px),
-          var(--grid-unit, 32px) var(--grid-unit, 32px),
-          auto, auto;
       }
 
-      /* ── Node layer ─────────────────────────────── */
-      .sc-nodes {
+      /* ── Canvas sigil watermark ──────────────────── */
+      .sc-sigil {
         position: absolute;
-        inset: 0;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
         pointer-events: none;
+        color: var(--text-primary);
+        z-index: 0;
       }
 
       .sc-root--panning { cursor: grabbing; }
     `;
+  }
+
+  /** Build the combined ortho + isometric grid inline style for .sc-root */
+  _buildGridStyle(viewport) {
+    const { panX, panY, scale } = viewport;
+    // Grid opacity: fade when zoomed out far
+    const opacity = Math.min(1, Math.max(0.15, (scale - 0.2) / 0.8));
+    // Cell sizes in screen pixels (scale with viewport)
+    const orthoUnit = (32 * scale).toFixed(2);
+    // Isometric: perpendicular spacing 16px at scale=1.
+    // rhombus side = 16/sin(60°) ≈ 18.5px → horizontal diagonal = 32px.
+    // This creates equilateral 60°/120° rhombuses. Scaled with viewport so
+    // lines stay physically consistent regardless of zoom level.
+    const isoSpacing = (16 * scale).toFixed(2);
+    const co = `rgba(255,255,255,${(0.022 * opacity).toFixed(4)})`;
+    const ci = `rgba(255,255,255,${(0.014 * opacity).toFixed(4)})`;
+    const px = `${panX.toFixed(2)}px`;
+    const py = `${panY.toFixed(2)}px`;
+
+    return [
+      `background-image:`,
+      `  repeating-linear-gradient(90deg,  ${co} 0, ${co} 1px, transparent 1px, transparent ${orthoUnit}px),`,
+      `  repeating-linear-gradient(0deg,   ${co} 0, ${co} 1px, transparent 1px, transparent ${orthoUnit}px),`,
+      `  repeating-linear-gradient(30deg,  ${ci} 0, ${ci} 1px, transparent 1px, transparent ${isoSpacing}px),`,
+      `  repeating-linear-gradient(150deg, ${ci} 0, ${ci} 1px, transparent 1px, transparent ${isoSpacing}px)`,
+      `;background-position: ${px} ${py}`,
+    ].join(' ');
   }
 
   render() {
@@ -642,13 +630,21 @@ export class SandboxCanvas extends Component {
       ? { 'data-connecting-type': activeConnection.outputType }
       : {};
 
+    // Grid background: computed per-render so scale/pan are baked into the CSS.
+    // This is the only way to keep isometric lines aligned with orthogonal lines
+    // across zoom levels — background-size/position track viewport exactly.
+    const gridStyle = this._buildGridStyle(viewport);
+
     return h('div', {
       className: rootCls,
       ref: (el) => { this._rootEl = el; },
       onmousedown: this.bind(this._onCanvasMouseDown),
       onwheel: this.bind(this._onWheel),
+      style: gridStyle,
       ...connectingAttr,
     },
+      // Sigil watermark — fixed to visible area, not part of canvas space
+      h(Sigil, { size: 320, opacity: 0.025, className: 'sc-sigil' }),
       h('div', { className: 'sc-viewport', style: `transform: ${transform}` },
         ...[...windows.values()].map(win =>
           h(WindowRenderer, {
