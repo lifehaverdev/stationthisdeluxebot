@@ -1,6 +1,6 @@
 .workspace-suite {
   position: fixed;
-  /* Sit just below the header’s padding area */
+  /* Sit just below the header's padding area */
   top: calc(var(--sandbox-header-bottom, 56px) - 4px);
   left: var(--space-8);
   display: flex;
@@ -23,32 +23,66 @@
   padding: 4px 6px;
 }
 
+/* ── Workspace tab bar ──────────────────────── */
 .workspace-tabs {
   display: flex;
-  gap: 4px;
-  flex-wrap: nowrap;
-  /* tabs align naturally with suite; previously negative margin caused misalignment */
-  margin-top: 0;
-
-  /* Allow unlimited tabs without breaking layout */
+  align-items: center;
+  background: var(--surface-1);
+  border-bottom: var(--border-width) solid var(--border);
+  padding: 0 8px;
+  height: 28px;
+  flex-shrink: 0;
+  gap: 0;
   overflow-x: auto;
-  max-width: 100vw;
-
-  /* Hide scrollbar visually but keep accessible */
-  scrollbar-width: none; /* Firefox */
 }
 
-.workspace-tabs::-webkit-scrollbar {
-  display: none; /* Safari & Chrome */
+.workspace-tab {
+  font-family: var(--ff-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--ls-wide);
+  text-transform: uppercase;
+  color: var(--text-label);
+  padding: 0 12px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  border-right: var(--border-width) solid var(--border);
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-bottom: 1px solid transparent;
+  transition:
+    color var(--dur-micro) var(--ease),
+    border-bottom-color var(--dur-micro) var(--ease);
+  white-space: nowrap;
 }
 
-/* Keep the “+” add-tab button always visible by making it sticky */
-.workspace-tabs > button:last-child {
-  position: sticky;
-  right: 0;
-  background: var(--color-steel-2, #bdbdbd);
-  z-index: 2; /* above scrolling tabs */
+.workspace-tab:hover { color: var(--text-secondary); }
+
+.workspace-tab.active {
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--accent);
 }
+
+.workspace-tab-add {
+  font-family: var(--ff-mono);
+  font-size: 14px;
+  color: var(--text-label);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 10px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  transition: color var(--dur-micro) var(--ease);
+}
+.workspace-tab-add:hover { color: var(--accent); }
+
+/* Workspace tab close button visibility */
+.ws-tab-btn .tab-close { display: none; margin-left: 4px; }
+.ws-tab-btn:hover .tab-close { display: inline; }
 
 /* Mobile inherits the same positioning logic; reduce left padding for small screens */
 @media (max-width: 600px) {
@@ -57,36 +91,4 @@
     right: var(--space-2);
     gap: 8px;
   }
-
-  .workspace-tabs {
-    margin-top: 0;
-  }
-}
-
-.workspace-tab,
-.workspace-add {
-  padding: 5px 10px;
-  background: var(--color-steel-3, #cfcfcf);
-  border: none;
-  font-size: 18px;
-  clip-path: polygon(0 0,100% 0,100% 80%,90% 100%,10% 100%,0 80%);
-  cursor: pointer;
-}
-
-.workspace-tab.active {
-  background: var(--color-steel-1, #e8e8e8);
-}
-
-/* Workspace tab close button visibility */
-.ws-tab-btn .tab-close { display:none; margin-left:4px; }
-.ws-tab-btn:hover .tab-close { display:inline; }
-
-/* Ensure overlay modals darken tabs */
-.workspace-tabs { position: relative; z-index: 3000; }
-
-.mods-modal-overlay,
-.modal-overlay,
-.mods-modal-overlay .mods-modal-container,
-.modal-overlay .modal-content {
-  z-index: 7000;
 }
