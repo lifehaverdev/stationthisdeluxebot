@@ -1,10 +1,13 @@
 import { defineConfig } from 'vite';
+import path from 'path';
 
 const BACKEND = 'http://localhost:4000';
 
 export default defineConfig({
   appType: 'spa',
   base: '/',
+  // Root-level public/ holds docs, images, etc. — not inside the frontend package
+  publicDir: path.resolve(__dirname, '../../../../public'),
   build: {
     outDir: 'dist',
     emptyOutDir: true,
@@ -23,8 +26,6 @@ export default defineConfig({
       '/sandbox': BACKEND,
       // Sandbox CSS
       '/index.css': BACKEND,
-      // Auth + other JS served from public/
-      '/js': BACKEND,
       // Images and static assets
       '/images': BACKEND,
       // Auth endpoints (logout, landing)
