@@ -116,138 +116,228 @@ export class ActionModal extends Component {
 
   static get styles() {
     return `
-      .act-modal {
-        position: fixed; z-index: 500;
-        background: rgba(10,10,10,0.92); backdrop-filter: blur(12px);
-        border: 1px solid rgba(255,255,255,0.12); border-radius: 10px;
-        padding: 8px; min-width: 160px;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-        animation: act-fadein 0.1s ease;
+      /* Radial menu root — centered on click point */
+      .am-root {
+        position: fixed;
+        z-index: var(--z-radial);
+        pointer-events: none;
+        transform: translate(-50%, -50%);
       }
-      @keyframes act-fadein { from { opacity: 0; transform: scale(0.95) translateY(4px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+      .am-root.active { pointer-events: auto; }
 
-      .act-row { display: flex; gap: 6px; }
-      .act-col { display: flex; flex-direction: column; gap: 4px; }
+      .am-svg { overflow: visible; display: block; }
 
-      .act-btn {
-        background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.1);
-        border-radius: 6px; color: #ccc; padding: 8px 14px; cursor: pointer;
-        font-size: 13px; transition: all 0.15s; text-align: left; font-family: inherit;
+      /* Donut segments */
+      .am-segment {
+        fill: var(--surface-2);
+        stroke: var(--border);
+        stroke-width: 1;
+        cursor: pointer;
+        transition: fill var(--dur-micro) var(--ease), stroke var(--dur-micro) var(--ease);
       }
-      .act-btn:hover { background: rgba(255,255,255,0.14); color: #fff; border-color: rgba(255,255,255,0.2); }
-
-      .act-back {
-        background: none; border: none; color: #666; cursor: pointer;
-        font-size: 11px; padding: 2px 4px; margin-bottom: 4px; text-align: left;
-        font-family: inherit;
+      .am-segment-group:hover .am-segment {
+        fill: var(--accent-dim);
+        stroke: var(--accent-border);
       }
-      .act-back:hover { color: #aaa; }
 
-      .act-tools { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; min-width: 200px; }
-      .act-tool-btn {
-        background: rgba(255,255,255,0.05); border: 1px solid transparent;
-        border-radius: 5px; color: #ccc; padding: 6px 10px; cursor: pointer;
-        font-size: 12px; text-align: left; font-family: monospace; white-space: nowrap;
-        overflow: hidden; text-overflow: ellipsis;
+      /* Labels inside segments */
+      .am-label {
+        font-family: var(--ff-mono);
+        font-size: 9px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        fill: var(--text-label);
+        pointer-events: none;
+        transition: fill var(--dur-micro) var(--ease);
+        dominant-baseline: middle;
+        text-anchor: middle;
       }
-      .act-tool-btn:hover { background: rgba(255,255,255,0.1); color: #fff; border-color: rgba(255,255,255,0.1); }
-      .act-tools-empty { color: #555; font-size: 12px; padding: 8px; }
+      .am-segment-group:hover .am-label { fill: var(--accent); }
 
-      .act-upload-area {
-        padding: 20px 16px; text-align: center; color: #888; font-size: 13px;
-        border: 1px dashed rgba(255,255,255,0.2); border-radius: 6px;
-        cursor: pointer; min-width: 200px;
+      /* Center escape circle */
+      .am-center {
+        fill: var(--surface-3);
+        stroke: var(--border);
+        stroke-width: 1;
+        cursor: pointer;
+        transition: fill var(--dur-micro) var(--ease);
       }
-      .act-upload-area:hover { border-color: rgba(255,255,255,0.4); color: #ccc; }
-      .act-upload-error { color: #f66; font-size: 12px; margin-top: 4px; }
-      .act-uploading { color: #888; font-size: 12px; text-align: center; padding: 8px; }
+      .am-center:hover { fill: var(--surface-2); }
+
+      /* Upload view — panel fallback (drag-drop can't be radial) */
+      .am-upload-panel {
+        position: fixed;
+        z-index: var(--z-radial);
+        background: var(--surface-2);
+        border: var(--border-width) solid var(--border);
+        padding: 14px;
+        min-width: 220px;
+        transform: translate(-50%, -50%);
+        animation: fadeUp var(--dur-trans) var(--ease);
+      }
+      .am-upload-back {
+        background: none;
+        border: none;
+        color: var(--text-label);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wide);
+        text-transform: uppercase;
+        cursor: pointer;
+        padding: 0 0 10px 0;
+        display: block;
+      }
+      .am-upload-back:hover { color: var(--text-secondary); }
+      .am-upload-area {
+        padding: 20px 16px;
+        text-align: center;
+        color: var(--text-label);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wide);
+        text-transform: uppercase;
+        border: var(--border-width) dashed var(--border);
+        cursor: pointer;
+        transition: border-color var(--dur-micro) var(--ease), color var(--dur-micro) var(--ease);
+      }
+      .am-upload-area:hover { border-color: var(--accent-border); color: var(--text-secondary); }
+      .am-upload-error {
+        color: var(--danger);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        margin-top: 6px;
+      }
+      .am-uploading {
+        color: var(--text-label);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        text-align: center;
+        padding: 12px;
+        text-transform: uppercase;
+        letter-spacing: var(--ls-wide);
+      }
     `;
-  }
-
-  _renderRoot() {
-    return h('div', { className: 'act-row' },
-      h('button', { className: 'act-btn', onclick: (e) => this._showUpload(e) }, 'upload'),
-      h('button', { className: 'act-btn', onclick: (e) => this._showCategories(e) }, 'create')
-    );
-  }
-
-  _renderCategories() {
-    return h('div', { className: 'act-col' },
-      h('button', { className: 'act-back', onclick: (e) => this._back(e) }, '← back'),
-      h('div', { className: 'act-row' },
-        ...CATEGORIES.map(c =>
-          h('button', {
-            className: 'act-btn',
-            key: c.type,
-            onclick: (e) => this._selectCategory(c, e),
-          }, c.label)
-        )
-      )
-    );
-  }
-
-  _renderTools() {
-    const { selectedCategory, tools } = this.state;
-    const filtered = tools.filter(t => t.category === selectedCategory.category);
-
-    return h('div', { className: 'act-col' },
-      h('button', { className: 'act-back', onclick: (e) => this._back(e) }, `← ${selectedCategory.label}`),
-      filtered.length === 0
-        ? h('div', { className: 'act-tools-empty' }, 'No tools in this category.')
-        : h('div', { className: 'act-tools' },
-          ...filtered.map(tool =>
-            h('button', {
-              className: 'act-tool-btn',
-              key: tool.toolId || tool.displayName,
-              onclick: (e) => this._selectTool(tool, e),
-              title: tool.description || tool.displayName,
-            }, tool.displayName)
-          )
-        )
-    );
-  }
-
-  _renderUpload() {
-    const { uploading, uploadError } = this.state;
-
-    if (uploading) {
-      return h('div', { className: 'act-col' },
-        h('div', { className: 'act-uploading' }, 'Uploading...')
-      );
-    }
-
-    return h('div', { className: 'act-col' },
-      h('button', { className: 'act-back', onclick: (e) => this._back(e) }, '← back'),
-      h('div', {
-        className: 'act-upload-area',
-        onclick: (e) => { e.stopPropagation(); this._fileInput?.click(); },
-        ondragover: (e) => { e.preventDefault(); e.stopPropagation(); },
-        ondrop: (e) => { e.preventDefault(); e.stopPropagation(); this._handleFile(e.dataTransfer.files[0]); },
-      }, 'Drop image or click to upload'),
-      h('input', {
-        type: 'file',
-        accept: 'image/*',
-        style: 'display:none',
-        ref: (el) => { this._fileInput = el; },
-        onchange: (e) => this._handleFile(e.target.files[0]),
-      }),
-      uploadError ? h('div', { className: 'act-upload-error' }, uploadError) : null
-    );
   }
 
   render() {
     const { visible, x, y } = this.props;
-    if (!visible) return h('div', { style: 'display:none' });
+    if (!visible) return h('div', { className: 'am-root' });
 
-    const { view } = this.state;
-    const style = `left:${x}px;top:${y}px`;
+    const { view, selectedCategory, tools, uploading, uploadError } = this.state;
 
-    return h('div', { className: 'act-modal', style },
-      view === 'root'       ? this._renderRoot()       :
-      view === 'categories' ? this._renderCategories() :
-      view === 'tools'      ? this._renderTools()      :
-      view === 'upload'     ? this._renderUpload()     :
-      null
+    // Upload view: drag-drop requires panel, not radial
+    if (view === 'upload') {
+      return h('div', {
+        className: 'am-upload-panel',
+        style: `left:${x}px;top:${y}px`,
+        onclick: (e) => e.stopPropagation(),
+      },
+        uploading
+          ? h('div', { className: 'am-uploading' }, 'uploading...')
+          : h('div', null,
+            h('button', { className: 'am-upload-back', onclick: (e) => this._back(e) }, '← back'),
+            h('div', {
+              className: 'am-upload-area',
+              onclick: (e) => { e.stopPropagation(); this._fileInput?.click(); },
+              ondragover: (e) => { e.preventDefault(); e.stopPropagation(); },
+              ondrop: (e) => { e.preventDefault(); e.stopPropagation(); this._handleFile(e.dataTransfer.files[0]); },
+            }, 'drop image or click to upload'),
+            h('input', {
+              type: 'file', accept: 'image/*', style: 'display:none',
+              ref: (el) => { this._fileInput = el; },
+              onchange: (e) => this._handleFile(e.target.files[0]),
+            }),
+            uploadError ? h('div', { className: 'am-upload-error' }, uploadError) : null,
+          )
+      );
+    }
+
+    // Build items for radial segments from current view
+    let items = [];
+    if (view === 'root') {
+      items = [
+        { label: 'upload', fn: (e) => this._showUpload(e) },
+        { label: 'create', fn: (e) => this._showCategories(e) },
+      ];
+    } else if (view === 'categories') {
+      items = [
+        { label: 'back', fn: (e) => this._back(e) },
+        ...CATEGORIES.map(c => ({ label: c.label, fn: (e) => this._selectCategory(c, e) })),
+      ];
+    } else if (view === 'tools') {
+      const filtered = tools.filter(t => t.category === selectedCategory.category);
+      items = [
+        { label: 'back', fn: (e) => this._back(e) },
+        ...filtered.slice(0, 4).map(tool => ({ label: tool.displayName, fn: (e) => this._selectTool(tool, e) })),
+      ];
+    }
+
+    const n = Math.min(items.length, 5);
+    if (n === 0) return h('div', { className: 'am-root active', style: `left:${x}px;top:${y}px` });
+
+    const outerR = 72, innerR = 28;
+    const angleStep = (2 * Math.PI) / n;
+    const startAngle = -Math.PI / 2 - angleStep / 2;
+
+    const polarToCartesian = (r, angle) => ({
+      x: Math.cos(angle) * r,
+      y: Math.sin(angle) * r,
+    });
+
+    const segmentPath = (i) => {
+      const a0 = startAngle + i * angleStep + 0.03;
+      const a1 = startAngle + (i + 1) * angleStep - 0.03;
+      const o0 = polarToCartesian(outerR, a0);
+      const o1 = polarToCartesian(outerR, a1);
+      const i0 = polarToCartesian(innerR, a1);
+      const i1 = polarToCartesian(innerR, a0);
+      const large = angleStep > Math.PI ? 1 : 0;
+      return [
+        `M ${o0.x} ${o0.y}`,
+        `A ${outerR} ${outerR} 0 ${large} 1 ${o1.x} ${o1.y}`,
+        `L ${i0.x} ${i0.y}`,
+        `A ${innerR} ${innerR} 0 ${large} 0 ${i1.x} ${i1.y}`,
+        'Z',
+      ].join(' ');
+    };
+
+    const labelPos = (i) => {
+      const a = startAngle + (i + 0.5) * angleStep;
+      const r = (outerR + innerR) / 2;
+      return polarToCartesian(r, a);
+    };
+
+    const size = (outerR + 4) * 2;
+    const c = outerR + 4;
+
+    return h('div', {
+      className: 'am-root active',
+      style: `left:${x}px;top:${y}px`,
+      onclick: (e) => e.stopPropagation(),
+    },
+      h('svg', {
+        className: 'am-svg',
+        width: size,
+        height: size,
+        viewBox: `${-c} ${-c} ${size} ${size}`,
+      },
+        ...items.slice(0, n).map((item, i) => {
+          const lp = labelPos(i);
+          return h('g', {
+            className: 'am-segment-group',
+            key: item.label,
+            onclick: this.bind((e) => { e.stopPropagation(); item.fn(e); }),
+          },
+            h('path', { className: 'am-segment', d: segmentPath(i) }),
+            h('text', { className: 'am-label', x: lp.x, y: lp.y }, item.label),
+          );
+        }),
+        h('circle', {
+          className: 'am-center',
+          cx: 0, cy: 0, r: 12,
+          onclick: this.bind((e) => { e.stopPropagation(); this._close(); }),
+        }),
+      )
     );
   }
 }
