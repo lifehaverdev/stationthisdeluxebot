@@ -48,11 +48,53 @@ export class ConnectionLayer extends Component {
 
   static get styles() {
     return `
-      .conn-svg { position: absolute; inset: 0; pointer-events: none; overflow: visible; z-index: 2; }
-      .conn-path { fill: none; stroke: rgba(255,255,255,0.5); stroke-width: 2; pointer-events: stroke; cursor: pointer; filter: drop-shadow(0 0 3px rgba(255,255,255,0.2)); transition: stroke 0.15s; }
-      .conn-path:hover { stroke: rgba(255,100,100,0.8); stroke-width: 3; }
-      .conn-path--temp { stroke: rgba(144,202,249,0.7); stroke-width: 2; stroke-dasharray: 8 4; pointer-events: none; animation: conn-flow 1s linear infinite; }
-      @keyframes conn-flow { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -12; } }
+      .cl-svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        overflow: visible;
+      }
+
+      /* Default connection — quiet, barely visible */
+      .cl-path {
+        fill: none;
+        stroke: rgba(255,255,255,0.18);
+        stroke-width: 1px;
+        pointer-events: stroke;
+        cursor: pointer;
+        transition: stroke var(--dur-micro) var(--ease);
+      }
+
+      /* Active / data-flowing connection — accent signal */
+      .cl-path.active {
+        stroke: var(--accent);
+        stroke-width: 1.5px;
+        stroke-dasharray: 6 6;
+        animation: signalFlow 0.6s linear infinite;
+      }
+
+      /* In-progress connection being drawn */
+      .cl-path.pending {
+        stroke: var(--accent-border);
+        stroke-width: 1px;
+        stroke-dasharray: 4 4;
+        animation: signalFlow 0.4s linear infinite;
+      }
+
+      /* Hover to remove */
+      .cl-path:hover {
+        stroke: var(--danger);
+        stroke-width: 1.5px;
+      }
+
+      /* Connector dots at endpoints */
+      .cl-dot {
+        fill: rgba(255,255,255,0.18);
+        transition: fill var(--dur-micro) var(--ease);
+      }
+      .cl-dot.active { fill: var(--accent); }
     `;
   }
 
@@ -71,7 +113,7 @@ export class ConnectionLayer extends Component {
       return h('path', {
         key: conn.id,
         d,
-        className: 'conn-path',
+        className: 'cl-path',
         style: 'pointer-events: stroke',
         onclick: (e) => { e.stopPropagation(); onRemoveConnection?.(conn.id); },
       });
@@ -84,11 +126,11 @@ export class ConnectionLayer extends Component {
       if (fromWin) {
         const from = this._getOutputAnchorPos(fromWin);
         const d = this._bezier(from.x, from.y, activeConnection.mouseX, activeConnection.mouseY);
-        tempPath = h('path', { d, className: 'conn-path conn-path--temp' });
+        tempPath = h('path', { d, className: 'cl-path pending' });
       }
     }
 
-    return h('svg', { className: 'conn-svg' },
+    return h('svg', { className: 'cl-svg' },
       ...paths,
       tempPath
     );

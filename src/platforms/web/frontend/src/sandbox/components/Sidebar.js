@@ -89,25 +89,124 @@ export class Sidebar extends Component {
 
   static get styles() {
     return `
-      .sb-sidebar-wrap { display: flex; align-items: stretch; position: relative; }
-      .sb-tools { padding: 8px; overflow-y: auto; max-height: calc(100vh - 120px); }
-      .sb-cat { margin: 12px 0 6px; color: rgba(255,255,255,0.9); font-family: monospace; font-size: 13px; font-weight: 600; }
+      .sb-root {
+        width: var(--sidebar-width);
+        background: var(--surface-1);
+        border-left: var(--border-width) solid var(--border);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        transition: width var(--dur-panel) var(--ease);
+        position: relative;
+        z-index: var(--z-sidebar);
+        flex-shrink: 0;
+      }
+
+      .sb-root.collapsed { width: 0; }
+
+      .sb-panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 12px;
+        border-bottom: var(--border-width) solid var(--border);
+        flex-shrink: 0;
+        min-height: 36px;
+      }
+
+      .sb-label {
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        color: var(--text-label);
+        letter-spacing: var(--ls-widest);
+        text-transform: uppercase;
+      }
+
+      .sb-list {
+        flex: 1;
+        overflow-y: auto;
+      }
+
+      .sb-category-header {
+        padding: 8px 12px 4px;
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        color: var(--text-label);
+        letter-spacing: var(--ls-widest);
+        text-transform: uppercase;
+        border-bottom: var(--border-width) solid var(--border);
+        position: sticky;
+        top: 0;
+        background: var(--surface-1);
+      }
+
       .sb-tool {
-        display: block; width: 100%; padding: 10px; margin: 3px 0; text-align: left;
-        background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
-        border-radius: 6px; color: #fff; cursor: pointer; position: relative;
-        font-family: inherit; transition: background 0.15s;
+        padding: 8px 12px;
+        border-bottom: var(--border-width) solid var(--border);
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        width: 100%;
+        text-align: left;
+        background: none;
+        border-left: none;
+        border-right: none;
+        border-top: none;
+        color: inherit;
+        transition: background var(--dur-micro) var(--ease);
       }
-      .sb-tool:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
-      .sb-tool-name { font-family: monospace; font-size: 13px; margin-bottom: 3px; }
-      .sb-tool-desc { font-size: 11px; color: rgba(255,255,255,0.5); line-height: 1.3; }
-      .sb-tool-cost {
-        position: absolute; bottom: 4px; right: 4px;
-        background: rgba(0,255,0,0.15); border: 1px solid rgba(0,255,0,0.3);
-        border-radius: 3px; padding: 1px 5px; font-size: 9px; color: #0f0;
-        font-family: monospace;
+
+      .sb-tool:hover { background: var(--surface-2); }
+      .sb-tool:hover .sb-tool-name { color: var(--text-primary); }
+
+      .sb-tool-name {
+        font-family: var(--ff-sans);
+        font-size: var(--fs-sm);
+        font-weight: var(--fw-medium);
+        color: var(--text-secondary);
+        transition: color var(--dur-micro) var(--ease);
       }
-      .sb-empty { color: #666; font-size: 13px; padding: 16px 8px; }
+
+      .sb-tool-desc {
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        color: var(--text-label);
+        line-height: 1.4;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+
+      .sb-handle {
+        position: absolute;
+        left: -20px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 20px;
+        height: 48px;
+        background: var(--surface-1);
+        border: var(--border-width) solid var(--border);
+        border-right: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        color: var(--text-label);
+        font-size: 8px;
+        font-family: var(--ff-mono);
+        transition: background var(--dur-micro) var(--ease);
+      }
+      .sb-handle:hover { background: var(--surface-2); }
+
+      .sb-empty {
+        color: var(--text-label);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        padding: 16px 12px;
+        letter-spacing: var(--ls-wide);
+      }
     `;
   }
 
@@ -118,7 +217,7 @@ export class Sidebar extends Component {
     const groups = groupByCategory(tools);
     const items = [];
     for (const [cat, catTools] of Object.entries(groups)) {
-      items.push(h('div', { className: 'sb-cat', key: `cat-${cat}` }, formatCategory(cat)));
+      items.push(h('div', { className: 'sb-category-header', key: `cat-${cat}` }, formatCategory(cat)));
       for (const tool of catTools) {
         items.push(
           h('button', {
@@ -127,8 +226,7 @@ export class Sidebar extends Component {
             onclick: () => this._createTool(tool),
           },
             h('div', { className: 'sb-tool-name' }, tool.displayName),
-            h('div', { className: 'sb-tool-desc' }, (tool.description || '').split('.')[0]),
-            h('div', { className: 'sb-tool-cost' }, costEstimate(tool))
+            h('div', { className: 'sb-tool-desc' }, (tool.description || '').split('.')[0])
           )
         );
       }
@@ -139,23 +237,20 @@ export class Sidebar extends Component {
   render() {
     const { collapsed } = this.state;
 
-    return h('div', { className: 'sb-sidebar-wrap' },
-      h('aside', {
-        id: 'sidebar',
-        className: `sandbox-sidebar${collapsed ? ' collapsed' : ''}`,
-      },
-        h('div', { className: 'sidebar-content' },
-          h('h3', null, 'Tools'),
-          h('div', { className: 'sb-tools' },
-            ...(collapsed ? [] : this._renderTools())
-          )
-        )
+    return h('aside', {
+      id: 'sidebar',
+      className: `sb-root${collapsed ? ' collapsed' : ''}`,
+    },
+      h('div', { className: 'sb-panel-header' },
+        h('span', { className: 'sb-label' }, 'Tools')
+      ),
+      h('div', { className: 'sb-list' },
+        ...(collapsed ? [] : this._renderTools())
       ),
       h('button', {
-        id: 'sidebar-toggle',
-        className: 'sidebar-toggle',
+        className: 'sb-handle',
         onclick: this.bind(this._toggle),
-      }, collapsed ? '\u2692\uFE0E' : '\u2715')
+      }, collapsed ? '\u25B8' : '\u25C2')
     );
   }
 }

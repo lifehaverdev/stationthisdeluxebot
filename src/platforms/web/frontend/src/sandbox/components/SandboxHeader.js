@@ -40,51 +40,94 @@ export class SandboxHeader extends Component {
 
   static get styles() {
     return `
-      .sb-header {
-        display: flex; align-items: center; justify-content: space-between;
-        padding: 0 16px; height: 48px; min-height: 48px;
-        background: rgba(0,0,0,0.6); border-bottom: 1px solid #222;
-        z-index: 100; position: relative;
+      .sh-root {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: var(--header-height);
+        padding: 0 16px;
+        background: var(--surface-1);
+        border-bottom: var(--border-width) solid var(--border);
+        flex-shrink: 0;
+        gap: 16px;
+        position: relative;
+        z-index: var(--z-hud);
       }
-      .sb-logo a { color: #fff; text-decoration: none; font-weight: 700; font-size: 16px; letter-spacing: 1px; }
-      .sb-nav { display: flex; gap: 16px; }
-      .sb-nav a {
-        color: #888; text-decoration: none; font-size: 13px; font-weight: 500;
-        text-transform: lowercase; letter-spacing: 0.5px; cursor: pointer;
-        transition: color 0.15s;
+
+      .sh-wordmark {
+        font-family: var(--ff-display);
+        font-size: var(--fs-lg);
+        font-weight: var(--fw-bold);
+        letter-spacing: var(--ls-widest);
+        text-transform: uppercase;
+        color: var(--text-primary);
+        text-decoration: none;
+        flex-shrink: 0;
+        line-height: 1;
       }
-      .sb-nav a:hover { color: #fff; }
-      .sb-burger {
-        display: none; background: none; border: none; color: #888;
-        font-size: 20px; cursor: pointer; padding: 4px;
+
+      .sh-nav {
+        display: flex;
+        align-items: center;
+        gap: 0;
+        flex: 1;
+        padding-left: 24px;
       }
-      @media (max-width: 640px) {
-        .sb-nav { display: none; }
-        .sb-burger { display: block; }
-        .sb-header.is-open .sb-nav {
-          display: flex; flex-direction: column; position: absolute;
-          top: 100%; left: 0; right: 0; background: #111; padding: 12px 16px;
-          border-bottom: 1px solid #222; z-index: 200;
-        }
+
+      .sh-nav-item {
+        font-family: var(--ff-condensed);
+        font-size: var(--fs-xs);
+        font-weight: var(--fw-medium);
+        letter-spacing: var(--ls-widest);
+        text-transform: uppercase;
+        color: var(--text-label);
+        text-decoration: none;
+        padding: 4px 12px;
+        border: var(--border-width) solid transparent;
+        cursor: pointer;
+        background: none;
+        transition:
+          color var(--dur-micro) var(--ease),
+          border-color var(--dur-micro) var(--ease);
+        white-space: nowrap;
+      }
+
+      .sh-nav-item:hover { color: var(--text-secondary); }
+      .sh-nav-item.active {
+        color: var(--text-primary);
+        border-color: var(--border);
+      }
+
+      .sh-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+
+      .sh-system-label {
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        color: var(--text-label);
+        letter-spacing: var(--ls-wide);
+        text-transform: uppercase;
+        padding: 0 8px;
+        border-left: var(--border-width) solid var(--border);
       }
     `;
   }
 
   render() {
-    const { mobileOpen, showSpells, showCook, showMods } = this.state;
-    const headerClass = `sb-header sandbox-header${mobileOpen ? ' is-open' : ''}`;
+    const { showSpells, showCook, showMods } = this.state;
 
-    return h('header', { className: headerClass },
-      h('button', { className: 'sb-burger', onclick: this.bind(this._toggleMobile) }, '\u2630'),
-      h('div', { className: 'sb-logo' },
-        h('a', { href: getLandingUrl(), target: '_blank', rel: 'noopener noreferrer' }, 'NOEMA')
+    return h('header', { className: 'sh-root sandbox-header' },
+      h('a', { href: getLandingUrl(), target: '_blank', rel: 'noopener noreferrer', className: 'sh-wordmark' }, 'NOEMA'),
+      h('nav', { className: 'sh-nav' },
+        h('button', { className: 'sh-nav-item', onclick: (e) => this._navClick('spells', e) }, 'cast'),
+        h('button', { className: 'sh-nav-item', onclick: (e) => this._navClick('cook', e) }, 'cook'),
+        h('button', { className: 'sh-nav-item', onclick: (e) => this._navClick('mods', e) }, 'mod')
       ),
-      h('nav', { className: 'sb-nav main-nav' },
-        h('a', { href: '#spells', onclick: (e) => this._navClick('spells', e) }, 'cast'),
-        h('a', { href: '#cook', onclick: (e) => this._navClick('cook', e) }, 'cook'),
-        h('a', { href: '#mods', onclick: (e) => this._navClick('mods', e) }, 'mod')
-      ),
-      h('div', { className: 'user-menu' },
+      h('div', { className: 'sh-right' },
         h(AccountDropdown, null)
       ),
       showSpells ? h(SpellsModal, {
