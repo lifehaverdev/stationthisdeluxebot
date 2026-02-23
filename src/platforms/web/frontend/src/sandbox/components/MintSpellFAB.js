@@ -35,20 +35,52 @@ export class MintSpellFAB extends Component {
   static get styles() {
     return `
       .mint-fab {
-        position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-        background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff;
-        border: none; padding: 12px 24px; border-radius: 28px; font-size: 14px;
-        font-weight: 600; cursor: pointer; z-index: 80;
-        box-shadow: 0 4px 16px rgba(99,102,241,0.4);
-        transition: transform 0.2s, opacity 0.2s;
+        position: fixed;
+        bottom: 16px;
+        right: 16px;
+        z-index: var(--z-hud);
+        background: var(--surface-2);
+        border: var(--border-width) solid var(--border-hover);
+        color: var(--text-secondary);
+        font-family: var(--ff-condensed);
+        font-size: var(--fs-xs);
+        font-weight: var(--fw-medium);
+        letter-spacing: var(--ls-widest);
+        text-transform: uppercase;
+        cursor: pointer;
+        padding: 0 14px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition:
+          background  var(--dur-interact) var(--ease),
+          color       var(--dur-interact) var(--ease),
+          border-color var(--dur-interact) var(--ease),
+          opacity     var(--dur-trans) var(--ease);
       }
-      .mint-fab:hover { transform: translateX(-50%) scale(1.05); }
-      .mint-fab--hidden { opacity: 0; pointer-events: none; transform: translateX(-50%) translateY(8px); }
+      .mint-fab::before {
+        content: '+';
+        font-family: var(--ff-mono);
+        font-size: 14px;
+        color: var(--accent);
+        font-weight: var(--fw-light);
+        flex-shrink: 0;
+      }
+      .mint-fab:hover {
+        background: var(--accent-dim);
+        color: var(--accent);
+        border-color: var(--accent-border);
+      }
+      .mint-fab--hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
     `;
   }
 
   render() {
     const cls = `mint-fab${this.state.visible ? '' : ' mint-fab--hidden'}`;
-    return h('button', { className: cls, onclick: this.bind(this._handleClick) }, 'Mint as Spell');
+    return h('button', { className: cls, onclick: this.bind(this._handleClick) }, 'Compose Spell');
   }
 }
