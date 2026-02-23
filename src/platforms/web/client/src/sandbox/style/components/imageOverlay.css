@@ -1,146 +1,139 @@
-/* Reset and robustly constrain overlay and image sizing. Allow JS to control visibility. */
-
-.image-overlay,
-.image-overlay-content,
-.image-overlay-img-container,
-.image-overlay-img {
-  min-width: 0;
-  min-height: 0;
-  box-sizing: border-box;
-  flex-shrink: 1;
-}
-
 .image-overlay {
-  width: 100%;
-  height: 100%;
-  max-width: 100%;
-  max-height: 100%;
-  overflow: hidden;
-  position: absolute;
-  left: 0;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  display: flex; /* No !important: allow JS to toggle display */
-  justify-content: center;
+  position: fixed;
+  inset: 0;
+  background: rgba(11,12,13,0.78);
+  z-index: var(--z-overlay);
+  display: flex;
   align-items: center;
-  z-index: 100;
+  justify-content: center;
+  animation: fadeIn var(--dur-trans) var(--ease);
+  cursor: zoom-out;
 }
 
-.image-overlay-content {
-  background-color: #1a1a1a;
-  color: #f0f0f0;
-  border-radius: 12px;
-  width: 100%;
-  height: 100%;
-  max-width: 100%;
-  max-height: 100%;
+/* Faint grid remains visible behind overlay */
+.image-overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    repeating-linear-gradient(90deg, rgba(255,255,255,0.01) 0px, rgba(255,255,255,0.01) 1px, transparent 1px, transparent 32px),
+    repeating-linear-gradient(0deg,  rgba(255,255,255,0.01) 0px, rgba(255,255,255,0.01) 1px, transparent 1px, transparent 32px);
+  pointer-events: none;
+}
+
+.image-overlay-panel {
   position: relative;
-  box-shadow: 0 5px 20px rgba(0,0,0,0.4);
-  border: 1px solid #333;
+  background: var(--surface-1);
+  border: var(--border-width) solid var(--border);
+  max-width: 90vw;
+  max-height: 90vh;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  overflow: auto;
-  padding: 16px;
-  box-sizing: border-box;
+  animation: fadeUp var(--dur-trans) var(--ease);
+  cursor: default;
 }
 
-.image-overlay-img-container {
-  flex: 1 1 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  max-width: 100%;
-  max-height: 100%;
-  overflow: auto;
-  box-sizing: border-box;
+.image-overlay-panel::before,
+.image-overlay-panel::after {
+  content: '';
+  position: absolute;
+  width: 12px; height: 12px;
+  border-color: var(--border-hover);
+  border-style: solid;
+  pointer-events: none;
+  z-index: 1;
 }
+.image-overlay-panel::before { top: -1px; left: -1px; border-width: 1px 0 0 1px; }
+.image-overlay-panel::after  { bottom: -1px; right: -1px; border-width: 0 1px 1px 0; }
 
-/* Robust image sizing: constrain to 80% of overlay width, 80vh max height, always centered */
 .image-overlay-img {
   display: block;
-  width: 80%;
-  max-width: 80%;
-  max-height: 80vh;
-  height: auto;
+  max-width: 100%;
+  max-height: calc(90vh - 44px);
   object-fit: contain;
-  margin: auto;
-  border-radius: 8px;
-  box-shadow: 0 4px 32px rgba(0,0,0,0.5);
-  box-sizing: border-box;
+}
+
+.image-overlay-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-top: var(--border-width) solid var(--border);
+  background: var(--surface-2);
+  gap: 8px;
+  min-height: 36px;
+  flex-shrink: 0;
+}
+
+/* Legacy class aliases — keep for JS compatibility */
+.image-overlay-content {
+  display: contents;
 }
 
 .image-overlay-close {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  background: transparent;
-  color: #fff;
-  border: none;
-  font-size: 2rem;
+  background: none;
+  border: var(--border-width) solid transparent;
+  color: var(--text-label);
   cursor: pointer;
-  z-index: 2;
-  padding: 0 8px;
-  line-height: 1;
-  transition: color 0.2s;
+  font-family: var(--ff-mono);
+  font-size: 12px;
+  width: 22px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0;
+  transition: color var(--dur-micro) var(--ease), border-color var(--dur-micro) var(--ease);
 }
-
 .image-overlay-close:hover {
-  color: #ff5c5c;
+  color: var(--danger);
+  border-color: var(--danger);
 }
 
-.result-video {
-  max-width: 100%;
-  max-height: 300px;
-  display: block;
-}
-
-/* Gallery navigation buttons */
+/* Gallery navigation */
 .image-overlay-prev,
 .image-overlay-next {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  background: rgba(0, 0, 0, 0.5);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  font-size: 1.2rem;
+  background: var(--surface-2);
+  border: var(--border-width) solid var(--border);
+  color: var(--text-secondary);
+  width: 28px;
+  height: 48px;
+  font-size: 10px;
+  font-family: var(--ff-mono);
   cursor: pointer;
   z-index: 3;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.2s, border-color 0.2s;
+  transition: background var(--dur-micro) var(--ease), color var(--dur-micro) var(--ease);
 }
-
-.image-overlay-prev { left: 16px; }
-.image-overlay-next { right: 16px; }
-
+.image-overlay-prev { left: -29px; }
+.image-overlay-next { right: -29px; }
 .image-overlay-prev:hover,
 .image-overlay-next:hover {
-  background: rgba(0, 0, 0, 0.8);
-  border-color: rgba(255, 255, 255, 0.5);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  border-color: var(--border-hover);
 }
 
 .image-overlay-counter {
-  position: absolute;
-  bottom: 16px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.6);
-  color: #fff;
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 0.85rem;
-  z-index: 3;
-  pointer-events: none;
+  font-family: var(--ff-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-label);
+  letter-spacing: var(--ls-wide);
 }
 
-/* Remove redundant, overly specific, or conflicting rules */
+.result-video {
+  max-width: 100%;
+  max-height: calc(90vh - 44px);
+  display: block;
+}
+
+/* In-node thumbnail (inside ResultDisplay) — keep compact */
+.image-overlay-img-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  overflow: hidden;
+}
