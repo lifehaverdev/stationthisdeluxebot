@@ -27,6 +27,9 @@ export class ModsModal extends Component {
   }
 
   didMount() {
+    this._esc = (e) => { if (e.key === 'Escape') this.props.onClose?.(); };
+    document.addEventListener('keydown', this._esc);
+    this.registerCleanup(() => document.removeEventListener('keydown', this._esc));
     this._fetchUserId();
   }
 

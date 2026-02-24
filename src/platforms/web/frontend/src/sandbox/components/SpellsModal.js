@@ -72,6 +72,9 @@ export class SpellsModal extends Component {
   }
 
   didMount() {
+    this._esc = (e) => { if (e.key === 'Escape') this.props.onClose?.(); };
+    document.addEventListener('keydown', this._esc);
+    this.registerCleanup(() => document.removeEventListener('keydown', this._esc));
     this._fetchUserId();
     if (this.state.view === VIEW.LIST) this._fetchSpells();
   }

@@ -86,6 +86,15 @@ export class Sandbox extends Component {
     };
     eventBus.on('sandbox:openResultOverlay', this._onOpenResultOverlay);
 
+    this._escHandler = (e) => {
+      if (e.key !== 'Escape') return;
+      const { actionModal, resultOverlay, textEdit } = this.state;
+      if (resultOverlay.visible) { this._closeResultOverlay(); return; }
+      if (textEdit.visible) { this._closeTextEdit(); return; }
+      if (actionModal.visible) { this.setState({ actionModal: { visible: false, x: 0, y: 0, workspacePos: null } }); }
+    };
+    document.addEventListener('keydown', this._escHandler);
+
     this._loadAuth()
       .then(() => initStore())
       .then(() => this._boot())
@@ -98,6 +107,7 @@ export class Sandbox extends Component {
   willUnmount() {
     if (this._clickHandler)    document.removeEventListener('click',     this._clickHandler);
     if (this._mouseDownHandler) document.removeEventListener('mousedown', this._mouseDownHandler);
+    if (this._escHandler)      document.removeEventListener('keydown',   this._escHandler);
     if (this._onCanvasTap)     eventBus.off('sandbox:canvasTap',         this._onCanvasTap);
     if (this._onOpenTextEdit)       eventBus.off('sandbox:openTextEdit',       this._onOpenTextEdit);
     if (this._onOpenResultOverlay)  eventBus.off('sandbox:openResultOverlay',  this._onOpenResultOverlay);
