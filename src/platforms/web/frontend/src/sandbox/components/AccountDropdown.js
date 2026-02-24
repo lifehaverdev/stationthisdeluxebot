@@ -1,6 +1,5 @@
 import { Component, h, eventBus } from '@monygroupcorp/microact';
 import { fetchJson, postWithCsrf } from '../../lib/api.js';
-import { shortenAddress } from '../../lib/format.js';
 import { HistoryModal } from './HistoryModal.js';
 import { ApiKeysModal } from './ApiKeysModal.js';
 import { VaultModal } from './VaultModal.js';
@@ -70,7 +69,7 @@ export class AccountDropdown extends Component {
   static get styles() {
     return `
       .acct-root { position: relative; }
-      .acct-btn { background: none; border: 1px solid #333; color: #ccc; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 16px; }
+      .acct-btn { background: none; border: 1px solid #333; color: #ccc; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; }
       .acct-btn:hover { border-color: #555; color: #fff; }
       .acct-menu { position: fixed; right: 8px; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; min-width: 240px; max-width: calc(100vw - 16px); z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
       .acct-header { padding: 12px 16px; font-weight: 600; border-bottom: 1px solid #222; font-size: 16px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -117,7 +116,7 @@ export class AccountDropdown extends Component {
 
   render() {
     const { open, data, showHistory, showApiKeys, showVaults, showBuyPoints } = this.state;
-    const label = data?.wallet ? shortenAddress(data.wallet) : 'Account';
+    const label = data?.wallet ? data.wallet.slice(0, 8) : 'Account';
 
     return h('div', { className: 'acct-root', ref: (el) => { this._ref = el; } },
       h('button', { className: 'acct-btn', onclick: this.bind(this._toggle) }, label),

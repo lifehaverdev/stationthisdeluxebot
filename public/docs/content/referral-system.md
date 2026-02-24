@@ -1,75 +1,50 @@
 # Referral System
 
-NOEMA’s referral program lets you earn passive Generation Credits by inviting new creators through each of our front-ends. A successful referral funnels 5 % of every top-up directly into **your** Referral Vault.
+NOEMA's referral program lets you earn passive Generation Credits by inviting new users. When someone funds their account through your referral link, 5% of their deposit is credited to your Referral Vault automatically.
 
 ---
 
-## 1. Overview
+## How It Works
 
-At a glance:
+Your referral link points to a unique **vault smart contract** deployed on-chain in your name. Any deposit routed through the vault triggers the 5% rebate — the funding fee that would otherwise go entirely to the protocol is split, with your share streamed to you.
 
-| Platform  | How to Share | User Journey |
-|-----------|--------------|--------------|
-| Telegram  | `/ref` command → get link | New user taps link → bot starts with your code |
-| Web Canvas| `noema.art/r/yourVault`   | New user lands on onboarding page with your code |
-| Discord   | `/ref` slash command      | New user joins server, link auto-applied |
-| API       | `?ref=YOUR_VAULT` query param | Programmatic deposits tagged to your vault |
-
-Every referral link points to **your unique Vault smart contract** on-chain. Deposits routed through the vault rebate the 5 % funding rate back to you.
+| Platform | How to Share | How It Applies |
+|----------|-------------|----------------|
+| Web | `noema.art/r/<your-vault-name>` | New user lands on onboarding with your code pre-applied |
+| API | `?ref=<vaultAddress>` query param | Programmatic deposits tagged to your vault |
+| Telegram | `/ref` command | Coming soon |
+| Discord | `/ref` slash command | Coming soon |
 
 ---
 
-## 2. Telegram *(coming soon)*
+## Creating a Vault (Web)
 
-*We’ll update this section once the bot’s referral command ships. Stay tuned!*
-
----
-
-## 3. Web Platform
-
-Below is the current flow to create and share a vault from the Web Canvas.
-
-1. **Open Account Menu** – Click the avatar/credits counter in the top-right corner.
-2. **Create Vault** – Select “Add Referral Vault”.
-3. **Choose a Name** – Pick something short; it becomes part of your link `noema.art/r/<name>`.
-4. **Wait for Deployment** – NOEMA mines the CREATE2 salt and deploys your vault on-chain.  
-   *You must hold enough credits to cover gas.*
-5. **Share** – Your link is ready. Anyone who funds through it credits 5 % back to you.
-
-> Screenshot 1 – Account dropdown with “Add Referral Vault”  
-> Screenshot 2 – Name selection & gas cost prompt  
-> Screenshot 3 – Success toast with generated link
-
-*(Replace the placeholders above with actual images when available.)*
+1. **Open the account menu** — click your avatar or credit balance in the top-right corner
+2. **Select "Add Referral Vault"**
+3. **Choose a name** — this becomes part of your link: `noema.art/r/<name>`
+4. **Confirm deployment** — NOEMA deploys your vault on-chain; a small gas fee is deducted from your credits
+5. **Share your link** — anyone who funds through it earns you 5% of their deposit, indefinitely
 
 ---
 
-## 4. Discord *(coming soon)*
+## API Usage
 
-*We’ll document the `/ref` slash-command flow after the next bot release.*
-
----
-
-## 5. API
-
-Developers can attach a vault to any deposit by including the `ref` query parameter:
+Attach your vault to any deposit programmatically using the `ref` query parameter:
 
 ```
-POST /internal/deposits?ref=<vaultAddress>
+POST /api/v1/deposits?ref=<vaultAddress>
 {
   "asset": "ETH",
   "amount": "0.5"
 }
 ```
 
-On success, the JSON response echoes the `referralRebate` credited to the vault owner.
-
-Full OpenAPI schema coming soon.
+The response includes a `referralRebate` field confirming the amount credited to your vault.
 
 ---
 
-## 6. Conclusion
+## Stacking Earnings
 
-Referral Vaults are the first layer of NOEMA’s incentive stack—simple to set up, powerful over time. Combine them with Spells and Model contributions to unlock up to an additional **19 %** of execution fees on top of your 5 % deposit rebate.
+Referral Vaults are the first layer of NOEMA's incentive stack. Combine them with Spell publishing and model contributions to earn up to an additional 19% on top of your 5% deposit rebate — up to 24% total of every deposit your network generates.
 
-*Next up: API reference & advanced usage.* 
+See [Tokenomics](#tokenomics) for the full breakdown.

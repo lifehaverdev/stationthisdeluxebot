@@ -1,6 +1,6 @@
-# Workspace System
+# Workspaces
 
-StationThis Deluxe's sandbox workspace system lets you save, load, and share your entire canvas state—including all tool windows, connections, parameters, and outputs—across devices and sessions.
+NOEMA's workspace system lets you save, load, and share your entire canvas state — including all tool windows, connections, parameters, and outputs — across devices and sessions.
 
 ## Overview
 
@@ -24,7 +24,7 @@ The workspace system provides:
 ### Loading a Workspace
 
 **Option 1: From URL**
-- Open a workspace link (e.g., `https://stationthis.com/sandbox?workspace=abc123`)
+- Open a workspace link (e.g., `https://noema.art/sandbox?workspace=abc123`)
 - The workspace loads automatically
 
 **Option 2: Manual Load**
@@ -78,13 +78,7 @@ By default, workspaces are **public** and can be accessed by anyone with the lin
 
 ### Private Workspaces
 
-Private workspaces are only accessible to you:
-
-- Only you can view and edit private workspaces
-- Others will see an error if they try to access a private workspace link
-- Private workspaces are marked with a lock icon 🔒
-
-*Note: Private workspace support is coming soon.*
+Private workspaces are only accessible to you. Others will receive an error if they attempt to open a private workspace link. Private workspaces are marked with a lock icon.
 
 ## Error Handling
 
@@ -207,8 +201,4 @@ A: Workspaces are cached locally, so you can view them offline, but you need int
 
 **Q: Can I share a workspace with someone who doesn't have an account?**  
 A: Yes! Public workspaces can be accessed by anyone with the link, no account required.
-
----
-
-_Last updated: 2025-01-27_
 

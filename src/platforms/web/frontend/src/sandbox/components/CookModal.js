@@ -3,6 +3,7 @@ import { Modal, Loader, ModalError } from './Modal.js';
 import { AsyncButton, EmptyState, ConfirmInline, TabBar, Badge } from './ModalKit.js';
 import { fetchJson, postWithCsrf, fetchWithCsrf } from '../../lib/api.js';
 import { TraitTreeEditor } from './TraitTreeEditor.js';
+import { websocketClient } from '../ws.js';
 
 const VIEW = { HOME: 'home', CREATE: 'create', DETAIL: 'detail' };
 const DETAIL_TAB = { OVERVIEW: 'overview', TRAIT_TREE: 'traitTree', ANALYTICS: 'analytics' };
@@ -103,8 +104,7 @@ export class CookModal extends Component {
   // ── WebSocket ───────────────────────────────────────────
 
   _subscribeWs() {
-    if (typeof window === 'undefined') return;
-    this._ws = window.websocketClient || null;
+    this._ws = websocketClient;
     if (!this._ws || typeof this._ws.on !== 'function') {
       console.warn('[CookModal] WebSocket not available, polling fallback');
       return;
@@ -629,7 +629,12 @@ export class CookModal extends Component {
 
     let statusText;
     if (isRunning) {
-      statusText = `${cook.running} running`;
+      const parts = [`${cook.running} running`];
+      if (cook.liveStatus) {
+        const pct = typeof cook.lastProgress === 'number' ? ` ${Math.round(cook.lastProgress * 100)}%` : '';
+        parts.push(`${cook.liveStatus}${pct}`);
+      }
+      statusText = parts.join(' \u2014 ');
     } else {
       const parts = [];
       if (stats.generationCount > 0) parts.push(`${stats.generationCount} generated`);

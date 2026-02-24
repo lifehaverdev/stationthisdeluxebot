@@ -1,65 +1,65 @@
-# Introduction  
+# Introduction
 
-> **NOEMA ART – Cross-Platform AI Studio for Manifesting Ideas**
->
-> *Manifest ideas—generate, remix & monetise media across Telegram, Discord and the Web Canvas.*
-
-NOEMA is a next-generation creative toolkit that unifies cutting-edge AI workflows with on-chain credits, a powerful Tool Registry and real-time collaboration. One codebase powers three distinct front-ends, giving artists and developers the freedom to create wherever their audience lives.
+NOEMA is a self-hosted AI studio for generating, remixing, and publishing media. It runs across Telegram, Discord, and the web from a single backend — so your tools and credits work wherever you are.
 
 ---
 
-## ✨ Why You Will Love NOEMA ART
+## The Canvas
 
-• **Unified Experience** – Telegram Bot, Discord Bot and a rich Web Canvas share the same powerful backend and REST/WebSocket APIs.  
-• **Pluggable Tool Registry** – Add new AI workflows by simply dropping a JSON definition.  
-• **WorkflowExecutionService** – Orchestrates synchronous, webhook and polling strategies so your tools “just work”.  
-• **On-Chain Credits** – Ethereum-backed credits with live price feeds, NFT valuation and a risk engine.  
-• **Real-Time Notifications** – WebSockets and platform notifiers keep teams in sync.  
-• **Modular Core Services** – ComfyUI, Points, Media, Storage, OpenAI, Analytics and more under one roof.  
-• **Resilient Startup** – Optional services can be offline without blocking the whole app.
+The web interface is built around a canvas. You add tool windows, configure their inputs, run them, and wire outputs into other tools. Everything you build can be saved as a workspace and shared with a link.
 
 ---
 
-## 🏆 Unique Selling Points
+## Tools
 
-1. **Crypto-Centric AI Aggregator** – Unify best-in-class AI models with token-gated access and immutable blockchain audit trails.  
-2. **Referral Vault & Incentivised Innovation** – Earn credits for inviting new users, contributing training data or fine-tuning models.  
-3. **NFT Creation Flywheel** – One-click minting pipelines turn generated media into ERC-721 collections so anyone can run an independent AI studio.  
-4. **Uncensored by Default** – We champion creative freedom while respecting local laws.
+Tools are the smallest unit of execution. Each tool wraps a single AI capability:
 
----
+- **Text generation** — language models for writing, prompting, and transformation
+- **Image generation** — text-to-image and image-to-image models
+- **Image analysis** — captioning and interrogation models
+- **Image decomposition** — layer extraction and editing
+- **Video generation** — short clip generation from text or image
 
-## 🚧 Where We’re Heading (And How *You* Can Help)
-
-NOEMA is already powerful, but we have **big dreams**:
-
-• **End-to-End Encryption & Zero-Knowledge Storage** – Help us deliver private, trust-less data storage.  
-• **UI/UX Polish** – The Web Canvas is functional, yet we long for a richer, more intuitive interface.  
-• **Performance & Scalability** – Contribute optimisations to handle ever-growing workloads.  
-• **More Tools & Workflows** – Got an idea for a killer AI workflow? Add a new `ToolDefinition` and surprise the community.
-
-If any of these challenges excite you, **we’d love your contribution**. Head over to our GitHub, read `AGENT_COLLABORATION_PROTOCOL.md`, then open a discussion, issue or pull request. Every line of code, doc fix and design mock-up helps steer **NOEMA** towards its fullest potential.
-
-> "Infinite ideas, one NOEMA."  – The Crew
+Tools expose typed inputs and outputs. Outputs from one tool can be connected directly to the inputs of another.
 
 ---
 
-### Getting Started Quickly
+## Spells
 
-1. **Clone & Install**  
-   ```bash
-   git clone https://github.com/StationThis/stationthisdeluxebot.git
-   cd stationthisdeluxebot
-   npm install
-   ```
-2. **Configure** – Copy `.env-example` → `.env` and fill in the blanks.  
-3. **Run**  
-   ```bash
-   node app.js
-   ```
-   • Web UI → http://localhost:4000  
-   • Internal API → http://localhost:4000/internal  
-   • External API → http://localhost:4000/api/v1
+A Spell is a saved chain of tools. You wire tools together on the canvas, expose the inputs that vary between runs, and save the arrangement. The result is a reusable, shareable pipeline.
 
-Manifest boldly!  
-The NOEMA Maintainers 
+Published Spells are discoverable by other users. When someone runs your Spell, you earn a share of the execution cost.
+
+---
+
+## Training
+
+NOEMA lets you train custom LoRA models on your own image datasets. Upload images, generate captions automatically, and start a training job on a GPU via VastAI. Trained models appear in your library and can be applied in any compatible tool. You can publish your models for others to use and earn from each run.
+
+---
+
+## Collection Mode
+
+Collection Mode is a generative pipeline for producing NFT collections at scale. Define a master prompt with trait slots, configure weighted trait values, and run the batch. NOEMA generates each item with a unique trait combination and stores the metadata. Review outputs individually, approve the ones that pass, and export a finished collection — images and metadata — ready for deployment.
+
+---
+
+## Credits
+
+NOEMA runs on a credit system. Credits are purchased with crypto assets and consumed per tool execution. Supported assets and their funding rates are listed in the Pricing section.
+
+Credits are tracked on-chain. You can view your balance and transaction history at any time from your account.
+
+---
+
+## Platforms
+
+The same tools and credit balance are accessible across three platforms:
+
+| Platform | Access |
+|----------|--------|
+| Web Canvas | [noema.art](https://noema.art) |
+| Telegram | Via bot |
+| Discord | Via slash commands |
+
+API access is also available — see the API section for authentication and endpoint reference.

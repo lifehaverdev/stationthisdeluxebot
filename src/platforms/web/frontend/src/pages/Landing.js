@@ -4,16 +4,16 @@ import { Sigil } from '../sandbox/components/Sigil.js';
 
 const CAPABILITIES = [
   {
-    label: '/Node Canvas',
-    desc: 'Wire AI tools together visually. Connect outputs to inputs across image, text, audio, and video nodes.',
+    label: '/Collections',
+    desc: 'Batch-generate with variable traits. Export images and OpenSea-compatible metadata in one click.',
   },
   {
     label: '/Model Training',
-    desc: 'Fine-tune and deploy custom models directly from the workspace.',
+    desc: 'Upload images, train a custom LoRA, and deploy it from the workspace. Publish to earn on others\' generations.',
   },
   {
     label: '/Spells',
-    desc: 'Publish multi-step workflows as on-chain spells — discoverable, executable, tradeable.',
+    desc: 'Save multi-step pipelines as on-chain Spells — discoverable, executable, tradeable. Earn a share on every run.',
   },
   {
     label: '/Shared Workspaces',
@@ -23,8 +23,8 @@ const CAPABILITIES = [
 
 const SIGNALS = [
   'Node canvas — composable, not conversational.',
-  'Wallet-native. No walled garden.',
-  'Designed for production, not prompts.',
+  'Wallet-native. Earn on every Spell and model you publish.',
+  'Web, Telegram, and Discord. One balance, everywhere.',
 ];
 
 export class Landing extends Component {
@@ -540,7 +540,7 @@ export class Landing extends Component {
           h('h1', { className: 'lp-wordmark' }, 'NOEMA'),
           h('div', { className: 'lp-hero-rule' }),
           h('p', { className: 'lp-hero-sub' },
-            'Wire AI tools into production workflows on a node canvas.'
+            'Wire image, video, and text tools into production pipelines on a node canvas.'
           ),
           h('div', { className: 'lp-hero-actions' },
             h('button', { className: 'lp-btn-cta', onclick: this.bind(this._onEnter) }, 'Enter Console'),
@@ -579,8 +579,8 @@ export class Landing extends Component {
         h('p', null,
           'Noema is an open ',
           h('em', null, 'node-based canvas'),
-          ' for building production AI workflows. Drop tools onto the canvas, wire outputs to inputs, execute the graph. ',
-          h('em', null, 'Share entire systems, not just outputs.')
+          ' for generating and remixing media. Wire image, video, and text tools together, train custom models, batch-produce collections. ',
+          h('em', null, 'Publish your pipelines to earn on every run.')
         ),
       ),
 

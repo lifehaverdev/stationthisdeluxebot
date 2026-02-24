@@ -7,6 +7,8 @@ description: Create AI-generated images, videos, and media using NOEMA's generat
 
 You are interfacing with NOEMA, an AI generation infrastructure platform with **27 generation tools** and **214+ LoRA models**. This skill enables you to help users create images, videos, and other AI-generated media by selecting appropriate tools, recommending style triggers, and executing generations.
 
+NOEMA is open source. Source code: [github.com/lifehaverdev/stationthisdeluxebot](https://github.com/lifehaverdev/stationthisdeluxebot)
+
 ## Protocol Support
 
 NOEMA supports the **Model Context Protocol (MCP)** for AI agent communication:
@@ -791,48 +793,87 @@ X-API-Key: sat_abc123def456...
 
 Best for: Autonomous agents with crypto wallets, no account needed.
 
+**Network:** Base mainnet (CAIP-2: `eip155:8453`) · **Asset:** USDC · **Facilitator:** Coinbase CDP
+
+> **Critical:** NOEMA verifies payments through the **Coinbase CDP facilitator** (`api.cdp.coinbase.com`), not `x402.org/facilitator`. x402 v2 uses an **off-chain EIP-3009 signed authorization** — not a transaction hash. The CDP facilitator executes the on-chain USDC transfer after your request succeeds. Use a CDP-compatible x402 client (e.g. `@coinbase/x402`).
+
 **How x402 Works:**
-1. Make a request without payment
-2. Receive `402 Payment Required` with payment details
-3. Pay the specified amount (USDC on Base)
-4. Retry request with payment proof
-5. Generation executes
+1. Make a request to `/api/v1/x402/generate` without payment
+2. Receive `402 Payment Required` with `X-PAYMENT-REQUIRED` header containing payment requirements
+3. Use a CDP-compatible x402 client to sign an EIP-3009 payment authorization
+4. Retry the request with `X-PAYMENT` header containing the signed authorization
+5. NOEMA verifies with CDP, executes generation, CDP settles USDC on-chain
 
-**Step 1: Have a Funded Wallet**
-- Need USDC on Base network
-- Agent controls its own wallet
+**Step 1: Check available tools and pricing**
+```
+GET https://noema.art/api/v1/x402/tools
+```
+Or get a quote for a specific tool:
+```
+GET https://noema.art/api/v1/x402/quote?toolId=kontext
+```
 
-**Step 2: Make Request to x402 Endpoint**
+**Step 2: First request returns 402 with payment requirements**
 ```
 POST https://noema.art/api/v1/x402/generate
 Content-Type: application/json
 
 {
-  "toolId": "dall-e-3",
-  "parameters": {"prompt": "a sunset over mountains"}
+  "toolId": "kontext",
+  "inputs": {"input_image": "https://...", "input_prompt": "make it cyberpunk"}
 }
 ```
 
-**Step 3: Receive Payment Requirements**
+Response (402):
 ```json
 {
-  "status": 402,
+  "error": "PAYMENT_REQUIRED",
   "paymentRequired": {
-    "amount": "0.04",
-    "currency": "USDC",
-    "chain": "base",
-    "recipient": "0x...",
-    "memo": "gen_abc123"
+    "x402Version": 2,
+    "accepts": [{
+      "scheme": "exact",
+      "network": "eip155:8453",
+      "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "amount": "44000",
+      "payTo": "0xFoundationAddress…",
+      "maxTimeoutSeconds": 300
+    }]
   }
 }
 ```
 
-**Step 4: Pay and Retry**
+The `amount` is in USDC atomic units (6 decimals): `44000` = `$0.044`.
+
+**Step 3: Sign and retry using `@coinbase/x402`**
+```javascript
+import { wrapFetch } from '@coinbase/x402/fetch';
+import { createWalletClient, http } from 'viem';
+import { base } from 'viem/chains';
+import { privateKeyToAccount } from 'viem/accounts';
+
+const account = privateKeyToAccount(process.env.PRIVATE_KEY);
+const walletClient = createWalletClient({ account, chain: base, transport: http() });
+
+// wrapFetch automatically handles 402 → sign EIP-3009 auth → retry
+const x402Fetch = wrapFetch(fetch, walletClient);
+
+const response = await x402Fetch('https://noema.art/api/v1/x402/generate', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    toolId: 'kontext',
+    inputs: { input_image: 'https://…', input_prompt: 'make it cyberpunk' }
+  })
+});
+
+const result = await response.json();
+// result.generationId → poll /api/v1/x402/status/:generationId
+// result.x402.transaction → on-chain settlement tx (CDP executes this)
 ```
-1. Send USDC payment to recipient with memo
-2. Retry request with payment proof header:
-   X-Payment-Proof: {transaction_hash}
-3. Generation executes
+
+**Step 4: Poll for completion**
+```
+GET https://noema.art/api/v1/x402/status/{generationId}
 ```
 
 **x402 Benefits:**
@@ -855,10 +896,11 @@ Content-Type: application/json
 
 If you're an autonomous agent with your own wallet:
 
-1. **Check your balance**: Ensure you have USDC on Base
-2. **Use x402 endpoint**: `https://noema.art/api/v1/x402/generate`
-3. **Handle 402 responses**: Parse payment requirements, execute payment, retry
-4. **No human intervention needed**: Fully programmatic flow
+1. **Ensure you have USDC on Base mainnet** (`eip155:8453`)
+2. **Use a CDP-compatible x402 client** — `@coinbase/x402` is recommended. NOEMA uses the Coinbase CDP facilitator; clients targeting `x402.org/facilitator` will fail verification.
+3. **Call `/api/v1/x402/generate`** — first call returns 402 with `X-PAYMENT-REQUIRED` header
+4. **Let your x402 client handle the rest** — it signs an EIP-3009 authorization and retries automatically
+5. **Poll `/api/v1/x402/status/:generationId`** for completion
 
 ### Authentication Summary
 
@@ -1420,7 +1462,10 @@ Claude's Process:
 | Error | Meaning | Action |
 |-------|---------|--------|
 | 401 Unauthorized | Invalid/missing API key | Guide user to authentication |
-| 402 Payment Required | Insufficient credits | Inform user to add credits |
+| 402 Payment Required (API key flow) | Insufficient credits | Inform user to add credits |
+| 402 + `PAYMENT_REQUIRED` (x402 flow) | No `X-PAYMENT` header sent | Sign authorization and retry |
+| 402 + `INSUFFICIENT_PAYMENT` (x402 flow) | Payment amount too small | Use `totalCostAtomic` from the 402 response body |
+| 400 + `PAYMENT_ALREADY_USED` (x402 flow) | EIP-3009 authorization already consumed | Sign a new authorization |
 | 404 Not Found | Invalid tool/LoRA | Verify IDs against registry |
 | 429 Rate Limited | Too many requests | Wait and retry |
 | 502 Bad Gateway | Backend service issue | Retry after delay |
@@ -1444,6 +1489,10 @@ Claude's Process:
 | `/api/v1/spells/casts/{id}` | REST: Spell status |
 | `/api/v1/collections` | REST: Collection management |
 | `/api/v1/trainings` | REST: Training management |
+| `/api/v1/x402/tools` | REST: List tools with USDC pricing (public) |
+| `/api/v1/x402/quote` | REST: Get USDC price quote (public) |
+| `/api/v1/x402/generate` | REST: Execute tool via x402 payment (no account) |
+| `/api/v1/x402/status/{id}` | REST: Poll x402 generation status (public) |
 | `/.well-known/agent-card.json` | ERC-8004 agent discovery |
 | `/.well-known/openapi.json` | OpenAPI spec for Codex/ChatGPT |
 

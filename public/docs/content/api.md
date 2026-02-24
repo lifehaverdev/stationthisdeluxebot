@@ -1,6 +1,6 @@
 # API Guide
 
-This guide shows practical cURL snippets and CLI examples for the StationThis Deluxe Bot REST API hosted at `https://noema.art/api/v1`.
+This guide covers the NOEMA REST API at `https://noema.art/api/v1` with practical cURL examples for common operations.
 
 ## 1. Connect a Wallet (Magic-Amount Flow)
 
@@ -550,7 +550,161 @@ def handle_webhook():
 
 ---
 
-## 9. Error Handling
+## 9. x402 Payments (No Account Required)
+
+NOEMA supports the [x402 protocol](https://www.x402.org/) — pay-per-request USDC micropayments directly over HTTP. No account or API key needed.
+
+**Network:** Base mainnet (CAIP-2: `eip155:8453`)
+**Asset:** USDC (`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`)
+**Facilitator:** Coinbase CDP
+
+> **Important:** NOEMA verifies payments through the **Coinbase CDP facilitator** (`api.cdp.coinbase.com`), not `x402.org/facilitator`. Your x402 client must be CDP-compatible. The payment is an off-chain **EIP-3009 signed authorization** — not a transaction hash. The facilitator executes the on-chain USDC transfer after your request succeeds.
+
+### 9.1 How It Works
+
+```
+1. POST /api/x402/generate → 402 + X-PAYMENT-REQUIRED header
+2. Client reads paymentRequired from response body
+3. Client signs an EIP-3009 authorization with a CDP-compatible x402 library
+4. Client resends with X-PAYMENT header → generation executes
+5. USDC settles on-chain via CDP facilitator after execution completes
+```
+
+### 9.2 Get a Price Quote (Optional)
+
+```bash
+curl "https://noema.art/api/x402/quote?toolId=kontext"
+```
+
+Response:
+```json
+{
+  "toolId": "kontext",
+  "baseCostUsd": 0.04,
+  "totalCostUsd": 0.044,
+  "totalCostAtomic": "44000",
+  "currency": "USDC",
+  "network": "eip155:8453",
+  "payTo": "0xABCD…"
+}
+```
+
+`totalCostAtomic` is the amount in USDC's 6-decimal atomic units (e.g. `44000` = `$0.044`).
+
+### 9.3 Execute with x402 Payment
+
+**Step 1 — First request returns 402 with payment requirements:**
+
+```bash
+curl -X POST https://noema.art/api/x402/generate \
+  -H 'Content-Type: application/json' \
+  -d '{"toolId": "kontext", "inputs": {"input_image": "https://…", "input_prompt": "…"}}'
+```
+
+Response (`402 Payment Required`):
+```json
+{
+  "error": "PAYMENT_REQUIRED",
+  "paymentRequired": {
+    "x402Version": 2,
+    "accepts": [{
+      "scheme": "exact",
+      "network": "eip155:8453",
+      "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "amount": "44000",
+      "payTo": "0xFoundationAddress…",
+      "maxTimeoutSeconds": 300
+    }]
+  }
+}
+```
+
+The response also includes an `X-PAYMENT-REQUIRED` header with the same requirements base64-encoded.
+
+**Step 2 — Sign and resend using `@coinbase/x402`:**
+
+```javascript
+import { wrapFetch } from '@coinbase/x402/fetch';
+import { createWalletClient, http } from 'viem';
+import { base } from 'viem/chains';
+import { privateKeyToAccount } from 'viem/accounts';
+
+const account = privateKeyToAccount(process.env.PRIVATE_KEY);
+const walletClient = createWalletClient({ account, chain: base, transport: http() });
+
+// wrapFetch handles the 402 → sign → retry cycle automatically
+const x402Fetch = wrapFetch(fetch, walletClient);
+
+const response = await x402Fetch('https://noema.art/api/x402/generate', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    toolId: 'kontext',
+    inputs: {
+      input_image: 'https://example.com/image.png',
+      input_prompt: 'make it cyberpunk'
+    }
+  })
+});
+
+const result = await response.json();
+// result.generationId — use this to poll status
+// result.x402.transaction — on-chain settlement tx hash
+```
+
+**Step 3 — Poll for completion:**
+
+```bash
+curl https://noema.art/api/x402/status/<generationId>
+```
+
+Response when complete:
+```json
+{
+  "generationId": "6541…",
+  "status": "completed",
+  "outputs": [{ "type": "image", "data": { "images": [{ "url": "https://…" }] } }]
+}
+```
+
+### 9.4 x402 with Webhook Delivery
+
+Avoid polling by providing a delivery webhook in the request body:
+
+```json
+{
+  "toolId": "kontext",
+  "inputs": { "input_image": "https://…", "input_prompt": "…" },
+  "delivery": {
+    "mode": "webhook",
+    "url": "https://your-domain.com/webhooks/x402-result",
+    "secret": "optional-hmac-secret"
+  }
+}
+```
+
+The webhook payload format is identical to the API-key webhook format described in section 8.
+
+### 9.5 List Available Tools and Prices
+
+```bash
+curl https://noema.art/api/x402/tools
+```
+
+Returns all public tools with their per-request USDC price.
+
+### 9.6 x402 Error Codes
+
+| Code | HTTP | Meaning |
+|------|------|---------|
+| `PAYMENT_REQUIRED` | 402 | No `X-PAYMENT` header — sign and retry |
+| `INSUFFICIENT_PAYMENT` | 402 | Payment amount too small — use the `totalCostAtomic` from the response |
+| `PAYMENT_ALREADY_USED` | 400 | This EIP-3009 authorization was already consumed — sign a new one |
+| `EXECUTION_FAILED` | 500 | Generation failed — payment was **not** charged |
+
+---
+
+## 10. Error Handling (API Key Flows)
 
 ### Common HTTP Status Codes
 
@@ -623,7 +777,7 @@ All errors follow this format:
 
 ---
 
-## 10. Quick Reference
+## 11. Quick Reference
 
 ### Endpoints Summary
 
@@ -645,8 +799,13 @@ All errors follow this format:
 | `/generations/execute` | POST | API Key | Execute a tool |
 | `/generations/status/:generationId` | GET | API Key | Get generation status |
 | `/generations/status` | POST | API Key | Batch status check |
+| `/x402/tools` | GET | None | List tools with x402 USDC pricing |
+| `/x402/quote` | GET | None | Get USDC price quote for a tool |
+| `/x402/generate` | POST | x402 Payment | Execute a tool via x402 (no account) |
+| `/x402/status/:generationId` | GET | None | Poll x402 generation status |
 
 ### Request Headers
 
-- `x-api-key: sk_live_...` - Required for authenticated endpoints
+- `x-api-key: sk_live_...` - Required for API-key authenticated endpoints
+- `X-PAYMENT: <base64>` - Required for x402 payment endpoints
 - `Content-Type: application/json` - Required for POST/PUT requests

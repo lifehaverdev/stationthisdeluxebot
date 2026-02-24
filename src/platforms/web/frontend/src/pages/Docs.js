@@ -68,9 +68,20 @@ export class Docs extends Component {
 
   async renderTools() {
     try {
-      const tools = await fetchJson('/api/v1/tools');
+      const allTools = await fetchJson('/api/v1/tools');
+      const tools = allTools.filter(t => t.toolId !== 'static-image');
       let html = '<h1>Tools</h1>';
-      html += '<p>The following tools are available through the API and other integrations.</p>';
+      html += '<p>Tools are the smallest unit of execution in NOEMA. Each tool wraps a single AI capability — generating an image, captioning a photo, producing a video, transforming text — and exposes a consistent set of typed inputs and outputs.</p>';
+      html += '<p>On the canvas, tools appear as windows. You configure their inputs directly in the window, run them, and inspect their outputs. Outputs from one tool can be wired as inputs to another, forming chains. Those chains, when saved and named, become Spells.</p>';
+      html += '<h2>Categories</h2>';
+      html += '<ul>';
+      html += '<li><strong>Text to Text</strong> — process or generate written content</li>';
+      html += '<li><strong>Text to Image</strong> — generate images from prompts</li>';
+      html += '<li><strong>Image to Text</strong> — describe or analyze images</li>';
+      html += '<li><strong>Image to Image</strong> — transform or decompose existing images</li>';
+      html += '<li><strong>Video</strong> — generate short video clips</li>';
+      html += '</ul>';
+      html += '<h2>Available Tools</h2>';
       tools.forEach(tool => {
         const cmdId = tool.commandName ? tool.commandName.replace('/', '') : tool.toolId;
         html += `
@@ -236,16 +247,16 @@ export class Docs extends Component {
         display: block;
         padding: 6px 16px;
         font-family: var(--ff-condensed);
-        font-size: var(--fs-xs);
+        font-size: var(--fs-sm);
         font-weight: var(--fw-medium);
         letter-spacing: var(--ls-wider);
         text-transform: uppercase;
-        color: var(--text-label);
+        color: var(--text-secondary);
         text-decoration: none;
         cursor: pointer;
         transition: color var(--dur-micro) var(--ease);
       }
-      .docs-sidebar a:hover { color: var(--text-secondary); }
+      .docs-sidebar a:hover { color: var(--text-primary); }
       .docs-sidebar a.active {
         color: var(--accent);
         border-left: 2px solid var(--accent);
@@ -302,7 +313,7 @@ export class Docs extends Component {
 
       .docs-content h1 {
         font-family: var(--ff-display);
-        font-size: 1.6rem;
+        font-size: 2rem;
         font-weight: var(--fw-bold);
         letter-spacing: var(--ls-widest);
         text-transform: uppercase;
@@ -311,27 +322,27 @@ export class Docs extends Component {
       }
       .docs-content h2 {
         font-family: var(--ff-condensed);
-        font-size: 1rem;
+        font-size: 1.2rem;
         font-weight: var(--fw-medium);
         letter-spacing: var(--ls-widest);
         text-transform: uppercase;
-        color: var(--text-secondary);
+        color: var(--text-primary);
         margin: 28px 0 10px;
       }
       .docs-content h3 {
         font-family: var(--ff-condensed);
-        font-size: var(--fs-xs);
+        font-size: var(--fs-sm);
         font-weight: var(--fw-medium);
         letter-spacing: var(--ls-wider);
         text-transform: uppercase;
-        color: var(--text-label);
+        color: var(--text-secondary);
         margin: 20px 0 8px;
       }
       .docs-content p {
         font-family: var(--ff-condensed);
-        font-size: 16px;
+        font-size: 18px;
         letter-spacing: var(--ls-wide);
-        color: var(--text-label);
+        color: var(--text-secondary);
         line-height: 1.7;
         margin-bottom: 12px;
       }
@@ -341,7 +352,7 @@ export class Docs extends Component {
         border: var(--border-width) solid var(--border);
         padding: 0.1rem 0.3rem;
         font-family: var(--ff-mono);
-        font-size: 0.8em;
+        font-size: 0.9em;
         color: var(--text-secondary);
       }
       .docs-content pre {
@@ -355,7 +366,7 @@ export class Docs extends Component {
         background: none;
         border: none;
         padding: 0;
-        font-size: 0.85em;
+        font-size: 14px;
       }
       .docs-content ul, .docs-content ol {
         padding-left: 1.2rem;
@@ -363,9 +374,9 @@ export class Docs extends Component {
       }
       .docs-content li {
         font-family: var(--ff-condensed);
-        font-size: 16px;
+        font-size: 18px;
         letter-spacing: var(--ls-wide);
-        color: var(--text-label);
+        color: var(--text-secondary);
         margin-bottom: 4px;
         line-height: 1.6;
       }
@@ -379,15 +390,15 @@ export class Docs extends Component {
         padding: 6px 10px;
         border-bottom: var(--border-width) solid var(--border);
         font-family: var(--ff-mono);
-        font-size: 13px;
+        font-size: 15px;
         letter-spacing: var(--ls-wide);
-        color: var(--text-label);
+        color: var(--text-secondary);
       }
       .docs-content th {
-        color: var(--text-secondary);
+        color: var(--text-primary);
         border-bottom-color: var(--border-hover);
       }
-      .docs-content strong { color: var(--text-secondary); }
+      .docs-content strong { color: var(--text-primary); }
 
       /* Tool cards */
       .doc-tool-card {
@@ -487,7 +498,7 @@ export class Docs extends Component {
         font-size: var(--fs-xs);
         letter-spacing: var(--ls-widest);
         text-transform: uppercase;
-        color: var(--text-label);
+        color: var(--text-secondary);
         text-decoration: none;
         cursor: pointer;
         transition: color var(--dur-micro) var(--ease);

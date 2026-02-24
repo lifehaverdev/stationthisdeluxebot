@@ -101,17 +101,19 @@ export class SandboxCanvas extends Component {
       document.removeEventListener('keyup', this._onKeyUp);
     });
 
-    // Touch pan: single-finger drag on canvas background = pan.
-    // Registered as non-passive so we can call preventDefault() to suppress
-    // scroll and synthetic mouse events.
+    // Wheel and touch: registered as non-passive so preventDefault() works.
+    // The vdom onwheel prop is passive in modern browsers — must use addEventListener.
     if (this._rootEl) {
+      this._wheel      = (e) => this._onWheel(e);
       this._touchStart = (e) => this._onTouchStart(e);
       this._touchMove  = (e) => this._onTouchMove(e);
       this._touchEnd   = (e) => this._onTouchEnd(e);
+      this._rootEl.addEventListener('wheel',      this._wheel,      { passive: false });
       this._rootEl.addEventListener('touchstart', this._touchStart, { passive: false });
       this._rootEl.addEventListener('touchmove',  this._touchMove,  { passive: false });
       this._rootEl.addEventListener('touchend',   this._touchEnd);
       this.registerCleanup(() => {
+        this._rootEl?.removeEventListener('wheel',      this._wheel);
         this._rootEl?.removeEventListener('touchstart', this._touchStart);
         this._rootEl?.removeEventListener('touchmove',  this._touchMove);
         this._rootEl?.removeEventListener('touchend',   this._touchEnd);
@@ -134,6 +136,7 @@ export class SandboxCanvas extends Component {
       wsModule.websocketClient?.connect?.();
       wsHandlers.registerWebSocketHandlers?.();
       this._wsHandlers = wsHandlers;
+      this._wsClient = wsModule.websocketClient;
     } catch (e) {
       console.warn('[SandboxCanvas] WS init failed:', e);
     }
@@ -231,10 +234,20 @@ export class SandboxCanvas extends Component {
     e.preventDefault();
     const { viewport } = this.state;
 
-    // ctrlKey = true  → pinch-to-zoom (trackpad) or ctrl+scroll (mouse)
-    // ctrlKey = false → two-finger scroll (trackpad) or plain scroll (mouse, zoom)
-    if (e.ctrlKey) {
-      // Zoom centered on cursor
+    // Plain scroll / pinch-to-zoom (ctrlKey) → zoom centered on cursor
+    // Two-finger trackpad pan (large deltaX or shift+scroll) → pan
+    if (e.shiftKey) {
+      // Shift+scroll → pan
+      this.setState({
+        viewport: { ...viewport, panX: viewport.panX - e.deltaX - e.deltaY, panY: viewport.panY }
+      });
+    } else if (!e.ctrlKey && Math.abs(e.deltaX) > Math.abs(e.deltaY) * 1.5) {
+      // Predominantly horizontal trackpad swipe → pan horizontally
+      this.setState({
+        viewport: { ...viewport, panX: viewport.panX - e.deltaX, panY: viewport.panY - e.deltaY }
+      });
+    } else {
+      // Scroll wheel or pinch (ctrlKey) → zoom centered on cursor
       const direction = e.deltaY > 0 ? -1 : 1;
       const factor = Math.pow(ZOOM_FACTOR, direction);
       const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, viewport.scale * factor));
@@ -245,12 +258,6 @@ export class SandboxCanvas extends Component {
       const newPanX = mouseX - (mouseX - viewport.panX) * scaleRatio;
       const newPanY = mouseY - (mouseY - viewport.panY) * scaleRatio;
       this.setState({ viewport: { panX: newPanX, panY: newPanY, scale: newScale } });
-    } else {
-      // Two-finger trackpad scroll → pan. Mouse vertical scroll → also pan
-      // (mouse users zoom via ctrl+scroll or middle-drag; plain scroll feels natural as pan).
-      this.setState({
-        viewport: { ...viewport, panX: viewport.panX - e.deltaX, panY: viewport.panY - e.deltaY }
-      });
     }
   }
 
@@ -740,12 +747,27 @@ export class SandboxCanvas extends Component {
   }
 
   async _awaitCompletion(windowId, generationId) {
+    let _stopProgressListener = null;
     try {
       // Ensure WS handlers are loaded
       if (!this._wsHandlers) await this._initWs();
 
       if (!this._wsHandlers?.generationCompletionManager) {
         throw new Error('WS handlers not available');
+      }
+
+      // Subscribe to per-generation progress ticks and update window status text.
+      if (this._wsClient) {
+        const handleProgress = (payload) => {
+          if (payload?.generationId !== generationId) return;
+          const parts = [];
+          if (payload.liveStatus) parts.push(payload.liveStatus);
+          else parts.push(payload.status === 'queued' ? 'Queued\u2026' : 'Running\u2026');
+          if (typeof payload.progress === 'number') parts.push(`${Math.round(payload.progress * 100)}%`);
+          this._updateWindow(windowId, { progress: parts.join(' ') });
+        };
+        this._wsClient.on('generationProgress', handleProgress);
+        _stopProgressListener = () => this._wsClient.off('generationProgress', handleProgress);
       }
 
       // Race WebSocket delivery against a polling fallback.
@@ -766,6 +788,8 @@ export class SandboxCanvas extends Component {
       });
 
       const result = await Promise.race([wsPromise, pollPromise]);
+      _stopProgressListener?.();
+      _stopProgressListener = null;
 
       if (result?.status === 'failed') {
         throw new Error(result.error || result.outputs?.error || 'Generation failed.');
@@ -794,6 +818,7 @@ export class SandboxCanvas extends Component {
       });
       if (result.costUsd) this._recordCost(windowId, result.costUsd);
     } catch (err) {
+      _stopProgressListener?.();
       this._updateWindow(windowId, { executing: false, error: err.message, progress: null });
     }
   }
@@ -1185,7 +1210,6 @@ export class SandboxCanvas extends Component {
       className: rootCls,
       ref: (el) => { this._rootEl = el; },
       onmousedown: this.bind(this._onCanvasMouseDown),
-      onwheel: this.bind(this._onWheel),
       style: gridStyle,
       ...connectingAttr,
     },
