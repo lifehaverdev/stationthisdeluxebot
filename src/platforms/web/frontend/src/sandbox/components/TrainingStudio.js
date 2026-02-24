@@ -77,6 +77,9 @@ export class TrainingStudio extends Component {
       embellishmentTasks: {},
       captionTasks: {},
 
+      // Embellishment pre-flight dialog
+      embellishDialog: null,
+
       // Confirm
       confirmDeleteTraining: null,
     };
@@ -356,7 +359,6 @@ export class TrainingStudio extends Component {
   // ── Caption management ─────────────────────────────────
 
   async _generateCaptionSet(datasetId) {
-    // Fetch embellishment spells, show choice
     let spells = [];
     try {
       const data = await fetchJson('/api/v1/datasets/embellishment-spells?type=caption');
@@ -364,12 +366,22 @@ export class TrainingStudio extends Component {
     } catch { /* ignore */ }
 
     if (!spells.length) {
-      // Fall back to manual
       this._createManualCaptions(datasetId);
       return;
     }
-    // For simplicity, use first spell. In future, a dialog can be shown.
-    await this._embellishDataset(datasetId, spells[0].slug, 'caption');
+
+    // Open pre-flight dialog so user can pick spell and enter trigger word
+    this.setState({
+      embellishDialog: {
+        type: 'caption',
+        datasetId,
+        spells,
+        selectedSpellSlug: spells[0].slug,
+        triggerWord: '',
+        submitting: false,
+        error: null,
+      },
+    });
   }
 
   async _createManualCaptions(datasetId) {
@@ -387,26 +399,37 @@ export class TrainingStudio extends Component {
 
   async _embellishDataset(datasetId, spellSlug, type, parameterOverrides) {
     const { userId } = this.props;
-    try {
-      const res = await postWithCsrf(`/api/v1/datasets/${encodeURIComponent(datasetId)}/embellish`, {
-        spellSlug, masterAccountId: userId, parameterOverrides: parameterOverrides || {},
-      });
-      if (!res.ok) throw new Error('Failed');
-      this._fetchDatasets();
-    } catch (err) {
-      console.warn('[TrainingStudio] embellish error', err);
+    const res = await postWithCsrf(`/api/v1/datasets/${encodeURIComponent(datasetId)}/embellish`, {
+      spellSlug, masterAccountId: userId, parameterOverrides: parameterOverrides || {},
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (res.status === 409) throw new Error('A task is already running for this dataset. Please wait for it to complete.');
+      throw new Error(data?.error?.message || 'Failed to start embellishment task');
     }
+    this._fetchDatasets();
   }
 
   async _generateControlImages(datasetId) {
-    let controlSpells = [];
+    let spells = [];
     try {
       const data = await fetchJson('/api/v1/datasets/embellishment-spells?type=control');
-      controlSpells = data.data || [];
+      spells = data.data || [];
     } catch { /* ignore */ }
-    if (!controlSpells.length) return;
-    // Use first spell, prompt can be blank for now
-    await this._embellishDataset(datasetId, controlSpells[0].slug, 'control', { prompt: '' });
+    if (!spells.length) return;
+
+    // Open pre-flight dialog so user can pick spell and enter prompt
+    this.setState({
+      embellishDialog: {
+        type: 'control',
+        datasetId,
+        spells,
+        selectedSpellSlug: spells[0].slug,
+        prompt: '',
+        submitting: false,
+        error: null,
+      },
+    });
   }
 
   async _deleteCaptionSet(datasetId, captionSetId) {
@@ -1161,6 +1184,97 @@ export class TrainingStudio extends Component {
     );
   }
 
+  // ── Embellishment pre-flight dialog ────────────────────
+
+  _renderEmbellishDialog() {
+    const d = this.state.embellishDialog;
+    if (!d) return null;
+
+    const isCaption = d.type === 'caption';
+    const title = isCaption ? 'Generate Captions' : 'Generate Control Images';
+    const update = (patch) => this.setState({ embellishDialog: { ...d, ...patch } });
+    const close = () => this.setState({ embellishDialog: null });
+
+    const onSubmit = async () => {
+      update({ submitting: true, error: null });
+      const overrides = isCaption
+        ? { triggerWord: d.triggerWord }
+        : { prompt: d.prompt };
+      try {
+        await this._embellishDataset(d.datasetId, d.selectedSpellSlug, d.type, overrides);
+        this.setState({ embellishDialog: null });
+      } catch (err) {
+        update({ submitting: false, error: err.message });
+      }
+    };
+
+    const selectedSpell = d.spells.find(s => s.slug === d.selectedSpellSlug) || d.spells[0];
+
+    return h('div', { className: 'ts-dialog-overlay', onclick: (e) => { if (e.target.classList.contains('ts-dialog-overlay')) close(); } },
+      h('div', { className: 'ts-dialog', onclick: (e) => e.stopPropagation() },
+        h('div', { className: 'ts-dialog-header' },
+          h('h3', null, title),
+          h('button', { className: 'ts-dialog-close', onclick: close }, '×'),
+        ),
+
+        // Spell picker (shown when multiple spells available)
+        d.spells.length > 1 && h('div', { className: 'ts-form-group' },
+          h('label', null, 'Method'),
+          h('div', { className: 'ts-spell-list' },
+            ...d.spells.map(spell =>
+              h('div', {
+                key: spell.slug,
+                className: `ts-spell-card${d.selectedSpellSlug === spell.slug ? ' ts-spell-card--selected' : ''}`,
+                onclick: () => update({ selectedSpellSlug: spell.slug }),
+              },
+                h('strong', null, spell.name),
+                spell.description && h('p', null, spell.description),
+              )
+            ),
+          ),
+        ),
+
+        // Description when only one spell
+        d.spells.length === 1 && selectedSpell?.description && h('div', { className: 'ts-spell-desc' },
+          h('p', null, selectedSpell.description),
+        ),
+
+        // Caption: trigger word input
+        isCaption && h('div', { className: 'ts-form-group' },
+          h('label', null, 'Trigger Word'),
+          h('input', {
+            className: 'ts-input',
+            type: 'text',
+            placeholder: 'e.g. mystyle, mychar',
+            value: d.triggerWord,
+            oninput: (e) => update({ triggerWord: e.target.value }),
+          }),
+          h('p', { className: 'ts-field-hint' }, 'This word is embedded in every caption so the model learns to associate it with your concept.'),
+        ),
+
+        // Control: prompt input
+        !isCaption && h('div', { className: 'ts-form-group' },
+          h('label', null, 'Base Prompt'),
+          h('input', {
+            className: 'ts-input',
+            type: 'text',
+            placeholder: 'e.g. portrait photo of a person',
+            value: d.prompt,
+            oninput: (e) => update({ prompt: e.target.value }),
+          }),
+          h('p', { className: 'ts-field-hint' }, 'A short description of the subject. Used to guide the control image generation spell.'),
+        ),
+
+        d.error && h('p', { className: 'ts-dialog-error' }, d.error),
+
+        h('div', { className: 'ts-form-actions' },
+          h('button', { className: 'ts-btn-ghost', onclick: close, disabled: d.submitting }, 'Cancel'),
+          h(AsyncButton, { onclick: onSubmit, label: d.submitting ? 'Starting…' : 'Start', disabled: d.submitting }),
+        ),
+      ),
+    );
+  }
+
   // ── Styles ─────────────────────────────────────────────
 
   static get styles() {
@@ -1285,21 +1399,58 @@ export class TrainingStudio extends Component {
       .ts-advanced summary { cursor:pointer; color:#90caf9; font-size:16px; }
       .ts-param-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; }
       .ts-param label { display:block; margin-bottom:4px; color:#aaa; font-size:14px; }
+
+      /* Embellishment pre-flight dialog */
+      .ts-dialog-overlay {
+        position:absolute; inset:0; background:rgba(0,0,0,0.65);
+        display:flex; align-items:center; justify-content:center;
+        z-index:100; border-radius:12px;
+      }
+      .ts-dialog {
+        background:#1e1e2e; border:1px solid #444; border-radius:12px;
+        padding:24px; width:460px; max-width:92%; max-height:80vh; overflow-y:auto;
+      }
+      .ts-dialog-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; }
+      .ts-dialog-header h3 { margin:0; font-size:20px; color:#e0e0e0; }
+      .ts-dialog-close { background:none; border:none; color:#888; font-size:24px; cursor:pointer; padding:0 4px; line-height:1; }
+      .ts-dialog-close:hover { color:#fff; }
+      .ts-spell-list { display:flex; flex-direction:column; gap:8px; margin-top:6px; }
+      .ts-spell-card {
+        background:#2a2a3e; border:1px solid #444; border-radius:8px;
+        padding:12px 14px; cursor:pointer; transition:border-color 0.15s;
+      }
+      .ts-spell-card:hover { border-color:#90caf9; }
+      .ts-spell-card--selected { border-color:#90caf9; background:#1a2a3e; }
+      .ts-spell-card strong { font-size:16px; color:#e0e0e0; display:block; }
+      .ts-spell-card p { margin:4px 0 0; font-size:14px; color:#aaa; }
+      .ts-spell-desc { margin-bottom:16px; }
+      .ts-spell-desc p { font-size:14px; color:#aaa; margin:0; }
+      .ts-field-hint { font-size:13px; color:#888; margin:4px 0 0; }
+      .ts-dialog-error { color:#ef9a9a; font-size:14px; margin:8px 0 0; }
+      .ts-btn-ghost {
+        background:none; border:1px solid #555; color:#aaa; border-radius:6px;
+        padding:8px 16px; cursor:pointer; font-size:15px;
+      }
+      .ts-btn-ghost:hover:not(:disabled) { border-color:#90caf9; color:#90caf9; }
+      .ts-btn-ghost:disabled { opacity:0.5; cursor:not-allowed; }
     `;
   }
 
   // ── Main render ────────────────────────────────────────
 
   render() {
-    const { view } = this.state;
+    const { view, embellishDialog } = this.state;
+    let content;
     switch (view) {
-      case DASH.MAIN: return this._renderDashboard();
-      case DASH.DATASET_DETAIL: return this._renderDatasetDetail();
-      case DASH.DATASET_FORM: return this._renderDatasetForm();
-      case DASH.WIZARD: return this._renderWizard();
-      case DASH.CAPTION_VIEWER: return this._renderCaptionViewer();
-      case DASH.CONTROL_VIEWER: return this._renderControlViewer();
-      default: return h('div', { style: 'display:none' });
+      case DASH.MAIN:           content = this._renderDashboard(); break;
+      case DASH.DATASET_DETAIL: content = this._renderDatasetDetail(); break;
+      case DASH.DATASET_FORM:   content = this._renderDatasetForm(); break;
+      case DASH.WIZARD:         content = this._renderWizard(); break;
+      case DASH.CAPTION_VIEWER: content = this._renderCaptionViewer(); break;
+      case DASH.CONTROL_VIEWER: content = this._renderControlViewer(); break;
+      default: content = h('div', { style: 'display:none' });
     }
+    if (!embellishDialog) return content;
+    return h('div', { style: 'position:relative' }, content, this._renderEmbellishDialog());
   }
 }
