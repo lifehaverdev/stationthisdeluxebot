@@ -944,7 +944,11 @@ export class SandboxCanvas extends Component {
       if (w.isSpell) {
         win.type = 'spell';
         win.spell = w.spell;
-        win.tool = win.tool || { displayName: w.spell?.name || 'Spell', toolId: `spell-${w.spell?._id}`, metadata: { outputType: 'image' } };
+        win.tool = win.tool || { displayName: w.spell?.name || 'Spell', toolId: `spell:${w.spell?._id}`, metadata: { outputType: 'image' } };
+        // Normalize legacy 'spell-' prefix (hyphen) to 'spell:' (colon) for backward compat
+        if (win.tool?.toolId?.startsWith('spell-')) {
+          win.tool = { ...win.tool, toolId: `spell:${win.tool.toolId.substring('spell-'.length)}` };
+        }
       } else if (w.type === 'collection') {
         win.type = 'collection';
         win.collection = w.collection;
@@ -1043,7 +1047,7 @@ export class SandboxCanvas extends Component {
   addSpellWindow(spell, position) {
     return this._addWindow({
       type: 'spell', spell,
-      tool: { displayName: spell.name, toolId: `spell-${spell.slug || spell._id}`, metadata: { outputType: 'image' } },
+      tool: { displayName: spell.name, toolId: `spell:${spell.slug || spell._id}`, metadata: { outputType: 'image' } },
       x: position?.x ?? 200, y: position?.y ?? 200,
       parameterMappings: {},
       output: null, outputVersions: [], currentVersionIndex: -1,
@@ -1092,11 +1096,12 @@ export class SandboxCanvas extends Component {
 
   // ── Render ────────────────────────────────────────────────
 
-  _renderWindowBody(win) {
+  _renderWindowBody(win, compact = false) {
     const connections = [...this.state.connections.values()].filter(c => c.toWindowId === win.id);
     const commonProps = {
       win,
       connections,
+      compact,
       onParamChange: (wid, key, val) => this._onParamChange(wid, key, val),
       onExecute: (wid) => this._executeWindow(wid),
       onLoadOutput: (wid) => this._onLoadOutput(wid),
@@ -1213,6 +1218,7 @@ export class SandboxCanvas extends Component {
     // This is the only way to keep isometric lines aligned with orthogonal lines
     // across zoom levels — background-size/position track viewport exactly.
     const gridStyle = this._buildGridStyle(viewport);
+    const compact = viewport.scale < 0.5;
 
     return h('div', {
       className: rootCls,
@@ -1229,7 +1235,7 @@ export class SandboxCanvas extends Component {
             key: win.id,
             win,
             selected: selection.has(win.id),
-            bodyContent: this._renderWindowBody(win),
+            bodyContent: this._renderWindowBody(win, compact),
             onDragStart: (wid, ox, oy) => this._startWindowDrag(wid, ox, oy),
             onClose: (wid) => this._removeWindow(wid),
             onAnchorDragStart: (wid, type, e) => this._startConnectionDrag(wid, type, e),
