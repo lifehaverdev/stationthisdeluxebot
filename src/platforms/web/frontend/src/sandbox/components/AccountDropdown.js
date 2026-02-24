@@ -51,7 +51,8 @@ export class AccountDropdown extends Component {
 
   _toggle(e) {
     e.stopPropagation();
-    this.setState({ open: !this.state.open });
+    const rect = this._ref?.getBoundingClientRect();
+    this.setState({ open: !this.state.open, menuTop: rect ? rect.bottom + 4 : 48 });
   }
 
   _action(name, e) {
@@ -71,7 +72,7 @@ export class AccountDropdown extends Component {
       .acct-root { position: relative; }
       .acct-btn { background: none; border: 1px solid #333; color: #ccc; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 16px; }
       .acct-btn:hover { border-color: #555; color: #fff; }
-      .acct-menu { position: absolute; top: calc(100% + 4px); right: 0; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; min-width: 240px; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
+      .acct-menu { position: fixed; right: 8px; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; min-width: 240px; max-width: calc(100vw - 16px); z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
       .acct-header { padding: 12px 16px; font-weight: 600; border-bottom: 1px solid #222; font-size: 16px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
       .acct-item { padding: 8px 16px; font-size: 17px; color: #ccc; }
       .acct-item b { color: #fff; }
@@ -102,7 +103,7 @@ export class AccountDropdown extends Component {
       items.push(h('a', { className: 'acct-action', href: '#', onclick: (e) => this._action('get-more-points', e) }, 'Get More Points'));
     }
 
-    return h('div', { className: 'acct-menu' },
+    return h('div', { className: 'acct-menu', style: `top:${this.state.menuTop || 48}px` },
       h('div', { className: 'acct-header' }, 'Account'),
       ...items,
       h('div', { className: 'acct-actions' },

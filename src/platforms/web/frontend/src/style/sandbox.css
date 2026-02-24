@@ -224,3 +224,172 @@ body {
 }
 .corner-brackets::before { top: -1px; left: -1px; border-width: 1px 0 0 1px; }
 .corner-brackets::after  { bottom: -1px; right: -1px; border-width: 0 1px 1px 0; }
+
+/* ── Tool window chrome (.nw-*) ─────────────── */
+.nw-root {
+  position: absolute;
+  width: var(--node-width);
+  background: var(--surface-1);
+  border: var(--border-width) solid var(--border);
+  color: var(--text-primary);
+  font-family: var(--ff-sans);
+  font-size: var(--fs-base);
+  user-select: none;
+  transition:
+    border-color var(--dur-interact) var(--ease),
+    box-shadow   var(--dur-interact) var(--ease);
+  will-change: transform;
+}
+.nw-root:hover { border-color: var(--border-hover); }
+.nw-root.selected {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 1px var(--accent-dim) inset;
+}
+.nw-root.selected::before,
+.nw-root.selected::after {
+  content: '';
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-color: var(--accent);
+  border-style: solid;
+  pointer-events: none;
+  z-index: 10;
+}
+.nw-root.selected::before { top: -1px; left: -1px; border-width: 1px 0 0 1px; }
+.nw-root.selected::after  { bottom: -1px; right: -1px; border-width: 0 1px 1px 0; }
+
+.nw-bracket-tr,
+.nw-bracket-bl {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-color: var(--accent);
+  border-style: solid;
+  pointer-events: none;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity var(--dur-interact) var(--ease);
+}
+.nw-root.selected .nw-bracket-tr,
+.nw-root.selected .nw-bracket-bl { opacity: 1; }
+.nw-bracket-tr { top: -1px; right: -1px; border-width: 1px 1px 0 0; }
+.nw-bracket-bl { bottom: -1px; left: -1px; border-width: 0 0 1px 1px; }
+
+.nw-root.output-complete {
+  animation: borderFlash 1.2s var(--ease) forwards;
+}
+
+.nw-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px;
+  border-bottom: var(--border-width) solid var(--border);
+  cursor: grab;
+  background: var(--surface-2);
+  gap: 8px;
+}
+.nw-header:active { cursor: grabbing; }
+
+.nw-title {
+  font-family: var(--ff-sans);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--ls-wide);
+  text-transform: uppercase;
+  color: var(--text-primary);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nw-id {
+  font-family: var(--ff-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-label);
+  letter-spacing: var(--ls-normal);
+  flex-shrink: 0;
+}
+
+.nw-close {
+  width: 16px;
+  height: 16px;
+  background: none;
+  border: var(--border-width) solid transparent;
+  color: var(--text-label);
+  cursor: pointer;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    color var(--dur-micro) var(--ease),
+    border-color var(--dur-micro) var(--ease);
+  flex-shrink: 0;
+  padding: 0;
+}
+.nw-close:hover { color: var(--danger); border-color: var(--danger); }
+
+.nw-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-bottom: var(--border-width) solid var(--border);
+  background: var(--surface-1);
+  min-height: 24px;
+}
+.nw-status-dot { width: 4px; height: 4px; background: var(--text-label); flex-shrink: 0; }
+.nw-status-dot.active { background: var(--accent); }
+.nw-status-dot.error  { background: var(--danger); }
+.nw-status-text {
+  font-family: var(--ff-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-label);
+  letter-spacing: var(--ls-wide);
+}
+
+.nw-body { overflow-y: auto; max-height: 520px; }
+
+.nw-execute {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 16px;
+  background: var(--surface-2);
+  border: none;
+  border-top: var(--border-width) solid var(--border);
+  color: var(--text-secondary);
+  font-family: var(--ff-condensed);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--ls-wider);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    background   var(--dur-interact) var(--ease),
+    color        var(--dur-interact) var(--ease),
+    border-color var(--dur-interact) var(--ease);
+}
+.nw-execute:hover   { background: var(--accent-dim); color: var(--accent); border-top-color: var(--accent-border); }
+.nw-execute:active  { background: var(--surface-1); }
+.nw-execute:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.nw-anchor {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: var(--surface-2);
+  border: var(--border-width) solid var(--border-hover);
+  cursor: crosshair;
+  transition:
+    background   var(--dur-micro) var(--ease),
+    border-color var(--dur-micro) var(--ease),
+    transform    var(--dur-micro) var(--ease);
+}
+.nw-anchor:hover { background: var(--accent); border-color: var(--accent); transform: scale(1.4); z-index: 10; }
+.nw-anchor.connected { background: var(--accent-dim); border-color: var(--accent-border); }
