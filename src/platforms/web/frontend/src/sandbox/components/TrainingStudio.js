@@ -139,9 +139,6 @@ export class TrainingStudio extends Component {
       }
       if (status === 'completed' || status === 'failed') {
         this._fetchDatasets();
-        if (dsId === normalizeId(this.state.selectedDatasetId)) {
-          this._fetchCaptionSets(datasetId);
-        }
       }
     };
 
@@ -264,8 +261,8 @@ export class TrainingStudio extends Component {
   }
 
   _openDatasetDetail(dsId) {
-    this.setState({ view: DASH.DATASET_DETAIL, selectedDatasetId: dsId, captionSets: [], captionsLoading: true });
-    this._fetchCaptionSets(dsId);
+    this.setState({ view: DASH.DATASET_DETAIL, selectedDatasetId: dsId });
+    this._fetchDatasets();
   }
 
   _openDatasetForm(ds) {
@@ -705,12 +702,52 @@ export class TrainingStudio extends Component {
   // ── Render: Dataset Detail ─────────────────────────────
 
   _renderDatasetDetail() {
-    const { selectedDatasetId, captionSets, captionsLoading, captionsError } = this.state;
+    const { selectedDatasetId, embellishmentTasks } = this.state;
     const ds = this._getDataset(selectedDatasetId);
     if (!ds) return h('div', null, ModalError({ message: 'Dataset not found.' }));
 
     const images = ds.images || [];
-    const controlSets = (ds.embellishments || []).filter(e => e.type === 'control');
+    const dsIdStr = normalizeId(selectedDatasetId);
+    const embellishments = ds.embellishments || [];
+
+    // Captions from embellishments (the authoritative system)
+    const captionSets = embellishments.filter(e => e.type === 'caption');
+    const inProgressCaptionSets = captionSets.filter(cs => cs.status === 'processing' || cs.status === 'pending');
+    const doneCaptionSets = captionSets.filter(cs => cs.status !== 'processing' && cs.status !== 'pending');
+
+    // WS tasks for captions not yet persisted as embellishment records
+    const captionActiveTasks = Object.values(embellishmentTasks).filter(t =>
+      normalizeId(t.datasetId) === dsIdStr &&
+      t.embellishmentType === 'caption' &&
+      t.status !== 'completed' && t.status !== 'failed'
+    );
+
+    const controlSets = embellishments.filter(e => e.type === 'control');
+    const controlActiveTasks = Object.values(embellishmentTasks).filter(t =>
+      normalizeId(t.datasetId) === dsIdStr &&
+      t.embellishmentType === 'control' &&
+      t.status !== 'completed' && t.status !== 'failed'
+    );
+
+    const totalCaptionCount = doneCaptionSets.length + inProgressCaptionSets.length + captionActiveTasks.length;
+
+    const renderProgressCard = (task, label) => {
+      const pct = task.total > 0 ? Math.round((task.completedCount / task.total) * 100) : null;
+      const metaText = task.total > 0 ? `${task.completedCount} / ${task.total}` : 'Starting…';
+      return h('div', { className: 'ts-caption-card ts-caption-card--running', key: task.taskId },
+        h('div', { className: 'ts-caption-info' },
+          h('span', { className: 'ts-caption-method' }, label),
+          h(Badge, { label: 'In Progress', variant: 'info' }),
+          h('span', { className: 'ts-caption-meta' }, metaText),
+        ),
+        h('div', { className: 'ts-progress', style: 'margin-top:8px' },
+          h('div', { className: 'ts-progress-bar' },
+            h('div', { className: 'ts-progress-fill', style: `width:${pct ?? 0}%` })
+          ),
+          pct !== null ? h('span', { className: 'ts-progress-text' }, `${pct}%`) : null,
+        ),
+      );
+    };
 
     return h('div', null,
       h('div', { className: 'ts-detail-header' },
@@ -733,20 +770,35 @@ export class TrainingStudio extends Component {
           : h('div', { className: 'ts-empty' }, 'No images.')
       ),
 
-      // Caption sets
+      // Caption sets (from ds.embellishments)
       h('div', { className: 'ts-section' },
         h('div', { className: 'ts-section-head' },
-          h('h4', null, `Caption Sets (${captionSets.length})`),
+          h('h4', null, `Caption Sets (${totalCaptionCount})`),
           h(AsyncButton, { onclick: () => this._generateCaptionSet(selectedDatasetId), label: 'Generate Captions' })
         ),
-        captionsLoading ? h(Loader, { message: 'Loading captions...' }) : null,
-        captionsError ? ModalError({ message: captionsError }) : null,
-        !captionsLoading && captionSets.length === 0
+
+        // WS tasks not yet persisted as embellishment records
+        ...captionActiveTasks
+          .filter(t => !inProgressCaptionSets.some(cs => cs.taskId === t.taskId))
+          .map(t => renderProgressCard(t, 'Generating captions…')),
+
+        // In-progress embellishment records (already in ds.embellishments)
+        ...inProgressCaptionSets.map(cs => {
+          const taskId = cs.taskId || normalizeId(cs._id);
+          const wsTask = embellishmentTasks[taskId] || {};
+          return renderProgressCard(
+            { taskId, total: wsTask.total || 0, completedCount: wsTask.completedCount || 0 },
+            cs.spellSlug || 'Generating captions…',
+          );
+        }),
+
+        // Completed caption sets
+        totalCaptionCount === 0
           ? h('div', { className: 'ts-empty' }, 'No caption sets yet.')
           : null,
-        ...captionSets.map(cs => {
+        ...doneCaptionSets.map(cs => {
           const csId = normalizeId(cs._id);
-          const count = cs.captions?.length || 0;
+          const count = (cs.captions || cs.results || []).length;
           const date = cs.createdAt ? new Date(cs.createdAt).toLocaleDateString() : '';
           return h('div', { className: 'ts-caption-card', key: csId },
             h('div', { className: 'ts-caption-info' },
@@ -770,15 +822,29 @@ export class TrainingStudio extends Component {
           h('h4', null, `Control Images (${controlSets.length})`),
           h(AsyncButton, { onclick: () => this._generateControlImages(selectedDatasetId), label: 'Generate Control' })
         ),
-        controlSets.length === 0
+
+        // In-progress control tasks from WS
+        ...controlActiveTasks
+          .filter(t => !controlSets.some(cs => cs.taskId === t.taskId || (cs.status === 'processing' && normalizeId(cs.datasetId) === dsIdStr)))
+          .map(t => renderProgressCard(t, 'Generating control images…')),
+
+        controlSets.length === 0 && controlActiveTasks.length === 0
           ? h('div', { className: 'ts-empty' }, 'No control sets yet.')
           : null,
         ...controlSets.map(cs => {
           const csId = normalizeId(cs._id);
           const count = (cs.results || []).filter(r => r && r.value).length;
+          const isRunning = cs.status === 'processing' || cs.status === 'pending';
+          if (isRunning) {
+            const wsTask = Object.values(embellishmentTasks).find(t => t.taskId === cs.taskId) || {};
+            return renderProgressCard(
+              { taskId: cs.taskId || csId, total: wsTask.total || 0, completedCount: wsTask.completedCount || 0 },
+              cs.spellSlug || 'Generating control images…',
+            );
+          }
           return h('div', { className: 'ts-caption-card', key: csId },
             h('div', { className: 'ts-caption-info' },
-              h('span', { className: 'ts-caption-method' }, cs.method || 'Control'),
+              h('span', { className: 'ts-caption-method' }, cs.method || cs.spellSlug || 'Control'),
               h('span', { className: 'ts-caption-meta' }, `${count} images \u00B7 ${cs.status || ''}`)
             ),
             h('div', { className: 'ts-caption-actions' },
