@@ -1,11 +1,17 @@
 import { Component, h } from '@monygroupcorp/microact';
-import { uploadToStorage } from '../io.js';
 
 const CATEGORIES = [
   { type: 'image',  label: 'image',  category: 'text-to-image' },
   { type: 'sound',  label: 'sound',  category: 'text-to-audio' },
   { type: 'text',   label: 'text',   category: 'text-to-text'  },
   { type: 'movie',  label: 'movie',  category: 'text-to-video' },
+];
+
+const EFFECT_CATEGORIES = [
+  { type: 'image', label: 'image',   outputType: 'image' },
+  { type: 'text',  label: 'caption', outputType: 'text'  },
+  { type: 'video', label: 'video',   outputType: 'video' },
+  { type: 'audio', label: 'sound',   outputType: 'audio' },
 ];
 
 /**
@@ -29,12 +35,11 @@ export class ActionModal extends Component {
   constructor(props) {
     super(props);
     this.state = {
-      // 'root' | 'categories' | 'tools' | 'upload'
+      // 'root' | 'categories' | 'tools'
       view: 'root',
+      mode: null,             // 'create' | 'effect'
       selectedCategory: null,
       tools: [],
-      uploading: false,
-      uploadError: null,
     };
     this._fileInput = null;
   }
@@ -51,7 +56,7 @@ export class ActionModal extends Component {
   // Reset to root view when modal re-opens
   shouldUpdate(oldProps, newProps) {
     if (!oldProps.visible && newProps.visible) {
-      this.setState({ view: 'root', selectedCategory: null, uploadError: null, uploading: false });
+      this.setState({ view: 'root', mode: null, selectedCategory: null });
     }
     return true;
   }
@@ -64,7 +69,33 @@ export class ActionModal extends Component {
 
   _showCategories(e) {
     e.stopPropagation();
-    this.setState({ view: 'categories' });
+    this.setState({ view: 'categories', mode: 'create' });
+  }
+
+  _showEffectCategories(e) {
+    e.stopPropagation();
+    this.setState({ view: 'categories', mode: 'effect' });
+  }
+
+  _hasRequiredImageInput(tool) {
+    const schema = tool.inputSchema || {};
+    return Object.values(schema).some(p => p.type === 'image' && p.required);
+  }
+
+  _getToolOutputType(tool) {
+    if (tool.metadata?.outputType) return tool.metadata.outputType;
+    const cat = tool.category || '';
+    if (cat === 'video') return 'video';
+    if (cat === 'audio' || cat === 'text-to-audio') return 'audio';
+    if (cat === 'image-to-text' || cat === 'interrogate') return 'text';
+    return 'image';
+  }
+
+  _selectEffectTool(tool, e) {
+    e.stopPropagation();
+    const canvas = window.sandboxCanvas;
+    if (canvas) canvas.addEffectWindow(tool, this.props.workspacePosition);
+    this._close();
   }
 
   _createPrimitive(outputType, e) {
@@ -81,8 +112,11 @@ export class ActionModal extends Component {
 
   _back(e) {
     e.stopPropagation();
-    const prev = this.state.view === 'tools' ? 'categories' : 'root';
-    this.setState({ view: prev, selectedCategory: null });
+    if (this.state.view === 'tools') {
+      this.setState({ view: 'categories', selectedCategory: null });
+    } else {
+      this.setState({ view: 'root', selectedCategory: null, mode: null });
+    }
   }
 
   // ── Tool creation ─────────────────────────────────────────
@@ -112,7 +146,14 @@ export class ActionModal extends Component {
     try {
       const url = await uploadToStorage(file);
       const canvas = window.sandboxCanvas;
-      if (canvas) canvas.addUploadWindow(url, this.props.workspacePosition);
+      if (canvas) {
+        const { mode, selectedEffectTool } = this.state;
+        if (mode === 'effect' && selectedEffectTool) {
+          canvas.addEffectWindow(selectedEffectTool, url, this.props.workspacePosition);
+        } else {
+          canvas.addUploadWindow(url, this.props.workspacePosition);
+        }
+      }
       this._close();
     } catch (err) {
       this.setState({ uploading: false, uploadError: err.message });
@@ -171,67 +212,13 @@ export class ActionModal extends Component {
       }
       .am-center:hover { fill: var(--surface-2); }
 
-      /* Panel fallback — used for upload and tools list */
-      .am-upload-panel {
-        position: fixed;
-        z-index: var(--z-radial);
-        background: var(--surface-2);
-        border: var(--border-width) solid var(--border);
-        padding: 14px;
-        min-width: 220px;
-        transform: translate(-50%, -50%);
-        animation: fadeUp var(--dur-trans) var(--ease);
-      }
-      .am-upload-back {
-        background: none;
-        border: none;
-        color: var(--text-label);
-        font-family: var(--ff-mono);
-        font-size: var(--fs-xs);
-        letter-spacing: var(--ls-wide);
-        text-transform: uppercase;
-        cursor: pointer;
-        padding: 0 0 10px 0;
-        display: block;
-      }
-      .am-upload-back:hover { color: var(--text-secondary); }
-      .am-upload-area {
-        padding: 20px 16px;
-        text-align: center;
-        color: var(--text-label);
-        font-family: var(--ff-mono);
-        font-size: var(--fs-xs);
-        letter-spacing: var(--ls-wide);
-        text-transform: uppercase;
-        border: var(--border-width) dashed var(--border);
-        cursor: pointer;
-        transition: border-color var(--dur-micro) var(--ease), color var(--dur-micro) var(--ease);
-      }
-      .am-upload-area:hover { border-color: var(--accent-border); color: var(--text-secondary); }
-      .am-upload-error {
-        color: var(--danger);
-        font-family: var(--ff-mono);
-        font-size: var(--fs-xs);
-        margin-top: 6px;
-      }
-      .am-uploading {
-        color: var(--text-label);
-        font-family: var(--ff-mono);
-        font-size: var(--fs-xs);
-        text-align: center;
-        padding: 12px;
-        text-transform: uppercase;
-        letter-spacing: var(--ls-wide);
-      }
-
       /* Tools list panel */
       .am-tools-panel {
         position: fixed;
         z-index: var(--z-radial);
         background: var(--surface-2);
         border: var(--border-width) solid var(--border);
-        min-width: 200px;
-        max-width: 280px;
+        width: 420px;
         transform: translate(-50%, -50%);
         animation: fadeUp var(--dur-trans) var(--ease);
       }
@@ -266,35 +253,34 @@ export class ActionModal extends Component {
         color: var(--text-secondary);
       }
       .am-tools-list {
-        max-height: 240px;
+        max-height: 360px;
         overflow-y: auto;
-        display: flex;
-        flex-direction: column;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
       }
       .am-tool-item {
         background: none;
         border: none;
         border-bottom: var(--border-width) solid var(--border);
+        border-right: var(--border-width) solid var(--border);
         color: var(--text-secondary);
         font-family: var(--ff-mono);
         font-size: var(--fs-xs);
         letter-spacing: var(--ls-wide);
         text-align: left;
-        padding: 8px 12px;
+        padding: 10px 12px;
         cursor: pointer;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        line-height: 1.4;
         transition: background var(--dur-micro) var(--ease), color var(--dur-micro) var(--ease);
       }
-      .am-tool-item:last-child { border-bottom: none; }
+      .am-tool-item:nth-child(2n) { border-right: none; }
+      .am-tool-item:nth-last-child(-n+2) { border-bottom: none; }
       .am-tool-item:hover {
         background: var(--accent-dim);
         color: var(--accent);
       }
       .am-tool-item--primitive {
         color: var(--text-label);
-        border-bottom-color: var(--border);
       }
       .am-tool-item--primitive:hover {
         background: var(--accent-dim);
@@ -315,40 +301,16 @@ export class ActionModal extends Component {
     const { visible, x, y } = this.props;
     if (!visible) return h('div', { className: 'am-root' });
 
-    const { view, selectedCategory, tools, uploading, uploadError } = this.state;
-
-    // Upload view: drag-drop requires panel, not radial
-    if (view === 'upload') {
-      return h('div', {
-        className: 'am-upload-panel',
-        style: `left:${x}px;top:${y}px`,
-        onclick: (e) => e.stopPropagation(),
-      },
-        uploading
-          ? h('div', { className: 'am-uploading' }, 'uploading...')
-          : h('div', null,
-            h('button', { className: 'am-upload-back', onclick: (e) => this._back(e) }, '← back'),
-            h('div', {
-              className: 'am-upload-area',
-              onclick: (e) => { e.stopPropagation(); this._fileInput?.click(); },
-              ondragover: (e) => { e.preventDefault(); e.stopPropagation(); },
-              ondrop: (e) => { e.preventDefault(); e.stopPropagation(); this._handleFile(e.dataTransfer.files[0]); },
-            }, 'drop image or click to upload'),
-            h('input', {
-              type: 'file', accept: 'image/*', style: 'display:none',
-              ref: (el) => { this._fileInput = el; },
-              onchange: (e) => this._handleFile(e.target.files[0]),
-            }),
-            uploadError ? h('div', { className: 'am-upload-error' }, uploadError) : null,
-          )
-      );
-    }
+    const { view, mode, selectedCategory, tools } = this.state;
 
     // Tools view: too many items for radial — render as scrollable panel
     if (view === 'tools') {
-      const filtered = tools.filter(t => t.category === selectedCategory.category);
-      // For the text category, prepend a plain text primitive option
-      const isText = selectedCategory.type === 'text';
+      const isEffect = this.state.mode === 'effect';
+      const filtered = isEffect
+        ? tools.filter(t => this._hasRequiredImageInput(t) && this._getToolOutputType(t) === selectedCategory?.outputType)
+        : tools.filter(t => t.category === selectedCategory.category);
+      // For the text category on create path, prepend a plain text primitive option
+      const isText = !isEffect && selectedCategory.type === 'text';
       return h('div', {
         className: 'am-tools-panel',
         style: `left:${x}px;top:${y}px`,
@@ -374,7 +336,9 @@ export class ActionModal extends Component {
                 className: 'am-tool-item',
                 key: tool.toolId || tool.displayName,
                 title: tool.description || tool.displayName,
-                onclick: (e) => this._selectTool(tool, e),
+                onclick: isEffect
+                  ? (e) => this._selectEffectTool(tool, e)
+                  : (e) => this._selectTool(tool, e),
               }, tool.displayName)
             )
           )
@@ -385,13 +349,16 @@ export class ActionModal extends Component {
     let items = [];
     if (view === 'root') {
       items = [
-        { label: 'upload', fn: (e) => this._showUpload(e) },
+        { label: 'effect', fn: (e) => this._showEffectCategories(e) },
         { label: 'create', fn: (e) => this._showCategories(e) },
       ];
     } else if (view === 'categories') {
+      const catList = this.state.mode === 'effect'
+        ? EFFECT_CATEGORIES.filter(c => tools.some(t => this._hasRequiredImageInput(t) && this._getToolOutputType(t) === c.outputType))
+        : CATEGORIES.filter(c => c.type === 'text' || tools.some(t => t.category === c.category));
       items = [
         { label: 'back', fn: (e) => this._back(e) },
-        ...CATEGORIES.map(c => ({ label: c.label, fn: (e) => this._selectCategory(c, e) })),
+        ...catList.map(c => ({ label: c.label, fn: (e) => this._selectCategory(c, e) })),
       ];
     }
 
@@ -400,7 +367,7 @@ export class ActionModal extends Component {
 
     const outerR = 72, innerR = 28;
     const angleStep = (2 * Math.PI) / n;
-    const startAngle = -Math.PI / 2 - angleStep / 2;
+    const startAngle = n === 2 ? Math.PI / 2 : -Math.PI / 2 - angleStep / 2;
 
     const polarToCartesian = (r, angle) => ({
       x: Math.cos(angle) * r,

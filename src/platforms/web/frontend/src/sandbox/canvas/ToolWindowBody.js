@@ -1,4 +1,5 @@
 import { Component, h, eventBus } from '@monygroupcorp/microact';
+import { uploadToStorage } from '../io.js';
 import { ParameterForm } from '../components/windows/ParameterForm.js';
 import { ResultDisplay } from '../components/windows/ResultDisplay.js';
 import { AsyncButton } from '../components/ModalKit.js';
@@ -48,11 +49,11 @@ class ErrorBlock extends Component {
  */
 export class ToolWindowBody extends Component {
   shouldUpdate(oldProps, newProps) {
-    return oldProps.win !== newProps.win;
+    return oldProps.win !== newProps.win || oldProps.compact !== newProps.compact;
   }
 
   render() {
-    const { win, connections, onParamChange, onExecute, onLoadOutput } = this.props;
+    const { win, connections, onParamChange, onExecute, onLoadOutput, compact } = this.props;
     const content = [];
 
     // Error
@@ -60,15 +61,17 @@ export class ToolWindowBody extends Component {
       content.push(h(ErrorBlock, { key: 'error', message: win.error }));
     }
 
-    // Parameter form
-    content.push(h(ParameterForm, {
-      key: 'params',
-      windowId: win.id,
-      schema: win.tool?.inputSchema,
-      mappings: win.parameterMappings,
-      connections: connections || [],
-      onMappingChange: (key, value) => onParamChange?.(win.id, key, value),
-    }));
+    if (!compact) {
+      // Parameter form
+      content.push(h(ParameterForm, {
+        key: 'params',
+        windowId: win.id,
+        schema: win.tool?.inputSchema,
+        mappings: win.parameterMappings,
+        connections: connections || [],
+        onMappingChange: (key, value) => onParamChange?.(win.id, key, value),
+      }));
+    }
 
     // Progress
     if (win.executing) {
@@ -77,14 +80,16 @@ export class ToolWindowBody extends Component {
       ));
     }
 
-    // Execute button
-    content.push(h('div', { className: 'nwb-actions', key: 'actions' },
-      h(AsyncButton, {
-        label: 'Execute',
-        loading: win.executing,
-        onclick: () => onExecute?.(win.id),
-      }),
-    ));
+    if (!compact) {
+      // Execute button
+      content.push(h('div', { className: 'nwb-actions', key: 'actions' },
+        h(AsyncButton, {
+          label: 'Execute',
+          loading: win.executing,
+          onclick: () => onExecute?.(win.id),
+        }),
+      ));
+    }
 
     // Output
     if (win.output && !win.outputLoaded) {
@@ -141,43 +146,109 @@ export class ToolWindowBody extends Component {
 }
 
 /**
- * UploadWindowBody — body content for upload nodes.
+ * UploadWindowBody — body content for upload/image-source nodes.
  *
- * Displays the uploaded image. The node's output is already set at creation
- * time so other nodes can connect to it as an image input.
+ * When empty (no URL yet): renders an interactive drop zone — drag-drop or
+ * click to pick a file, uploads via uploadToStorage, then calls
+ * window.sandboxCanvas.updateWindowOutput() to push the result downstream.
+ *
+ * When populated: shows the uploaded image.
  *
  * Props:
- *   win — window state { output: { type: 'image', url } }
+ *   win — window state { output: { type: 'image', url } | null }
  */
 export class UploadWindowBody extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { uploading: false, uploadError: null, dragOver: false };
+    this._fileInput = null;
+  }
+
   shouldUpdate(oldProps, newProps) {
     return oldProps.win !== newProps.win;
   }
 
+  async _handleFile(file) {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      this.setState({ uploadError: 'Images only.' });
+      return;
+    }
+    this.setState({ uploading: true, uploadError: null });
+    try {
+      const url = await uploadToStorage(file);
+      window.sandboxCanvas?.updateWindowOutput(this.props.win.id, { type: 'image', url });
+    } catch (err) {
+      this.setState({ uploading: false, uploadError: err.message });
+    }
+  }
+
   render() {
     const { win } = this.props;
+    const { uploading, uploadError, dragOver } = this.state;
     const url = win.output?.url;
 
-    if (!url) {
-      return h('div', { className: 'nwb-root nwb-upload-empty' }, 'No image.');
+    if (url) {
+      return h('div', { className: 'nwb-root nwb-upload' },
+        h('img', { src: url, className: 'nwb-upload-img', alt: 'Uploaded image' }),
+        h('div', { className: 'nwb-upload-url', title: url }, url.split('/').pop())
+      );
     }
 
-    return h('div', { className: 'nwb-root nwb-upload' },
-      h('img', {
-        src: url,
-        className: 'nwb-upload-img',
-        alt: 'Uploaded image',
+    if (uploading) {
+      return h('div', { className: 'nwb-root nwb-upload-zone' },
+        h('div', { className: 'nwb-upload-zone-label' }, 'uploading...')
+      );
+    }
+
+    return h('div', {
+      className: `nwb-root nwb-upload-zone${dragOver ? ' nwb-upload-zone--over' : ''}`,
+      onclick: (e) => { e.stopPropagation(); this._fileInput?.click(); },
+      ondragover: (e) => { e.preventDefault(); e.stopPropagation(); this.setState({ dragOver: true }); },
+      ondragleave: () => this.setState({ dragOver: false }),
+      ondrop: (e) => { e.preventDefault(); e.stopPropagation(); this.setState({ dragOver: false }); this._handleFile(e.dataTransfer.files[0]); },
+    },
+      h('input', {
+        type: 'file', accept: 'image/*', style: 'display:none',
+        ref: (el) => { this._fileInput = el; },
+        onchange: (e) => this._handleFile(e.target.files[0]),
       }),
-      h('div', { className: 'nwb-upload-url', title: url }, url.split('/').pop())
+      h('div', { className: 'nwb-upload-zone-label' }, dragOver ? 'drop image' : 'drop or click'),
+      uploadError ? h('div', { className: 'nwb-upload-zone-error' }, uploadError) : null,
     );
   }
 
   static get styles() {
     return `
       .nwb-upload { padding: 0; }
-      .nwb-upload-img { display: block; width: 100%; border-radius: 0 0 6px 6px; max-height: 280px; object-fit: contain; background: #111; }
+      .nwb-upload-img { display: block; width: 100%; max-height: 280px; object-fit: contain; background: #111; }
       .nwb-upload-url { font-size: 12px; color: #555; padding: 4px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .nwb-upload-empty { color: #666; font-size: 16px; text-align: center; padding: 16px; }
+      .nwb-upload-zone {
+        padding: 24px 16px;
+        text-align: center;
+        border: var(--border-width) dashed var(--border);
+        cursor: pointer;
+        transition: border-color var(--dur-micro) var(--ease), background var(--dur-micro) var(--ease);
+        margin: 8px;
+      }
+      .nwb-upload-zone:hover,
+      .nwb-upload-zone--over { border-color: var(--accent-border); }
+      .nwb-upload-zone--over { background: var(--accent-dim); }
+      .nwb-upload-zone-label {
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wide);
+        text-transform: uppercase;
+        color: var(--text-label);
+        pointer-events: none;
+      }
+      .nwb-upload-zone--over .nwb-upload-zone-label { color: var(--accent); }
+      .nwb-upload-zone-error {
+        color: var(--danger);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        margin-top: 6px;
+      }
     `;
   }
 }
@@ -338,7 +409,7 @@ export class PrimitiveWindowBody extends Component {
  */
 export class SpellWindowBody extends Component {
   shouldUpdate(oldProps, newProps) {
-    return oldProps.win !== newProps.win;
+    return oldProps.win !== newProps.win || oldProps.compact !== newProps.compact;
   }
 
   _getExposedSchema(win) {
@@ -355,7 +426,7 @@ export class SpellWindowBody extends Component {
   }
 
   render() {
-    const { win, onParamChange, onExecute } = this.props;
+    const { win, onParamChange, onExecute, compact } = this.props;
 
     // Locked state
     if (win.isAccessible === false) {
@@ -378,16 +449,18 @@ export class SpellWindowBody extends Component {
       content.push(h(ErrorBlock, { key: 'error', message: win.error }));
     }
 
-    // Exposed inputs form
-    const schema = this._getExposedSchema(win);
-    content.push(h(ParameterForm, {
-      key: 'params',
-      windowId: win.id,
-      schema,
-      mappings: win.parameterMappings,
-      connections: [],
-      onMappingChange: (key, value) => onParamChange?.(win.id, key, value),
-    }));
+    if (!compact) {
+      // Exposed inputs form
+      const schema = this._getExposedSchema(win);
+      content.push(h(ParameterForm, {
+        key: 'params',
+        windowId: win.id,
+        schema,
+        mappings: win.parameterMappings,
+        connections: [],
+        onMappingChange: (key, value) => onParamChange?.(win.id, key, value),
+      }));
+    }
 
     if (win.executing) {
       content.push(h('div', { className: 'nwb-progress', key: 'progress' },
@@ -395,14 +468,16 @@ export class SpellWindowBody extends Component {
       ));
     }
 
-    content.push(h('div', { className: 'nwb-actions', key: 'actions' },
-      h(AsyncButton, {
-        label: 'Cast Spell',
-        loading: win.executing,
-        disabled: win.isAccessible === false,
-        onclick: () => onExecute?.(win.id),
-      }),
-    ));
+    if (!compact) {
+      content.push(h('div', { className: 'nwb-actions', key: 'actions' },
+        h(AsyncButton, {
+          label: 'Cast Spell',
+          loading: win.executing,
+          disabled: win.isAccessible === false,
+          onclick: () => onExecute?.(win.id),
+        }),
+      ));
+    }
 
     if (win.output && win.outputLoaded !== false) {
       content.push(h('div', { className: 'nwb-output', key: 'output' },

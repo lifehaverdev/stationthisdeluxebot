@@ -22,9 +22,20 @@ export class CopyButton extends Component {
 
   static get styles() {
     return `
-      .mk-copy { background: none; border: none; color: #90caf9; cursor: pointer; font-size: 14px; padding: 2px 6px; border-radius: 3px; }
-      .mk-copy:hover { background: rgba(144,202,249,0.1); }
-      .mk-copy--done { color: #2ecc71; }
+      .mk-copy {
+        background: none;
+        border: var(--border-width) solid transparent;
+        color: var(--accent);
+        cursor: pointer;
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wide);
+        text-transform: uppercase;
+        padding: 2px 6px;
+        transition: border-color var(--dur-micro) var(--ease), background var(--dur-micro) var(--ease);
+      }
+      .mk-copy:hover { background: var(--accent-dim); border-color: var(--accent-border); }
+      .mk-copy--done { color: var(--success); }
     `;
   }
 
@@ -52,15 +63,26 @@ export class CopyButton extends Component {
 export class AsyncButton extends Component {
   static get styles() {
     return `
-      .mk-btn { padding: 8px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 17px; display: inline-flex; align-items: center; gap: 6px; }
-      .mk-btn:disabled { opacity: 0.4; cursor: default; }
-      .mk-btn--primary { background: #3f51b5; color: #fff; }
-      .mk-btn--primary:not(:disabled):hover { background: #4a5bc7; }
-      .mk-btn--secondary { background: #333; color: #ccc; border: 1px solid #555; }
-      .mk-btn--secondary:not(:disabled):hover { background: #444; }
-      .mk-btn--danger { background: #633; color: #faa; border: 1px solid #844; }
-      .mk-btn--danger:not(:disabled):hover { background: #744; }
-      .mk-btn-spinner { width: 14px; height: 14px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: mk-spin 0.6s linear infinite; }
+      .mk-btn {
+        padding: 8px 20px;
+        border: var(--border-width) solid transparent;
+        cursor: pointer;
+        font-family: var(--ff-condensed);
+        font-size: var(--fs-sm);
+        font-weight: var(--fw-medium);
+        letter-spacing: var(--ls-wider);
+        text-transform: uppercase;
+        display: inline-flex; align-items: center; gap: 6px;
+        transition: background var(--dur-interact) var(--ease), color var(--dur-interact) var(--ease), border-color var(--dur-interact) var(--ease);
+      }
+      .mk-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+      .mk-btn--primary { background: var(--accent-dim); color: var(--accent); border-color: var(--accent-border); }
+      .mk-btn--primary:not(:disabled):hover { background: var(--accent); color: var(--canvas-bg); border-color: var(--accent); }
+      .mk-btn--secondary { background: var(--surface-2); color: var(--text-secondary); border-color: var(--border); }
+      .mk-btn--secondary:not(:disabled):hover { border-color: var(--border-hover); color: var(--text-primary); }
+      .mk-btn--danger { background: var(--danger-dim); color: var(--danger); border-color: var(--danger); }
+      .mk-btn--danger:not(:disabled):hover { background: var(--danger); color: var(--canvas-bg); }
+      .mk-btn-spinner { width: 13px; height: 13px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: mk-spin 0.6s linear infinite; }
       @keyframes mk-spin { to { transform: rotate(360deg); } }
     `;
   }
@@ -93,11 +115,29 @@ export class AsyncButton extends Component {
 export class EmptyState extends Component {
   static get styles() {
     return `
-      .mk-empty { text-align: center; padding: 32px 16px; color: #888; }
-      .mk-empty-icon { font-size: 38px; margin-bottom: 12px; }
-      .mk-empty-msg { font-size: 17px; margin-bottom: 16px; line-height: 1.5; }
-      .mk-empty-cta { background: #3f51b5; color: #fff; border: none; padding: 10px 24px; border-radius: 6px; cursor: pointer; font-size: 17px; }
-      .mk-empty-cta:hover { background: #4a5bc7; }
+      .mk-empty { text-align: center; padding: 32px 16px; color: var(--text-secondary); }
+      .mk-empty-icon { font-size: 32px; margin-bottom: 12px; opacity: 0.5; }
+      .mk-empty-msg {
+        font-family: var(--ff-sans);
+        font-size: var(--fs-base);
+        color: var(--text-secondary);
+        margin-bottom: 16px;
+        line-height: 1.5;
+      }
+      .mk-empty-cta {
+        background: var(--accent-dim);
+        color: var(--accent);
+        border: var(--border-width) solid var(--accent-border);
+        padding: 8px 20px;
+        cursor: pointer;
+        font-family: var(--ff-condensed);
+        font-size: var(--fs-sm);
+        font-weight: var(--fw-medium);
+        letter-spacing: var(--ls-wider);
+        text-transform: uppercase;
+        transition: background var(--dur-interact) var(--ease), color var(--dur-interact) var(--ease);
+      }
+      .mk-empty-cta:hover { background: var(--accent); color: var(--canvas-bg); }
     `;
   }
 
@@ -132,10 +172,21 @@ export class EmptyState extends Component {
 export class TabBar extends Component {
   static get styles() {
     return `
-      .mk-tabs { display: flex; gap: 0; border-bottom: 1px solid #333; margin-bottom: 16px; }
-      .mk-tab { background: none; border: none; border-bottom: 2px solid transparent; color: #888; padding: 10px 20px; font-size: 17px; cursor: pointer; transition: color 0.15s, border-color 0.15s; }
-      .mk-tab:hover { color: #ccc; }
-      .mk-tab--active { color: #fff; border-bottom-color: #90caf9; }
+      .mk-tabs { display: flex; border-bottom: var(--border-width) solid var(--border); margin-bottom: 16px; }
+      .mk-tab {
+        background: none; border: none; border-bottom: 2px solid transparent;
+        color: var(--text-label);
+        padding: 10px 20px;
+        font-family: var(--ff-condensed);
+        font-size: var(--fs-sm);
+        font-weight: var(--fw-medium);
+        letter-spacing: var(--ls-wider);
+        text-transform: uppercase;
+        cursor: pointer;
+        transition: color var(--dur-interact) var(--ease), border-color var(--dur-interact) var(--ease);
+      }
+      .mk-tab:hover { color: var(--text-secondary); }
+      .mk-tab--active { color: var(--text-primary); border-bottom-color: var(--accent); }
     `;
   }
 
@@ -165,10 +216,32 @@ export class SearchBar extends Component {
   static get styles() {
     return `
       .mk-search { display: flex; gap: 8px; margin-bottom: 12px; }
-      .mk-search-input { flex: 1; background: #222; border: 1px solid #444; color: #e0e0e0; padding: 8px 12px; border-radius: 6px; font-size: 17px; }
-      .mk-search-input:focus { border-color: #90caf9; outline: none; }
-      .mk-search-btn { background: #333; border: 1px solid #555; color: #ccc; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 16px; }
-      .mk-search-btn:hover { background: #444; }
+      .mk-search-input {
+        flex: 1;
+        background: var(--surface-1);
+        border: var(--border-width) solid var(--border);
+        color: var(--text-primary);
+        padding: 8px 12px;
+        font-family: var(--ff-sans);
+        font-size: var(--fs-base);
+        outline: none;
+        transition: border-color var(--dur-micro) var(--ease);
+      }
+      .mk-search-input:focus { border-color: var(--accent-border); }
+      .mk-search-input::placeholder { color: var(--text-label); }
+      .mk-search-btn {
+        background: var(--surface-2);
+        border: var(--border-width) solid var(--border);
+        color: var(--text-secondary);
+        padding: 8px 14px;
+        cursor: pointer;
+        font-family: var(--ff-condensed);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wider);
+        text-transform: uppercase;
+        transition: border-color var(--dur-micro) var(--ease), color var(--dur-micro) var(--ease);
+      }
+      .mk-search-btn:hover { border-color: var(--border-hover); color: var(--text-primary); }
     `;
   }
 
@@ -200,9 +273,20 @@ export class TagPills extends Component {
   static get styles() {
     return `
       .mk-pills { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
-      .mk-pill { background: #222; border: 1px solid #444; color: #aaa; padding: 4px 12px; border-radius: 16px; font-size: 14px; cursor: pointer; transition: all 0.15s; }
-      .mk-pill:hover { border-color: #666; color: #ccc; }
-      .mk-pill--active { background: #3f51b5; border-color: #3f51b5; color: #fff; }
+      .mk-pill {
+        background: var(--surface-1);
+        border: var(--border-width) solid var(--border);
+        color: var(--text-label);
+        padding: 3px 10px;
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wide);
+        text-transform: uppercase;
+        cursor: pointer;
+        transition: border-color var(--dur-micro) var(--ease), color var(--dur-micro) var(--ease), background var(--dur-micro) var(--ease);
+      }
+      .mk-pill:hover { border-color: var(--border-hover); color: var(--text-secondary); }
+      .mk-pill--active { background: var(--accent-dim); border-color: var(--accent-border); color: var(--accent); }
     `;
   }
 
@@ -233,11 +317,19 @@ export class TagPills extends Component {
 export class Badge extends Component {
   static get styles() {
     return `
-      .mk-badge { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
-      .mk-badge--default { background: rgba(255,255,255,0.08); color: #999; }
-      .mk-badge--success { background: rgba(46,204,113,0.12); color: #2ecc71; }
-      .mk-badge--warning { background: rgba(243,156,18,0.12); color: #f39c12; }
-      .mk-badge--info { background: rgba(144,202,249,0.12); color: #90caf9; }
+      .mk-badge {
+        display: inline-block;
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        padding: 2px 7px;
+        text-transform: uppercase;
+        letter-spacing: var(--ls-wide);
+        font-weight: var(--fw-medium);
+      }
+      .mk-badge--default { background: var(--surface-3); color: var(--text-label); border: var(--border-width) solid var(--border); }
+      .mk-badge--success { background: var(--accent-dim); color: var(--accent); border: var(--border-width) solid var(--accent-border); }
+      .mk-badge--warning { background: rgba(255,180,0,0.10); color: rgba(255,180,0,0.85); border: var(--border-width) solid rgba(255,180,0,0.25); }
+      .mk-badge--info { background: var(--accent-dim); color: var(--accent); border: var(--border-width) solid var(--accent-border); }
     `;
   }
 
@@ -250,8 +342,18 @@ export class Badge extends Component {
 export class ConfirmInline extends Component {
   static get styles() {
     return `
-      .mk-confirm { background: rgba(255,255,255,0.04); border: 1px solid #444; border-radius: 8px; padding: 16px; margin: 12px 0; }
-      .mk-confirm-msg { font-size: 17px; color: #ccc; margin-bottom: 12px; }
+      .mk-confirm {
+        background: var(--surface-2);
+        border: var(--border-width) solid var(--border);
+        padding: 16px;
+        margin: 12px 0;
+      }
+      .mk-confirm-msg {
+        font-family: var(--ff-sans);
+        font-size: var(--fs-base);
+        color: var(--text-secondary);
+        margin-bottom: 12px;
+      }
       .mk-confirm-btns { display: flex; gap: 8px; justify-content: flex-end; }
     `;
   }

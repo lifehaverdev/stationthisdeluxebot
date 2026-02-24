@@ -63,6 +63,14 @@ export class CookModal extends Component {
       showBatchPrompt: false,
       batchCollectionId: null,
       batchSize: 10,
+
+      // Test scan
+      showTestScan: false,
+      testScanItems: [],
+      testScanRevealedCount: 0,
+      testScanDone: false,
+      testScanFailed: false,
+      traitTreeFailedCategories: [],
     };
 
     // WebSocket
@@ -567,6 +575,114 @@ export class CookModal extends Component {
     return { generationCount: gen, approvedCount: Math.max(0, approved), rejectedCount: rej, pendingReviewCount: Math.max(0, pending) };
   }
 
+  // ── Test scan ───────────────────────────────────────────
+
+  _startTestScan() {
+    const coll = this.state.selectedCollection;
+    if (!coll) return;
+    const paramOverrides = coll.config?.paramOverrides || {};
+    const categories = coll.config?.traitTree || [];
+    const categoryMap = new Map(categories.map(c => [c.name, c]));
+
+    // Collect all [[X]] placeholders from string param values
+    const placeholders = new Set();
+    for (const val of Object.values(paramOverrides)) {
+      if (typeof val === 'string') {
+        for (const m of val.matchAll(/\[\[([^\]]+)\]\]/g)) placeholders.add(m[1]);
+      }
+    }
+
+    const items = [...placeholders].map(name => {
+      const cat = categoryMap.get(name);
+      const count = cat?.traits?.length || 0;
+      return { name, ok: !!cat && count > 0, count };
+    });
+
+    this.setState({
+      showTestScan: true,
+      testScanItems: items,
+      testScanRevealedCount: 0,
+      testScanDone: false,
+      testScanFailed: false,
+    });
+    this._animateScan(items);
+  }
+
+  _animateScan(items) {
+    let i = 0;
+    const tick = () => {
+      if (i >= items.length) {
+        const failed = items.some(it => !it.ok);
+        this.setState({ testScanDone: true, testScanFailed: failed });
+        if (!failed) setTimeout(() => this._onScanPassed(), 800);
+        return;
+      }
+      this.setState({ testScanRevealedCount: i + 1 });
+      i++;
+      setTimeout(tick, 40);
+    };
+    setTimeout(tick, 50);
+  }
+
+  _onScanPassed() {
+    const coll = this.state.selectedCollection;
+    const canvas = window.sandboxCanvas;
+    if (canvas && coll) {
+      const pos = canvas.screenToWorkspace
+        ? canvas.screenToWorkspace(window.innerWidth / 2, window.innerHeight / 2)
+        : { x: 300, y: 200 };
+      canvas.addCollectionTestWindow(coll, pos);
+    }
+    this.setState({ showTestScan: false });
+    this.props.onClose?.();
+  }
+
+  _onScanFailed() {
+    const failed = this.state.testScanItems.filter(it => !it.ok).map(it => it.name);
+    this.setState({
+      showTestScan: false,
+      detailTab: DETAIL_TAB.TRAIT_TREE,
+      traitTreeFailedCategories: failed,
+    });
+  }
+
+  _renderTestScan() {
+    const { testScanItems, testScanRevealedCount, testScanDone, testScanFailed } = this.state;
+    const revealed = testScanItems.slice(0, testScanRevealedCount);
+
+    return h('div', {
+      style: 'position:fixed;inset:0;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;z-index:1200',
+    },
+      h('div', { style: 'background:var(--surface-1,#111);border:1px solid var(--border,#333);padding:24px;width:340px;max-height:70vh;overflow-y:auto' },
+        h('div', { style: 'font-size:11px;color:var(--text-label,#888);letter-spacing:0.1em;text-transform:uppercase;font-family:var(--ff-mono);margin-bottom:16px' },
+          testScanDone ? (testScanFailed ? 'Validation failed' : 'Validation passed') : 'Scanning trait tree...'
+        ),
+        h('div', { style: 'display:flex;flex-direction:column;gap:6px;font-family:var(--ff-mono);font-size:13px' },
+          ...revealed.map(item =>
+            h('div', { key: item.name, style: `color:${item.ok ? '#4caf50' : '#f44336'}` },
+              item.ok
+                ? `✓  [[${item.name}]]  —  ${item.count} trait${item.count !== 1 ? 's' : ''}`
+                : `✗  [[${item.name}]]  —  no matching category`
+            )
+          ),
+          !testScanDone ? h('div', { style: 'color:var(--text-label,#555);animation:none' }, '…') : null,
+        ),
+        testScanDone && testScanFailed
+          ? h('div', { style: 'margin-top:20px;display:flex;gap:8px' },
+              h('button', {
+                style: 'flex:1;background:var(--surface-2,#222);border:1px solid var(--border-hover,#555);color:var(--text-primary,#e0e0e0);padding:8px 0;cursor:pointer;font-size:14px;font-family:var(--ff-mono)',
+                onclick: this.bind(this._onScanFailed),
+              }, 'Go Fix Issues'),
+              h('button', {
+                style: 'background:none;border:1px solid var(--border,#333);color:var(--text-label,#888);padding:8px 16px;cursor:pointer;font-size:14px;font-family:var(--ff-mono)',
+                onclick: () => this.setState({ showTestScan: false }),
+              }, 'Cancel'),
+            )
+          : null,
+      )
+    );
+  }
+
   // ── Render: Home ────────────────────────────────────────
 
   _renderHome() {
@@ -817,10 +933,14 @@ export class CookModal extends Component {
         overviewDirty ? h(AsyncButton, { onclick: this.bind(this._saveOverview), label: 'Save Changes' }) : null,
         h(AsyncButton, { variant: 'secondary', onclick: () => this._showBatch(coll.collectionId), label: 'Start Cook' }),
         h(AsyncButton, { variant: 'secondary', onclick: () => this._openReview(coll.collectionId), label: 'Review' }),
+        h(AsyncButton, { variant: 'secondary', onclick: this.bind(this._startTestScan), label: 'Test' }),
       ),
 
       // Batch prompt
-      this.state.showBatchPrompt ? this._renderBatchPrompt() : null
+      this.state.showBatchPrompt ? this._renderBatchPrompt() : null,
+
+      // Test scan overlay
+      this.state.showTestScan ? this._renderTestScan() : null
     );
   }
 
@@ -870,12 +990,25 @@ export class CookModal extends Component {
   _renderTraitTree() {
     const coll = this.state.selectedCollection;
     const categories = coll?.config?.traitTree || [];
+    const { traitTreeFailedCategories } = this.state;
 
     return h('div', null,
+      traitTreeFailedCategories.length > 0
+        ? h('div', { style: 'background:rgba(244,67,54,0.08);border:1px solid rgba(244,67,54,0.3);padding:10px 14px;margin-bottom:12px;font-size:13px;font-family:var(--ff-mono)' },
+            h('div', { style: 'color:#f44336;margin-bottom:6px' }, 'Missing categories referenced in master prompt:'),
+            ...traitTreeFailedCategories.map(name =>
+              h('div', { key: name, style: 'color:#f44336;padding:2px 0' }, `  [[${name}]]`)
+            ),
+            h('div', { style: 'color:#888;margin-top:6px;font-size:12px' }, 'Add these categories to the trait tree to fix validation.'),
+          )
+        : null,
       h(TraitTreeEditor, {
         categories,
         onChange: () => {},
-        onSave: this.bind(this._saveTraitTree),
+        onSave: (cats) => {
+          this.setState({ traitTreeFailedCategories: [] });
+          return this._saveTraitTree(cats);
+        },
       }),
       h('div', { style: 'display:flex;gap:8px;margin-top:12px' },
         h(AsyncButton, { variant: 'secondary', onclick: this.bind(this._downloadTraitTree), label: 'Download JSON' }),

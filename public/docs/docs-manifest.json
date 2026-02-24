@@ -1,9 +1,9 @@
 [
   { "id": "introduction", "title": "Introduction", "file": "/docs/content/introduction.md" },
-  { "id": "workspaces", "title": "Workspaces", "file": "/docs/content/workspaces.md" },
   { "id": "tools", "title": "Tools", "special": "tools-renderer" },
   { "id": "spells", "title": "Spells", "file": "/docs/content/spells.md" },
   { "id": "training", "title": "Training", "file": "/docs/content/training.md" },
+  { "id": "workspaces", "title": "Workspaces", "file": "/docs/content/workspaces.md" },
   { "id": "collection-mode", "title": "Collection Mode", "file": "/docs/content/collection-mode.md" },
   { "id": "stationthisbot", "title": "StationThisBot", "file": "/docs/content/stationthisbot.md" },
   { "id": "api", "title": "API", "file": "/docs/content/api.md" },

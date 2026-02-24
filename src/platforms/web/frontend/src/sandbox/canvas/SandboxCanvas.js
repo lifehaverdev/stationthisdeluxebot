@@ -2,6 +2,7 @@ import { Component, h, eventBus } from '@monygroupcorp/microact';
 import { ConnectionLayer } from './ConnectionLayer.js';
 import { WindowRenderer } from './WindowRenderer.js';
 import { ToolWindowBody, SpellWindowBody, UploadWindowBody, PrimitiveWindowBody } from './ToolWindowBody.js';
+import { CollectionTestWindowBody } from './CollectionTestWindowBody.js';
 import { ConnectionDropPicker } from './ConnectionDropPicker.js';
 import { Sigil } from '../components/Sigil.js';
 import * as executionClient from '../executionClient.js';
@@ -14,9 +15,10 @@ import { emitCosts } from '../store.js';
  * unified controller. Children render declaratively from state.
  *
  * Public API (accessible via window.sandboxCanvas):
- *   addToolWindow(tool, position)     — create a tool node
- *   addSpellWindow(spell, position)   — create a spell node
- *   addUploadWindow(url, position)    — create an uploaded-image node
+ *   addToolWindow(tool, position)              — create a tool node
+ *   addSpellWindow(spell, position)            — create a spell node
+ *   addUploadWindow(url, position)             — create an uploaded-image node
+ *   addCollectionTestWindow(coll, position)    — create an ephemeral collection test node
  *   screenToWorkspace(clientX, clientY) — convert screen coords to canvas coords
  *
  * Props:
@@ -690,6 +692,40 @@ export class SandboxCanvas extends Component {
     }
   }
 
+  async _executeCollectionTestWindow(windowId, substitutedParams) {
+    const win = this.state.windows.get(windowId);
+    if (!win || win.executing) return;
+
+    this._updateWindow(windowId, { executing: true, error: null, progress: 'Running test...' });
+
+    try {
+      const result = await executionClient.execute({
+        toolId: win.tool.toolId,
+        inputs: substitutedParams,
+        metadata: { platform: 'web-sandbox' },
+      });
+
+      if (result.final && result.status !== 'failed') {
+        const output = this._normalizeOutput(result);
+        const versions = [...(win.outputVersions || []), output];
+        this._updateWindow(windowId, {
+          output, executing: false, progress: null, outputLoaded: true,
+          outputVersions: versions, currentVersionIndex: versions.length - 1,
+        });
+        if (result.costUsd) this._recordCost(windowId, result.costUsd);
+      } else if (result.status === 'failed') {
+        this._updateWindow(windowId, {
+          executing: false, error: result.outputs?.error || 'Test execution failed.',
+        });
+      } else if (result.generationId) {
+        this._updateWindow(windowId, { progress: 'Waiting for result...', generationId: result.generationId });
+        this._awaitCompletion(windowId, result.generationId);
+      }
+    } catch (err) {
+      this._updateWindow(windowId, { executing: false, error: err.message, progress: null });
+    }
+  }
+
   _recordCost(windowId, usd) {
     if (!usd || usd <= 0) return;
     const win = this.state.windows.get(windowId);
@@ -1074,15 +1110,66 @@ export class SandboxCanvas extends Component {
   }
 
   addUploadWindow(url, position) {
+    const hasUrl = !!url;
     return this._addWindow({
       type: 'upload',
       tool: { displayName: 'Upload', toolId: null, metadata: { outputType: 'image' } },
       x: position?.x ?? 200, y: position?.y ?? 200,
       parameterMappings: {},
-      output: { type: 'image', url },
+      output: hasUrl ? { type: 'image', url } : null,
+      outputLoaded: hasUrl,
+      outputVersions: hasUrl ? [{ type: 'image', url }] : [],
+      currentVersionIndex: hasUrl ? 0 : -1,
+    });
+  }
+
+  updateWindowOutput(windowId, output) {
+    const windows = new Map(this.state.windows);
+    const win = windows.get(windowId);
+    if (!win) return;
+    const versions = [...(win.outputVersions || []), output];
+    windows.set(windowId, {
+      ...win,
+      output,
       outputLoaded: true,
-      outputVersions: [{ type: 'image', url }],
-      currentVersionIndex: 0,
+      outputVersions: versions,
+      currentVersionIndex: versions.length - 1,
+    });
+    this.setState({ windows });
+    this._persist();
+  }
+
+  addEffectWindow(tool, position) {
+    const toolPos   = { x: position?.x ?? 200, y: position?.y ?? 200 };
+    const uploadPos = { x: toolPos.x - 380, y: toolPos.y };
+    const uploadId  = this.addUploadWindow(null, uploadPos);
+    const toolId    = this.addToolWindow(tool, toolPos);
+    const schema    = tool.inputSchema || {};
+    const imageParam = Object.entries(schema).find(([, p]) => p.type === 'image' && p.required);
+    if (imageParam) {
+      this._addConnection(uploadId, toolId, 'image', imageParam[0]);
+    }
+    return { uploadId, toolId };
+  }
+
+  addCollectionTestWindow(collection, position) {
+    const label = collection.name ? `Test: ${collection.name}` : 'Collection Test';
+    // Resolve generator toolId — tools use plain toolId, spells use `spell:` prefix
+    const cfg = collection.config || {};
+    const isSpell = (collection.generatorType || '').toLowerCase() === 'spell';
+    const rawId = isSpell
+      ? (collection.spellId || cfg.spellId)
+      : (collection.toolId || cfg.toolId);
+    const toolId = rawId
+      ? (isSpell && !String(rawId).startsWith('spell:') ? `spell:${rawId}` : rawId)
+      : null;
+    return this._addWindow({
+      type: 'collectionTest',
+      collection,
+      tool: { displayName: label, toolId, metadata: { outputType: 'image' } },
+      x: position?.x ?? 300, y: position?.y ?? 200,
+      parameterMappings: {},
+      output: null, outputVersions: [], currentVersionIndex: -1,
     });
   }
 
@@ -1108,9 +1195,10 @@ export class SandboxCanvas extends Component {
     };
 
     switch (win.type) {
-      case 'spell':     return [h(SpellWindowBody,     { key: 'body', ...commonProps })];
-      case 'upload':    return [h(UploadWindowBody,    { key: 'body', win })];
-      case 'primitive': return [h(PrimitiveWindowBody, { key: 'body', win, onOutputChange: (wid, out) => this._onPrimitiveChange(wid, out) })];
+      case 'spell':          return [h(SpellWindowBody,           { key: 'body', ...commonProps })];
+      case 'upload':         return [h(UploadWindowBody,          { key: 'body', win })];
+      case 'primitive':      return [h(PrimitiveWindowBody,       { key: 'body', win, onOutputChange: (wid, out) => this._onPrimitiveChange(wid, out) })];
+      case 'collectionTest': return [h(CollectionTestWindowBody,  { key: 'body', win, compact, onRunTest: (wid, params) => this._executeCollectionTestWindow(wid, params) })];
       case 'tool':
       default: return [h(ToolWindowBody, { key: 'body', ...commonProps })];
     }

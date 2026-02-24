@@ -236,7 +236,7 @@ export class ModelBrowser extends Component {
     if (countsLoading) return h(Loader, { message: 'Loading categories...' });
 
     return h('div', null,
-      h('p', { style: 'color:#aaa;font-size:16px;margin:0 0 16px' }, 'Browse the models available on StationThis. Select a category to see assets.'),
+      h('p', { className: 'mb-intro' }, 'Browse the models available on StationThis. Select a category to see assets.'),
       h('div', { className: 'mb-cat-grid' },
         ...CATEGORIES.map(cat =>
           h('button', {
@@ -263,7 +263,7 @@ export class ModelBrowser extends Component {
       h('button', { className: 'mb-back', onclick: this.bind(this._goGrid) }, '\u2190 Categories'),
 
       h('div', { className: 'mb-list-header' },
-        h('h3', { style: 'margin:0;color:#fff' }, `${currentCategory}${models.length ? ` (${models.length})` : ''}`),
+        h('h3', { className: 'mb-page-title', style: 'margin:0' }, `${currentCategory}${models.length ? ` (${models.length})` : ''}`),
         showImport ? h(AsyncButton, {
           variant: 'secondary',
           onclick: () => this.setState({ view: VIEW.IMPORT, importUrl: '', importError: null }),
@@ -354,7 +354,7 @@ export class ModelBrowser extends Component {
     return h('div', null,
       h('button', { className: 'mb-back', onclick: this.bind(this._closeDetail) }, '\u2190 Back'),
 
-      h('h3', { style: 'color:#fff;margin:0 0 12px' }, model.name || model.title || 'Model'),
+      h('h3', { className: 'mb-page-title' }, model.name || model.title || 'Model'),
 
       // Image carousel
       imgs.length > 0 ? h('div', { className: 'mb-carousel' },
@@ -420,7 +420,7 @@ export class ModelBrowser extends Component {
 
     return h('div', null,
       h('button', { className: 'mb-back', onclick: () => this.setState({ view: VIEW.LIST }) }, '\u2190 Back'),
-      h('h3', { style: 'color:#fff;margin:0 0 16px' }, `Import ${currentCategory}`),
+      h('h3', { className: 'mb-page-title' }, `Import ${currentCategory}`),
       h('div', { className: 'mb-form-group' },
         h('label', null, 'Remote URL'),
         h('input', {
@@ -444,66 +444,197 @@ export class ModelBrowser extends Component {
 
   static get styles() {
     return `
-      .mb-back { background:none; border:none; color:#90caf9; cursor:pointer; font-size:16px; padding:0; margin-bottom:16px; }
-      .mb-back:hover { text-decoration:underline; }
+      .mb-back {
+        background: none; border: none;
+        color: var(--accent);
+        cursor: pointer;
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wide);
+        text-transform: uppercase;
+        padding: 0; margin-bottom: 16px; display: block;
+        transition: color var(--dur-micro) var(--ease);
+      }
+      .mb-back:hover { color: var(--text-secondary); }
+
+      .mb-page-title {
+        font-family: var(--ff-display);
+        font-size: var(--fs-xl);
+        font-weight: var(--fw-semibold);
+        letter-spacing: var(--ls-tight);
+        color: var(--text-primary);
+        margin: 0 0 12px;
+      }
+      .mb-intro {
+        font-family: var(--ff-sans);
+        font-size: var(--fs-base);
+        color: var(--text-secondary);
+        margin: 0 0 16px;
+        line-height: 1.5;
+      }
 
       /* Category Grid */
       .mb-cat-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:8px; }
-      .mb-cat-card { background:#222; border:1px solid #333; border-radius:8px; padding:16px; cursor:pointer; text-align:center; transition:border-color 0.15s; }
-      .mb-cat-card:hover { border-color:#555; }
-      .mb-cat-name { font-size:17px; font-weight:600; color:#fff; text-transform:capitalize; margin-bottom:4px; }
-      .mb-cat-count { font-size:14px; color:#888; }
+      .mb-cat-card {
+        background: var(--surface-2);
+        border: var(--border-width) solid var(--border);
+        padding: 16px; cursor: pointer; text-align: center;
+        transition: border-color var(--dur-micro) var(--ease), background var(--dur-micro) var(--ease);
+      }
+      .mb-cat-card:hover { border-color: var(--border-hover); background: var(--surface-3); }
+      .mb-cat-name {
+        font-family: var(--ff-display);
+        font-size: var(--fs-base);
+        font-weight: var(--fw-semibold);
+        color: var(--text-primary);
+        text-transform: capitalize;
+        margin-bottom: 4px;
+      }
+      .mb-cat-count {
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        color: var(--text-label);
+      }
 
       /* List header */
       .mb-list-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
 
       /* LoRA bar */
       .mb-lora-bar { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
-      .mb-lora-btn { background:#222; border:1px solid #444; color:#aaa; padding:4px 12px; border-radius:16px; font-size:14px; cursor:pointer; }
-      .mb-lora-btn:hover { border-color:#666; color:#ccc; }
-      .mb-lora-btn--active { background:#3f51b5; border-color:#3f51b5; color:#fff; }
+      .mb-lora-btn {
+        background: var(--surface-1);
+        border: var(--border-width) solid var(--border);
+        color: var(--text-label);
+        padding: 3px 10px;
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wide);
+        text-transform: uppercase;
+        cursor: pointer;
+        transition: border-color var(--dur-micro) var(--ease), color var(--dur-micro) var(--ease);
+      }
+      .mb-lora-btn:hover { border-color: var(--border-hover); color: var(--text-secondary); }
+      .mb-lora-btn--active { background: var(--accent-dim); border-color: var(--accent-border); color: var(--accent); }
 
       /* Model list */
       .mb-model-list { max-height:400px; overflow-y:auto; }
-      .mb-model-row { display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-bottom:1px solid #222; cursor:pointer; transition:background 0.1s; }
-      .mb-model-row:hover { background:rgba(255,255,255,0.03); }
+      .mb-model-row {
+        display:flex; justify-content:space-between; align-items:center;
+        padding: 10px 12px;
+        border-bottom: var(--border-width) solid var(--border);
+        cursor: pointer;
+        transition: background var(--dur-micro) var(--ease);
+      }
+      .mb-model-row:hover { background: var(--surface-2); }
       .mb-model-info { flex:1; min-width:0; }
-      .mb-model-name { font-size:17px; color:#e0e0e0; font-weight:500; }
-      .mb-model-size { font-size:13px; color:#888; margin-left:8px; }
+      .mb-model-name {
+        font-family: var(--ff-sans);
+        font-size: var(--fs-base);
+        font-weight: var(--fw-medium);
+        color: var(--text-primary);
+      }
+      .mb-model-size {
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        color: var(--text-label);
+        margin-left: 8px;
+      }
       .mb-model-tags { display:flex; gap:4px; flex-wrap:wrap; margin-top:4px; }
-      .mb-tag { font-size:12px; color:#aaa; background:#2a2a2a; padding:2px 6px; border-radius:3px; }
+      .mb-tag {
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        color: var(--text-label);
+        background: var(--surface-2);
+        border: var(--border-width) solid var(--border);
+        padding: 1px 5px;
+      }
       .mb-fav-btn { background:none; border:none; font-size:19px; cursor:pointer; padding:4px; }
 
       /* Detail */
       .mb-carousel { position:relative; margin-bottom:16px; text-align:center; }
-      .mb-carousel-img { max-width:100%; max-height:300px; border-radius:8px; object-fit:contain; }
-      .mb-carousel-nav { position:absolute; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.5); border:none; color:#fff; font-size:29px; padding:8px 12px; cursor:pointer; border-radius:4px; z-index:1; }
+      .mb-carousel-img { max-width:100%; max-height:300px; object-fit:contain; }
+      .mb-carousel-nav {
+        position:absolute; top:50%; transform:translateY(-50%);
+        background: var(--surface-3);
+        border: var(--border-width) solid var(--border);
+        color: var(--text-primary);
+        font-size: 29px; padding: 8px 12px; cursor: pointer; z-index:1;
+        transition: background var(--dur-micro) var(--ease);
+      }
+      .mb-carousel-nav:hover { background: var(--surface-2); }
       .mb-carousel-nav:first-child { left:4px; }
       .mb-carousel-nav:last-of-type { right:4px; }
       .mb-thumb-strip { display:flex; gap:4px; justify-content:center; margin-top:8px; }
-      .mb-thumb { width:40px; height:40px; border-radius:4px; object-fit:cover; cursor:pointer; opacity:0.5; border:2px solid transparent; }
-      .mb-thumb--active { opacity:1; border-color:#90caf9; }
+      .mb-thumb { width:40px; height:40px; object-fit:cover; cursor:pointer; opacity:0.5; border:2px solid transparent; }
+      .mb-thumb--active { opacity:1; border-color: var(--accent); }
 
       .mb-meta { margin-bottom:16px; }
-      .mb-meta-row { display:flex; gap:8px; padding:4px 0; font-size:16px; }
-      .mb-meta-label { color:#888; min-width:100px; flex-shrink:0; }
-      .mb-meta-val { color:#ccc; word-break:break-word; }
+      .mb-meta-row { display:flex; gap:8px; padding:4px 0; border-bottom: var(--border-width) solid var(--border); }
+      .mb-meta-label {
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wide);
+        text-transform: uppercase;
+        color: var(--text-label);
+        min-width: 100px; flex-shrink: 0;
+      }
+      .mb-meta-val {
+        font-family: var(--ff-sans);
+        font-size: var(--fs-base);
+        color: var(--text-secondary);
+        word-break: break-word;
+      }
 
       .mb-triggers { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
-      .mb-trigger-badge { font-family:monospace; font-size:14px; background:#2a2a3a; color:#90caf9; padding:2px 8px; border-radius:4px; }
+      .mb-trigger-badge {
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wide);
+        background: var(--surface-2);
+        border: var(--border-width) solid var(--accent-border);
+        color: var(--accent);
+        padding: 2px 8px;
+      }
 
       .mb-detail-tags { display:flex; gap:4px; flex-wrap:wrap; margin-bottom:12px; }
 
       .mb-detail-actions { display:flex; gap:8px; margin-top:16px; }
-      .mb-fav-toggle { background:none; border:1px solid #444; color:#ccc; padding:6px 16px; border-radius:6px; cursor:pointer; font-size:16px; }
-      .mb-fav-toggle:hover { border-color:#666; }
-      .mb-fav-toggle--active { border-color:#e74c3c; color:#e74c3c; }
+      .mb-fav-toggle {
+        background: none;
+        border: var(--border-width) solid var(--border);
+        color: var(--text-secondary);
+        padding: 6px 16px; cursor: pointer;
+        font-family: var(--ff-condensed);
+        font-size: var(--fs-sm);
+        font-weight: var(--fw-medium);
+        letter-spacing: var(--ls-wider);
+        text-transform: uppercase;
+        transition: border-color var(--dur-micro) var(--ease), color var(--dur-micro) var(--ease);
+      }
+      .mb-fav-toggle:hover { border-color: var(--border-hover); color: var(--text-primary); }
+      .mb-fav-toggle--active { border-color: var(--danger); color: var(--danger); }
 
       /* Import */
       .mb-form-group { margin-bottom:14px; }
-      .mb-form-group label { display:block; margin-bottom:6px; color:#aaa; font-weight:600; font-size:16px; }
-      .mb-input { width:100%; padding:8px 12px; background:#222; border:1px solid #444; border-radius:6px; color:#e0e0e0; font-size:17px; box-sizing:border-box; }
-      .mb-input:focus { border-color:#90caf9; outline:none; }
+      .mb-form-group label {
+        display:block; margin-bottom:6px;
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wide);
+        text-transform: uppercase;
+        color: var(--text-label);
+      }
+      .mb-input {
+        width:100%; padding:8px 12px;
+        background: var(--surface-1);
+        border: var(--border-width) solid var(--border);
+        color: var(--text-primary);
+        font-family: var(--ff-sans);
+        font-size: var(--fs-base);
+        box-sizing:border-box; outline: none;
+        transition: border-color var(--dur-micro) var(--ease);
+      }
+      .mb-input:focus { border-color: var(--accent-border); }
       .mb-import-actions { display:flex; gap:8px; justify-content:flex-end; }
     `;
   }

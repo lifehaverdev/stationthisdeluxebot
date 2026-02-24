@@ -59,13 +59,13 @@ export class HistoryModal extends Component {
   static get styles() {
     return `
       .history-nav { display: flex; gap: 8px; align-items: center; margin: 12px 0; }
-      .history-nav button { background: #222; border: 1px solid #444; color: #ccc; padding: 4px 10px; border-radius: 4px; cursor: pointer; }
+      .history-nav button { background: var(--surface-2); border: var(--border-width) solid var(--border); color: var(--text-secondary); padding: 4px 10px; border-radius: 0; cursor: pointer; }
       .history-nav button:disabled { opacity: 0.3; cursor: default; }
-      .history-nav button:not(:disabled):hover { background: #333; }
-      .date-range { font-size: 16px; color: #888; }
-      .history-summary { margin: 12px 0; font-size: 17px; }
+      .history-nav button:not(:disabled):hover { border-color: var(--border-hover); color: var(--text-primary); }
+      .date-range { font-size: var(--fs-base); color: var(--text-secondary); }
+      .history-summary { margin: 12px 0; font-size: var(--fs-md); }
       .history-details ul { list-style: none; padding: 0; }
-      .history-details li { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #222; font-size: 16px; }
+      .history-details li { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: var(--border-width) solid var(--border); font-size: var(--fs-base); }
     `;
   }
 

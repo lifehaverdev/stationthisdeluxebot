@@ -110,6 +110,25 @@ function createToolsApiRouter(dependencies) {
   });
 
   /**
+   * GET /tools/:toolId/params
+   * Returns the connectable parameter keys for a tool (used by CookModal).
+   */
+  router.get('/:toolId/params', async (req, res) => {
+    const { toolId } = req.params;
+    try {
+      const response = await internalApiClient.get(`/internal/v1/data/tools/${toolId}/input-schema`);
+      const schema = response.data || {};
+      res.status(200).json({ params: Object.keys(schema) });
+    } catch (error) {
+      if (error.response?.status === 404) {
+        return res.status(200).json({ params: [] });
+      }
+      logger.error(`Failed to fetch params for tool '${toolId}':`, error);
+      res.status(502).json({ error: { code: 'BAD_GATEWAY', message: 'The server was unable to process your request.' } });
+    }
+  });
+
+  /**
    * GET /tools/:toolId
    * Gets the definition of a specific tool by its ID.
    * This is the public-facing endpoint that returns simplified tool info.

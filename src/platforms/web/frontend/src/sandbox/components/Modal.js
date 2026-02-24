@@ -33,29 +33,50 @@ export class Modal extends Component {
   static get styles() {
     return `
       .modal-overlay {
-        position: fixed; inset: 0; z-index: 1000;
-        background: rgba(0,0,0,0.7);
+        position: fixed; inset: 0; z-index: var(--z-modal);
+        background: var(--modal-bg);
         display: flex; align-items: center; justify-content: center;
-        animation: modal-fadein 0.15s ease;
+        animation: modal-fadein var(--dur-trans) var(--ease);
       }
       @keyframes modal-fadein { from { opacity: 0; } to { opacity: 1; } }
       .modal-container {
-        background: #1a1a1a; border: 1px solid #333; border-radius: 12px;
-        padding: 24px; max-width: 520px; width: 90%; max-height: 85vh;
-        overflow-y: auto; position: relative; color: #e0e0e0;
-        animation: modal-slidein 0.15s ease;
+        background: var(--surface-1);
+        border: var(--border-width) solid var(--border);
+        padding: 24px;
+        max-width: 520px; width: 90%; max-height: 85vh;
+        overflow-y: auto; position: relative;
+        color: var(--text-primary);
+        font-family: var(--ff-sans);
+        animation: modal-slidein var(--dur-trans) var(--ease);
       }
       .modal-container--wide { max-width: 720px; }
-      @keyframes modal-slidein { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+      @keyframes modal-slidein { from { transform: translateY(6px); opacity: 0; } to { transform: none; opacity: 1; } }
       .modal-close {
         position: absolute; top: 12px; right: 12px;
-        background: none; border: none; color: #666; font-size: 24px;
-        cursor: pointer; padding: 4px 8px; border-radius: 4px;
-        line-height: 1;
+        background: none; border: var(--border-width) solid transparent;
+        color: var(--text-label); font-size: var(--fs-lg);
+        cursor: pointer; padding: 2px 7px; line-height: 1;
+        transition: color var(--dur-micro) var(--ease), border-color var(--dur-micro) var(--ease);
       }
-      .modal-close:hover { color: #fff; background: rgba(255,255,255,0.08); }
-      .modal-title { font-size: 22px; font-weight: 600; margin-bottom: 16px; color: #fff; }
-      .modal-error { color: #f44; font-size: 16px; margin-bottom: 12px; padding: 8px 12px; background: rgba(255,68,68,0.1); border-radius: 6px; }
+      .modal-close:hover { color: var(--danger); border-color: var(--danger); }
+      .modal-title {
+        font-family: var(--ff-display);
+        font-size: var(--fs-xl);
+        font-weight: var(--fw-semibold);
+        letter-spacing: var(--ls-tight);
+        margin-bottom: 20px;
+        color: var(--text-primary);
+      }
+      .modal-error {
+        color: var(--danger);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wide);
+        margin-bottom: 12px;
+        padding: 8px 12px;
+        background: var(--danger-dim);
+        border-left: 2px solid var(--danger);
+      }
     `;
   }
 
@@ -83,16 +104,26 @@ export class Modal extends Component {
 export class Loader extends Component {
   static get styles() {
     return `
-      .mk-loader { text-align: center; padding: 24px; color: #888; }
+      .mk-loader { text-align: center; padding: 24px; color: var(--text-secondary); }
       .mk-loader-spinner {
-        width: 24px; height: 24px; border: 2px solid #333; border-top-color: #888;
-        border-radius: 50%; animation: mk-loader-spin 0.8s linear infinite;
+        width: 22px; height: 22px;
+        border: 2px solid var(--border);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: mk-loader-spin 0.8s linear infinite;
         margin: 0 auto 12px;
       }
       @keyframes mk-loader-spin { to { transform: rotate(360deg); } }
-      .mk-loader-msg { font-size: 16px; margin-top: 8px; }
-      .mk-loader-bar { height: 4px; background: #222; border-radius: 2px; margin-top: 12px; overflow: hidden; }
-      .mk-loader-fill { height: 100%; background: #90caf9; border-radius: 2px; transition: width 0.3s; }
+      .mk-loader-msg {
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wide);
+        text-transform: uppercase;
+        margin-top: 8px;
+        color: var(--text-label);
+      }
+      .mk-loader-bar { height: 2px; background: var(--surface-3); margin-top: 12px; overflow: hidden; }
+      .mk-loader-fill { height: 100%; background: var(--accent); transition: width var(--dur-trans) var(--ease); }
     `;
   }
 

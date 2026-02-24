@@ -581,7 +581,7 @@ export class BuyPointsModal extends Component {
 
     if (!walletAddress) {
       return h('div', null,
-        h('p', { style: 'color:#aaa;margin-bottom:12px' }, 'Connect your wallet to view available payment assets.'),
+        h('p', { style: 'color:var(--text-secondary);margin-bottom:12px' }, 'Connect your wallet to view available payment assets.'),
         h(AsyncButton, { onclick: this.bind(this._onConnectWallet), label: 'Connect Wallet' })
       );
     }
@@ -591,7 +591,7 @@ export class BuyPointsModal extends Component {
     }
 
     if (!supportedAssets) {
-      return h('div', { style: 'color:#888' }, 'No asset data available.');
+      return h('div', { style: 'color:var(--text-secondary)' }, 'No asset data available.');
     }
 
     const tokens = (supportedAssets.tokens || []).filter(t => t && (t.symbol || t.name));
@@ -649,7 +649,7 @@ export class BuyPointsModal extends Component {
     if (!tierGroups.length) {
       return h('div', null,
         h('div', { className: 'bp-wallet-summary' }, `ETH Balance: ${ethBal}`),
-        h('div', { style: 'color:#888;text-align:center;padding:20px 0' }, 'No supported token balances detected. Deposit a supported asset to continue.')
+        h('div', { style: 'color:var(--text-secondary);text-align:center;padding:20px 0' }, 'No supported token balances detected. Deposit a supported asset to continue.')
       );
     }
 
@@ -697,12 +697,12 @@ export class BuyPointsModal extends Component {
       ? h(Loader, { message: 'Fetching quote...' })
       : quote
         ? h('div', { className: 'bp-quote' },
-          h('div', null, 'Points: ', h('b', { style: 'color:#4caf50' }, quote.pointsCredited ?? '-')),
+          h('div', null, 'Points: ', h('b', { style: 'color:var(--accent)' }, quote.pointsCredited ?? '-')),
           h('div', null, `Funding Rate: ${quote.fundingRate ?? '-'}`),
           h('div', null, `USD Value: $${safeToFixed(quote.usdValue?.gross)}`),
           h('div', null, `Fees: $${safeToFixed(quote.fees?.totalFeesUsd)}`)
         )
-        : h('div', { style: 'color:#888;font-size:16px' }, 'Enter an amount to get a quote.');
+        : h('div', { style: 'color:var(--text-secondary);font-size:var(--fs-base)' }, 'Enter an amount to get a quote.');
 
     // Donate deal banner
     const isEligible = mode === 'contribute' && quote && donateQuote && donateQuote.pointsCredited > quote.pointsCredited;
@@ -735,7 +735,7 @@ export class BuyPointsModal extends Component {
 
   _renderReviewStep() {
     const { selectedAsset, amount, quote, mode } = this.state;
-    if (!quote) return h('div', { style: 'color:#888' }, 'No quote available.');
+    if (!quote) return h('div', { style: 'color:var(--text-secondary)' }, 'No quote available.');
 
     const q = quote;
     const b = q.breakdown || {};
@@ -753,17 +753,17 @@ export class BuyPointsModal extends Component {
       h('div', { className: 'bp-review' },
         h('div', null, `Asset: ${sym}`),
         h('div', null, `Amount: ${amount}`),
-        h('div', null, 'Points: ', h('b', { style: 'color:#4caf50' }, q.pointsCredited),
-          mode === 'donate' ? h('span', { style: 'font-size:14px;color:#90caf9;margin-left:6px' }, '(boosted)') : null
+        h('div', null, 'Points: ', h('b', { style: 'color:var(--accent)' }, q.pointsCredited),
+          mode === 'donate' ? h('span', { style: 'font-size:var(--fs-xs);color:var(--accent);margin-left:6px' }, '(boosted)') : null
         ),
-        h('hr', { style: 'border-color:#333;margin:12px 0' }),
+        h('hr', { style: 'border-color:var(--border);margin:12px 0' }),
         h('div', null, 'Gross USD: ', h('b', null, `$${safeToFixed(b.grossUsd ?? q.usdValue?.gross)}`)),
         h('div', null, 'Funding Rate Deduction: ', h('b', null, `-$${safeToFixed(b.fundingRateDeduction ?? 0)}`)),
         h('div', null, 'Net After Funding Rate: ', h('b', null, `$${safeToFixed(b.netAfterFundingRate ?? q.usdValue?.netAfterFundingRate)}`)),
         showGasRow
           ? h('div', null, 'Estimated Gas Fee: ', h('b', null, `-$${safeToFixed(estimatedGas)}`))
           : h('div', null, 'Estimated Gas Fee: ', h('b', null, '$0 (covered for donations)')),
-        h('div', { style: 'font-weight:bold;color:#4caf50;margin-top:8px' }, `User Receives: $${safeToFixed(userReceives)}`)
+        h('div', { style: 'font-weight:bold;color:var(--accent);margin-top:8px' }, `User Receives: $${safeToFixed(userReceives)}`)
       ),
       h('div', { className: 'bp-nav' },
         h(AsyncButton, { variant: 'secondary', onclick: () => this._goStep(STEP.AMOUNT), label: 'Back' }),
@@ -787,8 +787,8 @@ export class BuyPointsModal extends Component {
 
     if (!txStatus) return h(Loader, { message: 'Waiting for transaction status...' });
 
-    const statusColors = { submitted: '#90caf9', pending: '#ffc107', confirming: '#ffc107', confirmed: '#4caf50', 'Success!': '#4caf50', Failed: '#e74c3c' };
-    const color = statusColors[txStatus.status] || '#90caf9';
+    const statusColors = { submitted: 'var(--accent)', pending: 'var(--accent-dim)', confirming: 'var(--accent-dim)', confirmed: 'var(--accent)', 'Success!': 'var(--accent)', Failed: 'var(--danger)' };
+    const color = statusColors[txStatus.status] || 'var(--accent)';
     const isProcessing = ['submitted', 'pending', 'confirming'].includes(txStatus.status);
 
     const statusLabels = {
@@ -805,32 +805,32 @@ export class BuyPointsModal extends Component {
         isProcessing
           ? h('div', { className: 'bp-spinner-large', style: `border-top-color:${color}` })
           : null,
-        h('div', { style: `font-size:22px;color:${color};font-weight:bold;margin-bottom:8px` },
+        h('div', { style: `font-size:var(--fs-xl);color:${color};font-weight:bold;margin-bottom:8px` },
           statusLabels[txStatus.status] || txStatus.status || 'Processing'
         ),
-        txStatus.message ? h('p', { style: 'color:#aaa;font-size:17px;margin:8px 0' }, txStatus.message) : null
+        txStatus.message ? h('p', { style: 'color:var(--text-secondary);font-size:var(--fs-md);margin:8px 0' }, txStatus.message) : null
       ),
       h('div', { className: 'bp-hash-box' },
-        h('div', { style: 'font-size:14px;color:#666;margin-bottom:4px' }, 'Transaction Hash'),
+        h('div', { style: 'font-size:var(--fs-xs);color:var(--text-label);margin-bottom:4px' }, 'Transaction Hash'),
         h('div', { style: 'display:flex;align-items:center;gap:8px' },
-          h('code', { style: 'font-size:16px;word-break:break-all;color:#90caf9;flex:1' }, txStatus.txHash),
+          h('code', { style: 'font-size:var(--fs-base);word-break:break-all;color:var(--accent);flex:1;font-family:var(--ff-mono)' }, txStatus.txHash),
           h(CopyButton, { text: txStatus.txHash })
         )
       ),
       txStatus.confirmationTxHash
         ? h('div', { className: 'bp-hash-box' },
-          h('div', { style: 'font-size:14px;color:#666;margin-bottom:4px' }, 'Confirmation Tx'),
+          h('div', { style: 'font-size:var(--fs-xs);color:var(--text-label);margin-bottom:4px' }, 'Confirmation Tx'),
           h('div', { style: 'display:flex;align-items:center;gap:8px' },
-            h('code', { style: 'font-size:16px;word-break:break-all;color:#4caf50;flex:1' }, txStatus.confirmationTxHash),
+            h('code', { style: 'font-size:var(--fs-base);word-break:break-all;color:var(--accent);flex:1;font-family:var(--ff-mono)' }, txStatus.confirmationTxHash),
             h(CopyButton, { text: txStatus.confirmationTxHash })
           )
         )
         : null,
       txStatus.failureReason
-        ? h('div', { style: 'background:#3d1a1a;color:#e74c3c;padding:12px;border-radius:6px;margin-top:12px' }, txStatus.failureReason)
+        ? h('div', { style: 'background:var(--danger-dim);color:var(--danger);padding:12px;border-radius:0;margin-top:12px;border:var(--border-width) solid var(--danger)' }, txStatus.failureReason)
         : null,
       isProcessing
-        ? h('p', { style: 'text-align:center;color:#666;font-size:14px;margin-top:16px' }, 'This usually takes 15-60 seconds. You can close this modal - your points will be credited automatically.')
+        ? h('p', { style: 'text-align:center;color:var(--text-label);font-size:var(--fs-xs);margin-top:16px' }, 'This usually takes 15-60 seconds. You can close this modal - your points will be credited automatically.')
         : null,
       h('div', { className: 'bp-nav', style: 'margin-top:16px' },
         h(AsyncButton, { variant: 'secondary', onclick: this.bind(this._manualRefresh), label: 'Refresh' })
@@ -842,27 +842,27 @@ export class BuyPointsModal extends Component {
 
   _renderReceiptStep() {
     const { txStatus, selectedAsset, amount } = this.state;
-    if (!txStatus || !txStatus.receipt) return h('div', { style: 'color:#888' }, 'No receipt available.');
+    if (!txStatus || !txStatus.receipt) return h('div', { style: 'color:var(--text-secondary)' }, 'No receipt available.');
 
     const r = txStatus.receipt;
     const sym = selectedAsset ? (selectedAsset.symbol || selectedAsset.name) : '-';
 
     return h('div', { className: 'bp-receipt' },
-      h('h3', { style: 'color:#4caf50;margin:0 0 16px' }, 'Purchase Complete!'),
-      h('div', null, 'Points Credited: ', h('b', { style: 'color:#4caf50' }, `+${r.points_credited}`)),
+      h('h3', { style: 'color:var(--accent);margin:0 0 16px' }, 'Purchase Complete!'),
+      h('div', null, 'Points Credited: ', h('b', { style: 'color:var(--accent)' }, `+${r.points_credited}`)),
       h('div', null, `USD Credited: $${safeToFixed(r.user_credited_usd)}`),
-      h('hr', { style: 'border-color:#333;margin:12px 0' }),
+      h('hr', { style: 'border-color:var(--border);margin:12px 0' }),
       h('div', null, `Asset: ${sym}`),
       h('div', null, `Amount: ${amount}`),
       h('div', { style: 'margin-top:12px' },
-        h('span', { style: 'color:#888;font-size:14px' }, 'Your Tx Hash: '),
-        h('code', { style: 'font-size:14px;word-break:break-all;color:#90caf9' }, txStatus.txHash),
+        h('span', { style: 'color:var(--text-secondary);font-size:var(--fs-xs)' }, 'Your Tx Hash: '),
+        h('code', { style: 'font-size:var(--fs-xs);word-break:break-all;color:var(--accent);font-family:var(--ff-mono)' }, txStatus.txHash),
         h(CopyButton, { text: txStatus.txHash })
       ),
       r.confirmation_tx_hash
         ? h('div', { style: 'margin-top:6px' },
-          h('span', { style: 'color:#888;font-size:14px' }, 'Confirmation Tx: '),
-          h('code', { style: 'font-size:14px;word-break:break-all;color:#4caf50' }, r.confirmation_tx_hash),
+          h('span', { style: 'color:var(--text-secondary);font-size:var(--fs-xs)' }, 'Confirmation Tx: '),
+          h('code', { style: 'font-size:var(--fs-xs);word-break:break-all;color:var(--accent);font-family:var(--ff-mono)' }, r.confirmation_tx_hash),
           h(CopyButton, { text: r.confirmation_tx_hash })
         )
         : null,
@@ -877,54 +877,55 @@ export class BuyPointsModal extends Component {
   static get styles() {
     return `
       /* Wallet summary */
-      .bp-wallet-summary { font-size:16px; color:#90caf9; margin-bottom:12px; }
+      .bp-wallet-summary { font-size:var(--fs-base); color:var(--accent); margin-bottom:12px; }
 
       /* Tiers */
       .bp-tier { margin-bottom:12px; }
-      .bp-tier-heading { font-size:14px; color:#888; text-transform:uppercase; letter-spacing:0.5px; font-weight:600; margin-bottom:6px; padding-bottom:4px; border-bottom:1px solid #222; }
+      .bp-tier-heading { font-size:var(--fs-xs); color:var(--text-secondary); text-transform:uppercase; letter-spacing:var(--ls-wide); font-weight:600; margin-bottom:6px; padding-bottom:4px; border-bottom:var(--border-width) solid var(--border); }
 
       /* Asset button */
       .bp-asset-btn {
         display:flex; align-items:center; justify-content:space-between; width:100%; padding:10px 14px;
-        background:#222; border:1px solid #333; border-radius:8px; color:#e0e0e0; cursor:pointer;
-        font-size:17px; margin-bottom:6px; transition:border-color 0.15s;
+        background:var(--surface-2); border:var(--border-width) solid var(--border); border-radius:0; color:var(--text-primary); cursor:pointer;
+        font-size:var(--fs-md); margin-bottom:6px; transition:border-color var(--dur-interact) var(--ease);
       }
-      .bp-asset-btn:hover { border-color:#555; }
+      .bp-asset-btn:hover { border-color:var(--border-hover); }
       .bp-asset-main { display:flex; align-items:center; gap:10px; }
       .bp-asset-icon { width:24px; height:24px; border-radius:50%; }
-      .bp-asset-bal { font-size:14px; color:#888; background:#1a1a1a; padding:2px 8px; border-radius:4px; }
+      .bp-asset-bal { font-size:var(--fs-xs); color:var(--text-secondary); background:var(--surface-1); padding:2px 8px; border-radius:0; }
 
       /* Amount step */
-      .bp-selected { font-size:17px; color:#ccc; margin-bottom:12px; }
+      .bp-selected { font-size:var(--fs-md); color:var(--text-primary); margin-bottom:12px; }
       .bp-input {
-        width:100%; padding:10px 14px; background:#222; border:1px solid #444; border-radius:6px;
-        color:#e0e0e0; font-size:17px; box-sizing:border-box; margin-bottom:12px;
+        width:100%; padding:10px 14px; background:var(--surface-1); border:var(--border-width) solid var(--border); border-radius:0;
+        color:var(--text-primary); font-size:var(--fs-md); box-sizing:border-box; margin-bottom:12px; outline:none;
       }
-      .bp-input:focus { border-color:#90caf9; outline:none; }
-      .bp-quote { background:#1a1a1a; padding:12px; border-radius:6px; font-size:16px; line-height:1.8; }
+      .bp-input:focus { border-color:var(--accent-border); }
+      .bp-quote { background:var(--surface-1); padding:12px; border-radius:0; font-size:var(--fs-base); line-height:1.8; }
       .bp-donate-banner {
         display:flex; align-items:center; justify-content:space-between; gap:12px;
-        background:#263238; padding:10px 14px; border-radius:6px; margin-top:10px; color:#fff;
+        background:var(--surface-3); padding:10px 14px; border-radius:0; margin-top:10px; color:var(--text-primary);
+        border:var(--border-width) solid var(--border);
       }
 
       /* Review */
-      .bp-review { background:#1a1a1a; padding:16px; border-radius:8px; font-size:17px; line-height:1.8; }
+      .bp-review { background:var(--surface-1); padding:16px; border-radius:0; font-size:var(--fs-md); line-height:1.8; }
 
       /* Navigation */
       .bp-nav { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
 
       /* Tx status */
       .bp-status-center { text-align:center; padding:24px 0; }
-      .bp-phase { font-size:14px; color:#888; margin-top:8px; }
+      .bp-phase { font-size:var(--fs-xs); color:var(--text-secondary); margin-top:8px; }
       .bp-spinner-large {
-        width:60px; height:60px; margin:0 auto 16px; border:3px solid #333;
+        width:60px; height:60px; margin:0 auto 16px; border:3px solid var(--border);
         border-radius:50%; animation:bp-spin 1s linear infinite;
       }
       @keyframes bp-spin { to { transform:rotate(360deg); } }
-      .bp-hash-box { background:#1a1a1a; padding:12px; border-radius:6px; margin-top:12px; }
+      .bp-hash-box { background:var(--surface-1); padding:12px; border-radius:0; margin-top:12px; }
 
       /* Receipt */
-      .bp-receipt { line-height:1.8; font-size:17px; }
+      .bp-receipt { line-height:1.8; font-size:var(--fs-md); }
     `;
   }
 

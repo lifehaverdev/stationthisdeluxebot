@@ -132,16 +132,16 @@ export class ConnectionLayer extends Component {
       const to = this._getInputAnchorPos(toWin, conn.toInput, getAnchorPos);
       const d = this._bezier(from.x, from.y, to.x, to.y);
 
-      // Two paths per connection: visible thin line + wide invisible hit area on top.
-      // The hit path uses the CSS sibling selector trick: hit:hover + visible → red.
+      // Two paths per connection: wide invisible hit area + visible thin line.
+      // Hit must come first so the sibling selector (hit:hover + vis) targets the correct vis path.
       return [
-        h('path', { key: conn.id + '-vis', d, className: 'cl-path' }),
         h('path', {
           key: conn.id + '-hit',
           d,
           className: 'cl-path-hit',
           onclick: (e) => { e.stopPropagation(); onRemoveConnection?.(conn.id); },
         }),
+        h('path', { key: conn.id + '-vis', d, className: 'cl-path' }),
       ];
     });
 

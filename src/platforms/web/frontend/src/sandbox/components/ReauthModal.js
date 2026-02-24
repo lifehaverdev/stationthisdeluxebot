@@ -107,26 +107,28 @@ export class ReauthModal extends Component {
     return `
       .reauth-body { display: flex; flex-direction: column; gap: 16px; text-align: center; }
       .reauth-wallet-btn {
-        padding: 16px 32px; font-size: 1.1em; background: #333; border: 1px solid #555;
-        color: #fff; border-radius: 8px; cursor: pointer; font-weight: 600;
+        padding: 16px 32px; font-size: var(--fs-md); background: var(--surface-2); border: var(--border-width) solid var(--border);
+        color: var(--text-primary); border-radius: 0; cursor: pointer; font-weight: 600;
       }
-      .reauth-wallet-btn:hover { background: #444; }
+      .reauth-wallet-btn:hover { border-color: var(--border-hover); }
       .reauth-wallet-btn:disabled { opacity: 0.5; cursor: default; }
-      .reauth-alt { font-size: 16px; color: #888; }
-      .reauth-alt a { color: #90caf9; cursor: pointer; text-decoration: none; }
+      .reauth-alt { font-size: var(--fs-base); color: var(--text-secondary); }
+      .reauth-alt a { color: var(--accent); cursor: pointer; text-decoration: none; }
       .reauth-alt a:hover { text-decoration: underline; }
       .reauth-form { display: flex; flex-direction: column; gap: 12px; }
       .reauth-form input {
-        background: #222; border: 1px solid #444; color: #e0e0e0;
-        padding: 10px 14px; border-radius: 6px; font-size: 17px;
+        background: var(--surface-1); border: var(--border-width) solid var(--border); color: var(--text-primary);
+        padding: 10px 14px; border-radius: 0; font-size: var(--fs-md); outline: none;
       }
+      .reauth-form input:focus { border-color: var(--accent-border); }
       .reauth-form button[type="submit"] {
-        background: #333; border: 1px solid #555; color: #fff;
-        padding: 10px; border-radius: 6px; cursor: pointer; font-weight: 600;
+        background: var(--surface-2); border: var(--border-width) solid var(--border); color: var(--text-primary);
+        padding: 10px; border-radius: 0; cursor: pointer; font-weight: 600;
       }
+      .reauth-form button[type="submit"]:hover { border-color: var(--border-hover); }
       .reauth-form button[type="submit"]:disabled { opacity: 0.5; }
-      .reauth-back { color: #888; font-size: 16px; cursor: pointer; background: none; border: none; }
-      .reauth-back:hover { color: #ccc; }
+      .reauth-back { color: var(--text-secondary); font-size: var(--fs-base); cursor: pointer; background: none; border: none; }
+      .reauth-back:hover { color: var(--text-primary); }
     `;
   }
 

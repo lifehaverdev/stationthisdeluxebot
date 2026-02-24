@@ -131,7 +131,7 @@ export class Sidebar extends Component {
         padding: 8px 12px 4px;
         font-family: var(--ff-mono);
         font-size: var(--fs-xs);
-        color: var(--text-label);
+        color: var(--accent);
         letter-spacing: var(--ls-widest);
         text-transform: uppercase;
         border-bottom: var(--border-width) solid var(--border);
@@ -186,26 +186,39 @@ export class Sidebar extends Component {
         flex-shrink: 0;
       }
 
+      @keyframes handlePulse {
+        0%   { border-color: var(--accent-border); box-shadow: -2px 0 8px var(--accent-glow); }
+        50%  { border-color: var(--accent);        box-shadow: -3px 0 14px rgba(0,223,200,0.40); }
+        100% { border-color: var(--accent-border); box-shadow: -2px 0 8px var(--accent-glow); }
+      }
+
       .sb-handle {
         position: absolute;
-        left: -20px;
+        left: -28px;
         top: 50%;
         transform: translateY(-50%);
-        width: 20px;
-        height: 48px;
+        width: 28px;
+        height: 64px;
         background: var(--surface-1);
-        border: var(--border-width) solid var(--border);
+        border: var(--border-width) solid var(--accent-border);
         border-right: none;
         display: flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
-        color: var(--text-label);
-        font-size: 10px;
+        color: var(--accent);
+        font-size: 12px;
         font-family: var(--ff-mono);
-        transition: background var(--dur-micro) var(--ease);
+        animation: handlePulse 2.4s ease-in-out infinite;
+        transition: background var(--dur-micro) var(--ease), color var(--dur-micro) var(--ease);
       }
-      .sb-handle:hover { background: var(--surface-2); }
+      .sb-handle:hover {
+        background: var(--accent-dim);
+        color: var(--accent);
+        animation: none;
+        border-color: var(--accent);
+        box-shadow: -3px 0 16px rgba(0,223,200,0.45);
+      }
 
       .sb-empty {
         color: var(--text-label);

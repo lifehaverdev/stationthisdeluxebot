@@ -102,7 +102,7 @@
 /* ── Base reset ────────────────────────────── */
 *, *::before, *::after {
   box-sizing: border-box;
-  border-radius: 0 !important;
+  border-radius: 0;
 }
 
 body {

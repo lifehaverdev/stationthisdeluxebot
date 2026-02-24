@@ -27,10 +27,10 @@ The master prompt is the base text that drives generation. It supports variable 
 
 Example:
 ```
-a portrait of {subject}, wearing {clothing}, in a {setting}, {lighting} lighting
+a portrait of [[subject]], wearing [[clothing]], in a [[setting]], [[lighting]] lighting
 ```
 
-Each `{slot}` maps to a trait category you define below.
+Each `[[slot]]` maps to a trait category you define below.
 
 ### Trait Definitions
 
