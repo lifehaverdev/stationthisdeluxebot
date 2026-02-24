@@ -1,5 +1,5 @@
 const express = require('express');
-const { getRegistry, setLevel } = require('../../../utils/logger');
+const { getRegistry, setLevel } = require('../../utils/logger');
 
 function createLogsApi() {
   const router = express.Router();
