@@ -217,7 +217,7 @@ class OpenAIAdapter {
       const buf = Buffer.from(b64, 'base64');
       const stream = Readable.from(buf);
       const key = `dalle3/generations/${randomUUID()}.png`;
-      const { permanentUrl } = await storage.uploadFromStream(stream, key, 'image/png', 'uploads');
+      const { permanentUrl } = await storage.uploadFromStream(stream, key, 'image/png', 'exports');
       return permanentUrl;
     } catch (err) {
       console.warn('[OpenAIAdapter] R2 upload failed, storing b64:', err.message);
