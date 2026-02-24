@@ -726,6 +726,12 @@ export class SandboxCanvas extends Component {
       await new Promise(r => setTimeout(r, POLL_INTERVAL));
       try {
         const res = await fetch(`/api/v1/generation/status/${generationId}`, { credentials: 'include' });
+        if (res.status === 429) {
+          const reset = res.headers.get('RateLimit-Reset');
+          const waitMs = reset ? Math.max(parseInt(reset) * 1000 - Date.now(), 5000) : 30000;
+          await new Promise(r => setTimeout(r, waitMs));
+          continue;
+        }
         if (!res.ok) continue;
         const data = await res.json();
         if (data.status === 'completed' || data.status === 'failed') {
@@ -770,24 +776,26 @@ export class SandboxCanvas extends Component {
         _stopProgressListener = () => this._wsClient.off('generationProgress', handleProgress);
       }
 
-      // Race WebSocket delivery against a polling fallback.
-      // WS is primary — polling starts after 10 s to give the connection time to deliver.
-      // This handles the case where WS retries are exhausted before a slow generation finishes.
-      let stopPolling = false;
+      // WS is primary. ComfyUI Deploy is webhook-driven — the server receives the webhook
+      // and pushes to the client over WS. Only fall back to polling when WS is down.
+      const wsConnected = this._wsClient?.isConnected?.() ?? false;
       const wsPromise = this._wsHandlers.generationCompletionManager
-        .createCompletionPromise(generationId)
-        .then(r => { stopPolling = true; return r; });
+        .createCompletionPromise(generationId);
 
-      const pollPromise = new Promise((resolve, reject) => {
-        // Delay polling start so WS has priority for fast generations
-        const timer = setTimeout(() => {
-          this._pollGenerationStatus(generationId).then(resolve).catch(reject);
-        }, 10000);
-        // If WS fires first, cancel the delayed start
-        wsPromise.then(() => clearTimeout(timer)).catch(() => {});
-      });
+      let resultPromise;
+      if (wsConnected) {
+        resultPromise = wsPromise;
+      } else {
+        const pollPromise = new Promise((resolve, reject) => {
+          const timer = setTimeout(() => {
+            this._pollGenerationStatus(generationId).then(resolve).catch(reject);
+          }, 10000);
+          wsPromise.then(() => clearTimeout(timer)).catch(() => {});
+        });
+        resultPromise = Promise.race([wsPromise, pollPromise]);
+      }
 
-      const result = await Promise.race([wsPromise, pollPromise]);
+      const result = await resultPromise;
       _stopProgressListener?.();
       _stopProgressListener = null;
 
