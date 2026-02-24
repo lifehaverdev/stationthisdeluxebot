@@ -418,11 +418,76 @@ export class SpellWindowBody extends Component {
     win.spell.exposedInputs.forEach(inp => {
       schema[`${inp.nodeId}_${inp.paramKey}`] = {
         name: inp.paramKey,
-        type: 'string',
+        type: inp.paramType || 'string',
         required: true,
       };
     });
     return schema;
+  }
+
+  // Parse the progress % from win.progress string ("Running… 45%" → 45)
+  _getProgressPct(win) {
+    if (!win.progress) return null;
+    const m = win.progress.match(/(\d+)%/);
+    return m ? parseInt(m[1], 10) : null;
+  }
+
+  // Determine which step index is currently active based on overall progress
+  _getActiveStepIndex(win) {
+    const steps = win.spell?.steps || [];
+    if (!steps.length) return -1;
+    const pct = this._getProgressPct(win);
+    if (pct == null) return 0; // executing but no % yet → first step
+    return Math.min(Math.floor((pct / 100) * steps.length), steps.length - 1);
+  }
+
+  _renderSteps(win) {
+    const steps = win.spell?.steps || [];
+    if (!steps.length) return null;
+
+    const isExecuting = win.executing;
+    const isDone = !isExecuting && !!win.output;
+    const activeIdx = isExecuting ? this._getActiveStepIndex(win) : -1;
+
+    // Status line shown under the active step during execution
+    const statusText = isExecuting
+      ? (win.progress || 'Casting…').replace(/\d+%/, '').trim() || 'Running…'
+      : null;
+
+    return h('div', { className: 'spw-steps' },
+      ...steps.map((step, i) => {
+        let cls = 'spw-step';
+        if (isExecuting) {
+          if (i < activeIdx)      cls += ' spw-step--done';
+          else if (i === activeIdx) cls += ' spw-step--active';
+          else                    cls += ' spw-step--pending';
+        } else if (isDone) {
+          cls += ' spw-step--done';
+        }
+
+        const pct = isExecuting && i === activeIdx ? this._getProgressPct(win) : null;
+
+        return h('div', { className: cls, key: step.id || i },
+          h('div', { className: 'spw-step-num' },
+            // Show checkmark for completed steps
+            (isDone || (isExecuting && i < activeIdx)) ? '\u2713' : String(i + 1)
+          ),
+          h('div', { className: 'spw-step-body' },
+            h('div', { className: 'spw-step-name' }, step.displayName || step.toolIdentifier || `Step ${i + 1}`),
+            // Active step: show live status text
+            isExecuting && i === activeIdx && statusText
+              ? h('div', { className: 'spw-step-status' }, statusText)
+              : null,
+            // Active step: show progress bar if % is available
+            pct != null
+              ? h('div', { className: 'spw-step-bar' },
+                h('div', { className: 'spw-step-bar-fill', style: `width:${pct}%` })
+              )
+              : null
+          )
+        );
+      })
+    );
   }
 
   render() {
@@ -462,16 +527,14 @@ export class SpellWindowBody extends Component {
       }));
     }
 
-    if (win.executing) {
-      content.push(h('div', { className: 'nwb-progress', key: 'progress' },
-        h(Loader, { message: win.progress || 'Casting...' })
-      ));
-    }
+    // Step pipeline — always visible when steps are known
+    const stepsEl = this._renderSteps(win);
+    if (stepsEl) content.push(h('div', { key: 'steps' }, stepsEl));
 
     if (!compact) {
       content.push(h('div', { className: 'nwb-actions', key: 'actions' },
         h(AsyncButton, {
-          label: 'Cast Spell',
+          label: win.executing ? 'Casting…' : 'Cast Spell',
           loading: win.executing,
           disabled: win.isAccessible === false,
           onclick: () => onExecute?.(win.id),
@@ -494,6 +557,89 @@ export class SpellWindowBody extends Component {
       .nwb-locked-icon { font-size: 38px; opacity: 0.7; }
       .nwb-locked-title { font-weight: 600; color: #666; font-size: 19px; }
       .nwb-locked-msg { font-size: 17px; color: #888; }
+
+      /* ── Spell step pipeline ────────────────────── */
+      .spw-steps {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        padding: 6px 0;
+        border-top: var(--border-width) solid var(--border);
+      }
+
+      .spw-step {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 5px 8px;
+        opacity: 0.45;
+        transition: opacity var(--dur-micro) var(--ease), background var(--dur-micro) var(--ease);
+      }
+      .spw-step--active  { opacity: 1; background: var(--accent-dim); }
+      .spw-step--done    { opacity: 0.55; }
+      .spw-step--pending { opacity: 0.2; }
+
+      .spw-step-num {
+        font-family: var(--ff-mono);
+        font-size: 10px;
+        color: var(--text-label);
+        width: 16px;
+        height: 16px;
+        border: var(--border-width) solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        margin-top: 1px;
+        transition: background var(--dur-micro) var(--ease), border-color var(--dur-micro) var(--ease), color var(--dur-micro) var(--ease);
+      }
+      .spw-step--active .spw-step-num {
+        background: var(--accent-dim);
+        border-color: var(--accent-border);
+        color: var(--accent);
+      }
+      .spw-step--done .spw-step-num {
+        border-color: var(--accent-border);
+        color: var(--accent);
+      }
+
+      .spw-step-body {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+
+      .spw-step-name {
+        font-family: var(--ff-sans);
+        font-size: var(--fs-xs);
+        color: var(--text-secondary);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        transition: color var(--dur-micro) var(--ease);
+      }
+      .spw-step--active .spw-step-name { color: var(--text-primary); font-weight: var(--fw-medium); }
+
+      .spw-step-status {
+        font-family: var(--ff-mono);
+        font-size: 10px;
+        color: var(--accent);
+        letter-spacing: var(--ls-wide);
+        text-transform: uppercase;
+      }
+
+      .spw-step-bar {
+        height: 2px;
+        background: var(--surface-3);
+        overflow: hidden;
+      }
+      .spw-step-bar-fill {
+        height: 100%;
+        background: var(--accent);
+        transition: width 0.4s var(--ease);
+      }
     `;
   }
 }

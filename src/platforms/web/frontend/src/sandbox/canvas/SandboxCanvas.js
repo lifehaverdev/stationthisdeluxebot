@@ -684,8 +684,14 @@ export class SandboxCanvas extends Component {
           executing: false, error: result.outputs?.error || 'Execution failed.',
         });
       } else if (result.generationId) {
-        this._updateWindow(windowId, { progress: 'Waiting for result...', generationId: result.generationId });
-        this._awaitCompletion(windowId, result.generationId);
+        if (win.type === 'spell') {
+          const stepCount = win.spell?.steps?.length || 1;
+          this._updateWindow(windowId, { progress: 'Casting...', generationId: result.generationId });
+          this._awaitSpellCompletion(windowId, result.generationId, stepCount);
+        } else {
+          this._updateWindow(windowId, { progress: 'Waiting for result...', generationId: result.generationId });
+          this._awaitCompletion(windowId, result.generationId);
+        }
       }
     } catch (err) {
       this._updateWindow(windowId, { executing: false, error: err.message, progress: null });
@@ -863,6 +869,38 @@ export class SandboxCanvas extends Component {
       if (result.costUsd) this._recordCost(windowId, result.costUsd);
     } catch (err) {
       _stopProgressListener?.();
+      this._updateWindow(windowId, { executing: false, error: err.message, progress: null });
+    }
+  }
+
+  async _awaitSpellCompletion(windowId, castId, stepCount) {
+    try {
+      if (!this._wsHandlers) await this._initWs();
+      if (!this._wsHandlers?.castCompletionTracker) throw new Error('WS handlers not available');
+
+      const result = await this._wsHandlers.castCompletionTracker.register(
+        castId,
+        stepCount,
+        ({ completed, total }) => {
+          const pct = Math.round((completed / total) * 100);
+          this._updateWindow(windowId, { progress: `${pct}%` });
+        }
+      );
+
+      if (result?.status === 'failed') {
+        throw new Error(result.outputs?.error || 'Spell execution failed.');
+      }
+
+      const output = this._normalizeOutput({ ...(result || {}), generationId: castId });
+      const win = this.state.windows.get(windowId);
+      if (!win) return;
+      const versions = [...(win.outputVersions || []), output];
+      this._updateWindow(windowId, {
+        output, executing: false, progress: null, outputLoaded: true,
+        outputVersions: versions, currentVersionIndex: versions.length - 1,
+      });
+      if (result?.costUsd) this._recordCost(windowId, result.costUsd);
+    } catch (err) {
       this._updateWindow(windowId, { executing: false, error: err.message, progress: null });
     }
   }
