@@ -36,7 +36,7 @@ function createSpellsApi(dependencies) {
                 slug: spell.slug || spell.spellId || spell._id,
                 name: spell.name || spell.displayName,
                 description: spell.description,
-                uses: spell.uses || 0,
+                uses: spell.usageCount || 0,
                 author: spell.author || null,
                 tags: spell.tags || [],
                 createdAt: spell.createdAt,
