@@ -156,6 +156,21 @@ export class WindowRenderer extends Component {
 
   _getInputAnchors() {
     const { win } = this.props;
+
+    // Spell windows: anchors from exposedInputs
+    if (win.type === 'spell') {
+      return (win.spell?.exposedInputs || []).map(inp => {
+        const key = `${inp.nodeId}_${inp.paramKey}`;
+        return {
+          key,
+          label: inp.paramKey,
+          type: normalizeType(inp.type || inp.paramType || 'text'),
+          connected: win.parameterMappings?.[key]?.type === 'nodeOutput',
+        };
+      });
+    }
+
+    // Tool windows: anchors from inputSchema
     const schema = win.tool?.inputSchema || {};
     return Object.entries(schema)
       .filter(([, p]) => CONNECTABLE_TYPES.includes(normalizeType(p.type)))
@@ -383,7 +398,7 @@ export class WindowRenderer extends Component {
               ontouchstart: (e) => this._onInputAnchorTap(e, a.key),
             },
               anchorIcon(a.type),
-              h('span', { className: 'nw-anchor-label' }, `${a.type}: ${a.key}`)
+              h('span', { className: 'nw-anchor-label' }, `${a.type}: ${a.label || a.key}`)
             )
           )
         ) : null,
