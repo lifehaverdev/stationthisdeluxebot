@@ -5,7 +5,7 @@ const { createLogger } = require('../../../utils/logger');
 
 function createPointsApi(dependencies) {
     const router = express.Router();
-    const { internalApiClient, logger } = dependencies;
+    const { internalApiClient, logger, userService, creditLedgerDb, userPreferencesDb } = dependencies;
 
     /**
      * @route GET /api/v1/points
@@ -26,8 +26,13 @@ function createPointsApi(dependencies) {
             logger.debug(`[pointsApi-external] /balance fetching for user ${userId}`);
 
             // First get user's wallet address
-            const userResponse = await internalApiClient.get(`/internal/v1/data/users/${userId}`);
-            const userCore = userResponse.data;
+            let userCore;
+            if (userService) {
+                userCore = await userService.findById(userId);
+            } else {
+                const userResponse = await internalApiClient.get(`/internal/v1/data/users/${userId}`);
+                userCore = userResponse.data;
+            }
 
             if (!userCore || !userCore.wallets || userCore.wallets.length === 0) {
                 // User has no wallet, return 0 balance
@@ -42,8 +47,13 @@ function createPointsApi(dependencies) {
             const walletAddress = primaryWallet ? primaryWallet.address : userCore.wallets[0].address;
 
             // Get points balance for the wallet
-            const pointsResponse = await internalApiClient.get(`/internal/v1/data/ledger/points/by-wallet/${walletAddress}`);
-            const points = pointsResponse.data.points || 0;
+            let points;
+            if (creditLedgerDb) {
+                points = await creditLedgerDb.sumPointsRemainingForWalletAddress(walletAddress) || 0;
+            } else {
+                const pointsResponse = await internalApiClient.get(`/internal/v1/data/ledger/points/by-wallet/${walletAddress}`);
+                points = pointsResponse.data.points || 0;
+            }
 
             res.json({
                 balance: points,
@@ -139,9 +149,15 @@ function createPointsApi(dependencies) {
             // If no cookie, check user preferences for logged-in users
             if (!referralCode && req.user && req.user.userId) {
                 try {
-                    const response = await internalApiClient.get(`/internal/v1/data/users/${req.user.userId}/preferences/preferredCharteredFund`);
-                    if (response.data && response.data.value && response.data.value.referralCode) {
-                        referralCode = response.data.value.referralCode;
+                    let prefValue;
+                    if (userPreferencesDb) {
+                        prefValue = await userPreferencesDb.getPreferenceByKey(req.user.userId, 'preferredCharteredFund');
+                    } else {
+                        const response = await internalApiClient.get(`/internal/v1/data/users/${req.user.userId}/preferences/preferredCharteredFund`);
+                        prefValue = response.data;
+                    }
+                    if (prefValue && prefValue.value && prefValue.value.referralCode) {
+                        referralCode = prefValue.value.referralCode;
                         logger.debug('[pointsApi-external] Used referral code from user preferences', {
                             userId: req.user.userId,
                             referralCode
@@ -151,9 +167,9 @@ function createPointsApi(dependencies) {
                     // A 404 is expected if the preference isn't set. We can ignore it.
                     if (error.response && error.response.status !== 404) {
                         // Log other errors but don't block the transaction
-                        logger.warn('[pointsApi-external] Failed to fetch user preferences', { 
+                        logger.warn('[pointsApi-external] Failed to fetch user preferences', {
                             error: error.message,
-                            userId: req.user.userId 
+                            userId: req.user.userId
                         });
                     }
                 }

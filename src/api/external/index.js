@@ -428,7 +428,13 @@ function initializeExternalApi(dependencies) {
 
   // Mount the Points API router (Protected by JWT or API Key)
   dependencies.internalApiClient = internalApiClient;
-  const pointsRouter = createPointsApi({ internalApiClient, logger });
+  const pointsRouter = createPointsApi({
+    internalApiClient,
+    logger,
+    userService: dependencies.userService || null,
+    creditLedgerDb: dependencies.db?.creditLedger || null,
+    userPreferencesDb: dependencies.db?.userPreferences || null,
+  });
   if (pointsRouter) {
     externalApiRouter.use('/points', authenticateUserOrApiKey, pointsRouter);
     logger.debug('External Points API router mounted at /points. (JWT or API key protected)');
