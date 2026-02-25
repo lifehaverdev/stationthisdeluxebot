@@ -67,6 +67,7 @@ export class SandboxCanvas extends Component {
     this._lassoDidDrag = false;
 
     this._wsHandlers = null;
+    this._wsInitPromise = null;
     this._rootEl = null;
 
     this._onMouseMove = this._onMouseMove.bind(this);
@@ -130,19 +131,21 @@ export class SandboxCanvas extends Component {
     if (window.sandboxCanvas === this) delete window.sandboxCanvas;
   }
 
-  async _initWs() {
-    try {
-      const [wsModule, wsHandlers] = await Promise.all([
-        import('../ws.js'),
-        import('../node/websocketHandlers.js'),
-      ]);
+  _initWs() {
+    if (this._wsInitPromise) return this._wsInitPromise;
+    this._wsInitPromise = Promise.all([
+      import('../ws.js'),
+      import('../node/websocketHandlers.js'),
+    ]).then(([wsModule, wsHandlers]) => {
       wsModule.websocketClient?.connect?.();
       wsHandlers.registerWebSocketHandlers?.();
       this._wsHandlers = wsHandlers;
       this._wsClient = wsModule.websocketClient;
-    } catch (e) {
+    }).catch(e => {
+      this._wsInitPromise = null; // allow retry on next attempt
       console.warn('[SandboxCanvas] WS init failed:', e);
-    }
+    });
+    return this._wsInitPromise;
   }
 
   // ── State helpers ──────────────────────────────────────────
@@ -870,7 +873,15 @@ export class SandboxCanvas extends Component {
       if (!this._wsHandlers) await this._initWs();
 
       if (!this._wsHandlers?.generationCompletionManager) {
-        throw new Error('WS handlers not available');
+        // WS handlers unavailable — fall back to polling
+        const result = await this._pollGenerationStatus(generationId);
+        if (result?.status === 'failed') throw new Error(result.outputs?.error || 'Generation failed.');
+        const output = this._normalizeOutput({ ...result, generationId });
+        const win = this.state.windows.get(windowId);
+        if (!win) return;
+        const versions = [...(win.outputVersions || []), output];
+        this._updateWindow(windowId, { output, executing: false, progress: null, outputLoaded: true, outputVersions: versions, currentVersionIndex: versions.length - 1 });
+        return;
       }
 
       // Subscribe to per-generation progress ticks and update window status text.
@@ -946,7 +957,7 @@ export class SandboxCanvas extends Component {
     let _stopProgressListener = null;
     try {
       if (!this._wsHandlers) await this._initWs();
-      if (!this._wsHandlers?.castCompletionTracker) throw new Error('WS handlers not available');
+      if (!this._wsHandlers?.castCompletionTracker) throw new Error('WebSocket connection unavailable. Please refresh the page and try again.');
 
       // Subscribe to webhook-driven step progress (e.g. ComfyDeploy live_status)
       if (this._wsClient) {

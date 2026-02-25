@@ -906,7 +906,7 @@ export class CookModal extends Component {
       h('div', { style: rowStyle },
         h('span', { style: labelStyle }, 'Generator'),
         h('span', { style: 'color:#ccc' }, this.state.generatorDisplay || '(none)'),
-        h(AsyncButton, { variant: 'secondary', onclick: () => this.setState({ showGenPicker: true }), label: this.state.generatorDisplay ? 'Change' : 'Set' })
+        h(AsyncButton, { variant: 'secondary', onclick: () => this.setState({ showGenPicker: true, generatorType: this.state.generatorType || 'tool' }), label: this.state.generatorDisplay ? 'Change' : 'Set' })
       ),
       // Param overrides (collapsible)
       paramOptions.length > 0 ? h('details', { style: 'margin-top:8px' },
