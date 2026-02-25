@@ -474,15 +474,14 @@ function registerHandlers(dispatcherInstances, dependencies) {
         const internal = dependencies.internal;
         let masterAccountId;
         try {
-            const findOrCreateResponse = await internal.client.post('/internal/v1/data/users/find-or-create', {
+            ({ masterAccountId } = await dependencies.userService.findOrCreate({
                 platform: 'telegram',
                 platformId: message.from.id.toString(),
                 platformContext: {
                     firstName: message.from.first_name,
                     username: message.from.username
                 }
-            });
-            masterAccountId = findOrCreateResponse.data.masterAccountId;
+            }));
         } catch (error) {
             const logger = dependencies.logger || console;
             logger.error('[TrainingMenu] Failed to resolve masterAccountId for /train command:', error);

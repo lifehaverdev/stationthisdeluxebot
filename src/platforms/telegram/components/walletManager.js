@@ -50,12 +50,11 @@ function createWalletCommandHandler(dependencies) {
     const { logger = console } = deps;
     if (!apiClient) throw new Error('[walletCommand] internalApiClient dependency missing');
 
-    const resp = await apiClient.post('/internal/v1/data/users/find-or-create', {
+    const { masterAccountId } = await deps.userService.findOrCreate({
       platform: 'telegram',
       platformId: msg.from.id.toString(),
       platformContext: { firstName: msg.from.first_name, username: msg.from.username }
     });
-    const masterAccountId = resp.data.masterAccountId;
 
     const wallets = await fetchWallets(apiClient, masterAccountId);
     if (wallets.length > 0) {

@@ -81,13 +81,13 @@ function initializeTelegramPlatform(dependencies, options = {}) {
   if (!DISABLED_FEATURES.again) {
     bot.onText(/^\/again(?:@\w+)?$/, async (msg) => {
       const chatId = msg.chat.id;
-      const { logger, internalApiClient } = dependencies;
+      const { logger, internalApiClient, userService } = dependencies;
 
       try {
         await setReaction(bot, chatId, msg.message_id, '🤔');
 
         // Find or create user to get masterAccountId
-        const userResponse = await internalApiClient.post('/internal/v1/data/users/find-or-create', {
+        const { masterAccountId } = await userService.findOrCreate({
           platform: 'telegram',
           platformId: msg.from.id.toString(),
           platformContext: {
@@ -95,7 +95,6 @@ function initializeTelegramPlatform(dependencies, options = {}) {
             username: msg.from.username,
           },
         });
-        const masterAccountId = userResponse.data.masterAccountId;
 
         // Get user's last generation (may not exist yet)
         let lastGen = null;
@@ -204,12 +203,12 @@ function initializeTelegramPlatform(dependencies, options = {}) {
   // Admin command: resetKeyboard - Removes stuck keyboard
   bot.onText(/^\/resetKeyboard(?:@\w+)?$/, async (msg) => {
     const chatId = msg.chat.id;
-    const { logger, internalApiClient } = dependencies;
+    const { logger, userService } = dependencies;
 
     try {
       await setReaction(bot, chatId, msg.message_id, '🤔');
 
-      if (!await isAdmin(msg.from.id, internalApiClient)) {
+      if (!await isAdmin(msg.from.id, userService)) {
         await bot.sendMessage(chatId, 'This command is only available to admins.', { reply_to_message_id: msg.message_id });
         await setReaction(bot, chatId, msg.message_id, '👎');
         return;
@@ -228,12 +227,12 @@ function initializeTelegramPlatform(dependencies, options = {}) {
   // Admin command: resetChat - Full chat state reset
   bot.onText(/^\/resetChat(?:@\w+)?$/, async (msg) => {
     const chatId = msg.chat.id;
-    const { logger, internalApiClient } = dependencies;
+    const { logger, userService } = dependencies;
 
     try {
       await setReaction(bot, chatId, msg.message_id, '🤔');
 
-      if (!await isAdmin(msg.from.id, internalApiClient)) {
+      if (!await isAdmin(msg.from.id, userService)) {
         await bot.sendMessage(chatId, 'This command is only available to admins.', { reply_to_message_id: msg.message_id });
         await setReaction(bot, chatId, msg.message_id, '👎');
         return;
@@ -253,12 +252,12 @@ function initializeTelegramPlatform(dependencies, options = {}) {
   // Admin command: deleteCommands - Delete all bot commands
   bot.onText(/^\/deleteCommands(?:@\w+)?$/, async (msg) => {
     const chatId = msg.chat.id;
-    const { logger, internalApiClient } = dependencies;
+    const { logger, userService } = dependencies;
 
     try {
       await setReaction(bot, chatId, msg.message_id, '🤔');
 
-      if (!await isAdmin(msg.from.id, internalApiClient)) {
+      if (!await isAdmin(msg.from.id, userService)) {
         await bot.sendMessage(chatId, 'This command is only available to admins.', { reply_to_message_id: msg.message_id });
         await setReaction(bot, chatId, msg.message_id, '👎');
         return;
@@ -278,12 +277,12 @@ function initializeTelegramPlatform(dependencies, options = {}) {
   // Admin command: updateCommands - Force update bot commands
   bot.onText(/^\/updateCommands(?:@\w+)?$/, async (msg) => {
     const chatId = msg.chat.id;
-    const { logger, internalApiClient } = dependencies;
+    const { logger, userService } = dependencies;
 
     try {
       await setReaction(bot, chatId, msg.message_id, '🤔');
 
-      if (!await isAdmin(msg.from.id, internalApiClient)) {
+      if (!await isAdmin(msg.from.id, userService)) {
         await bot.sendMessage(chatId, 'This command is only available to admins.', { reply_to_message_id: msg.message_id });
         await setReaction(bot, chatId, msg.message_id, '👎');
         return;
@@ -332,12 +331,12 @@ function initializeTelegramPlatform(dependencies, options = {}) {
   // Admin command: inspectCommands - Get detailed command info
   bot.onText(/^\/inspectCommands(?:@\w+)?$/, async (msg) => {
     const chatId = msg.chat.id;
-    const { logger, internalApiClient } = dependencies;
+    const { logger, userService } = dependencies;
 
     try {
       await setReaction(bot, chatId, msg.message_id, '🤔');
 
-      if (!await isAdmin(msg.from.id, internalApiClient)) {
+      if (!await isAdmin(msg.from.id, userService)) {
         await bot.sendMessage(chatId, 'This command is only available to admins.', { reply_to_message_id: msg.message_id });
         await setReaction(bot, chatId, msg.message_id, '👎');
         return;
@@ -421,12 +420,12 @@ function initializeTelegramPlatform(dependencies, options = {}) {
   // Admin command: chatInfo
   bot.onText(/^\/chatInfo(?:@\w+)?$/, async (msg) => {
     const chatId = msg.chat.id;
-    const { logger, internalApiClient } = dependencies;
+    const { logger, userService } = dependencies;
 
     try {
       await setReaction(bot, chatId, msg.message_id, '🔍');
 
-      if (!await isAdmin(msg.from.id, internalApiClient)) {
+      if (!await isAdmin(msg.from.id, userService)) {
         await bot.sendMessage(chatId, 'This command is only available to admins.', { reply_to_message_id: msg.message_id });
         await setReaction(bot, chatId, msg.message_id, '👎');
         return;
@@ -449,7 +448,7 @@ function initializeTelegramPlatform(dependencies, options = {}) {
   // Admin command: gift points
   bot.onText(/^\/gift(?:@\w+)?\s+(\d+)$/, async (msg, match) => {
     const chatId = msg.chat.id;
-    const { logger, internalApiClient } = dependencies;
+    const { logger, internalApiClient, userService } = dependencies;
     const points = parseInt(match[1], 10);
 
     try {
@@ -461,16 +460,16 @@ function initializeTelegramPlatform(dependencies, options = {}) {
         return;
       }
 
-      if (!await isAdmin(msg.from.id, internalApiClient)) {
+      if (!await isAdmin(msg.from.id, userService)) {
         await bot.sendMessage(chatId, 'This command is only available to admins.', { reply_to_message_id: msg.message_id });
         await setReaction(bot, chatId, msg.message_id, '👎');
         return;
       }
 
       const targetUserId = msg.reply_to_message.from.id;
-      
+
       // Get target user's master account
-      const userResponse = await internalApiClient.post('/internal/v1/data/users/find-or-create', {
+      const { masterAccountId } = await userService.findOrCreate({
         platform: 'telegram',
         platformId: targetUserId.toString(),
         platformContext: {
@@ -478,7 +477,6 @@ function initializeTelegramPlatform(dependencies, options = {}) {
           username: msg.reply_to_message.from.username,
         },
       });
-      const masterAccountId = userResponse.data.masterAccountId;
 
       // Create ledger entry
       await internalApiClient.post('/internal/v1/data/credit/ledger', {

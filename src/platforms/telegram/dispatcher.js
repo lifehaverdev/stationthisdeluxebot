@@ -57,16 +57,11 @@ class CallbackQueryDispatcher {
       this.logger.warn(`[CallbackQueryDispatcher] No handler found for callback data: ${data}`);
       return false;
     }
-    const apiClient = dependencies.internalApiClient || dependencies.internal?.client;
-    if (!apiClient) {
-      throw new Error('[CallbackQueryDispatcher] internalApiClient dependency missing');
-    }
-    const findOrCreateResponse = await apiClient.post('/internal/v1/data/users/find-or-create', {
+    const { masterAccountId } = await dependencies.userService.findOrCreate({
       platform: 'telegram',
       platformId: from.id.toString(),
       platformContext: { firstName: from.first_name, username: from.username }
     });
-    const masterAccountId = findOrCreateResponse.data.masterAccountId;
     await matchedHandler(bot, callbackQuery, masterAccountId, dependencies);
     return true;
   }

@@ -250,15 +250,14 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
 
         try {
           // Step 1: Find or create user to get masterAccountId
-          const userResponse = await apiClient.post('/internal/v1/data/users/find-or-create', {
+          ({ masterAccountId } = await dependencies.userService.findOrCreate({
             platform: 'telegram',
             platformId: msg.from.id.toString(),
             platformContext: {
               firstName: msg.from.first_name,
               username: msg.from.username,
             },
-          });
-          masterAccountId = userResponse.data.masterAccountId;
+          }));
 
           // --- Group sponsorship handling ---
           if (msg.chat && msg.chat.id < 0) {

@@ -13,7 +13,7 @@ const { escapeMarkdownV2 } = require('../../../utils/stringUtils');
  */
 function registerHandlers(dispatcherInstances, dependencies) {
     const { commandDispatcher, callbackQueryDispatcher } = dispatcherInstances;
-    const { logger, bot, sessionService, mediaService, db, internalApiClient } = dependencies;
+    const { logger, bot, sessionService, mediaService, db, userService } = dependencies;
 
     const collectionsWorkflow = new CollectionsWorkflow({
         sessionService,
@@ -23,12 +23,12 @@ function registerHandlers(dispatcherInstances, dependencies) {
     });
 
     async function getMasterAccountId(platformId, from) {
-        const findOrCreateResponse = await internalApiClient.post('/users/find-or-create', {
+        const { masterAccountId } = await userService.findOrCreate({
             platform: 'telegram',
             platformId: platformId.toString(),
             platformContext: { firstName: from.first_name, username: from.username }
         });
-        return findOrCreateResponse.data.masterAccountId;
+        return masterAccountId;
     }
 
     async function listCollections(message, userId) {

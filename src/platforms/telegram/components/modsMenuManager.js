@@ -1359,12 +1359,11 @@ async function modsCommandHandler(bot, msg, dependencies) {
     const { logger } = dependencies;
     logger.info(`[ModsMenuManager] /mods command received from Telegram User ID: ${msg.from.id}`);
     try {
-        const findOrCreateResponse = await dependencies.internal.client.post('/internal/v1/data/users/find-or-create', {
+        const { masterAccountId } = await dependencies.userService.findOrCreate({
             platform: 'telegram',
             platformId: msg.from.id.toString(),
             platformContext: { firstName: msg.from.first_name, username: msg.from.username }
         });
-        const masterAccountId = findOrCreateResponse.data.masterAccountId;
         await displayModsMainMenu(bot, msg, masterAccountId, dependencies, false);
     } catch (error) {
         logger.error(`[ModsMenuManager] Critical error in modsCommandHandler:`, error.stack || error);

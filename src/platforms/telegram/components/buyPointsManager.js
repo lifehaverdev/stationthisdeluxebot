@@ -307,13 +307,11 @@ function registerHandlers(dispatchers, deps = {}) {
 
   // /buypoints command
   commandDispatcher.register(/^\/buypoints(?:@\w+)?$/i, async (bot, msg) => {
-    const apiClient = deps.internal.client;
-    const findRes = await apiClient.post('/internal/v1/data/users/find-or-create', {
+    const { masterAccountId } = await deps.userService.findOrCreate({
       platform: 'telegram',
       platformId: msg.from.id.toString(),
       platformContext: { firstName: msg.from.first_name, username: msg.from.username }
     });
-    const masterAccountId = findRes.data.masterAccountId;
     await startFlow(bot, msg.chat.id, masterAccountId, deps);
   });
 

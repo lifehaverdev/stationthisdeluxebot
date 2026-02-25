@@ -139,13 +139,9 @@ function createAuthApi(dependencies) {
         return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'platform and platformId are required.' } });
       }
 
-      // Proxy to internal find-or-create using service credentials
-      const resp = await internalApiClient.post('/internal/v1/data/users/find-or-create', {
-        platform,
-        platformId,
-        platformContext,
-      });
-      return res.status(resp.status || 200).json({ masterAccountId: resp.data.masterAccountId, isNewUser: resp.data.isNewUser });
+      const userService = dependencies.userService;
+      const { masterAccountId, isNewUser } = await userService.findOrCreate({ platform, platformId, platformContext });
+      return res.status(200).json({ masterAccountId, isNewUser });
     } catch (err) {
       const status = err.response ? err.response.status : 500;
       const msg = err.response?.data?.error?.message || err.message;

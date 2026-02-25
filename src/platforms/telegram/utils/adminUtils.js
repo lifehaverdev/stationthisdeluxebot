@@ -13,22 +13,16 @@ const { setReaction } = require('./telegramUtils');
 /**
  * Checks if a user is an admin
  * @param {number} telegramId - Telegram user ID
- * @param {Object} internalApiClient - Internal API client
+ * @param {Object} userService - UserService instance
  * @returns {Promise<boolean>} - True if user is admin
  */
-async function isAdmin(telegramId, internalApiClient) {
+async function isAdmin(telegramId, userService) {
   try {
-    // Find or get master account
-    const userResponse = await internalApiClient.post('/internal/v1/data/users/find-or-create', {
+    const { user } = await userService.findOrCreate({
       platform: 'telegram',
       platformId: telegramId.toString(),
     });
-    const masterAccountId = userResponse.data.masterAccountId;
-
-    // Check admin flag in userCore
-    const userCoreResponse = await internalApiClient.get(`/internal/v1/data/users/${masterAccountId}`);
-    const isAdminUser = userCoreResponse.data?.isAdmin === true;
-    return isAdminUser;
+    return user?.isAdmin === true;
   } catch (err) {
     console.error(`[isAdmin] Error checking admin status:`, err);
     return false;

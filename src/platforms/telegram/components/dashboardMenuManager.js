@@ -795,24 +795,18 @@ function registerHandlers(dispatcherInstances, dependencies) {
     const { logger, internal } = dependencies;
 
     // Command to initiate the account dashboard
-    const accountCommandHandler = (bot, msg) => {
-        // Resolve masterAccountId first, as it's not available in the command dispatcher context
-        internal.client.post('/internal/v1/data/users/find-or-create', {
-            platform: 'telegram',
-            platformId: msg.from.id.toString(),
-            platformContext: { firstName: msg.from.first_name, username: msg.from.username }
-        }).then(response => {
-            const masterAccountId = response.data.masterAccountId;
-            if (masterAccountId) {
-                handleAccountCommand(bot, msg, masterAccountId, dependencies);
-            } else {
-                 logger.error(`[DashboardMenu] registerHandlers: Could not resolve masterAccountId for user ${msg.from.id}.`);
-                 bot.sendMessage(msg.chat.id, "I couldn't identify your account. Please try again or contact support.", { reply_to_message_id: msg.message_id });
-            }
-        }).catch(error => {
+    const accountCommandHandler = async (bot, msg) => {
+        try {
+            const { masterAccountId } = await dependencies.userService.findOrCreate({
+                platform: 'telegram',
+                platformId: msg.from.id.toString(),
+                platformContext: { firstName: msg.from.first_name, username: msg.from.username }
+            });
+            await handleAccountCommand(bot, msg, masterAccountId, dependencies);
+        } catch (error) {
             logger.error(`[DashboardMenu] registerHandlers: Error resolving masterAccountId for user ${msg.from.id}:`, error);
             bot.sendMessage(msg.chat.id, "I couldn't identify your account due to an error. Please try again later.", { reply_to_message_id: msg.message_id });
-        });
+        }
     };
     commandDispatcher.register(/^\/account(?:@\w+)?$/, accountCommandHandler);
 

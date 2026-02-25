@@ -103,9 +103,7 @@ async function buildToolDetailMenu(displayName, deps){
 
 // ---------- Handlers ----------
 async function handleToolsCommand(bot, msg, deps){
-  const api = deps.internal.client;
-  const res = await api.post('/internal/v1/data/users/find-or-create',{ platform:'telegram', platformId: msg.from.id.toString(), platformContext:{ firstName: msg.from.first_name, username: msg.from.username }});
-  const maid = res.data.masterAccountId;
+  const { masterAccountId: maid } = await deps.userService.findOrCreate({ platform: 'telegram', platformId: msg.from.id.toString(), platformContext: { firstName: msg.from.first_name, username: msg.from.username } });
   const menu = await buildMainMenu(maid, deps);
   await sendEscapedMessage(bot, msg.chat.id, menu.text, { reply_markup: menu.reply_markup, reply_to_message_id: msg.message_id });
 }

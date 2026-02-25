@@ -49,6 +49,7 @@ const createEmbellishmentTaskService = require('./EmbellishmentTaskService');
 // --- Spell Migration Service ---
 const { SpellMigrator } = require('./workflow/migrations');
 const { SpellService } = require('./store/spells/SpellService');
+const { UserService } = require('./store/users/UserService');
 
 /**
  * Initialize all core services
@@ -278,6 +279,15 @@ async function initializeServices(options = {}) {
     });
     logger.debug('UserSettingsService initialized globally in core services.');
 
+    // --- Initialize UserService BEFORE API so it can be injected into platform handlers ---
+    const userService = new UserService({
+      userCoreDb: initializedDbServices.data.userCore,
+      userEconomyDb: initializedDbServices.data.userEconomy,
+      creditLedgerDb: initializedDbServices.data.creditLedger,
+      generationOutputsDb: initializedDbServices.data.generationOutputs,
+      logger,
+    });
+
     // --- Initialize WorkflowExecutionService & SpellsService BEFORE API so they can be injected ---
     const spellService = new SpellService({
       castsDb: initializedDbServices.data.casts,
@@ -477,6 +487,7 @@ async function initializeServices(options = {}) {
       longRunningApiClient, // <-- expose the long-running client for salt mining
       userSettingsService, // Added userSettingsService
       spellsService, // Added spellsService
+      userService, // User find/create/lookup service (Phase 4)
       spellService, // Cast + spell data service (Phase 3)
       workflowExecutionService, // Added workflowExecutionService
       storageService, // Add new service

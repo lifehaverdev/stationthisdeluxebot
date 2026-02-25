@@ -19,12 +19,11 @@ async function showGroupSettingsMenu(bot, msg, deps) {
     const isSponsored = groupDoc && groupDoc.sponsorMasterAccountId;
 
     // Determine current user's MAID
-    const userResp = await api.post('/internal/v1/data/users/find-or-create', {
+    const { masterAccountId: currentMasterAccountId } = await deps.userService.findOrCreate({
       platform: 'telegram',
       platformId: msg.from.id.toString(),
       platformContext: { firstName: msg.from.first_name, username: msg.from.username }
     });
-    const currentMasterAccountId = userResp.data.masterAccountId;
     const isSponsor = isSponsored && groupDoc.sponsorMasterAccountId === currentMasterAccountId;
 
     const text = isSponsored ?
@@ -58,12 +57,11 @@ async function handleCallbackQuery(bot, query, deps) {
     try {
       const api = getApiClient(deps);
       // find or create user for sponsor
-      const userResp = await api.post('/internal/v1/data/users/find-or-create', {
+      const { masterAccountId: sponsorMasterAccountId } = await deps.userService.findOrCreate({
         platform: 'telegram',
         platformId: query.from.id.toString(),
         platformContext: { firstName: query.from.first_name, username: query.from.username }
       });
-      const sponsorMasterAccountId = userResp.data.masterAccountId;
       await api.post('/internal/v1/data/groups/sponsor', {
         chatId,
         chatTitle: query.message.chat.title,

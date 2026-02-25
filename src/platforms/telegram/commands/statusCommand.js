@@ -82,10 +82,6 @@ function createStatusCommandHandler(dependencies) {
    * @returns {Promise<void>}
    */
   return async function handleStatusCommand(bot, message, dependencies, match) {
-    const apiClient = dependencies.internalApiClient || dependencies.internal?.client;
-    if (!apiClient) {
-      throw new Error('[statusCommand] internalApiClient dependency missing');
-    }
     const telegramUserId = message.from.id;
     let masterAccountId;
     // sessions were deprecated; no session tracking needed
@@ -93,27 +89,24 @@ function createStatusCommandHandler(dependencies) {
     const platform = 'telegram';
 
     try {
-      // 1. Get masterAccountId via Internal API
+      // 1. Get masterAccountId via UserService
       logger.debug(`[statusCommand] Getting masterAccountId for platformId: ${platformIdStr}...`);
-      const findOrCreateResponse = await apiClient.post('/internal/v1/data/users/find-or-create', {
-        platform: platform,
+      const { masterAccountId: resolvedId, isNewUser } = await dependencies.userService.findOrCreate({
+        platform,
         platformId: platformIdStr,
-        platformContext: { // Optional: Pass some context if needed by the API
+        platformContext: {
           firstName: message.from.first_name,
           username: message.from.username
         }
       });
-      
-      masterAccountId = findOrCreateResponse.data.masterAccountId;
-      const isNewUser = findOrCreateResponse.data.isNewUser;
+      masterAccountId = resolvedId;
       logger.debug(`[statusCommand] Got masterAccountId: ${masterAccountId}. New user: ${isNewUser}`);
 
       // NOTE: Session management removed as per deprecation.
 
-      // 4. Get Enhanced Status Info via new Internal API Endpoint
+      // 4. Get Enhanced Status Info via UserService
       logger.debug(`[statusCommand] Getting enhanced status report for masterAccountId: ${masterAccountId}...`);
-      const statusReportResponse = await apiClient.get(`/internal/v1/data/users/${masterAccountId}/status-report`);
-      const statusData = statusReportResponse.data;
+      const statusData = await dependencies.userService.getStatusReport(masterAccountId);
 
       // 5. Format and Send Response
       let messageText = '\n\n';

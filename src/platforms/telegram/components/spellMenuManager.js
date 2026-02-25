@@ -692,12 +692,11 @@ async function spellCommandHandler(bot, msg, dependencies) {
     const username = msg.from.username || msg.from.first_name;
     logger.info(`[SpellMenu] spellCommandHandler triggered for ${username}`);
     try {
-        const findOrCreateResponse = await dependencies.internal.client.post('/internal/v1/data/users/find-or-create', {
+        const { masterAccountId } = await dependencies.userService.findOrCreate({
             platform: 'telegram',
             platformId: msg.from.id.toString(),
             platformContext: { firstName: msg.from.first_name, username: msg.from.username }
         });
-        const masterAccountId = findOrCreateResponse.data.masterAccountId;
         await handleSpellCommand(bot, msg, masterAccountId, dependencies);
     } catch (error) {
         logger.error(`[SpellMenu] Critical error in spellCommandHandler for ${username}: ${error.stack || error}`);
@@ -870,12 +869,11 @@ function registerHandlers(dispatcherInstances, dependencies) {
                 
                 logger.info(`[SpellMenu] /cast: Resolving masterAccountId for user ${msg.from.id}`);
                 // Resolve masterAccountId
-                const findOrCreateResponse = await internal.client.post('/internal/v1/data/users/find-or-create', {
+                const { masterAccountId } = await dependencies.userService.findOrCreate({
                     platform: 'telegram',
                     platformId: msg.from.id.toString(),
                     platformContext: { firstName: msg.from.first_name, username: msg.from.username }
                 });
-                const masterAccountId = findOrCreateResponse.data.masterAccountId;
                 if (!masterAccountId) {
                     logger.error(`[SpellMenu] /cast: Could not resolve masterAccountId for user ${msg.from.id}.`);
                     await bot.sendMessage(chatId, "I couldn't identify your account. Please try again or contact support.", { reply_to_message_id: msg.message_id });

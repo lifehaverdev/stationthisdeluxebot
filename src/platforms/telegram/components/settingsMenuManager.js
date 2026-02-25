@@ -840,12 +840,11 @@ async function settingsCommandHandler(bot, msg, dependencies, match) {
 
     logger.info(`[SettingsMenu] /settings command received from Telegram User ID: ${msg.from.id}`);
     try {
-        const findOrCreateResponse = await dependencies.internal.client.post('/internal/v1/data/users/find-or-create', {
+        const { masterAccountId } = await dependencies.userService.findOrCreate({
             platform: 'telegram',
             platformId: msg.from.id.toString(),
             platformContext: { firstName: msg.from.first_name, username: msg.from.username }
         });
-        const masterAccountId = findOrCreateResponse.data.masterAccountId;
 
         await handleSettingsCommand(bot, msg, masterAccountId, dependencies);
     } catch (error) {
