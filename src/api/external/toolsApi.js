@@ -12,9 +12,9 @@ const logger = createLogger('ExternalToolsApi');
  * @returns {express.Router} - An Express router.
  */
 function createToolsApiRouter(dependencies) {
-  const { internalApiClient } = dependencies;
-  if (!internalApiClient) {
-    throw new Error('[toolsApi-external] internalApiClient dependency missing');
+  const { toolRegistry, internalApiClient } = dependencies;
+  if (!toolRegistry && !internalApiClient) {
+    throw new Error('[toolsApi-external] toolRegistry or internalApiClient dependency required');
   }
   const router = express.Router();
 
@@ -25,9 +25,10 @@ function createToolsApiRouter(dependencies) {
    */
   router.get('/', async (req, res) => {
     try {
-      // Get the full tool list from internal API
-      const response = await internalApiClient.get('/internal/v1/data/tools');
-      const allTools = response.data;
+      // Get the full tool list from registry (or fall back to HTTP)
+      const allTools = toolRegistry
+        ? toolRegistry.getAllTools()
+        : (await internalApiClient.get('/internal/v1/data/tools')).data;
 
       // Get pricing info to include platform fee multipliers
       const pricingService = getPricingService(logger);
@@ -82,8 +83,10 @@ function createToolsApiRouter(dependencies) {
    */
   router.get('/registry', async (req, res) => {
     try {
-      const response = await internalApiClient.get('/internal/v1/data/tools');
-      res.status(200).json(response.data);
+      const allTools = toolRegistry
+        ? toolRegistry.getAllTools()
+        : (await internalApiClient.get('/internal/v1/data/tools')).data;
+      res.status(200).json(allTools);
     } catch (error) {
       logger.error('Failed to fetch full registry data:', error);
       res.status(502).json({ error: { code: 'BAD_GATEWAY', message: 'The server was unable to process your request.' } });
@@ -98,8 +101,15 @@ function createToolsApiRouter(dependencies) {
   router.get('/registry/:toolId', async (req, res) => {
     const { toolId } = req.params;
     try {
-      const response = await internalApiClient.get(`/internal/v1/data/tools/${toolId}`);
-      res.status(200).json(response.data);
+      let tool;
+      if (toolRegistry) {
+        tool = toolRegistry.getToolById(toolId);
+        if (!tool) return res.status(404).json({ error: { code: 'NOT_FOUND', message: `Tool with ID '${toolId}' not found.` } });
+      } else {
+        const response = await internalApiClient.get(`/internal/v1/data/tools/${toolId}`);
+        tool = response.data;
+      }
+      res.status(200).json(tool);
     } catch (error) {
       if (error.response && error.response.status === 404) {
         return res.status(404).json({ error: { code: 'NOT_FOUND', message: `Tool with ID '${toolId}' not found.` } });
@@ -116,8 +126,15 @@ function createToolsApiRouter(dependencies) {
   router.get('/:toolId/params', async (req, res) => {
     const { toolId } = req.params;
     try {
-      const response = await internalApiClient.get(`/internal/v1/data/tools/${toolId}/input-schema`);
-      const schema = response.data || {};
+      let schema;
+      if (toolRegistry) {
+        const tool = toolRegistry.getToolById(toolId);
+        if (!tool) return res.status(200).json({ params: [] });
+        schema = tool.inputSchema || {};
+      } else {
+        const response = await internalApiClient.get(`/internal/v1/data/tools/${toolId}/input-schema`);
+        schema = response.data || {};
+      }
       res.status(200).json({ params: Object.keys(schema) });
     } catch (error) {
       if (error.response?.status === 404) {
@@ -136,8 +153,14 @@ function createToolsApiRouter(dependencies) {
   router.get('/:toolId', async (req, res) => {
     const { toolId } = req.params;
     try {
-      const response = await internalApiClient.get(`/internal/v1/data/tools/${toolId}`);
-      const tool = response.data;
+      let tool;
+      if (toolRegistry) {
+        tool = toolRegistry.getToolById(toolId);
+        if (!tool) return res.status(404).json({ error: { code: 'NOT_FOUND', message: `Tool with ID '${toolId}' not found.` } });
+      } else {
+        const response = await internalApiClient.get(`/internal/v1/data/tools/${toolId}`);
+        tool = response.data;
+      }
 
       // For the public endpoint, return simplified tool info
       const simplifiedTool = {
