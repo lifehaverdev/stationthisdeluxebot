@@ -73,6 +73,11 @@ export class Sandbox extends Component {
     eventBus.on('sandbox:canvasTap', this._onCanvasTap);
 
     this._onOpenTextEdit = ({ windowId, value, displayName, kind = 'primitive', paramKey = null }) => {
+      // iOS focus trick: call focus() synchronously within the user gesture so the
+      // keyboard opens, then transfer focus to the real textarea after it renders.
+      const decoy = document.querySelector('.sandbox-focus-decoy');
+      if (decoy) decoy.focus();
+
       this.setState({ textEdit: { visible: true, windowId, value, displayName, kind, paramKey } });
       requestAnimationFrame(() => {
         const el = document.querySelector('.sandbox-text-edit-area');
@@ -342,6 +347,17 @@ export class Sandbox extends Component {
         word-break: break-word;
       }
 
+      /* ── iOS focus decoy ────────────────────────────── */
+      .sandbox-focus-decoy {
+        position: fixed;
+        top: -200px;
+        left: 0;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+        pointer-events: none;
+      }
+
       /* ── Text edit overlay ─────────────────────────── */
       .sandbox-text-edit-backdrop {
         position: fixed;
@@ -421,6 +437,7 @@ export class Sandbox extends Component {
     const { isAuthenticated } = this.state;
 
     return h('div', { className: 'sandbox-shell' },
+      h('input', { type: 'text', className: 'sandbox-focus-decoy', 'aria-hidden': 'true', tabindex: '-1', readonly: true }),
       h(SandboxHeader, null),
       h(WorkspaceTabs, { walletAddress: this.state.activeWallet }),
       h('main', { className: 'sandbox-main' },

@@ -144,6 +144,9 @@ async function handleMethod(method, params, context) {
       };
 
     case 'initialized':
+    case 'notifications/initialized':
+    case 'notifications/cancelled':
+    case 'notifications/progress':
       return {};
 
     case 'ping':

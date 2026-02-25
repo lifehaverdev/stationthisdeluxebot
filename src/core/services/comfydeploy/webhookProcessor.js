@@ -2,10 +2,56 @@
 
 const notificationEvents = require('../../events/notificationEvents');
 const { createLogger } = require('../../../utils/logger');
-const internalApiClient = require('../../../utils/internalApiClient');
 const { CookOrchestratorService } = require('../cook');
 const adapterRegistry = require('../adapterRegistry');
 const { getPricingService } = require('../pricing');
+const GenerationOutputsDB = require('../db/generationOutputsDb');
+const { ObjectId } = require('../db/BaseDB');
+const { Decimal128 } = require('mongodb');
+
+const generationDb = new GenerationOutputsDB(createLogger('GenerationOutputsDB'));
+
+/**
+ * Finds a generation record by ComfyDeploy run_id.
+ */
+async function _findGenerationByRunId(run_id) {
+  const results = await generationDb.findGenerations({ 'metadata.run_id': run_id });
+  return results?.[0] || null;
+}
+
+/**
+ * Updates a generation record directly and emits generationUpdated if the
+ * status just became terminal — mirroring the logic in generationOutputsApi PUT.
+ */
+async function _updateGeneration(generationId, updatePayload) {
+  const id = generationId instanceof ObjectId ? generationId : new ObjectId(generationId.toString());
+  const payload = { ...updatePayload };
+
+  if (payload.costUsd !== undefined) {
+    payload.costUsd = payload.costUsd === null
+      ? Decimal128.fromString('0')
+      : Decimal128.fromString(payload.costUsd.toString());
+  }
+
+  await generationDb.updateGenerationOutput(id, payload);
+
+  const updated = await generationDb.findGenerationById(id);
+  if (!updated) return null;
+
+  const statusJustBecameTerminal = payload.status === 'completed' || payload.status === 'failed';
+  const isNotificationReady =
+    updated.deliveryStatus === 'pending' &&
+    ['completed', 'failed'].includes(updated.status) &&
+    updated.notificationPlatform !== 'none';
+
+  if (isNotificationReady && statusJustBecameTerminal) {
+    const isSpellStep = updated.metadata?.isSpell || updated.metadata?.spell;
+    const recordToEmit = isSpellStep ? { ...updated, deliveryStrategy: 'spell_step' } : updated;
+    notificationEvents.emit('generationUpdated', recordToEmit);
+  }
+
+  return updated;
+}
 
 // Temporary in-memory cache for live progress (can be managed within this module)
 const activeJobProgress = new Map();
@@ -15,51 +61,27 @@ async function processRunPayload(runPayload, deps){
   return processComfyDeployWebhook(runPayload, deps);
 }
 
-// Dependencies: internalApiClient, logger, and websocketServer for real-time updates.
+// Dependencies: internalApiClient (for economy/user/group calls), logger, and webSocketService for real-time updates.
 async function processComfyDeployWebhook(payload, { internalApiClient, logger, webSocketService: websocketServer }) {
-  // Initial check of received dependencies
-  // Use a temporary console.log if logger itself might be an issue, but logs show it works.
-  if (logger && typeof logger.debug === 'function') {
-    logger.debug('[Webhook Processor] Initial check of received dependencies:', {
-      isInternalApiClientPresent: !!internalApiClient,
-      isInternalApiClientGetFunction: typeof internalApiClient?.get === 'function',
-      isLoggerPresent: !!logger,
-      isWsSenderPresent: !!websocketServer,
-    });
-  }
-
   logger.debug({payload}, '[Webhook Processor] Processing Body:');
 
   const { run_id, status, progress, live_status, outputs, event_type } = payload;
 
   // --- Generic adapter-based webhook handling (new architecture) ---
   try {
-    // Attempt to resolve generation record to identify serviceName
-    const requestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
-    const genRes = await internalApiClient.get(`/internal/v1/data/generations?metadata.run_id=${run_id}`, requestOptions);
-    if (genRes?.data?.generations?.length > 0) {
-      const generation = genRes.data.generations[0];
+    const generation = await _findGenerationByRunId(run_id);
+    if (generation) {
       const adapter = adapterRegistry.get(generation.serviceName);
       if (adapter && typeof adapter.parseWebhook === 'function') {
         const result = adapter.parseWebhook(payload);
 
-        // Normalize result.status possible string
         const updatePayload = {
           status: result.status,
           responsePayload: result.data,
           outputs: result.data ? [{ data: result.data }] : undefined,
           costUsd: result.costUsd || null,
         };
-        await internalApiClient.put(`/internal/v1/data/generations/${generation._id}`, updatePayload, requestOptions);
-
-        // Fire generationUpdated event
-        try {
-          const notificationEvents = require('../../events/notificationEvents');
-          const updatedRecordRes = await internalApiClient.get(`/internal/v1/data/generations/${generation._id}`, requestOptions);
-          notificationEvents.emit('generationUpdated', updatedRecordRes.data);
-        } catch (e) {
-          logger.warn(`[WebhookProcessor] Failed to emit generationUpdated for ${generation._id}: ${e.message}`);
-        }
+        await _updateGeneration(generation._id, updatePayload);
 
         return { success: true, statusCode: 200, data: { message: 'Processed via adapter' } };
       }
@@ -94,9 +116,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
     });
 
     // Find the associated generation to get the user ID for real-time progress updates
-    const generationRecordForProgress = await internalApiClient.get(`/internal/v1/data/generations?metadata.run_id=${run_id}`, {
-      headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB }
-    }).then(res => res.data?.generations?.[0]).catch(() => null);
+    const generationRecordForProgress = await _findGenerationByRunId(run_id).catch(() => null);
 
     if (generationRecordForProgress && websocketServer) {
         const collectionId = generationRecordForProgress.metadata?.collectionId || generationRecordForProgress.collectionId || null;
@@ -131,23 +151,9 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
 
     try {
       logger.debug(`[Webhook Processor] Fetching generation record for run_id: ${run_id}`);
-      if (!internalApiClient || typeof internalApiClient.get !== 'function') {
-        logger.error(`[Webhook Processor] CRITICAL ERROR for run_id ${run_id}: internalApiClient is undefined or not a valid client before GET call. This should not happen. internalApiClient:`, internalApiClient);
-        activeJobProgress.delete(run_id); // Clean up job progress
-        return { success: false, statusCode: 500, error: "Internal server error: Core API client not configured or invalid for webhook processing." };
-      }
-      
-      // Use an API key with permissions for both GET and PUT on generations
-      const requestOptions = {
-        headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB }
-      };
-      if (!process.env.INTERNAL_API_KEY_WEB) {
-        logger.warn(`[Webhook Processor] INTERNAL_API_KEY_WEB is not set in environment variables. Internal API calls may fail authentication.`);
-      }
 
-      const response = await internalApiClient.get(`/internal/v1/data/generations?metadata.run_id=${run_id}`, requestOptions);
-      if (response && response.data && response.data.generations && response.data.generations.length > 0) {
-        generationRecord = response.data.generations[0];
+      generationRecord = await _findGenerationByRunId(run_id);
+      if (generationRecord) {
         generationId = generationRecord._id;
 
         // Extract costRate from metadata before spell step check
@@ -218,23 +224,8 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
             };
             
             try {
-                const putRequestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
-                await internalApiClient.put(`/internal/v1/data/generations/${generationId}`, spellStepUpdatePayload, putRequestOptions);
+                await _updateGeneration(generationId, spellStepUpdatePayload);
                 logger.debug(`[Webhook Processor] Successfully updated spell step generation record ${generationId} with cost data.`);
-                
-                // Fetch the full, updated record to dispatch it
-                try {
-                    const getRequestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
-                    const updatedRecordResponse = await internalApiClient.get(`/internal/v1/data/generations/${generationId}`, getRequestOptions);
-                    
-                    if (updatedRecordResponse.data) {
-                        logger.debug(`[Webhook Processor] Emitting 'generationUpdated' for generationId: ${generationId} with costUsd: ${updatedRecordResponse.data.costUsd}`);
-                        notificationEvents.emit('generationUpdated', updatedRecordResponse.data);
-                    }
-                } catch (getError) {
-                    logger.error(`[Webhook Processor] Failed to fetch updated generation record ${generationId} for event dispatch after update. Error: ${getError.message}`);
-                }
-                
                 // >>>>> REMOVED EARLY RETURN: let main debit logic execute as for regular tools
             } catch (err) {
                 logger.error(`[Webhook Processor] Error updating spell step generation record ${generationId}:`, err.message, err.stack);
@@ -252,14 +243,12 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
         logger.debug(`[Webhook Processor] Successfully fetched generation record ${generationId} for run_id ${run_id}`);
 
       } else {
-        logger.error(`[Webhook Processor] No generation record found for run_id ${run_id}. Response: ${JSON.stringify(response.data)}`);
+        logger.error(`[Webhook Processor] No generation record found for run_id ${run_id}.`);
         return { success: false, statusCode: 404, error: "Generation record not found." };
       }
     } catch (err) {
       logger.error(`[Webhook Processor] Error fetching generation record for run_id ${run_id}:`, err.message, err.stack);
-      const errStatus = err.response ? err.response.status : 500;
-      const errMessage = err.response && err.response.data && err.response.data.message ? err.response.data.message : "Failed to fetch internal generation record.";
-      return { success: false, statusCode: errStatus, error: errMessage };
+      return { success: false, statusCode: 500, error: "Failed to fetch generation record." };
     }
 
     let costUsd = null;
@@ -312,23 +301,11 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
     }
     logger.debug(`[Webhook Processor] Preparing to update generation ${generationId} for run_id ${run_id}. Payload:`, JSON.stringify(updatePayload, null, 2));
     try {
-       // Add the X-Internal-Client-Key header for this request
-       const putRequestOptions = {
-        headers: {
-          'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB
-        }
-      };
-       await internalApiClient.put(`/internal/v1/data/generations/${generationId}`, updatePayload, putRequestOptions);
-       logger.debug(`[Webhook Processor] Successfully updated generation record ${generationId} for run_id ${run_id}.`);
-
-      // The generationOutputsApi now handles emitting the event on status change.
-      // We no longer need to emit from here, preventing duplicate notifications.
-
+      await _updateGeneration(generationId, updatePayload);
+      logger.debug(`[Webhook Processor] Successfully updated generation record ${generationId} for run_id ${run_id}.`);
     } catch (err) {
-       logger.error(`[Webhook Processor] Error updating generation record ${generationId} for run_id ${run_id}:`, err.message, err.stack);
-       const errStatus = err.response ? err.response.status : 500;
-       const errMessage = err.response && err.response.data && err.response.data.message ? err.response.data.message : "Failed to update internal generation record.";
-       return { success: false, statusCode: errStatus, error: errMessage };
+      logger.error(`[Webhook Processor] Error updating generation record ${generationId} for run_id ${run_id}:`, err.message, err.stack);
+      return { success: false, statusCode: 500, error: "Failed to update generation record." };
     }
 
     // --- Send Final Update via WebSocket ---
@@ -439,14 +416,11 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
           
           // Re-apply the update to the generation record with the new accounting info
           try {
-             const putRequestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB }};
-             await internalApiClient.put(`/internal/v1/data/generations/${generationId}`, {
-                pointsSpent: totalPointsToCharge,
-                contributorRewardPoints: totalRewards,
-                protocolNetPoints: protocolNetPoints,
-                rewardBreakdown: rewardBreakdown
-             }, putRequestOptions);
-             logger.debug(`[Webhook Processor] Successfully updated generation ${generationId} with final point accounting.`);
+            await generationDb.updateGenerationOutput(
+              generationId instanceof ObjectId ? generationId : new ObjectId(generationId.toString()),
+              { pointsSpent: totalPointsToCharge, contributorRewardPoints: totalRewards, protocolNetPoints, rewardBreakdown }
+            );
+            logger.debug(`[Webhook Processor] Successfully updated generation ${generationId} with final point accounting.`);
           } catch(err) {
             logger.error(`[Webhook Processor] Non-critical error: Failed to update generation ${generationId} with point accounting details after a successful spend.`, err.message);
           }
@@ -477,8 +451,10 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
             statusReason: spendError.message || 'Spend failed post-generation.',
           };
           try {
-            const putRequestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
-            await internalApiClient.put(`/internal/v1/data/generations/${generationId}`, paymentFailedUpdatePayload, putRequestOptions);
+            await generationDb.updateGenerationOutput(
+              generationId instanceof ObjectId ? generationId : new ObjectId(generationId.toString()),
+              paymentFailedUpdatePayload
+            );
             logger.debug(`[Webhook Processor] Updated generation ${generationId} status to 'payment_failed'.`);
           } catch (updateError) {
             logger.error(`[Webhook Processor] CRITICAL: Failed to update generation ${generationId} to 'payment_failed' after spend failure. Error:`, updateError.message, updateError.stack);

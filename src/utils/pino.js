@@ -65,6 +65,11 @@ module.exports = require('pino-http')({
       return 'silent';
     }
 
+    // Silence internal polling endpoints
+    if (req.url && req.url.startsWith('/internal/v1/data/generations')) {
+      return 'silent';
+    }
+
     // Warn for client errors
     if (res.statusCode >= 400) return 'warn';
 

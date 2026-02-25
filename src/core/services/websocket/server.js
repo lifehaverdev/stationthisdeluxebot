@@ -114,7 +114,7 @@ class WebSocketService {
       logger.debug(`[WebSocketService] Sent message to ${sentCount} of ${userConnections.size} connections`);
       return sentCount > 0;
     } else {
-      logger.warn(`[WebSocketService] No active connections for user ${userIdStr}.`);
+      logger.debug(`[WebSocketService] No active connections for user ${userIdStr}.`);
       logger.debug(`[WebSocketService] DEBUG - Connection map has ${this.connections.size} users, keys: [${allKeys.join(', ')}]`);
       return false;
     }

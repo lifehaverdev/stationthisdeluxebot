@@ -751,11 +751,12 @@ export class SandboxCanvas extends Component {
         this._updateWindow(windowId, {
           executing: false, error: result.outputs?.error || 'Execution failed.',
         });
-      } else if (result.generationId) {
+      } else if (result.generationId || result.castId) {
         if (win.type === 'spell') {
+          const spellTrackingId = result.castId || result.generationId;
           const stepCount = win.spell?.steps?.length || 1;
-          this._updateWindow(windowId, { progress: 'Casting...', generationId: result.generationId });
-          this._awaitSpellCompletion(windowId, result.generationId, stepCount);
+          this._updateWindow(windowId, { progress: 'Casting...', generationId: spellTrackingId });
+          this._awaitSpellCompletion(windowId, spellTrackingId, stepCount);
         } else {
           this._updateWindow(windowId, { progress: 'Waiting for result...', generationId: result.generationId });
           this._awaitCompletion(windowId, result.generationId);
