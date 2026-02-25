@@ -52,6 +52,9 @@ const { SpellService } = require('./store/spells/SpellService');
 const { UserService } = require('./store/users/UserService');
 const { CookService } = require('./store/cook/CookService');
 const { LoraService } = require('./store/lora/LoraService');
+const { DatasetService } = require('./store/datasets/DatasetService');
+const { TrainingService } = require('./store/training/TrainingService');
+const VastAIService = require('./vastai/VastAIService');
 
 /**
  * Initialize all core services
@@ -341,6 +344,36 @@ async function initializeServices(options = {}) {
       logger.debug('[initializeServices] SpellsService injected into EmbellishmentTaskService.');
     }
 
+    // --- Initialize DatasetService for in-process dataset data access (Phase 6e) ---
+    const datasetService = new DatasetService({
+      datasetDb: initializedDbServices.data.dataset,
+      generationOutputsDb: initializedDbServices.data.generationOutputs,
+      spellsDb: initializedDbServices.data.spells,
+      castsDb: initializedDbServices.data.casts,
+      spellsService,
+      embellishmentTaskService,
+      webSocketService,
+      logger,
+    });
+
+    // --- Initialize VastAIService (best-effort, for cancel support) ---
+    let vastAIService = null;
+    try {
+      vastAIService = new VastAIService({ logger });
+      logger.debug('[initializeServices] VastAIService initialized for cancel support.');
+    } catch (err) {
+      logger.warn('[initializeServices] VastAIService not available (no API key?). Cancel will mark CANCELLED without instance termination.');
+    }
+
+    // --- Initialize TrainingService for in-process training access (Phase 6f) ---
+    const trainingService = new TrainingService({
+      trainingDb: initializedDbServices.data.loraTrainings,
+      userService,
+      datasetService,
+      vastAIService,
+      logger,
+    });
+
     // Inject services into CookOrchestratorService (singleton with setters)
     const CookOrchestratorService = require('./cook/CookOrchestratorService');
     if (typeof CookOrchestratorService.setSpellService === 'function') {
@@ -436,6 +469,8 @@ async function initializeServices(options = {}) {
       comfyUIService: comfyUIService,
       loraResolutionService: loraResolutionService,
       loraService, // Phase 6b — LoraService for external API routes
+      datasetService, // Phase 6e — DatasetService for external API routes
+      trainingService, // Phase 6f — TrainingService for external API routes
       internalApiClient, // pass canonical client to API layer
       longRunningApiClient, // pass long-running client for salt mining
       userSettingsService, // Pass the service to the API layer
@@ -512,6 +547,8 @@ async function initializeServices(options = {}) {
       spellService, // Cast + spell data service (Phase 3)
       cookService, // Cook record update service (Phase 5)
       loraService, // LoRA trigger map service (Phase 6a)
+      datasetService, // Dataset domain service (Phase 6e)
+      trainingService, // Training domain service (Phase 6f)
       workflowExecutionService, // Added workflowExecutionService
       storageService, // Add new service
       ethereumService: ethereumServices, // Add new service

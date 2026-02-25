@@ -6,7 +6,7 @@ const express = require('express');
  * Requires `internalApiClient` and `loraService` in dependencies.
  */
 module.exports = function createModelsApiRouter(deps = {}) {
-  const { internalApiClient, loraService, logger = console } = deps;
+  const { internalApiClient, loraService, modelDiscoveryService, logger = console } = deps;
   if (!internalApiClient) {
     logger.error('[external-modelsApi] Missing internalApiClient dependency.');
     return express.Router().get('*', (_, res) => res.status(503).json({ error: 'Service unavailable' }));
@@ -37,15 +37,34 @@ module.exports = function createModelsApiRouter(deps = {}) {
     }
   });
 
-  // GET /models/stats – proxy stats endpoint
+  // GET /models/stats – compute stats in-process via ModelDiscoveryService + LoraService
   router.get('/stats', async (_req, res) => {
     try {
-      const response = await internalApiClient.get('/internal/v1/data/models/stats');
-      res.json(response.data);
+      const classify = (m) => {
+        const s = `${m.type || ''} ${m.category || ''} ${m.save_path || ''} ${m.path || ''}`.toLowerCase();
+        if (/\bloras?\b/.test(s)) return 'lora';
+        if (/checkpoints?/.test(s)) return 'checkpoint';
+        if (/upscalers?|upscale/.test(s)) return 'upscale';
+        if (/taggers?/.test(s)) return 'tagger';
+        if (/embeddings?/.test(s)) return 'embedding';
+        if (/\bvae(s)?\b/.test(s)) return 'vae';
+        return 'other';
+      };
+      const [models, loras] = await Promise.all([
+        modelDiscoveryService ? modelDiscoveryService.listModels({ includeWorkflowEnums: false }) : [],
+        loraService ? loraService.listLoras({ limit: 1, page: 1 }) : { pagination: { totalLoras: 0 } },
+      ]);
+      const loraCount = loras.pagination?.totalLoras || 0;
+      const combined = [...models, ...Array(loraCount).fill({ category: 'lora' })];
+      const counts = combined.reduce((acc, m) => {
+        const cat = classify(m);
+        acc[cat] = (acc[cat] || 0) + 1;
+        return acc;
+      }, {});
+      res.json({ counts, total: models.length });
     } catch (err) {
-      logger.error('[external-modelsApi] Stats proxy error:', err.response?.status, err.message);
-      const status = err.response?.status || 500;
-      res.status(status).json({ error: 'Failed to fetch model stats' });
+      logger.error('[external-modelsApi] Stats error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch model stats' });
     }
   });
 

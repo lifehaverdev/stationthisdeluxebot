@@ -3,8 +3,6 @@
  */
 const express = require('express');
 const { ObjectId } = require('../../core/services/db/BaseDB');
-const internalApiClient = require('../../utils/internalApiClient');
-
 // Assume trainingDb.js provides functions like:
 // const trainingDb = require('../../core/services/db/trainingDb'); // Adjust path as needed
 // - getTrainingsByOwner(masterAccountId)
@@ -14,7 +12,7 @@ const internalApiClient = require('../../utils/internalApiClient');
 // - deleteTraining(trainingId)
 
 function createTrainingsApi(dependencies) {
-  const { logger, db } = dependencies; // db should now be the object containing loraTrainings directly
+  const { logger, db, datasetService, userService } = dependencies; // db should now be the object containing loraTrainings directly
 
   // ++ MODIFIED LOGS (adjusted for direct db access) ++
   logger.debug(`[TrainingsAPI Init] Received dependencies. Logger type: ${typeof logger}`);
@@ -92,11 +90,10 @@ function createTrainingsApi(dependencies) {
     }
 
     try {
-      // Fetch user via internal API to get their primary wallet address (required for billing)
+      // Fetch user via UserService to get their primary wallet address (required for billing)
       let walletAddress = null;
       try {
-        const userResponse = await internalApiClient.get(`/internal/v1/data/users/${masterAccountId}`);
-        const user = userResponse.data;
+        const user = userService ? await userService.findById(masterAccountId) : null;
         if (user && user.wallets && user.wallets.length > 0) {
           // Find primary wallet, or use first wallet
           const primaryWallet = user.wallets.find(w => w.isPrimary) || user.wallets[0];
@@ -114,11 +111,12 @@ function createTrainingsApi(dependencies) {
         return res.status(400).json({ error: { code: 'WALLET_REQUIRED', message: 'A connected wallet is required to start training. Please connect a wallet first.' } });
       }
 
-      // Fetch dataset via internal API to get image count
+      // Fetch dataset to get image count
       let datasetImageCount = 20; // default
       try {
-        const datasetResponse = await internalApiClient.get(`/internal/v1/data/datasets/${datasetId}`);
-        const dataset = datasetResponse.data?.data || datasetResponse.data;
+        const dataset = datasetService
+          ? await datasetService.getById(datasetId)
+          : null;
         if (dataset && dataset.images) {
           datasetImageCount = dataset.images.length;
           logger.debug(`[TrainingsAPI] Dataset ${datasetId} has ${datasetImageCount} images`);

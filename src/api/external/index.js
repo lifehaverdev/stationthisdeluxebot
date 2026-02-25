@@ -274,7 +274,8 @@ function initializeExternalApi(dependencies) {
   const mcpRouter = createMcpRouter({
     toolRegistry: dependencies.toolRegistry,
     internalApiClient: dependencies.internalApiClient || internalApiClient,
-    loraService: dependencies.loraService
+    loraService: dependencies.loraService,
+    trainingService: dependencies.trainingService,
   });
   if (mcpRouter) {
     externalApiRouter.use('/mcp', mcpRouter);

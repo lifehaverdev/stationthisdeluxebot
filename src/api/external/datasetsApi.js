@@ -1,30 +1,34 @@
 const express = require('express');
-const { createLogger } = require('../../utils/logger');
 
 function createDatasetsApiRouter(deps = {}) {
   const router = express.Router();
-  const client = deps.internalApiClient || (deps.internal && deps.internal.client);
+  const datasetService = deps.datasetService;
   const logger = (deps.logger || console).child ? (deps.logger || console).child({ mod: 'ExternalDatasetsApi' }) : (deps.logger || console);
 
-  if (!client) {
-    logger.error('[ExternalDatasetsApi] internalApiClient missing – router disabled');
+  if (!datasetService) {
+    logger.error('[ExternalDatasetsApi] datasetService missing – router disabled');
     return null;
+  }
+
+  // Helper to map service Error.status to HTTP status
+  function statusOf(err) {
+    return err.status || 500;
   }
 
   // GET / (list datasets for authenticated user)
   router.get('/', async (req, res) => {
     const user = req.user;
-    if (!user || !user.userId && !user.masterAccountId) {
+    if (!user || (!user.userId && !user.masterAccountId)) {
       return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
     }
     const ownerId = user.masterAccountId || user.userId;
     try {
-      const { data } = await client.get(`/internal/v1/data/datasets/owner/${encodeURIComponent(ownerId)}`);
-      res.json(data);
+      const { page, limit, search, filter } = req.query;
+      const result = await datasetService.listByOwner(ownerId, { page, limit, search, filter });
+      res.json({ success: true, data: result });
     } catch (err) {
-      const status = err.response?.status || 500;
-      logger.error('list datasets proxy error', err.response?.data || err.message);
-      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+      logger.error('list datasets error', err.message);
+      res.status(statusOf(err)).json({ error: err.message || 'error' });
     }
   });
 
@@ -35,12 +39,12 @@ function createDatasetsApiRouter(deps = {}) {
       return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'ownerId param required' } });
     }
     try {
-      const { data } = await client.get(`/internal/v1/data/datasets/owner/${encodeURIComponent(ownerId)}`);
-      res.json(data);
+      const { page, limit, search, filter } = req.query;
+      const result = await datasetService.listByOwner(ownerId, { page, limit, search, filter });
+      res.json({ success: true, data: result });
     } catch (err) {
-      const status = err.response?.status || 500;
-      logger.error('list datasets by owner proxy error', err.response?.data || err.message);
-      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+      logger.error('list datasets by owner error', err.message);
+      res.status(statusOf(err)).json({ error: err.message || 'error' });
     }
   });
 
@@ -48,27 +52,25 @@ function createDatasetsApiRouter(deps = {}) {
   router.get('/embellishment-spells', async (req, res) => {
     const { type } = req.query;
     try {
-      const url = type
-        ? `/internal/v1/data/embellishment-spells?type=${encodeURIComponent(type)}`
-        : '/internal/v1/data/embellishment-spells';
-      const { data } = await client.get(url);
-      res.json(data);
+      const spells = await datasetService.listEmbellishmentSpells(type || null);
+      res.json({ success: true, data: spells });
     } catch (err) {
-      const status = err.response?.status || 500;
-      logger.error('list embellishment spells proxy error', err.response?.data || err.message);
-      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+      logger.error('list embellishment spells error', err.message);
+      res.status(statusOf(err)).json({ error: err.message || 'error' });
     }
   });
 
   // GET /:id (fetch dataset by id)
   router.get('/:id', async (req, res) => {
     try {
-      const { data } = await client.get(`/internal/v1/data/datasets/${encodeURIComponent(req.params.id)}`);
-      res.json(data);
+      const dataset = await datasetService.getById(req.params.id);
+      if (!dataset) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Dataset not found' } });
+      }
+      res.json({ success: true, data: dataset });
     } catch (err) {
-      const status = err.response?.status || 500;
-      logger.error('get dataset proxy error', err.response?.data || err.message);
-      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+      logger.error('get dataset error', err.message);
+      res.status(statusOf(err)).json({ error: err.message || 'error' });
     }
   });
 
@@ -78,15 +80,13 @@ function createDatasetsApiRouter(deps = {}) {
     if (!user) {
       return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
     }
-    const ownerId = user.masterAccountId || user.userId;
+    const masterAccountId = user.masterAccountId || user.userId;
     try {
-      const payload = { ...req.body, masterAccountId: ownerId };
-      const { data } = await client.post('/internal/v1/data/datasets', payload);
-      res.status(201).json(data);
+      const dataset = await datasetService.create({ ...req.body, masterAccountId });
+      res.status(201).json({ success: true, data: dataset });
     } catch (err) {
-      const status = err.response?.status || 500;
-      logger.error('create dataset proxy error', err.response?.data || err.message);
-      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+      logger.error('create dataset error', err.message);
+      res.status(statusOf(err)).json({ error: err.message || 'error' });
     }
   });
 
@@ -99,16 +99,12 @@ function createDatasetsApiRouter(deps = {}) {
     }
     try {
       const user = req.user;
-      const ownerId = user?.masterAccountId || user?.userId;
-      const { data } = await client.post(`/internal/v1/data/datasets/${encodeURIComponent(id)}/images`, { 
-        imageUrls, 
-        masterAccountId: ownerId 
-      });
-      res.json(data);
+      const masterAccountId = user?.masterAccountId || user?.userId;
+      const result = await datasetService.addImages(id, imageUrls, masterAccountId);
+      res.json({ success: true, data: result });
     } catch (err) {
-      const status = err.response?.status || 500;
-      logger.error('add images proxy error', err.response?.data || err.message);
-      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+      logger.error('add images error', err.message);
+      res.status(statusOf(err)).json({ error: err.message || 'error' });
     }
   });
 
@@ -119,15 +115,14 @@ function createDatasetsApiRouter(deps = {}) {
     if (!user) {
       return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
     }
-    const ownerId = user.masterAccountId || user.userId;
+    const masterAccountId = user.masterAccountId || user.userId;
+    const { masterAccountId: _ignored, ...updateData } = req.body;
     try {
-      const payload = { ...req.body, masterAccountId: ownerId };
-      const { data } = await client.put(`/internal/v1/data/datasets/${encodeURIComponent(id)}`, payload);
-      res.json(data);
+      const result = await datasetService.update(id, masterAccountId, updateData);
+      res.json({ success: true, data: result });
     } catch (err) {
-      const status = err.response?.status || 500;
-      logger.error('update dataset proxy error', err.response?.data || err.message);
-      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+      logger.error('update dataset error', err.message);
+      res.status(statusOf(err)).json({ error: err.message || 'error' });
     }
   });
 
@@ -138,16 +133,13 @@ function createDatasetsApiRouter(deps = {}) {
     if (!user) {
       return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
     }
-    const ownerId = user.masterAccountId || user.userId;
+    const masterAccountId = user.masterAccountId || user.userId;
     try {
-      const { data } = await client.delete(`/internal/v1/data/datasets/${encodeURIComponent(id)}`, {
-        data: { masterAccountId: ownerId },
-      });
-      res.json(data);
+      const result = await datasetService.delete(id, masterAccountId);
+      res.json({ success: true, data: result });
     } catch (err) {
-      const status = err.response?.status || 500;
-      logger.error('delete dataset proxy error', err.response?.data || err.message);
-      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+      logger.error('delete dataset error', err.message);
+      res.status(statusOf(err)).json({ error: err.message || 'error' });
     }
   });
 
@@ -158,15 +150,45 @@ function createDatasetsApiRouter(deps = {}) {
     if (!user) {
       return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
     }
-    const ownerId = user.masterAccountId || user.userId;
+    const masterAccountId = user.masterAccountId || user.userId;
+
+    // Normalise parameterOverrides / trigger fields (same logic as internal handler)
+    const rawOverrides = (req.body && req.body.parameterOverrides) || {};
+    const parameterOverrides = (rawOverrides && typeof rawOverrides === 'object' && !Array.isArray(rawOverrides))
+      ? { ...rawOverrides }
+      : {};
+
+    const coerceString = (val) => (typeof val === 'string' ? val.trim() : '');
+    const firstFromList = (input) => {
+      if (Array.isArray(input)) return input.map(e => coerceString(e)).find(Boolean) || '';
+      if (typeof input === 'string') return input.split(',').map(p => p.trim()).find(Boolean) || '';
+      return '';
+    };
+    const triggerCandidate =
+      coerceString(parameterOverrides.stringB) ||
+      coerceString(parameterOverrides.triggerWord) ||
+      firstFromList(parameterOverrides.triggerWords) ||
+      coerceString(req.body?.triggerWord) ||
+      firstFromList(req.body?.triggerWords);
+
+    if (triggerCandidate) {
+      if (!coerceString(parameterOverrides.triggerWord)) parameterOverrides.triggerWord = triggerCandidate;
+      if (!Array.isArray(parameterOverrides.triggerWords) || !parameterOverrides.triggerWords.length) parameterOverrides.triggerWords = [triggerCandidate];
+      if (!coerceString(parameterOverrides.stringB)) parameterOverrides.stringB = triggerCandidate;
+    }
+
+    const { spellSlug } = req.body;
+    if (!spellSlug) {
+      return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'spellSlug is required' } });
+    }
+
     try {
-      const payload = { ...req.body, masterAccountId: ownerId };
-      const { data } = await client.post(`/internal/v1/data/datasets/${encodeURIComponent(id)}/caption-via-spell`, payload);
-      res.status(202).json(data);
+      const result = await datasetService.captionViaSpell(id, { spellSlug, masterAccountId, parameterOverrides });
+      res.status(202).json({ success: true, data: result });
     } catch (err) {
-      const status = err.response?.status || 500;
-      logger.error('caption via spell proxy error', err.response?.data || err.message);
-      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+      logger.error('caption via spell error', err.message);
+      const code = err.code || 'CAPTION_SPELL_ERROR';
+      res.status(statusOf(err)).json({ error: { code, message: err.message } });
     }
   });
 
@@ -174,12 +196,11 @@ function createDatasetsApiRouter(deps = {}) {
   router.get('/:id/captions', async (req, res) => {
     const { id } = req.params;
     try {
-      const { data } = await client.get(`/internal/v1/data/datasets/${encodeURIComponent(id)}/captions`);
-      res.json(data);
+      const captions = await datasetService.listCaptions(id);
+      res.json({ success: true, data: captions });
     } catch (err) {
-      const status = err.response?.status || 500;
-      logger.error('get captions proxy error', err.response?.data || err.message);
-      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+      logger.error('get captions error', err.message);
+      res.status(statusOf(err)).json({ error: err.message || 'error' });
     }
   });
 
@@ -189,16 +210,14 @@ function createDatasetsApiRouter(deps = {}) {
     if (!user) {
       return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
     }
-    const ownerId = user.masterAccountId || user.userId;
+    const masterAccountId = user.masterAccountId || user.userId;
     const { id } = req.params;
     try {
-      const payload = { masterAccountId: ownerId };
-      const { data } = await client.post(`/internal/v1/data/datasets/${encodeURIComponent(id)}/caption-task/cancel`, payload);
-      res.json(data);
+      const result = await datasetService.cancelCaptionTask(id, masterAccountId);
+      res.json({ success: true, data: result });
     } catch (err) {
-      const status = err.response?.status || 500;
-      logger.error('cancel caption task proxy error', err.response?.data || err.message);
-      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+      logger.error('cancel caption task error', err.message);
+      res.status(statusOf(err)).json({ error: err.message || 'error' });
     }
   });
 
@@ -208,17 +227,14 @@ function createDatasetsApiRouter(deps = {}) {
     if (!user) {
       return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
     }
-    const ownerId = user.masterAccountId || user.userId;
+    const masterAccountId = user.masterAccountId || user.userId;
     const { id, captionId } = req.params;
     try {
-      const { data } = await client.delete(`/internal/v1/data/datasets/${encodeURIComponent(id)}/captions/${encodeURIComponent(captionId)}`, {
-        data: { masterAccountId: ownerId },
-      });
-      res.json(data);
+      const result = await datasetService.deleteCaption(id, captionId, masterAccountId);
+      res.json({ success: true, data: result });
     } catch (err) {
-      const status = err.response?.status || 500;
-      logger.error('delete caption set proxy error', err.response?.data || err.message);
-      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+      logger.error('delete caption set error', err.message);
+      res.status(statusOf(err)).json({ error: err.message || 'error' });
     }
   });
 
@@ -228,16 +244,14 @@ function createDatasetsApiRouter(deps = {}) {
     if (!user) {
       return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
     }
-    const ownerId = user.masterAccountId || user.userId;
+    const masterAccountId = user.masterAccountId || user.userId;
     const { id, captionId } = req.params;
     try {
-      const payload = { masterAccountId: ownerId };
-      const { data } = await client.post(`/internal/v1/data/datasets/${encodeURIComponent(id)}/captions/${encodeURIComponent(captionId)}/default`, payload);
-      res.json(data);
+      const result = await datasetService.setDefaultCaption(id, captionId, masterAccountId);
+      res.json({ success: true, data: result });
     } catch (err) {
-      const status = err.response?.status || 500;
-      logger.error('set default caption set proxy error', err.response?.data || err.message);
-      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+      logger.error('set default caption set error', err.message);
+      res.status(statusOf(err)).json({ error: err.message || 'error' });
     }
   });
 
@@ -247,19 +261,18 @@ function createDatasetsApiRouter(deps = {}) {
     if (!user) {
       return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
     }
-    const ownerId = user.masterAccountId || user.userId;
+    const masterAccountId = user.masterAccountId || user.userId;
     const { id, captionSetId, index } = req.params;
+    const { text } = req.body;
+    if (typeof text !== 'string') {
+      return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'text is required' } });
+    }
     try {
-      const payload = { ...req.body, masterAccountId: ownerId };
-      const { data } = await client.patch(
-        `/internal/v1/data/datasets/${encodeURIComponent(id)}/captions/${encodeURIComponent(captionSetId)}/entries/${encodeURIComponent(index)}`,
-        payload
-      );
-      res.json(data);
+      const result = await datasetService.updateCaptionEntry(id, captionSetId, index, text, masterAccountId);
+      res.json({ success: true, data: result });
     } catch (err) {
-      const status = err.response?.status || 500;
-      logger.error('update caption entry proxy error', err.response?.data || err.message);
-      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+      logger.error('update caption entry error', err.message);
+      res.status(statusOf(err)).json({ error: err.message || 'error' });
     }
   });
 
@@ -271,16 +284,15 @@ function createDatasetsApiRouter(deps = {}) {
     if (!user) {
       return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
     }
-    const ownerId = user.masterAccountId || user.userId;
+    const masterAccountId = user.masterAccountId || user.userId;
     const { id } = req.params;
+    const { type } = req.body;
     try {
-      const payload = { ...req.body, masterAccountId: ownerId };
-      const { data } = await client.post(`/internal/v1/data/datasets/${encodeURIComponent(id)}/embellishments/manual`, payload);
-      res.status(201).json(data);
+      const result = await datasetService.createManualEmbellishment(id, masterAccountId, type);
+      res.status(201).json({ success: true, data: result });
     } catch (err) {
-      const status = err.response?.status || 500;
-      logger.error('create manual embellishment proxy error', err.response?.data || err.message);
-      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+      logger.error('create manual embellishment error', err.message);
+      res.status(statusOf(err)).json({ error: err.message || 'error' });
     }
   });
 
@@ -289,15 +301,11 @@ function createDatasetsApiRouter(deps = {}) {
     const { id } = req.params;
     const { type } = req.query;
     try {
-      const url = type
-        ? `/internal/v1/data/datasets/${encodeURIComponent(id)}/embellishments?type=${encodeURIComponent(type)}`
-        : `/internal/v1/data/datasets/${encodeURIComponent(id)}/embellishments`;
-      const { data } = await client.get(url);
-      res.json(data);
+      const embellishments = await datasetService.listEmbellishments(id, type || null);
+      res.json({ success: true, data: embellishments });
     } catch (err) {
-      const status = err.response?.status || 500;
-      logger.error('list embellishments proxy error', err.response?.data || err.message);
-      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+      logger.error('list embellishments error', err.message);
+      res.status(statusOf(err)).json({ error: err.message || 'error' });
     }
   });
 
@@ -307,17 +315,14 @@ function createDatasetsApiRouter(deps = {}) {
     if (!user) {
       return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
     }
-    const ownerId = user.masterAccountId || user.userId;
+    const masterAccountId = user.masterAccountId || user.userId;
     const { id, embellishmentId } = req.params;
     try {
-      const { data } = await client.delete(`/internal/v1/data/datasets/${encodeURIComponent(id)}/embellishments/${encodeURIComponent(embellishmentId)}`, {
-        data: { masterAccountId: ownerId },
-      });
-      res.json(data);
+      const result = await datasetService.deleteEmbellishment(id, embellishmentId, masterAccountId);
+      res.json({ success: true, data: result });
     } catch (err) {
-      const status = err.response?.status || 500;
-      logger.error('delete embellishment proxy error', err.response?.data || err.message);
-      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+      logger.error('delete embellishment error', err.message);
+      res.status(statusOf(err)).json({ error: err.message || 'error' });
     }
   });
 
@@ -327,19 +332,15 @@ function createDatasetsApiRouter(deps = {}) {
     if (!user) {
       return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
     }
-    const ownerId = user.masterAccountId || user.userId;
+    const masterAccountId = user.masterAccountId || user.userId;
     const { id, embellishmentId, index } = req.params;
+    const { value } = req.body;
     try {
-      const payload = { ...req.body, masterAccountId: ownerId };
-      const { data } = await client.patch(
-        `/internal/v1/data/datasets/${encodeURIComponent(id)}/embellishments/${encodeURIComponent(embellishmentId)}/results/${encodeURIComponent(index)}`,
-        payload
-      );
-      res.json(data);
+      const result = await datasetService.updateEmbellishmentResult(id, embellishmentId, index, value, masterAccountId);
+      res.json({ success: true, data: result });
     } catch (err) {
-      const status = err.response?.status || 500;
-      logger.error('update embellishment result proxy error', err.response?.data || err.message);
-      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+      logger.error('update embellishment result error', err.message);
+      res.status(statusOf(err)).json({ error: err.message || 'error' });
     }
   });
 
@@ -349,16 +350,18 @@ function createDatasetsApiRouter(deps = {}) {
     if (!user) {
       return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
     }
-    const ownerId = user.masterAccountId || user.userId;
+    const masterAccountId = user.masterAccountId || user.userId;
     const { id, embellishmentId } = req.params;
+    const { results } = req.body;
+    if (!Array.isArray(results)) {
+      return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'results must be an array' } });
+    }
     try {
-      const payload = { ...req.body, masterAccountId: ownerId };
-      const { data } = await client.patch(`/internal/v1/data/datasets/${encodeURIComponent(id)}/embellishments/${encodeURIComponent(embellishmentId)}/results`, payload);
-      res.json(data);
+      const result = await datasetService.bulkUpdateEmbellishmentResults(id, embellishmentId, results, masterAccountId);
+      res.json({ success: true, data: result });
     } catch (err) {
-      const status = err.response?.status || 500;
-      logger.error('bulk update embellishment results proxy error', err.response?.data || err.message);
-      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+      logger.error('bulk update embellishment results error', err.message);
+      res.status(statusOf(err)).json({ error: err.message || 'error' });
     }
   });
 
@@ -368,19 +371,15 @@ function createDatasetsApiRouter(deps = {}) {
     if (!user) {
       return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
     }
-    const ownerId = user.masterAccountId || user.userId;
+    const masterAccountId = user.masterAccountId || user.userId;
     const { id, embellishmentId, index } = req.params;
+    const { config } = req.body;
     try {
-      const payload = { masterAccountId: ownerId, ...req.body };
-      const { data } = await client.post(
-        `/internal/v1/data/datasets/${encodeURIComponent(id)}/embellishments/${encodeURIComponent(embellishmentId)}/regenerate/${encodeURIComponent(index)}`,
-        payload
-      );
-      res.json(data);
+      const result = await datasetService.regenerateEmbellishmentItem(id, embellishmentId, index, masterAccountId, config || null);
+      res.json({ success: true, data: result });
     } catch (err) {
-      const status = err.response?.status || 500;
-      logger.error('regenerate embellishment item proxy error', err.response?.data || err.message);
-      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+      logger.error('regenerate embellishment item error', err.message);
+      res.status(statusOf(err)).json({ error: err.message || 'error' });
     }
   });
 
@@ -390,16 +389,15 @@ function createDatasetsApiRouter(deps = {}) {
     if (!user) {
       return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
     }
-    const ownerId = user.masterAccountId || user.userId;
+    const masterAccountId = user.masterAccountId || user.userId;
     const { id } = req.params;
+    const { spellSlug, parameterOverrides } = req.body;
     try {
-      const payload = { ...req.body, masterAccountId: ownerId };
-      const { data } = await client.post(`/internal/v1/data/datasets/${encodeURIComponent(id)}/embellish`, payload);
-      res.status(202).json(data);
+      const result = await datasetService.startEmbellishment(id, { spellSlug, masterAccountId, parameterOverrides: parameterOverrides || {} });
+      res.status(202).json({ success: true, data: result });
     } catch (err) {
-      const status = err.response?.status || 500;
-      logger.error('start embellishment task proxy error', err.response?.data || err.message);
-      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+      logger.error('start embellishment task error', err.message);
+      res.status(statusOf(err)).json({ error: err.message || 'error' });
     }
   });
 
@@ -409,16 +407,14 @@ function createDatasetsApiRouter(deps = {}) {
     if (!user) {
       return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
     }
-    const ownerId = user.masterAccountId || user.userId;
+    const masterAccountId = user.masterAccountId || user.userId;
     const { taskId } = req.params;
     try {
-      const payload = { masterAccountId: ownerId };
-      const { data } = await client.post(`/internal/v1/data/embellishment-tasks/${encodeURIComponent(taskId)}/cancel`, payload);
-      res.json(data);
+      const result = await datasetService.cancelEmbellishmentTask(taskId, masterAccountId);
+      res.json({ success: true, data: result });
     } catch (err) {
-      const status = err.response?.status || 500;
-      logger.error('cancel embellishment task proxy error', err.response?.data || err.message);
-      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+      logger.error('cancel embellishment task error', err.message);
+      res.status(statusOf(err)).json({ error: err.message || 'error' });
     }
   });
 

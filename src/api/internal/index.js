@@ -131,7 +131,10 @@ function initializeInternalServices(dependencies = {}) {
       // Platform notifiers for cross-platform notifications
       platformNotifiers: dependencies.platformNotifiers || {},
       collectionExportService: dependencies.collectionExportService,
-      embellishmentTaskService: dependencies.embellishmentTaskService
+      embellishmentTaskService: dependencies.embellishmentTaskService,
+      datasetService: dependencies.datasetService,
+      userService: dependencies.userService,
+      trainingService: dependencies.trainingService,
   };
 
   // Create an instance of teamServiceDb and add it to apiDependencies

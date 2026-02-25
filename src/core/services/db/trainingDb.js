@@ -139,6 +139,15 @@ class TrainingDB extends BaseDB {
     return this.updateOne({ _id: new ObjectId(jobId) }, { $set: patch });
   }
 
+  async setStatusUnlessCancelled(jobId, status, extra = {}) {
+    const collection = await this.getCollection();
+    const patch = { status, updatedAt: new Date(), ...extra };
+    return collection.updateOne(
+      { _id: new ObjectId(jobId), status: { $ne: 'CANCELLED' } },
+      { $set: patch }
+    );
+  }
+
   async incrementProgress(jobId, progress) {
     return this.updateOne(
       { _id: new ObjectId(jobId) },
@@ -313,7 +322,7 @@ class TrainingDB extends BaseDB {
     }
 
     return this.updateOne(
-      { _id: new ObjectId(jobId) },
+      { _id: new ObjectId(jobId), status: { $ne: 'CANCELLED' } },
       { $set: update }
     );
   }
@@ -323,7 +332,7 @@ class TrainingDB extends BaseDB {
    */
   async markFailed(jobId, failureReason, extra = {}) {
     return this.updateOne(
-      { _id: new ObjectId(jobId) },
+      { _id: new ObjectId(jobId), status: { $ne: 'CANCELLED' } },
       {
         $set: {
           status: 'FAILED',

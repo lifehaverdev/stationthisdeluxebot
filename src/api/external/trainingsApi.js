@@ -3,32 +3,32 @@ const TrainingCostEstimator = require('../../core/services/training/TrainingCost
 
 /**
  * External Trainings API Router
- * Proxies requests to the internal trainings API layer.
- * Requires an `internalApiClient` injected in dependencies.
+ * Uses TrainingService directly (Phase 6f — no internalApiClient proxy).
  */
 module.exports = function createTrainingsApiRouter(deps = {}) {
   const router = express.Router();
-  const client = deps.internalApiClient || (deps.internal && deps.internal.client);
-  const logger = (deps.logger || console).child ? (deps.logger || console).child({ mod: 'ExternalTrainingsApi' }) : (deps.logger || console);
+  const trainingService = deps.trainingService;
+  const logger = (deps.logger || console).child
+    ? (deps.logger || console).child({ mod: 'ExternalTrainingsApi' })
+    : (deps.logger || console);
   const costEstimator = new TrainingCostEstimator({ logger });
 
-  if (!client) {
-    logger.error('[ExternalTrainingsApi] internalApiClient missing – router disabled');
+  if (!trainingService) {
+    logger.error('[ExternalTrainingsApi] trainingService missing – router disabled');
     return null;
   }
 
-  // POST /calculate-cost -> estimate training cost
+  // POST /calculate-cost -> estimate training cost (local, no service needed)
   router.post('/calculate-cost', async (req, res) => {
     try {
       const { modelType, steps, imageCount, gpuClass } = req.body;
 
-      // Map frontend modelType to baseModel names used by estimator
       const baseModelMap = {
         'FLUX': 'FLUX',
         'SDXL': 'SDXL',
         'SD1.5': 'SD1.5',
-        'WAN': 'FLUX', // WAN uses similar resources to FLUX
-        'KONTEXT': 'FLUX', // KONTEXT uses similar resources to FLUX
+        'WAN': 'FLUX',
+        'KONTEXT': 'FLUX',
       };
 
       const baseModel = baseModelMap[modelType] || 'FLUX';
@@ -70,24 +70,27 @@ module.exports = function createTrainingsApiRouter(deps = {}) {
     }
     const ownerId = user.masterAccountId || user.userId;
     try {
-      const { data } = await client.get(`/internal/v1/data/trainings/owner/${encodeURIComponent(ownerId)}`);
-      res.json({ trainings: data });
+      const trainings = await trainingService.listByOwner(ownerId);
+      res.json({ trainings });
     } catch (err) {
-      const status = err.response?.status || 500;
-      logger.error('list trainings proxy error', err.response?.data || err.message);
-      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+      const status = err.status || 500;
+      logger.error('[ExternalTrainingsApi] list trainings error:', err.message);
+      res.status(status).json({ error: { code: 'ERROR', message: err.message } });
     }
   });
 
   // GET /:id -> get training detail
   router.get('/:id', async (req, res) => {
     try {
-      const { data } = await client.get(`/internal/v1/data/trainings/${encodeURIComponent(req.params.id)}`);
-      res.json(data);
+      const training = await trainingService.getById(req.params.id);
+      if (!training) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Training not found.' } });
+      }
+      res.json(training);
     } catch (err) {
-      const status = err.response?.status || 500;
-      logger.error('get training proxy error', err.response?.data || err.message);
-      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+      const status = err.status || 500;
+      logger.error('[ExternalTrainingsApi] get training error:', err.message);
+      res.status(status).json({ error: { code: 'ERROR', message: err.message } });
     }
   });
 
@@ -99,13 +102,12 @@ module.exports = function createTrainingsApiRouter(deps = {}) {
     }
     const ownerId = user.masterAccountId || user.userId;
     try {
-      const payload = { ...req.body, masterAccountId: ownerId };
-      const { data } = await client.post('/internal/v1/data/trainings', payload);
-      res.status(201).json(data);
+      const created = await trainingService.create({ ...req.body, masterAccountId: ownerId });
+      res.status(201).json(created);
     } catch (err) {
-      const status = err.response?.status || 500;
-      logger.error('create training proxy error', err.response?.data || err.message);
-      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+      const status = err.status || 500;
+      logger.error('[ExternalTrainingsApi] create training error:', err.message);
+      res.status(status).json({ error: { code: err.code || 'ERROR', message: err.message } });
     }
   });
 
@@ -117,14 +119,12 @@ module.exports = function createTrainingsApiRouter(deps = {}) {
     }
     const ownerId = user.masterAccountId || user.userId;
     try {
-      const { data } = await client.delete(`/internal/v1/data/trainings/${encodeURIComponent(req.params.id)}`, {
-        data: { masterAccountId: ownerId }
-      });
-      res.json(data);
+      const result = await trainingService.delete(req.params.id, ownerId);
+      res.json(result);
     } catch (err) {
-      const status = err.response?.status || 500;
-      logger.error('delete training proxy error', err.response?.data || err.message);
-      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+      const status = err.status || 500;
+      logger.error('[ExternalTrainingsApi] delete training error:', err.message);
+      res.status(status).json({ error: { code: err.code || 'ERROR', message: err.message } });
     }
   });
 
@@ -136,14 +136,27 @@ module.exports = function createTrainingsApiRouter(deps = {}) {
     }
     const ownerId = user.masterAccountId || user.userId;
     try {
-      const { data } = await client.post(`/internal/v1/data/trainings/${encodeURIComponent(req.params.id)}/retry`, {
-        masterAccountId: ownerId
-      });
-      res.json(data);
+      const result = await trainingService.retry(req.params.id, ownerId);
+      res.json(result);
     } catch (err) {
-      const status = err.response?.status || 500;
-      logger.error('retry training proxy error', err.response?.data || err.message);
-      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+      const status = err.status || 500;
+      logger.error('[ExternalTrainingsApi] retry training error:', err.message);
+      res.status(status).json({ error: { code: err.code || 'ERROR', message: err.message } });
+    }
+  });
+
+  // POST /:id/cancel -> cancel a non-terminal training
+  router.post('/:id/cancel', async (req, res) => {
+    const user = req.user;
+    if (!user) return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
+    const ownerId = user.masterAccountId || user.userId;
+    try {
+      const result = await trainingService.cancel(req.params.id, ownerId);
+      res.json(result);
+    } catch (err) {
+      const status = err.status || 500;
+      logger.error('[ExternalTrainingsApi] cancel training error:', err.message);
+      res.status(status).json({ error: { code: err.code || 'ERROR', message: err.message } });
     }
   });
 

@@ -107,6 +107,15 @@ class TrainingJobProcessor {
       const trainingResult = await this._executeTraining(job);
       instanceId = trainingResult.instanceId;
 
+      if (trainingResult.cancelled) {
+        this.logger.info(`[JobProcessor] Job ${jobId} was cancelled during execution`);
+        if (trainingResult.instanceId) {
+          await this._terminateInstance(trainingResult.instanceId, jobId);
+        }
+        await this._refundCancelled(job, chargedPoints);
+        return { success: false, jobId, cancelled: true };
+      }
+
       if (!trainingResult.success) {
         await this.trainingDb.markFailed(jobId, trainingResult.error, {
           vastaiInstanceId: instanceId,
@@ -126,7 +135,7 @@ class TrainingJobProcessor {
       }
 
       // Step 3: Finalization
-      await this.trainingDb.setStatus(jobId, 'FINALIZING');
+      await this.trainingDb.setStatusUnlessCancelled(jobId, 'FINALIZING');
 
       const finalizationResult = await this.finalizationService.finalize(
         trainingResult.trainingResult,
@@ -365,6 +374,12 @@ class TrainingJobProcessor {
         stdio: ['ignore', 'pipe', 'pipe'],
       });
 
+      let cancelledByPoller = false;
+      const stopCancelPoller = this._startCancelPoller(
+        jobId, child,
+        () => { cancelledByPoller = true; }
+      );
+
       let cleanedUp = false;
       const cleanup = () => {
         if (!cleanedUp && datasetDir) {
@@ -376,6 +391,7 @@ class TrainingJobProcessor {
       // If download fails, kill the child process
       downloadPromise.catch(err => {
         this.logger.error(`[JobProcessor] Download failed, killing training process`);
+        stopCancelPoller();
         child.kill('SIGTERM');
         cleanup();
         resolve({
@@ -439,7 +455,7 @@ class TrainingJobProcessor {
         // Transition to RUNNING when instance is ready and SSH verified
         if (chunk.includes('Instance ready at') || chunk.includes('SSH auth verified')) {
           if (instanceId) {
-            await this.trainingDb.setStatus(jobId, 'RUNNING');
+            await this.trainingDb.setStatusUnlessCancelled(jobId, 'RUNNING');
           }
         }
 
@@ -507,7 +523,12 @@ class TrainingJobProcessor {
 
       child.on('close', (code) => {
         this.logger.debug(`[JobProcessor] launch-training.js exited with code ${code}`);
+        stopCancelPoller();
         cleanup();
+        if (cancelledByPoller) {
+          resolve({ success: false, cancelled: true, instanceId });
+          return;
+        }
 
         if (code === 0) {
           // Parse the training result JSON
@@ -659,6 +680,78 @@ class TrainingJobProcessor {
     }
 
     return false;
+  }
+
+  /**
+   * Issue a cancellation refund with a 10% penalty.
+   * @private
+   */
+  async _refundCancelled(job, chargedPoints) {
+    if (!chargedPoints || chargedPoints <= 0) return;
+    const jobId = job._id.toString();
+    const penalty = Math.round(chargedPoints * 0.10);
+    const refundPoints = chargedPoints - penalty;
+    if (refundPoints <= 0) return;
+    try {
+      await this.pointsService.addPoints({
+        walletAddress: job.walletAddress,
+        masterAccountId: job.ownerAccountId,
+        points: refundPoints,
+        rewardType: 'TRAINING_REFUND_CANCELLED',
+        description: `Cancellation refund (10% penalty): ${job.modelName}`,
+        relatedItems: {
+          trainingId: jobId,
+          modelName: job.modelName,
+          chargedPoints,
+          penalty,
+          refundPoints,
+        },
+      });
+      await this.trainingDb.reconcileCost(jobId, penalty);
+      this.logger.info(
+        `[JobProcessor] Cancellation: refunded ${refundPoints} pts, kept ${penalty} pts penalty (${jobId})`
+      );
+    } catch (refundErr) {
+      this.logger.error(`[JobProcessor] Cancellation refund FAILED:`, refundErr);
+      this.alertOps('Cancellation refund FAILED — manual action needed', {
+        jobId,
+        ownerAccountId: job.ownerAccountId,
+        walletAddress: job.walletAddress,
+        refundPoints,
+        penalty,
+        error: refundErr.message,
+      });
+    }
+  }
+
+  /**
+   * Check if a job has been cancelled
+   * @private
+   */
+  async _isCancelled(jobId) {
+    const job = await this.trainingDb.findTrainingById(jobId);
+    return job?.status === 'CANCELLED';
+  }
+
+  /**
+   * Poll DB every intervalMs; kill child and invoke onCancelled when CANCELLED detected.
+   * Returns a stop-cleanup function.
+   * @private
+   */
+  _startCancelPoller(jobId, child, onCancelled, intervalMs = 20000) {
+    const timer = setInterval(async () => {
+      try {
+        if (await this._isCancelled(jobId)) {
+          this.logger.info(`[JobProcessor] Job ${jobId} cancelled — killing child process`);
+          clearInterval(timer);
+          onCancelled();
+          child.kill('SIGTERM');
+        }
+      } catch (err) {
+        this.logger.warn(`[JobProcessor] Cancel poll error (non-fatal): ${err.message}`);
+      }
+    }, intervalMs);
+    return () => clearInterval(timer);
   }
 
   /**

@@ -45,9 +45,9 @@ const PROMPT_MARKER_TRAINING_IMAGE = 'PROMPT_TRAINING_IMAGE_V1'; // New marker
 async function showMainTrainingMenu(bot, chatId, messageId, masterAccountId, isEdit = false, dependencies = {}) {
   const { logger = console } = dependencies;
   try {
-    // Path updated to /trainings/owner/:masterAccountId
-    const response = await dependencies.internal.client.get(`/internal/v1/data/trainings/owner/${masterAccountId}`);
-    const userTrainings = response.data || [];
+    const userTrainings = dependencies.trainingService
+      ? await dependencies.trainingService.listByOwner(masterAccountId)
+      : [];
 
     const keyboard = [
       [{ text: '➕ Create New Training', callback_data: 'train_create_new' }],
@@ -169,9 +169,9 @@ async function processNewTrainingName(bot, message, masterAccountId, dependencie
 async function showMyTrainingsMenu(bot, chatId, messageId, masterAccountId, dependencies = {}) {
   const { logger = console } = dependencies;
   try {
-    // Path updated to /trainings/owner/:masterAccountId
-    const response = await dependencies.internal.client.get(`/internal/v1/data/trainings/owner/${masterAccountId}`);
-    const userTrainings = response.data || [];
+    const userTrainings = dependencies.trainingService
+      ? await dependencies.trainingService.listByOwner(masterAccountId)
+      : [];
     const keyboard = [];
     let text = `📘 **My Trainings**
 
@@ -209,9 +209,9 @@ async function showMyTrainingsMenu(bot, chatId, messageId, masterAccountId, depe
 async function showEditTrainingMenu(bot, chatId, messageId, masterAccountId, trainingId, dependencies = {}) {
   const { logger = console } = dependencies;
   try {
-    // Use internalApiClient to get training details, path relative to /internal/v1/data/
-    const response = await dependencies.internal.client.get(`/internal/v1/data/trainings/${trainingId}`);
-    const training = response.data;
+    const training = dependencies.trainingService
+      ? await dependencies.trainingService.getById(trainingId)
+      : null;
 
     if (!training) {
       const notFoundText = '⚠️ Training session not found.';
@@ -282,8 +282,9 @@ async function showEditTrainingMenu(bot, chatId, messageId, masterAccountId, tra
 async function showImageManagementMenu(bot, chatId, messageId, masterAccountId, trainingId, dependencies = {}) {
   const { logger = console } = dependencies;
   try {
-    const response = await dependencies.internal.client.get(`/internal/v1/data/trainings/${trainingId}`);
-    const training = response.data;
+    const training = dependencies.trainingService
+      ? await dependencies.trainingService.getById(trainingId)
+      : null;
 
     if (!training) {
       await bot.editMessageText('⚠️ Training session not found.', {
@@ -323,8 +324,9 @@ async function showImageManagementMenu(bot, chatId, messageId, masterAccountId, 
 async function handleRequestAddImage(bot, chatId, messageId, masterAccountId, trainingId, dependencies = {}) {
   const { logger = console } = dependencies;
   try {
-    const response = await dependencies.internal.client.get(`/internal/v1/data/trainings/${trainingId}`);
-    const training = response.data;
+    const training = dependencies.trainingService
+      ? await dependencies.trainingService.getById(trainingId)
+      : null;
     if (!training) {
       await bot.editMessageText('⚠️ Training session not found. Cannot add image.', {
         chat_id: chatId, message_id: messageId,
@@ -461,12 +463,9 @@ function registerHandlers(dispatcherInstances, dependencies) {
   }
     const { commandDispatcher, callbackQueryDispatcher, messageReplyDispatcher } = dispatcherInstances;
 
-    const apiClient = dependencies.internalApiClient || dependencies.internal?.client;
-    if (!apiClient) {
-        throw new Error('[TrainingMenuManager] internalApiClient dependency missing');
+    if (!dependencies.trainingService) {
+      dependencies.logger?.warn?.('[TrainingMenuManager] trainingService not available – training reads will return empty results');
     }
-    if (!dependencies.internal) dependencies.internal = {};
-    dependencies.internal.client = apiClient;
 
     // Register a handler for the /train command
     commandDispatcher.register(/^\/train(?:@\w+)?$/i, async (bot, message, dependencies, match) => {

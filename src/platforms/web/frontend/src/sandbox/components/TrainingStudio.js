@@ -72,6 +72,7 @@ export class TrainingStudio extends Component {
       wizardLoadingControlSets: false,
       wizardSubmitting: false,
       estimatedCost: null,
+      confirmStartTraining: false,
 
       // Progress
       embellishmentTasks: {},
@@ -281,7 +282,7 @@ export class TrainingStudio extends Component {
       wizardCaptionSetId: null, wizardControlSetId: null,
       wizardFormValues: {}, wizardCaptionSets: [], wizardControlSets: [],
       wizardLoadingCaptions: false, wizardLoadingControlSets: false,
-      estimatedCost: null, wizardSubmitting: false,
+      estimatedCost: null, wizardSubmitting: false, confirmStartTraining: false,
     });
   }
 
@@ -579,10 +580,10 @@ export class TrainingStudio extends Component {
     try {
       const res = await postWithCsrf('/api/v1/trainings', payload);
       if (!res.ok) throw new Error('Training failed');
-      this.setState({ wizardSubmitting: false });
+      this.setState({ wizardSubmitting: false, confirmStartTraining: false });
       this._goDashboard();
     } catch {
-      this.setState({ wizardSubmitting: false });
+      this.setState({ wizardSubmitting: false, confirmStartTraining: false });
     }
   }
 
@@ -1033,7 +1034,8 @@ export class TrainingStudio extends Component {
       wizardStep === 1 ? this._renderWizardStep1() : null,
       wizardStep === 2 ? this._renderWizardStep2() : null,
       wizardStep === 3 ? this._renderWizardStep3() : null,
-      wizardStep === 4 ? this._renderWizardStep4() : null,
+      wizardStep === 4 && this.state.confirmStartTraining ? this._renderStartConfirm() : null,
+      wizardStep === 4 && !this.state.confirmStartTraining ? this._renderWizardStep4() : null,
 
       // Footer
       h('div', { className: 'ts-wizard-footer' },
@@ -1042,7 +1044,40 @@ export class TrainingStudio extends Component {
           wizardStep > 1 ? h(AsyncButton, { variant: 'secondary', onclick: this.bind(this._wizardBack), label: 'Back' }) : null,
           wizardStep < 4
             ? h(AsyncButton, { onclick: this.bind(this._wizardNext), label: 'Next' })
-            : h(AsyncButton, { loading: this.state.wizardSubmitting, onclick: this.bind(this._submitWizard), label: 'Start Training' })
+            : h(AsyncButton, {
+                loading: this.state.wizardSubmitting,
+                disabled: this.state.confirmStartTraining,
+                onclick: this.bind(() => this.setState({ confirmStartTraining: true })),
+                label: 'Start Training',
+              })
+        )
+      )
+    );
+  }
+
+  _renderStartConfirm() {
+    const { wizardSubmitting, estimatedCost } = this.state;
+    return h('div', { className: 'ts-confirm-overlay' },
+      h('div', { className: 'ts-confirm-card' },
+        h('h4', null, 'Confirm Training'),
+        h('p', null,
+          'This will spend approximately ',
+          h('strong', null, `${estimatedCost != null ? estimatedCost.toLocaleString() : '—'} points`),
+          ' to start a GPU training job. Once started, a running job may not terminate immediately.'
+        ),
+        h('div', { className: 'ts-confirm-btns' },
+          h(AsyncButton, {
+            variant: 'secondary',
+            label: 'Go Back',
+            onclick: () => this.setState({ confirmStartTraining: false }),
+          }),
+          h(AsyncButton, {
+            variant: 'primary',
+            label: wizardSubmitting ? 'Starting...' : 'Yes, Start Training',
+            loading: wizardSubmitting,
+            disabled: wizardSubmitting,
+            onclick: () => this._submitWizard(),
+          })
         )
       )
     );
@@ -1811,6 +1846,27 @@ export class TrainingStudio extends Component {
       }
       .ts-btn-ghost:hover:not(:disabled) { border-color: var(--accent-border); color: var(--accent); }
       .ts-btn-ghost:disabled { opacity:0.35; cursor:not-allowed; }
+
+      /* Start Training confirmation overlay */
+      .ts-confirm-overlay {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: rgba(0, 0, 0, 0.7);
+        border-radius: 8px;
+        padding: 4px;
+        margin-bottom: 16px;
+      }
+      .ts-confirm-card {
+        background: var(--surface-1, #1e1e2e);
+        border: 1px solid var(--accent, #7c3aed);
+        border-radius: 8px;
+        padding: 20px;
+      }
+      .ts-confirm-card h4 { margin: 0 0 8px; color: var(--text-primary, #fff); }
+      .ts-confirm-card p { margin: 0 0 16px; color: var(--text-secondary, #ccc); line-height: 1.5; }
+      .ts-confirm-card strong { color: var(--accent, #7c3aed); font-size: 1.1em; }
+      .ts-confirm-btns { display: flex; gap: 8px; justify-content: flex-end; }
     `;
   }
 

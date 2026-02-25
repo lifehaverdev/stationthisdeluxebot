@@ -18,7 +18,7 @@ const logger = createLogger('McpRouter');
  * @returns {express.Router} Configured router
  */
 function createMcpRouter(dependencies) {
-  const { toolRegistry, internalApiClient, loraService } = dependencies;
+  const { toolRegistry, internalApiClient, loraService, trainingService } = dependencies;
 
   if (!toolRegistry) {
     logger.error('[MCP] toolRegistry dependency missing');
@@ -342,47 +342,54 @@ async function handleMethod(method, params, context) {
     // ============================================
     // Trainings (forwarded to internal API with user resolution)
     // ============================================
-    case 'trainings/list':
+    case 'trainings/list': {
       requireApiKey(apiKey);
       // Resolve user to get owner ID for trainings list
       const trainingsUserInfo = await resolveUserFromApiKey(apiKey, internalApiClient);
       try {
-        const trainingsResponse = await internalApiClient.get(
-          `/internal/v1/data/trainings/owner/${encodeURIComponent(trainingsUserInfo.masterAccountId)}`
-        );
+        const trainings = trainingService
+          ? await trainingService.listByOwner(trainingsUserInfo.masterAccountId)
+          : [];
         return {
           content: [{
             type: 'text',
-            text: JSON.stringify({ trainings: trainingsResponse.data }, null, 2)
+            text: JSON.stringify({ trainings }, null, 2)
           }]
         };
       } catch (error) {
-        const msg = error.response?.data?.error?.message || error.message;
+        const msg = error.message;
         logger.error('[MCP] trainings/list error:', msg);
         const err = new Error(msg);
-        err.code = error.response?.status === 404 ? -32004 : -32603;
+        err.code = error.status === 404 ? -32004 : -32603;
         throw err;
       }
+    }
 
-    case 'trainings/get':
+    case 'trainings/get': {
       requireApiKey(apiKey);
       try {
-        const trainingResponse = await internalApiClient.get(
-          `/internal/v1/data/trainings/${encodeURIComponent(params.id)}`
-        );
+        const training = trainingService
+          ? await trainingService.getById(params.id)
+          : null;
+        if (!training) {
+          const err = new Error('Training not found.');
+          err.code = -32004;
+          throw err;
+        }
         return {
           content: [{
             type: 'text',
-            text: JSON.stringify(trainingResponse.data, null, 2)
+            text: JSON.stringify(training, null, 2)
           }]
         };
       } catch (error) {
-        const msg = error.response?.data?.error?.message || error.message;
+        const msg = error.message;
         logger.error('[MCP] trainings/get error:', msg);
         const err = new Error(msg);
-        err.code = error.response?.status === 404 ? -32004 : -32603;
+        err.code = error.status === 404 || error.code === -32004 ? -32004 : -32603;
         throw err;
       }
+    }
 
     case 'trainings/create':
       requireApiKey(apiKey);
