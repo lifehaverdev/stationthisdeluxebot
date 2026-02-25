@@ -55,6 +55,7 @@ const { LoraService } = require('./store/lora/LoraService');
 const { DatasetService } = require('./store/datasets/DatasetService');
 const { TrainingService } = require('./store/training/TrainingService');
 const VastAIService = require('./vastai/VastAIService');
+const { ModelService } = require('./store/models/ModelService');
 
 /**
  * Initialize all core services

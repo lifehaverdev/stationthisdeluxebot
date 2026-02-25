@@ -1,16 +1,17 @@
 const express = require('express');
+const { ModelService } = require('../../core/services/store/models/ModelService');
 
 /**
  * External Models API Router
- * LoRA routes use LoraService directly; checkpoint/model routes still proxy via internalApiClient.
- * Requires `internalApiClient` and `loraService` in dependencies.
+ * All routes use in-process services directly (Phase 6g complete — no internalApiClient).
+ * LoRA routes → LoraService, checkpoint/model routes → ModelService.
  */
 module.exports = function createModelsApiRouter(deps = {}) {
-  const { internalApiClient, loraService, modelDiscoveryService, logger = console } = deps;
-  if (!internalApiClient) {
-    logger.error('[external-modelsApi] Missing internalApiClient dependency.');
-    return express.Router().get('*', (_, res) => res.status(503).json({ error: 'Service unavailable' }));
-  }
+  const { loraService, modelDiscoveryService, comfyUIService, logger = console } = deps;
+
+  const modelService = modelDiscoveryService
+    ? new ModelService({ modelDiscoveryService, comfyUIService, logger })
+    : null;
 
   const router = express.Router();
 
@@ -23,17 +24,23 @@ module.exports = function createModelsApiRouter(deps = {}) {
 
   const resolvedUserId = (req) => req.body?.userId || req.user?.userId || null;
 
-  // GET /models => fetch from internal API
+  // GET /models — list ComfyUI models via ModelService (Phase 6g)
   router.get('/', async (req, res) => {
+    if (!modelService) {
+      logger.error('[external-modelsApi] modelDiscoveryService missing for GET /models');
+      return res.status(503).json({ error: 'Service unavailable' });
+    }
     try {
-      const response = await internalApiClient.get('/internal/v1/data/models', {
-        params: withUserId(req),
+      const params = withUserId(req);
+      const models = await modelService.listModels({
+        category: params.category,
+        userId: params.userId,
+        includeCivitaiTags: params.includeCivitaiTags === 'true',
       });
-      res.json(response.data);
+      res.json({ models });
     } catch (err) {
-      logger.error('[external-modelsApi] Proxy error:', err.response?.status, err.message);
-      const status = err.response?.status || 500;
-      res.status(status).json({ error: 'Failed to fetch model list' });
+      logger.error('[external-modelsApi] listModels error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch model list' });
     }
   });
 
@@ -173,17 +180,28 @@ module.exports = function createModelsApiRouter(deps = {}) {
     }
   });
 
-  // POST /models/checkpoint/import
+  // POST /models/checkpoint/import — checkpoint import via ModelService (Phase 6g)
   router.post('/checkpoint/import', async (req, res) => {
+    if (!modelService) {
+      logger.error('[external-modelsApi] modelDiscoveryService missing for POST /checkpoint/import');
+      return res.status(503).json({ error: 'Service unavailable' });
+    }
     try {
-      const body = { ...req.body };
-      if (!body.userId && req.user?.userId) body.userId = req.user.userId;
-      const csrfToken = req.headers['x-csrf-token'];
-      const response = await internalApiClient.post('/internal/v1/data/models/checkpoint/import', body, { headers:{'x-csrf-token':csrfToken} });
-      res.json(response.data);
+      const userId = resolvedUserId(req);
+      const { url } = req.body;
+      const result = await modelService.importCheckpoint({ url, userId });
+      res.status(201).json({ message: 'Checkpoint import queued', model: result });
     } catch (err) {
-      const status = err.response?.status || 500;
-      res.status(status).json({ error:'Checkpoint import failed', details: err.response?.data||err.message });
+      if (err.code === 'IS_LORA') {
+        // Caller submitted a LoRA URL to the checkpoint endpoint — redirect to LoRA import
+        return res.status(400).json({
+          error: 'URL points to a LoRA model. Use POST /models/lora/import instead.',
+          code: 'IS_LORA',
+        });
+      }
+      logger.error('[external-modelsApi] checkpoint import error:', err.message);
+      const status = err.status || 500;
+      res.status(status).json({ error: 'Checkpoint import failed', details: err.details || err.message });
     }
   });
 
