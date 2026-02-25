@@ -3,18 +3,18 @@ const { createLogger } = require('../../../utils/logger');
 
 /**
  * Creates the external LoRAs API router.
- * Proxies public LoRA discovery endpoints to the internal API.
+ * Uses LoraService directly instead of proxying to the internal API.
  *
  * @param {Object} dependencies - Router dependencies
  * @returns {express.Router} Configured router
  */
 function createLorasApi(dependencies) {
     const router = express.Router();
-    const { internalApiClient } = dependencies;
+    const { loraService } = dependencies;
     const logger = createLogger('LorasApi-External');
 
-    if (!internalApiClient) {
-        logger.error('[LorasApi-External] internalApiClient dependency missing');
+    if (!loraService) {
+        logger.error('[LorasApi-External] loraService dependency missing');
         return router;
     }
 
@@ -30,27 +30,15 @@ function createLorasApi(dependencies) {
      */
     router.get('/list', async (req, res) => {
         try {
-            const { checkpoint, q, filterType, limit, page, category, tag } = req.query;
+            const { checkpoint, q, filterType, sort, limit, page, category, tag } = req.query;
+            logger.debug('[LorasApi-External] GET /list', { params: req.query });
 
-            const params = {};
-            if (checkpoint) params.checkpoint = checkpoint;
-            if (q) params.q = q;
-            if (filterType) params.filterType = filterType;
-            if (limit) params.limit = limit;
-            if (page) params.page = page;
-            if (category) params.category = category;
-            if (tag) params.tag = tag;
-
-            logger.debug('[LorasApi-External] GET /list', { params });
-
-            const response = await internalApiClient.get('/internal/v1/data/loras/list', { params });
-            res.json(response.data);
+            const result = await loraService.listLoras({ checkpoint, q, filterType, sort, limit, page, category, tag });
+            res.json(result);
         } catch (error) {
             logger.error('[LorasApi-External] /list error:', error.message);
-            if (error.response) {
-                return res.status(error.response.status).json(error.response.data);
-            }
-            res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch LoRAs.' } });
+            const status = error.statusCode || 500;
+            res.status(status).json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch LoRAs.' } });
         }
     });
 
@@ -62,13 +50,10 @@ function createLorasApi(dependencies) {
     router.get('/categories', async (req, res) => {
         try {
             logger.debug('[LorasApi-External] GET /categories');
-            const response = await internalApiClient.get('/internal/v1/data/loras/categories');
-            res.json(response.data);
+            const categories = await loraService.getCategories();
+            res.json({ categories });
         } catch (error) {
             logger.error('[LorasApi-External] /categories error:', error.message);
-            if (error.response) {
-                return res.status(error.response.status).json(error.response.data);
-            }
             res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch categories.' } });
         }
     });
@@ -81,16 +66,18 @@ function createLorasApi(dependencies) {
     router.get('/:loraIdentifier', async (req, res) => {
         try {
             const { loraIdentifier } = req.params;
+            const { userId, isAdmin } = req.query;
             logger.debug('[LorasApi-External] GET /:loraIdentifier', { loraIdentifier });
 
-            const response = await internalApiClient.get(`/internal/v1/data/loras/${encodeURIComponent(loraIdentifier)}`);
-            res.json(response.data);
+            const lora = await loraService.getById(loraIdentifier, { userId, isAdmin: isAdmin === 'true' });
+            if (!lora) {
+                return res.status(404).json({ error: 'LoRA not found.' });
+            }
+            res.json({ lora });
         } catch (error) {
             logger.error('[LorasApi-External] /:loraIdentifier error:', error.message);
-            if (error.response) {
-                return res.status(error.response.status).json(error.response.data);
-            }
-            res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch LoRA.' } });
+            const status = error.statusCode || 500;
+            res.status(status).json({ error: { code: 'INTERNAL_ERROR', message: error.message || 'Failed to fetch LoRA.' } });
         }
     });
 

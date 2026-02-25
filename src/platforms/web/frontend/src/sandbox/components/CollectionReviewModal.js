@@ -279,6 +279,8 @@ export class CollectionReviewModal extends Component {
   _dedupeItems(items) {
     const existing = new Set(this._reviewQueue.map(e => e?.generationId).filter(Boolean));
     if (this._activeReview?.generationId) existing.add(this._activeReview.generationId);
+    // Exclude any piece whose decision is buffered but not yet flushed to the server
+    this._pendingReviewDecisions.forEach(d => { if (d.generationId) existing.add(d.generationId); });
     return items.filter(e => {
       if (this._pendingCullIds.has(String(e.generationId))) return false;
       if (existing.has(e.generationId)) return false;

@@ -296,10 +296,11 @@ async function initializeServices(options = {}) {
       logger,
     });
 
-    // --- Initialize LoraService for in-process trigger map data (Phase 6a) ---
+    // --- Initialize LoraService for in-process LoRA data access (Phase 6a+6b) ---
     const loraService = new LoraService({
       loraModelsDb: initializedDbServices.data.loraModels,
       loraPermissionsDb: initializedDbServices.data.loraPermissions,
+      userPreferencesDb: initializedDbServices.data.userPreferences,
       logger,
     });
 
@@ -434,6 +435,7 @@ async function initializeServices(options = {}) {
       huggingface: huggingfaceService,
       comfyUIService: comfyUIService,
       loraResolutionService: loraResolutionService,
+      loraService, // Phase 6b — LoraService for external API routes
       internalApiClient, // pass canonical client to API layer
       longRunningApiClient, // pass long-running client for salt mining
       userSettingsService, // Pass the service to the API layer

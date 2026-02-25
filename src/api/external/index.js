@@ -463,7 +463,7 @@ function initializeExternalApi(dependencies) {
   }
 
   // Mount LoRAs API (Public - discovery endpoints)
-  const lorasRouter = createLorasApi({ internalApiClient, logger });
+  const lorasRouter = createLorasApi({ loraService: dependencies.loraService, logger });
   if (lorasRouter) {
     externalApiRouter.use('/loras', lorasRouter);
     logger.debug('External LoRAs API router mounted at /loras. (Public discovery)');
