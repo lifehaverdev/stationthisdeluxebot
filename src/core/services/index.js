@@ -50,6 +50,7 @@ const createEmbellishmentTaskService = require('./EmbellishmentTaskService');
 const { SpellMigrator } = require('./workflow/migrations');
 const { SpellService } = require('./store/spells/SpellService');
 const { UserService } = require('./store/users/UserService');
+const { CookService } = require('./store/cook/CookService');
 
 /**
  * Initialize all core services
@@ -288,6 +289,12 @@ async function initializeServices(options = {}) {
       logger,
     });
 
+    // --- Initialize CookService for in-process cook record updates ---
+    const cookService = new CookService({
+      cooksDb: initializedDbServices.data.cooks,
+      logger,
+    });
+
     // --- Initialize WorkflowExecutionService & SpellsService BEFORE API so they can be injected ---
     const spellService = new SpellService({
       castsDb: initializedDbServices.data.casts,
@@ -334,6 +341,10 @@ async function initializeServices(options = {}) {
     if (typeof CookOrchestratorService.setSpellsService === 'function') {
       CookOrchestratorService.setSpellsService(spellsService);
       logger.debug('[initializeServices] SpellsService injected into CookOrchestratorService.');
+    }
+    if (typeof CookOrchestratorService.setCookService === 'function') {
+      CookOrchestratorService.setCookService(cookService);
+      logger.debug('[initializeServices] CookService injected into CookOrchestratorService.');
     }
 
     // Initialize Guest Account Services
@@ -489,6 +500,7 @@ async function initializeServices(options = {}) {
       spellsService, // Added spellsService
       userService, // User find/create/lookup service (Phase 4)
       spellService, // Cast + spell data service (Phase 3)
+      cookService, // Cook record update service (Phase 5)
       workflowExecutionService, // Added workflowExecutionService
       storageService, // Add new service
       ethereumService: ethereumServices, // Add new service

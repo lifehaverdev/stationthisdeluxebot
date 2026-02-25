@@ -70,6 +70,11 @@ module.exports = require('pino-http')({
       return 'silent';
     }
 
+    // Silence comfydeploy webhook access log — the processor emits its own structured log
+    if (req.url && req.url.includes('/webhook/comfydeploy')) {
+      return 'silent';
+    }
+
     // Warn for client errors
     if (res.statusCode >= 400) return 'warn';
 

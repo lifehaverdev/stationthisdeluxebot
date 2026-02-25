@@ -216,6 +216,10 @@ export class ActionModal extends Component {
       .am-center:hover { fill: var(--surface-2); }
 
       /* Tools list panel */
+      @keyframes amToolsFadeUp {
+        from { opacity: 0; transform: translate(-50%, calc(-50% + 4px)); }
+        to   { opacity: 1; transform: translate(-50%, -50%); }
+      }
       .am-tools-panel {
         position: fixed;
         z-index: var(--z-radial);
@@ -223,7 +227,7 @@ export class ActionModal extends Component {
         border: var(--border-width) solid var(--border);
         width: 420px;
         transform: translate(-50%, -50%);
-        animation: fadeUp var(--dur-trans) var(--ease);
+        animation: amToolsFadeUp var(--dur-trans) var(--ease) forwards;
       }
       .am-tools-header {
         display: flex;

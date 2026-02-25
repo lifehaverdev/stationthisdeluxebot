@@ -113,6 +113,11 @@ class CookOrchestratorService {
     this.logger.debug('[CookOrchestrator] SpellsService configured');
   }
 
+  setCookService(cookService) {
+    this.cookService = cookService;
+    this.logger.debug('[CookOrchestrator] CookService configured');
+  }
+
   async _init() {
     if (this.outputsCol && this.cooksCol) return;
     if (!this._initPromise) {
@@ -341,7 +346,11 @@ class CookOrchestratorService {
           await this.appendEvent('CookCompleted', { collectionId, userId, cookId: state.cookId, totalSupply: state.total });
           if (state.cookId) {
             try {
-              await internalApiClient.put(`/internal/v1/data/cook/cooks/${state.cookId}`, { status: 'completed' });
+              if (this.cookService) {
+                await this.cookService.updateCook(state.cookId, { status: 'completed' });
+              } else {
+                await internalApiClient.put(`/internal/v1/data/cook/cooks/${state.cookId}`, { status: 'completed' });
+              }
             } catch (err) {
               this.logger.warn(`[CookOrchestrator] Failed to mark cook ${state.cookId} completed during reconciliation: ${err.message}`);
             }
@@ -727,9 +736,13 @@ class CookOrchestratorService {
       if (!targetCookId) return null;
 
       try {
-        await internalApiClient.put(`/internal/v1/data/cook/cooks/${targetCookId}`, { status: 'paused' });
+        if (this.cookService) {
+          await this.cookService.updateCook(targetCookId, { status: 'paused' });
+        } else {
+          await internalApiClient.put(`/internal/v1/data/cook/cooks/${targetCookId}`, { status: 'paused' });
+        }
       } catch (err) {
-        if (err.response?.status === 404) {
+        if (err.response?.status === 404 || err.message?.includes('Invalid cookId')) {
           this.logger.warn(`[CookOrchestrator] Cook ${targetCookId} not found while marking paused`);
         } else {
           this.logger.warn(`[CookOrchestrator] Failed to mark cook ${targetCookId} paused: ${err.message}`);
@@ -751,9 +764,13 @@ class CookOrchestratorService {
       if (!targetCookId) return null;
 
       try {
-        await internalApiClient.put(`/internal/v1/data/cook/cooks/${targetCookId}`, { status: 'stopped' });
+        if (this.cookService) {
+          await this.cookService.updateCook(targetCookId, { status: 'stopped' });
+        } else {
+          await internalApiClient.put(`/internal/v1/data/cook/cooks/${targetCookId}`, { status: 'stopped' });
+        }
       } catch (err) {
-        if (err.response?.status === 404) {
+        if (err.response?.status === 404 || err.message?.includes('Invalid cookId')) {
           this.logger.warn(`[CookOrchestrator] Cook ${targetCookId} not found while marking stopped`);
         } else {
           this.logger.warn(`[CookOrchestrator] Failed to mark cook ${targetCookId} stopped: ${err.message}`);
@@ -845,17 +862,24 @@ class CookOrchestratorService {
         } else {
           const costDelta = typeof generation.costUsd === 'number' ? generation.costUsd : 0;
 
-          // Update the cook document via internal API.
+          // Update the cook document in-process.
           try {
-          await internalApiClient.put(`/internal/v1/data/cook/cooks/${state.cookId}`, {
-            generationId: generation._id.toString(),
-            costDeltaUsd: costDelta,
-          });
+            if (this.cookService) {
+              await this.cookService.updateCook(state.cookId, {
+                generationId: generation._id.toString(),
+                costDeltaUsd: costDelta,
+              });
+            } else {
+              await internalApiClient.put(`/internal/v1/data/cook/cooks/${state.cookId}`, {
+                generationId: generation._id.toString(),
+                costDeltaUsd: costDelta,
+              });
+            }
           this.logger.info(`[CookOrchestrator] Updated cook ${state.cookId} with generation ${generation._id} (costUsd=${costDelta}).`);
           } catch (apiErr) {
             // ✅ Handle 404 gracefully - cook may have been deleted or doesn't exist
-            if (apiErr.response?.status === 404) {
-              this.logger.warn(`[CookOrchestrator] Cook ${state.cookId} not found (404) - may have been deleted, continuing gracefully`);
+            if (apiErr.response?.status === 404 || apiErr.message?.includes('Invalid cookId')) {
+              this.logger.warn(`[CookOrchestrator] Cook ${state.cookId} not found - may have been deleted, continuing gracefully`);
             } else {
               throw apiErr; // Re-throw non-404 errors
             }
@@ -884,7 +908,11 @@ class CookOrchestratorService {
       // Final update to cook document
       if (state.cookId) {
           try {
+            if (this.cookService) {
+              await this.cookService.updateCook(state.cookId, { status: 'completed' });
+            } else {
               await internalApiClient.put(`/internal/v1/data/cook/cooks/${state.cookId}`, { status: 'completed' });
+            }
           } catch(err) {
               this.logger.error(`[CookOrchestrator] Failed to finalize cook ${state.cookId}:`, err.message);
           }

@@ -18,7 +18,6 @@ async function processRunPayload(runPayload, deps){
 
 // Dependencies: internalApiClient (for economy/user/group calls), logger, and webSocketService for real-time updates.
 async function processComfyDeployWebhook(payload, { internalApiClient, logger, webSocketService: websocketServer }) {
-  logger.debug({payload}, '[Webhook Processor] Processing Body:');
 
   const { run_id, status, progress, live_status, outputs, event_type } = payload;
 
@@ -29,6 +28,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
       const adapter = adapterRegistry.get(generation.serviceName);
       if (adapter && typeof adapter.parseWebhook === 'function') {
         const result = adapter.parseWebhook(payload);
+        logger.info({ runId: run_id, status: result.status, generationId: generation._id, userId: generation.masterAccountId }, '[Webhook] comfydeploy (adapter)');
 
         const updatePayload = {
           status: result.status,
@@ -51,7 +51,6 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
     return { success: false, statusCode: 400, error: "Missing required fields in webhook." };
   }
 
-  logger.debug(`[Webhook Processor Parsed] Event: ${event_type}, RunID: ${run_id}, Status: ${status}, Progress: ${progress ? (progress * 100).toFixed(1) + '%' : 'N/A'}, Live: ${live_status || 'N/A'}`);
 
   if (status === 'running' || status === 'queued' || status === 'started' || status === 'uploading') {
     const now = new Date().toISOString();
@@ -72,6 +71,10 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
 
     // Find the associated generation to get the user ID for real-time progress updates
     const generationRecordForProgress = await generationService.findByRunId(run_id).catch(() => null);
+
+    if (generationRecordForProgress) {
+      logger.info({ runId: run_id, status, liveStatus: live_status, progress: progress != null ? +(progress * 100).toFixed(1) : null, generationId: generationRecordForProgress._id, userId: generationRecordForProgress.masterAccountId }, '[Webhook] comfydeploy progress');
+    }
 
     if (generationRecordForProgress && websocketServer) {
         const collectionId = generationRecordForProgress.metadata?.collectionId || generationRecordForProgress.collectionId || null;
@@ -94,7 +97,6 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
   }
 
   if (status === 'success' || status === 'failed') {
-    logger.info(`[Webhook Processor Final State] RunID: ${run_id} finished with status: ${status}.`);
     const finalEventTimestamp = new Date().toISOString();
     const jobStartDetails = activeJobProgress.get(run_id);
     activeJobProgress.delete(run_id);
@@ -110,6 +112,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
       generationRecord = await generationService.findByRunId(run_id);
       if (generationRecord) {
         generationId = generationRecord._id;
+        logger.info({ runId: run_id, status, generationId, userId: generationRecord.masterAccountId }, '[Webhook] comfydeploy final');
 
         // Extract costRate from metadata before spell step check
         if (generationRecord.metadata) {
