@@ -232,6 +232,7 @@ async function startApp() {
             logger: services.logger,
             platformNotifiers: platformNotifiersMap,
             workflowExecutionService: services.workflowExecutionService,
+            spellService: services.spellService,
           },
           { /* Optional: pollingIntervalMs, etc. */ }
         );

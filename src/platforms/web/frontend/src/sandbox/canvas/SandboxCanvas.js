@@ -943,9 +943,24 @@ export class SandboxCanvas extends Component {
   }
 
   async _awaitSpellCompletion(windowId, castId, stepCount) {
+    let _stopProgressListener = null;
     try {
       if (!this._wsHandlers) await this._initWs();
       if (!this._wsHandlers?.castCompletionTracker) throw new Error('WS handlers not available');
+
+      // Subscribe to webhook-driven step progress (e.g. ComfyDeploy live_status)
+      if (this._wsClient) {
+        const handleStepProgress = (payload) => {
+          if (payload?.castId !== castId) return;
+          const parts = [];
+          if (payload.liveStatus) parts.push(payload.liveStatus);
+          else parts.push(payload.status === 'queued' ? 'Queued\u2026' : 'Running\u2026');
+          if (typeof payload.progress === 'number') parts.push(`${Math.round(payload.progress * 100)}%`);
+          this._updateWindow(windowId, { progress: parts.join(' ') });
+        };
+        this._wsClient.on('generationProgress', handleStepProgress);
+        _stopProgressListener = () => this._wsClient.off('generationProgress', handleStepProgress);
+      }
 
       const result = await this._wsHandlers.castCompletionTracker.register(
         castId,
@@ -960,6 +975,9 @@ export class SandboxCanvas extends Component {
         throw new Error(result.outputs?.error || 'Spell execution failed.');
       }
 
+      _stopProgressListener?.();
+      _stopProgressListener = null;
+
       const output = this._normalizeOutput({ ...(result || {}), generationId: castId });
       const win = this.state.windows.get(windowId);
       if (!win) return;
@@ -970,6 +988,7 @@ export class SandboxCanvas extends Component {
       });
       if (result?.costUsd) this._recordCost(windowId, result.costUsd);
     } catch (err) {
+      _stopProgressListener?.();
       this._updateWindow(windowId, { executing: false, error: err.message, progress: null });
     }
   }
@@ -1055,7 +1074,13 @@ export class SandboxCanvas extends Component {
         ...(w.costVersions?.length ? { costVersions: w.costVersions } : {}),
       };
       if (w.type === 'spell') {
-        return { ...base, isSpell: true, spell: { _id: w.spell?._id, name: w.spell?.name } };
+        return { ...base, isSpell: true, spell: {
+          _id: w.spell?._id,
+          name: w.spell?.name,
+          slug: w.spell?.slug,
+          exposedInputs: w.spell?.exposedInputs || [],
+          steps: (w.spell?.steps || []).map(s => ({ displayName: s.displayName || s.service || s.toolId, service: s.service })),
+        }};
       }
       if (w.type === 'collection') {
         return { ...base, type: 'collection', mode: w.mode, collection: { collectionId: w.collection?.collectionId, name: w.collection?.name } };

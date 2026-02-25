@@ -7,9 +7,9 @@
 const { retryWithBackoff } = require('../utils/RetryHandler');
 
 class CastManager {
-    constructor({ logger, internalApiClient }) {
+    constructor({ logger, spellService }) {
         this.logger = logger;
-        this.internalApiClient = internalApiClient;
+        this.spellService = spellService;
     }
 
     /**
@@ -18,8 +18,7 @@ class CastManager {
      * @returns {Promise<Object>} - Cast record
      */
     async getCast(castId) {
-        const castResponse = await this.internalApiClient.get(`/internal/v1/data/spells/casts/${castId}`);
-        return castResponse.data;
+        return this.spellService.getCast(castId);
     }
 
     /**
@@ -85,18 +84,17 @@ class CastManager {
         const costDelta = typeof costUsd === 'number' ? costUsd : 0;
         
         try {
-            await this.internalApiClient.put(`/internal/v1/data/spells/casts/${castId}`, {
+            await this.spellService.updateCast(castId, {
                 generationId: generationId.toString(),
                 costDeltaUsd: costDelta,
             });
             this.logger.debug(`[CastManager] Updated cast ${castId} with generation ${generationId} (costUsd=${costDelta}).`);
         } catch (err) {
             this.logger.error(`[CastManager] Failed to update cast ${castId}:`, err.message);
-            // Add retry logic for transient failures
             try {
                 await retryWithBackoff(
                     async () => {
-                        await this.internalApiClient.put(`/internal/v1/data/spells/casts/${castId}`, {
+                        await this.spellService.updateCast(castId, {
                             generationId: generationId.toString(),
                             costDeltaUsd: costDelta,
                         });
@@ -109,7 +107,6 @@ class CastManager {
                         },
                         onFailure: (error, attempts) => {
                             this.logger.error(`[CastManager] Failed to update cast ${castId} after ${attempts} retries:`, error.message);
-                            // Consider: emit metric or alert for manual reconciliation
                         }
                     }
                 );
@@ -128,9 +125,9 @@ class CastManager {
      */
     async updateCastStatusToFailed(castId, failureReason) {
         try {
-            await this.internalApiClient.put(`/internal/v1/data/spells/casts/${castId}`, {
+            await this.spellService.updateCast(castId, {
                 status: 'failed',
-                failureReason: failureReason,
+                failureReason,
                 failedAt: new Date(),
             });
             this.logger.info(`[CastManager] Updated cast ${castId} status to 'failed'`);
@@ -147,21 +144,14 @@ class CastManager {
      */
     async finalizeCast(castId) {
         try {
-            await this.internalApiClient.put(`/internal/v1/data/spells/casts/${castId}`, {
-                status: 'completed',
-                costDeltaUsd: '0' // Final cost is already summed up from steps
-            });
+            await this.spellService.updateCast(castId, { status: 'completed' });
             this.logger.info(`[CastManager] Finalized cast ${castId} with status 'completed'`);
         } catch (err) {
             this.logger.error(`[CastManager] Failed to finalize cast ${castId}:`, err.message);
-            // Add retry logic for final cast update
             try {
                 await retryWithBackoff(
                     async () => {
-                        await this.internalApiClient.put(`/internal/v1/data/spells/casts/${castId}`, {
-                            status: 'completed',
-                            costDeltaUsd: '0'
-                        });
+                        await this.spellService.updateCast(castId, { status: 'completed' });
                     },
                     {
                         maxAttempts: 3,

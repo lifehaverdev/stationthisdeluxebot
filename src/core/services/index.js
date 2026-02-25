@@ -48,6 +48,7 @@ const createCaptionTaskService = require('./CaptionTaskService');
 const createEmbellishmentTaskService = require('./EmbellishmentTaskService');
 // --- Spell Migration Service ---
 const { SpellMigrator } = require('./workflow/migrations');
+const { SpellService } = require('./store/spells/SpellService');
 
 /**
  * Initialize all core services
@@ -278,6 +279,11 @@ async function initializeServices(options = {}) {
     logger.debug('UserSettingsService initialized globally in core services.');
 
     // --- Initialize WorkflowExecutionService & SpellsService BEFORE API so they can be injected ---
+    const spellService = new SpellService({
+      castsDb: initializedDbServices.data.casts,
+      spellsDb: initializedDbServices.data.spells,
+      logger,
+    });
     const workflowExecutionService = new WorkflowExecutionService({
       logger,
       toolRegistry,
@@ -286,6 +292,7 @@ async function initializeServices(options = {}) {
       db: initializedDbServices.data,
       workflowsService: workflowsService,
       userSettingsService,
+      spellService,
     });
     // Initialize SpellMigrator for auto-healing spells when tool schemas change
     const spellMigrator = new SpellMigrator({
@@ -306,6 +313,17 @@ async function initializeServices(options = {}) {
     if (embellishmentTaskService && typeof embellishmentTaskService.setSpellsService === 'function') {
       embellishmentTaskService.setSpellsService(spellsService);
       logger.debug('[initializeServices] SpellsService injected into EmbellishmentTaskService.');
+    }
+
+    // Inject services into CookOrchestratorService (singleton with setters)
+    const CookOrchestratorService = require('./cook/CookOrchestratorService');
+    if (typeof CookOrchestratorService.setSpellService === 'function') {
+      CookOrchestratorService.setSpellService(spellService);
+      logger.debug('[initializeServices] SpellService injected into CookOrchestratorService.');
+    }
+    if (typeof CookOrchestratorService.setSpellsService === 'function') {
+      CookOrchestratorService.setSpellsService(spellsService);
+      logger.debug('[initializeServices] SpellsService injected into CookOrchestratorService.');
     }
 
     // Initialize Guest Account Services
@@ -459,6 +477,7 @@ async function initializeServices(options = {}) {
       longRunningApiClient, // <-- expose the long-running client for salt mining
       userSettingsService, // Added userSettingsService
       spellsService, // Added spellsService
+      spellService, // Cast + spell data service (Phase 3)
       workflowExecutionService, // Added workflowExecutionService
       storageService, // Add new service
       ethereumService: ethereumServices, // Add new service

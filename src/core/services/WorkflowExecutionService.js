@@ -29,7 +29,7 @@ const AdapterCoordinator = require('./workflow/adapters/AdapterCoordinator');
 const WorkflowNotifier = require('./workflow/notifications/WorkflowNotifier');
 
 class WorkflowExecutionService {
-    constructor({ logger, toolRegistry, comfyUIService, internalApiClient, db, workflowsService }) {
+    constructor({ logger, toolRegistry, comfyUIService, internalApiClient, db, workflowsService, spellService }) {
         this.logger = logger;
         this.toolRegistry = toolRegistry;
         this.internalApiClient = internalApiClient;
@@ -37,9 +37,9 @@ class WorkflowExecutionService {
         this.comfyuiService = comfyUIService;
         this.db = db;
         this.workflowsService = workflowsService;
-        
+
         // Initialize management services
-        this.castManager = new CastManager({ logger, internalApiClient });
+        this.castManager = new CastManager({ logger, spellService });
         this.generationRecordManager = new GenerationRecordManager({ logger, internalApiClient });
         this.costAggregator = new CostAggregator({ logger, internalApiClient });
         

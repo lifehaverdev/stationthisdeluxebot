@@ -123,7 +123,13 @@ function buildSnapshot() {
         parameterMappings: w.parameterMappings || {}
       };
       if (w.isSpell) {
-        return { ...base, isSpell: true, spell: { _id: w.spell._id, name: w.spell.name } };
+        return { ...base, isSpell: true, spell: {
+          _id: w.spell._id,
+          name: w.spell.name,
+          slug: w.spell.slug,
+          exposedInputs: w.spell.exposedInputs || [],
+          steps: (w.spell.steps || []).map(s => ({ displayName: s.displayName || s.service || s.toolId, service: s.service })),
+        }};
       }
       if (w.type === 'collection') {
         return { ...base, type: 'collection', mode: w.mode, collection: { collectionId: w.collection?.collectionId, name: w.collection?.name } };

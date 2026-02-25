@@ -16,6 +16,7 @@ class NotificationDispatcher {
     this.logger = services.logger;
     this.platformNotifiers = services.platformNotifiers || {};
     this.workflowExecutionService = services.workflowExecutionService;
+    this.spellService = services.spellService || null;
     
     if (!this.workflowExecutionService) {
       this.logger.warn('[NotificationDispatcher] workflowExecutionService is not provided. Spell execution will not work.');
@@ -235,11 +236,19 @@ class NotificationDispatcher {
         // Update cast status to failed if we have castId
         if (record.metadata?.castId) {
           try {
-            await this.internalApiClient.put(`/internal/v1/data/spells/casts/${record.metadata.castId}`, {
-              status: 'failed',
-              failureReason: `Spell continuation failed: ${error.message}`,
-              failedAt: new Date()
-            }, updateOptions);
+            if (this.spellService) {
+              await this.spellService.updateCast(record.metadata.castId, {
+                status: 'failed',
+                failureReason: `Spell continuation failed: ${error.message}`,
+                failedAt: new Date(),
+              });
+            } else {
+              await this.internalApiClient.put(`/internal/v1/data/spells/casts/${record.metadata.castId}`, {
+                status: 'failed',
+                failureReason: `Spell continuation failed: ${error.message}`,
+                failedAt: new Date()
+              }, updateOptions);
+            }
             this.logger.info(`[NotificationDispatcher] Updated cast ${record.metadata.castId} status to 'failed' due to continuation error`);
           } catch (castUpdateErr) {
             this.logger.error(`[NotificationDispatcher] Failed to update cast ${record.metadata.castId} status to failed:`, castUpdateErr.message);

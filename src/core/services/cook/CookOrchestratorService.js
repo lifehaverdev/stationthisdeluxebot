@@ -11,52 +11,71 @@ const IMMEDIATE_SUBMIT = true;
 const ENABLE_VERBOSE_SUBMIT_LOGS = false;
 
 // Helper: submit either a tool execute or spell cast based on spellId
-async function submitPiece({ spellId, submission }) {
+// orchestratorInstance is the CookOrchestratorService singleton, passed so we can access injected services
+async function submitPiece({ spellId, submission }, orchestratorInstance) {
   if (spellId) {
     // Build spell cast payload from submission
     const { inputs, user, metadata } = submission;
+    const initiatorAccountId = user.masterAccountId || user.userId || user.id;
 
     // Ensure we have a castId so downstream websocket packets can be routed.
     let castId;
-    let retries = 3;
-    while (retries > 0 && !castId) {
-      try {
-        const res = await internalApiClient.post(
-          '/internal/v1/data/spells/casts',
-          { spellId, initiatorAccountId: user.masterAccountId || user.userId || user.id },
-          { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } }
-        );
-        castId = res.data?._id?.toString() || res.data?.id;
-        if (castId) break; // Success
-      } catch (err) {
-        retries--;
-        if (retries === 0) {
-          // CRITICAL: Fail fast instead of using invalid fallback
-          throw new Error(`Failed to create cast record after 3 retries: ${err.message}`);
+
+    if (orchestratorInstance?.spellService) {
+      // In-process path: use SpellService directly
+      let retries = 3;
+      while (retries > 0 && !castId) {
+        try {
+          const cast = await orchestratorInstance.spellService.createCast({ spellId, initiatorAccountId });
+          castId = cast._id?.toString();
+          if (castId) break;
+        } catch (err) {
+          retries--;
+          if (retries === 0) throw new Error(`Failed to create cast record after 3 retries: ${err.message}`);
+          await new Promise(r => setTimeout(r, 1000 * (4 - retries)));
         }
-        // Wait before retry with exponential backoff
-        await new Promise(r => setTimeout(r, 1000 * (4 - retries)));
+      }
+    } else {
+      // Fallback: HTTP path
+      let retries = 3;
+      while (retries > 0 && !castId) {
+        try {
+          const res = await internalApiClient.post(
+            '/internal/v1/data/spells/casts',
+            { spellId, initiatorAccountId },
+            { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } }
+          );
+          castId = res.data?._id?.toString() || res.data?.id;
+          if (castId) break;
+        } catch (err) {
+          retries--;
+          if (retries === 0) throw new Error(`Failed to create cast record after 3 retries: ${err.message}`);
+          await new Promise(r => setTimeout(r, 1000 * (4 - retries)));
+        }
       }
     }
-    
-    if (!castId) {
-      throw new Error('Failed to create cast record: No castId returned after retries');
-    }
+
+    if (!castId) throw new Error('Failed to create cast record: No castId returned after retries');
 
     const cleanMeta = { ...metadata };
     delete cleanMeta.castId; // ensure no stale or duplicate castId
 
-    return internalApiClient.post('/internal/v1/data/spells/cast', {
-      slug: spellId,
-      context: {
-        masterAccountId: user.masterAccountId || user.userId || user.id,
-        platform: 'cook',
-        parameterOverrides: inputs,
-        cookId: metadata.cookId, // preserve cookId if present
-        castId,
-        ...cleanMeta,
-      },
-    });
+    const context = {
+      masterAccountId: initiatorAccountId,
+      platform: 'cook',
+      parameterOverrides: inputs,
+      cookId: metadata.cookId,
+      castId,
+      ...cleanMeta,
+    };
+
+    if (orchestratorInstance?.spellsService) {
+      // In-process path: use SpellsService directly
+      return orchestratorInstance.spellsService.castSpell(spellId, context);
+    }
+
+    // Fallback: HTTP path
+    return internalApiClient.post('/internal/v1/data/spells/cast', { slug: spellId, context });
   }
   // Tool path
   return internalApiClient.post('/internal/v1/data/execute', submission);
@@ -82,6 +101,16 @@ class CookOrchestratorService {
   setWebSocketService(webSocketService) {
     this.webSocketService = webSocketService;
     this.logger.debug('[CookOrchestrator] WebSocket service configured');
+  }
+
+  setSpellService(spellService) {
+    this.spellService = spellService;
+    this.logger.debug('[CookOrchestrator] SpellService configured');
+  }
+
+  setSpellsService(spellsService) {
+    this.spellsService = spellsService;
+    this.logger.debug('[CookOrchestrator] SpellsService configured');
   }
 
   async _init() {
@@ -495,7 +524,7 @@ class CookOrchestratorService {
           // Build submission payload directly without waiting for any watcher
           const submission = enq.submission;
           if (ENABLE_VERBOSE_SUBMIT_LOGS) this.logger.debug(`[CookOrchestrator] Immediate submit for job ${enqueuedJobId} (tool ${submission.toolId})`);
-          const resp = await submitPiece({ spellId: spellId, submission });
+          const resp = await submitPiece({ spellId: spellId, submission }, this);
           this.logger.info(`[Cook] Submitted piece. job=${enqueuedJobId} resp=${resp?.status || 'ok'}`);
 
               state.running.add(String(enqueuedJobId));
@@ -901,7 +930,7 @@ class CookOrchestratorService {
 
       // Immediate submit for newly queued pieces
       try {
-        const resp = await submitPiece({ spellId: state.spellId, submission: enq.submission });
+        const resp = await submitPiece({ spellId: state.spellId, submission: enq.submission }, this);
         this.logger.info(`[Cook] Submitted piece. job=${enq.jobId} resp=${resp?.status || 'ok'}`);
 
           // ✅ FIX: Only add to running set AFTER successful submit
