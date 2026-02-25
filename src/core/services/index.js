@@ -51,6 +51,7 @@ const { SpellMigrator } = require('./workflow/migrations');
 const { SpellService } = require('./store/spells/SpellService');
 const { UserService } = require('./store/users/UserService');
 const { CookService } = require('./store/cook/CookService');
+const { LoraService } = require('./store/lora/LoraService');
 
 /**
  * Initialize all core services
@@ -295,6 +296,13 @@ async function initializeServices(options = {}) {
       logger,
     });
 
+    // --- Initialize LoraService for in-process trigger map data (Phase 6a) ---
+    const loraService = new LoraService({
+      loraModelsDb: initializedDbServices.data.loraModels,
+      loraPermissionsDb: initializedDbServices.data.loraPermissions,
+      logger,
+    });
+
     // --- Initialize WorkflowExecutionService & SpellsService BEFORE API so they can be injected ---
     const spellService = new SpellService({
       castsDb: initializedDbServices.data.casts,
@@ -501,6 +509,7 @@ async function initializeServices(options = {}) {
       userService, // User find/create/lookup service (Phase 4)
       spellService, // Cast + spell data service (Phase 3)
       cookService, // Cook record update service (Phase 5)
+      loraService, // LoRA trigger map service (Phase 6a)
       workflowExecutionService, // Added workflowExecutionService
       storageService, // Add new service
       ethereumService: ethereumServices, // Add new service

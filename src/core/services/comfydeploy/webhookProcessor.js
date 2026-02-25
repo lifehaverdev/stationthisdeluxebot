@@ -72,10 +72,6 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
     // Find the associated generation to get the user ID for real-time progress updates
     const generationRecordForProgress = await generationService.findByRunId(run_id).catch(() => null);
 
-    if (generationRecordForProgress) {
-      logger.info('[Webhook] comfydeploy progress', { runId: run_id, status, liveStatus: live_status, progress: progress != null ? +(progress * 100).toFixed(1) : null, generationId: generationRecordForProgress._id, userId: generationRecordForProgress.masterAccountId });
-    }
-
     if (generationRecordForProgress && websocketServer) {
         const collectionId = generationRecordForProgress.metadata?.collectionId || generationRecordForProgress.collectionId || null;
         websocketServer.sendToUser(generationRecordForProgress.masterAccountId, {

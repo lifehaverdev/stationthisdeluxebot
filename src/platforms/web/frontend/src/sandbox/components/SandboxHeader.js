@@ -3,6 +3,7 @@ import { AccountDropdown } from './AccountDropdown.js';
 import { SpellsModal } from './SpellsModal.js';
 import { CookModal } from './CookModal.js';
 import { ModsModal } from './ModsModal.js';
+import { CollectionReviewModal } from './CollectionReviewModal.js';
 import { getLandingUrl } from '../../lib/urls.js';
 
 /**
@@ -14,13 +15,17 @@ import { getLandingUrl } from '../../lib/urls.js';
 export class SandboxHeader extends Component {
   constructor(props) {
     super(props);
-    this.state = { mobileOpen: false, showSpells: false, spellSubgraph: null, showCook: false, showMods: false };
+    this.state = { mobileOpen: false, showSpells: false, spellSubgraph: null, showCook: false, showMods: false, showReview: false, reviewCollection: null };
   }
 
   didMount() {
     // Listen for MintSpellFAB opening the spells modal with a subgraph
     this.subscribe('openSpellsModal', (data) => {
       this.setState({ showSpells: true, spellSubgraph: data?.subgraph || null });
+    });
+    // Listen for CookModal opening a collection review window
+    this.subscribe('openCollectionReview', ({ collection }) => {
+      this.setState({ showReview: true, reviewCollection: collection });
     });
   }
 
@@ -118,7 +123,7 @@ export class SandboxHeader extends Component {
   }
 
   render() {
-    const { showSpells, showCook, showMods } = this.state;
+    const { showSpells, showCook, showMods, showReview, reviewCollection } = this.state;
 
     return h('header', { className: 'sh-root sandbox-header' },
       h('a', { href: getLandingUrl(), target: '_blank', rel: 'noopener noreferrer', className: 'sh-wordmark' }, 'NOEMA'),
@@ -139,6 +144,10 @@ export class SandboxHeader extends Component {
       }) : null,
       showMods ? h(ModsModal, {
         onClose: () => this.setState({ showMods: false }),
+      }) : null,
+      showReview ? h(CollectionReviewModal, {
+        collection: reviewCollection,
+        onClose: () => this.setState({ showReview: false, reviewCollection: null }),
       }) : null
     );
   }

@@ -1,4 +1,4 @@
-import { Component, h } from '@monygroupcorp/microact';
+import { Component, h, eventBus } from '@monygroupcorp/microact';
 import { Modal, Loader, ModalError } from './Modal.js';
 import { AsyncButton, EmptyState, ConfirmInline, TabBar, Badge } from './ModalKit.js';
 import { fetchJson, postWithCsrf, fetchWithCsrf } from '../../lib/api.js';
@@ -79,9 +79,6 @@ export class CookModal extends Component {
     this._wsProgressHandler = null;
     this._wsUpdateHandler = null;
     this._pollInterval = null;
-
-    // Cross-module bridge
-    this._createCollectionReviewWindow = null;
 
     // Fetch dedup
     this._fetchActivePromise = null;
@@ -559,9 +556,9 @@ export class CookModal extends Component {
 
   _openReview(collectionId) {
     const collection = this.state.collections.find(c => c.collectionId === collectionId);
-    if (collection && this._createCollectionReviewWindow) {
+    if (collection) {
       this.props.onClose?.();
-      this._createCollectionReviewWindow(collection);
+      eventBus.emit('openCollectionReview', { collection });
     }
   }
 

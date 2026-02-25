@@ -1,43 +1,40 @@
 // src/core/services/loraResolutionService.js
 
+const { loraService } = require('./store/lora/LoraService');
+
 const USER_CACHE_TTL = 5 * 60 * 1000; // 5 minutes in milliseconds
 
-// Cache structure: Map<masterAccountId_or_\"public\", { data: Map<triggerKey, LoRAInfo[]>, timestamp: number }>
-const triggerMapCache = new Map(); 
+// Cache structure: Map<masterAccountId_or_"public", { data: Map<triggerKey, LoRAInfo[]>, timestamp: number }>
+const triggerMapCache = new Map();
 const logger = console; // Replace with a proper logger instance if available
 
 /**
- * Fetches the trigger map from the internal API and caches it.
+ * Fetches the trigger map from LoraService and caches it as a Map.
  * @param {string} [masterAccountId] - Optional user ID for permission-aware map.
- * @param {string} [toolBaseModel] - Optional tool base model for filtering.
  * @returns {Promise<Map<string, any[]>>} - The trigger map.
  * @private
  */
-async function _fetchAndCacheTriggerMap(internalApiClient, masterAccountId, toolBaseModel) {
+async function _fetchAndCacheTriggerMap(masterAccountId) {
   const cacheKey = masterAccountId || 'public';
-  let apiUrl = masterAccountId ? `/internal/v1/data/lora/trigger-map-data?userId=${masterAccountId}` : '/internal/v1/data/lora/trigger-map-data';
-  if (toolBaseModel) {
-    apiUrl += (apiUrl.includes('?') ? '&' : '?') + `baseModelType=${toolBaseModel}`;
-  }
-  
-  try {
-    const response = await internalApiClient.get(apiUrl);
 
-    if (!response || !response.data || typeof response.data !== 'object') {
-      logger.error(`[LoRAResolutionService] Invalid API response structure for trigger map. User: ${cacheKey}. Response:`, response);
+  try {
+    const triggerMapData = await loraService.getTriggerMapData(masterAccountId || null);
+
+    if (!triggerMapData || typeof triggerMapData !== 'object') {
+      logger.error(`[LoRAResolutionService] Invalid trigger map data from LoraService. User: ${cacheKey}.`);
       const existingCached = triggerMapCache.get(cacheKey);
       return existingCached ? existingCached.data : new Map();
     }
 
     const newMap = new Map();
-    for (const [key, loraList] of Object.entries(response.data)) {
+    for (const [key, loraList] of Object.entries(triggerMapData)) {
       newMap.set(key.toLowerCase(), loraList);
     }
-    
+
     triggerMapCache.set(cacheKey, { data: newMap, timestamp: Date.now() });
     return newMap;
   } catch (error) {
-    logger.error(`[LoRAResolutionService] Error fetching trigger map from API for ${cacheKey}: ${error.message}`, error.stack);
+    logger.error(`[LoRAResolutionService] Error fetching trigger map from LoraService for ${cacheKey}: ${error.message}`, error.stack);
     const existingCached = triggerMapCache.get(cacheKey);
     if (existingCached) {
         logger.warn(`[LoRAResolutionService] Returning stale cache for ${cacheKey} due to fetch error.`);
@@ -50,19 +47,18 @@ async function _fetchAndCacheTriggerMap(internalApiClient, masterAccountId, tool
 /**
  * Retrieves the trigger map, utilizing cache or fetching if stale/absent.
  * @param {string} [masterAccountId] - Optional user ID.
- * @param {string} [toolBaseModel] - Optional tool base model for filtering.
  * @returns {Promise<Map<string, any[]>>} - The trigger map.
  * @private
  */
-async function _getTriggerMap(internalApiClient, masterAccountId, toolBaseModel) {
+async function _getTriggerMap(masterAccountId) {
   const cacheKey = masterAccountId || 'public';
   const cachedEntry = triggerMapCache.get(cacheKey);
 
   if (cachedEntry && (Date.now() - cachedEntry.timestamp < USER_CACHE_TTL)) {
     return cachedEntry.data;
   }
-  
-  return _fetchAndCacheTriggerMap(internalApiClient, masterAccountId, toolBaseModel);
+
+  return _fetchAndCacheTriggerMap(masterAccountId);
 }
 
 // Regex to find <lora:slug:weight> tags
@@ -84,16 +80,11 @@ const SPLIT_KEEP_DELIMITERS_REGEX = /(\s+|[.,!?()[\]{}\'\"]+)/g;
  */
 async function resolveLoraTriggers(promptString, masterAccountId, toolBaseModel, dependencies) {
   const rawPrompt = promptString;
-  const internalApiClient = dependencies && dependencies.internal ? dependencies.internal.client : null;
-  if(!internalApiClient){
-      logger.warn('[LoRAResolutionService] Missing internalApiClient dependency, skipping LoRA resolution.');
-      return { modifiedPrompt: rawPrompt, rawPrompt, appliedLoras: [], warnings: ['LoRA resolution skipped due to internal error'] };
-  }
   const appliedLoras = [];
   const warnings = [];
   const lorasAppliedThisRun = new Set(); // Tracks slugs of LoRAs applied in this run
 
-  const triggerMap = await _getTriggerMap(internalApiClient, masterAccountId, toolBaseModel);
+  const triggerMap = await _getTriggerMap(masterAccountId);
 
   if (!triggerMap || triggerMap.size === 0) {
     return { modifiedPrompt: rawPrompt, rawPrompt, appliedLoras, warnings };
