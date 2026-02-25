@@ -71,7 +71,7 @@ module.exports = require('pino-http')({
     }
 
     // Silence comfydeploy webhook access log — the processor emits its own structured log
-    if (req.url && req.url.includes('/webhook/comfydeploy')) {
+    if (req.originalUrl && req.originalUrl.includes('/webhook/comfydeploy')) {
       return 'silent';
     }
 

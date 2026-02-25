@@ -28,7 +28,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
       const adapter = adapterRegistry.get(generation.serviceName);
       if (adapter && typeof adapter.parseWebhook === 'function') {
         const result = adapter.parseWebhook(payload);
-        logger.info({ runId: run_id, status: result.status, generationId: generation._id, userId: generation.masterAccountId }, '[Webhook] comfydeploy (adapter)');
+        logger.info('[Webhook] comfydeploy (adapter)', { runId: run_id, status: result.status, generationId: generation._id, userId: generation.masterAccountId });
 
         const updatePayload = {
           status: result.status,
@@ -73,7 +73,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
     const generationRecordForProgress = await generationService.findByRunId(run_id).catch(() => null);
 
     if (generationRecordForProgress) {
-      logger.info({ runId: run_id, status, liveStatus: live_status, progress: progress != null ? +(progress * 100).toFixed(1) : null, generationId: generationRecordForProgress._id, userId: generationRecordForProgress.masterAccountId }, '[Webhook] comfydeploy progress');
+      logger.info('[Webhook] comfydeploy progress', { runId: run_id, status, liveStatus: live_status, progress: progress != null ? +(progress * 100).toFixed(1) : null, generationId: generationRecordForProgress._id, userId: generationRecordForProgress.masterAccountId });
     }
 
     if (generationRecordForProgress && websocketServer) {
@@ -112,7 +112,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
       generationRecord = await generationService.findByRunId(run_id);
       if (generationRecord) {
         generationId = generationRecord._id;
-        logger.info({ runId: run_id, status, generationId, userId: generationRecord.masterAccountId }, '[Webhook] comfydeploy final');
+        logger.info('[Webhook] comfydeploy final', { runId: run_id, status, generationId, userId: generationRecord.masterAccountId });
 
         // Extract costRate from metadata before spell step check
         if (generationRecord.metadata) {

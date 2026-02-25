@@ -419,6 +419,7 @@ export class CookModal extends Component {
         overviewDirty: false, pendingDescription: null, pendingSupply: null, pendingParamOverrides: {},
       });
       await this._fetchCollections();
+      await this._loadParamOptions();
     } catch (err) {
       this.setState({ loading: false, error: err.message });
     }

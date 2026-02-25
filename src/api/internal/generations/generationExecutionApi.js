@@ -255,6 +255,23 @@ module.exports = function generationExecutionApi(dependencies) {
       const service = tool.service;
       logger.debug(`[Execute] Routing tool '${toolId}' to service: '${service}'`);
 
+      // --- Pre-routing LoRA Resolution (runs before adapter paths so both paths get resolved prompts) ---
+      let resolvedInputs = { ...inputs };
+      if (service === 'comfyui' && tool.metadata?.hasLoraLoader) {
+        const promptInputKey = tool.metadata?.telegramPromptInputKey || 'input_prompt';
+        if (resolvedInputs[promptInputKey]) {
+          const { masterAccountId } = user;
+          logger.debug(`[Execute] Pre-routing LoRA resolution for tool '${toolId}'.`);
+          const { modifiedPrompt } = await loraResolutionService.resolveLoraTriggers(
+            resolvedInputs[promptInputKey],
+            masterAccountId,
+            tool.metadata.baseModel,
+            { ...dependencies, internal: { client: internalApiClient } }
+          );
+          resolvedInputs[promptInputKey] = modifiedPrompt;
+        }
+      }
+
       /* ---------------------------------------------------------------
        * 🌟 Adapter-based execution path (new architecture)            
        * -------------------------------------------------------------
@@ -279,7 +296,7 @@ module.exports = function generationExecutionApi(dependencies) {
         try {
           const execInputs = {
              ...(tool.metadata?.defaultAdapterParams || {}),
-             ...inputs,
+             ...resolvedInputs,
              // Pass costTable for DALL-E tools so adapter can calculate actual cost
              ...(tool.metadata?.costTable && { costTable: tool.metadata.costTable })
           };
@@ -397,7 +414,7 @@ module.exports = function generationExecutionApi(dependencies) {
         try {
           const jobInputs = {
              ...(tool.metadata?.defaultAdapterParams || {}),
-             ...inputs,
+             ...resolvedInputs,
              // Pass costTable for DALL-E tools so adapter can calculate actual cost
              ...(tool.metadata?.costTable && { costTable: tool.metadata.costTable })
           };
