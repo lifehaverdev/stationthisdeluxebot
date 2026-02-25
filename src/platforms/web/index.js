@@ -170,7 +170,7 @@ function initializeWebPlatform(services, options = {}) {
       // ERC-8004 Agent Card (/.well-known/agent-card.json)
       const agentCardRouter = createAgentCardRouter({
         toolRegistry: services.toolRegistry,
-        internalApiClient: services.internalApiClient
+        loraService: services.loraService
       });
       if (agentCardRouter) {
         app.use('/.well-known/agent-card.json', agentCardRouter);
@@ -180,7 +180,7 @@ function initializeWebPlatform(services, options = {}) {
       // AI Skill files and OpenAPI spec (/.well-known/ai-skill.md, /.well-known/openapi.json, etc.)
       const skillRouter = createSkillRouter({
         toolRegistry: services.toolRegistry,
-        internalApiClient: services.internalApiClient
+        loraService: services.loraService
       });
       if (skillRouter) {
         app.use('/.well-known', skillRouter);

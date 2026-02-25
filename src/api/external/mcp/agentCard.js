@@ -23,7 +23,7 @@ const ERC8004_CONFIG = {
  * @returns {express.Router}
  */
 function createAgentCardRouter(dependencies) {
-  const { toolRegistry, internalApiClient } = dependencies;
+  const { toolRegistry, loraService } = dependencies;
   const router = express.Router();
 
   /**
@@ -34,7 +34,7 @@ function createAgentCardRouter(dependencies) {
     try {
       // Get live tool data
       const { tools, categories } = getToolData(toolRegistry);
-      const loraCount = await getLoraCount(internalApiClient);
+      const loraCount = await getLoraCount(loraService);
 
       const agentCard = {
         // Required ERC-8004 fields
@@ -174,14 +174,12 @@ function getToolData(toolRegistry) {
 /**
  * Get count of available LoRAs
  */
-async function getLoraCount(internalApiClient) {
-  if (!internalApiClient) return 0;
+async function getLoraCount(loraService) {
+  if (!loraService) return 0;
 
   try {
-    const response = await internalApiClient.get('/internal/v1/data/loras/list', {
-      params: { limit: 1, page: 1 }
-    });
-    return response.data.pagination?.totalLoras || 0;
+    const result = await loraService.listLoras({ limit: 1, page: 1 });
+    return result.pagination?.totalLoras || 0;
   } catch (error) {
     logger.error('[AgentCard] Error counting LoRAs:', error);
     return 0;

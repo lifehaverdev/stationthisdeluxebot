@@ -22,7 +22,7 @@ const SKILL_DOCS_PATH = path.join(__dirname, '../../../../docs/agent_usability/c
  * @returns {express.Router}
  */
 function createSkillRouter(dependencies) {
-  const { toolRegistry, internalApiClient } = dependencies;
+  const { toolRegistry, loraService } = dependencies;
   const router = express.Router();
 
   /**
@@ -138,7 +138,7 @@ function createSkillRouter(dependencies) {
    */
   router.get('/openapi.json', async (req, res) => {
     try {
-      const spec = await generateOpenApiSpec(toolRegistry, internalApiClient);
+      const spec = await generateOpenApiSpec(toolRegistry, loraService);
       res.setHeader('Content-Type', 'application/json');
       res.setHeader('Cache-Control', 'public, max-age=300');
       res.json(spec);
@@ -156,18 +156,16 @@ function createSkillRouter(dependencies) {
 /**
  * Generate OpenAPI 3.0 spec from toolRegistry
  */
-async function generateOpenApiSpec(toolRegistry, internalApiClient) {
+async function generateOpenApiSpec(toolRegistry, loraService) {
   const allTools = toolRegistry ? toolRegistry.getAllTools() : [];
   const publicTools = filterToolsForMcp(allTools);
 
   // Get LoRA count for description
   let loraCount = 0;
   try {
-    if (internalApiClient) {
-      const response = await internalApiClient.get('/internal/v1/data/loras/list', {
-        params: { limit: 1, page: 1 }
-      });
-      loraCount = response.data.pagination?.totalLoras || 0;
+    if (loraService) {
+      const result = await loraService.listLoras({ limit: 1, page: 1 });
+      loraCount = result.pagination?.totalLoras || 0;
     }
   } catch (e) {
     // Ignore

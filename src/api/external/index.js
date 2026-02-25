@@ -273,7 +273,8 @@ function initializeExternalApi(dependencies) {
   // Mount the MCP API router (Model Context Protocol - Public discovery, auth for execution)
   const mcpRouter = createMcpRouter({
     toolRegistry: dependencies.toolRegistry,
-    internalApiClient: dependencies.internalApiClient || internalApiClient
+    internalApiClient: dependencies.internalApiClient || internalApiClient,
+    loraService: dependencies.loraService
   });
   if (mcpRouter) {
     externalApiRouter.use('/mcp', mcpRouter);

@@ -20,7 +20,7 @@ const logger = createLogger('McpServer');
  * @returns {McpServer} Configured MCP server
  */
 function createMcpServer(dependencies) {
-  const { toolRegistry, internalApiClient } = dependencies;
+  const { toolRegistry, internalApiClient, loraService } = dependencies;
 
   const server = new McpServer({
     name: 'noema',
@@ -62,16 +62,14 @@ function createMcpServer(dependencies) {
       const checkpoint = url.searchParams.get('checkpoint') || '';
 
       try {
-        const response = await internalApiClient.get('/internal/v1/data/loras', {
-          params: {
-            q: query,
-            checkpoint: checkpoint || undefined,
-            limit: 20,
-            includeHidden: false
-          }
+        if (!loraService) throw new Error('loraService unavailable');
+        const result = await loraService.listLoras({
+          q: query || undefined,
+          checkpoint: checkpoint || undefined,
+          limit: 20,
         });
 
-        const loras = response.data.loras || response.data || [];
+        const loras = result.loras || [];
 
         return {
           contents: [{
@@ -88,7 +86,7 @@ function createMcpServer(dependencies) {
                 description: lora.description,
                 defaultWeight: lora.defaultWeight || 1.0
               })),
-              total: response.data.total || loras.length
+              total: result.pagination?.totalLoras || loras.length
             }, null, 2)
           }]
         };

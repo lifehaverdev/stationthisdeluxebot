@@ -18,7 +18,7 @@ const logger = createLogger('McpRouter');
  * @returns {express.Router} Configured router
  */
 function createMcpRouter(dependencies) {
-  const { toolRegistry, internalApiClient } = dependencies;
+  const { toolRegistry, internalApiClient, loraService } = dependencies;
 
   if (!toolRegistry) {
     logger.error('[MCP] toolRegistry dependency missing');
@@ -103,7 +103,7 @@ function createMcpRouter(dependencies) {
     logger.info(`[MCP] ${method}`, { id, hasApiKey: !!apiKey });
 
     try {
-      const result = await handleMethod(method, params, { apiKey, toolRegistry, internalApiClient, baseUrl });
+      const result = await handleMethod(method, params, { apiKey, toolRegistry, internalApiClient, loraService, baseUrl });
       res.json({ jsonrpc: '2.0', result, id });
     } catch (error) {
       logger.error(`[MCP] Error in ${method}:`, error.message);
@@ -126,7 +126,7 @@ function createMcpRouter(dependencies) {
  * Handle MCP JSON-RPC methods
  */
 async function handleMethod(method, params, context) {
-  const { apiKey, toolRegistry, internalApiClient, baseUrl } = context;
+  const { apiKey, toolRegistry, internalApiClient, loraService, baseUrl } = context;
 
   switch (method) {
     // ============================================
@@ -173,10 +173,10 @@ async function handleMethod(method, params, context) {
     // Resources (LoRAs)
     // ============================================
     case 'resources/list':
-      return await listResources(params, internalApiClient);
+      return await listResources(params, loraService);
 
     case 'resources/read':
-      return await readResource(params, internalApiClient);
+      return await readResource(params, loraService);
 
     case 'resources/templates/list':
       return {
@@ -579,21 +579,20 @@ async function executeToolCall(params, apiKey, internalApiClient, baseUrl, toolR
 /**
  * List LoRA resources
  */
-async function listResources(params, internalApiClient) {
+async function listResources(params, loraService) {
   const cursor = params?.cursor;
   const limit = 50;
   const page = cursor ? Math.floor(parseInt(cursor, 10) / limit) + 1 : 1;
 
   try {
-    const response = await internalApiClient.get('/internal/v1/data/loras/list', {
-      params: { limit, page }
-    });
+    if (!loraService) return { resources: [] };
+    const result = await loraService.listLoras({ limit, page });
 
-    const loras = response.data.loras || [];
-    const total = response.data.pagination?.totalLoras || loras.length;
+    const loras = result.loras || [];
+    const total = result.pagination?.totalLoras || loras.length;
 
     const resources = loras.map(lora => ({
-      uri: `noema://lora/${lora.slug || lora.id}`,
+      uri: `noema://lora/${lora.slug || lora._id}`,
       name: lora.name,
       description: `${lora.description || ''} | Triggers: ${(lora.triggerWords || []).join(', ')} | Checkpoint: ${lora.checkpoint}`,
       mimeType: 'application/json'
@@ -613,8 +612,10 @@ async function listResources(params, internalApiClient) {
 /**
  * Read a specific LoRA resource
  */
-async function readResource(params, internalApiClient) {
+async function readResource(params, loraService) {
   const { uri } = params;
+
+  if (!loraService) throw new Error('loraService unavailable');
 
   // Handle search URI
   if (uri.startsWith('noema://lora/search')) {
@@ -622,11 +623,8 @@ async function readResource(params, internalApiClient) {
     const query = url.searchParams.get('q') || '';
     const checkpoint = url.searchParams.get('checkpoint') || '';
 
-    const response = await internalApiClient.get('/internal/v1/data/loras/list', {
-      params: { q: query, checkpoint: checkpoint || undefined, limit: 20 }
-    });
-
-    const loras = response.data.loras || [];
+    const result = await loraService.listLoras({ q: query || undefined, checkpoint: checkpoint || undefined, limit: 20 });
+    const loras = result.loras || [];
 
     return {
       contents: [{
@@ -654,8 +652,8 @@ async function readResource(params, internalApiClient) {
   }
 
   const slug = match[1];
-  const response = await internalApiClient.get(`/internal/v1/data/loras/${slug}`);
-  const lora = response.data;
+  const lora = await loraService.getById(slug);
+  if (!lora) throw new Error(`LoRA not found: ${slug}`);
 
   return {
     contents: [{
