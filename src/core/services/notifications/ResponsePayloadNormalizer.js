@@ -225,14 +225,34 @@ class ResponsePayloadNormalizer {
         return this.normalize(responsePayload.outputs, options);
       }
 
-      // Format 11: ComfyUI format - object with node IDs as keys and arrays of URLs as values
+      // Format 11: ComfyDeploy node output format - object with node IDs as keys and node result objects
+      // Example: { "20": { "node_meta": { "node_id": "20" }, "id": "...", "data": { "images": [...] } } }
+      else if (typeof responsePayload === 'object' && !Array.isArray(responsePayload) &&
+               Object.values(responsePayload).some(v => v && typeof v === 'object' && v.data && v.node_meta)) {
+        logger.debug('[ResponsePayloadNormalizer] Detected ComfyDeploy node output format, extracting images');
+        const images = [];
+        for (const node of Object.values(responsePayload)) {
+          if (node && node.data && Array.isArray(node.data.images)) {
+            for (const img of node.data.images) {
+              if (img && img.url) images.push(img);
+              else if (typeof img === 'string') images.push({ url: img });
+            }
+          }
+        }
+        if (images.length > 0) {
+          normalized.push({ type: 'image', data: { images } });
+          return normalized;
+        }
+      }
+
+      // Format 12: ComfyUI format - object with node IDs as keys and arrays of URLs as values
       // Example: { "3": ["https://...image.png"], "4": ["https://...image2.png"] }
       else if (typeof responsePayload === 'object' && !Array.isArray(responsePayload)) {
         const keys = Object.keys(responsePayload);
         // Check if this looks like ComfyUI output format (numeric keys with URL arrays)
         const isComfyUIFormat = keys.length > 0 && keys.every(key => {
           const value = responsePayload[key];
-          return Array.isArray(value) && value.every(item => 
+          return Array.isArray(value) && value.every(item =>
             typeof item === 'string' && (item.startsWith('http://') || item.startsWith('https://'))
           );
         });

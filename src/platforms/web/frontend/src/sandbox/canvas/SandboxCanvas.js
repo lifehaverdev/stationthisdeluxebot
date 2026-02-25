@@ -991,6 +991,26 @@ export class SandboxCanvas extends Component {
     // Handle { type: 'image', data: { images: [{ url }] } } — immediate adapter path with R2 URL
     if (outputs.type === 'image' && Array.isArray(outputs.data?.images) && outputs.data.images[0]?.url)
       return { type: 'image', url: outputs.data.images[0].url, generationId: gid };
+    // Handle normalized array format from ResponsePayloadNormalizer: [{ type, data }]
+    if (Array.isArray(outputs)) {
+      for (const item of outputs) {
+        if (item.type === 'image' && Array.isArray(item.data?.images) && item.data.images[0]?.url)
+          return { type: 'image', url: item.data.images[0].url, generationId: gid };
+        if (item.type === 'text' && item.data?.text) {
+          const txt = Array.isArray(item.data.text) ? item.data.text[0] : item.data.text;
+          if (txt) return { type: 'text', text: txt, generationId: gid };
+        }
+      }
+    }
+    // Handle raw ComfyDeploy node output: { "nodeId": { node_meta, data: { images: [...] } } }
+    if (typeof outputs === 'object' && !Array.isArray(outputs)) {
+      for (const node of Object.values(outputs)) {
+        if (node && typeof node === 'object' && node.data) {
+          if (Array.isArray(node.data.images) && node.data.images[0]?.url)
+            return { type: 'image', url: node.data.images[0].url, generationId: gid };
+        }
+      }
+    }
     return { type: 'unknown', generationId: gid, ...outputs };
   }
 

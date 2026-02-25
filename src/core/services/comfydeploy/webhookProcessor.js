@@ -5,6 +5,7 @@ const { CookOrchestratorService } = require('../cook');
 const adapterRegistry = require('../adapterRegistry');
 const { getPricingService } = require('../pricing');
 const { generationService } = require('../store/generations/GenerationService');
+const ResponsePayloadNormalizer = require('../notifications/ResponsePayloadNormalizer');
 
 // Temporary in-memory cache for live progress (can be managed within this module)
 const activeJobProgress = new Map();
@@ -265,13 +266,16 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
     if (websocketServer && generationRecord) {
         logger.debug(`[Webhook Processor] Sending final WebSocket update for generation ${generationId}.`);
         const collectionId = generationRecord.metadata?.collectionId || generationRecord.collectionId || null;
+        // Normalize responsePayload to consistent web format (same as WebSandboxNotifier)
+        const normalizedForWs = ResponsePayloadNormalizer.normalize(updatePayload.responsePayload, { logger });
+        const wsOutputs = ResponsePayloadNormalizer.toWebFormat(normalizedForWs);
         websocketServer.sendToUser(generationRecord.masterAccountId, {
             type: 'generationUpdate',
             payload: {
                 generationId: generationId,
                 runId: run_id,
                 status: updatePayload.status,
-                outputs: updatePayload.responsePayload,
+                outputs: wsOutputs,
                 costUsd: _convertCostUsdForWebSocket(updatePayload.costUsd),
                 finalEventTimestamp: finalEventTimestamp,
                 toolId: generationRecord.toolId || generationRecord.metadata?.toolId || null,
