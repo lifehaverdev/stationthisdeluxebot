@@ -1270,7 +1270,8 @@ class WorkflowCacheManager {
       nodeTypes: structureInfo?.nodeTypes || [],
       mainImageRequired: structureInfo?.mainImageRequired || false,
       supportingImageInputs: structureInfo?.supportingImageInputs || [],
-      hasSupportingImages: structureInfo?.hasSupportingImages || false
+      hasSupportingImages: structureInfo?.hasSupportingImages || false,
+      defaultAdapterParams: { deploymentId: actualDeploymentId }
     };
     // --- Historical averages enrichment ---
     try {

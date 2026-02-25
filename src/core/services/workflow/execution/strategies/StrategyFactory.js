@@ -43,8 +43,10 @@ class StrategyFactory {
         // Check if adapter exists and supports async jobs
         const adapter = this.adapterRegistry.get(tool.service);
         if (adapter && typeof adapter.startJob === 'function') {
-            // For now, default to AsyncAdapterStrategy
-            // In Phase 5, we'll distinguish between async adapter and webhook based on adapter capabilities
+            // Webhook tools (e.g. comfyui) get notified via webhook — no polling needed
+            if (tool.deliveryMode === 'webhook') {
+                return new WebhookStrategy({ logger: this.logger, adapterCoordinator: this.adapterCoordinator });
+            }
             return new AsyncAdapterStrategy({ logger: this.logger, adapterCoordinator: this.adapterCoordinator });
         }
 

@@ -1,57 +1,10 @@
 // src/core/services/comfydeploy/webhookProcessor.js
 
-const notificationEvents = require('../../events/notificationEvents');
 const { createLogger } = require('../../../utils/logger');
 const { CookOrchestratorService } = require('../cook');
 const adapterRegistry = require('../adapterRegistry');
 const { getPricingService } = require('../pricing');
-const GenerationOutputsDB = require('../db/generationOutputsDb');
-const { ObjectId } = require('../db/BaseDB');
-const { Decimal128 } = require('mongodb');
-
-const generationDb = new GenerationOutputsDB(createLogger('GenerationOutputsDB'));
-
-/**
- * Finds a generation record by ComfyDeploy run_id.
- */
-async function _findGenerationByRunId(run_id) {
-  const results = await generationDb.findGenerations({ 'metadata.run_id': run_id });
-  return results?.[0] || null;
-}
-
-/**
- * Updates a generation record directly and emits generationUpdated if the
- * status just became terminal — mirroring the logic in generationOutputsApi PUT.
- */
-async function _updateGeneration(generationId, updatePayload) {
-  const id = generationId instanceof ObjectId ? generationId : new ObjectId(generationId.toString());
-  const payload = { ...updatePayload };
-
-  if (payload.costUsd !== undefined) {
-    payload.costUsd = payload.costUsd === null
-      ? Decimal128.fromString('0')
-      : Decimal128.fromString(payload.costUsd.toString());
-  }
-
-  await generationDb.updateGenerationOutput(id, payload);
-
-  const updated = await generationDb.findGenerationById(id);
-  if (!updated) return null;
-
-  const statusJustBecameTerminal = payload.status === 'completed' || payload.status === 'failed';
-  const isNotificationReady =
-    updated.deliveryStatus === 'pending' &&
-    ['completed', 'failed'].includes(updated.status) &&
-    updated.notificationPlatform !== 'none';
-
-  if (isNotificationReady && statusJustBecameTerminal) {
-    const isSpellStep = updated.metadata?.isSpell || updated.metadata?.spell;
-    const recordToEmit = isSpellStep ? { ...updated, deliveryStrategy: 'spell_step' } : updated;
-    notificationEvents.emit('generationUpdated', recordToEmit);
-  }
-
-  return updated;
-}
+const { generationService } = require('../store/generations/GenerationService');
 
 // Temporary in-memory cache for live progress (can be managed within this module)
 const activeJobProgress = new Map();
@@ -69,7 +22,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
 
   // --- Generic adapter-based webhook handling (new architecture) ---
   try {
-    const generation = await _findGenerationByRunId(run_id);
+    const generation = await generationService.findByRunId(run_id);
     if (generation) {
       const adapter = adapterRegistry.get(generation.serviceName);
       if (adapter && typeof adapter.parseWebhook === 'function') {
@@ -81,7 +34,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
           outputs: result.data ? [{ data: result.data }] : undefined,
           costUsd: result.costUsd || null,
         };
-        await _updateGeneration(generation._id, updatePayload);
+        await generationService.update(generation._id, updatePayload);
 
         return { success: true, statusCode: 200, data: { message: 'Processed via adapter' } };
       }
@@ -116,7 +69,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
     });
 
     // Find the associated generation to get the user ID for real-time progress updates
-    const generationRecordForProgress = await _findGenerationByRunId(run_id).catch(() => null);
+    const generationRecordForProgress = await generationService.findByRunId(run_id).catch(() => null);
 
     if (generationRecordForProgress && websocketServer) {
         const collectionId = generationRecordForProgress.metadata?.collectionId || generationRecordForProgress.collectionId || null;
@@ -152,7 +105,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
     try {
       logger.debug(`[Webhook Processor] Fetching generation record for run_id: ${run_id}`);
 
-      generationRecord = await _findGenerationByRunId(run_id);
+      generationRecord = await generationService.findByRunId(run_id);
       if (generationRecord) {
         generationId = generationRecord._id;
 
@@ -224,7 +177,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
             };
             
             try {
-                await _updateGeneration(generationId, spellStepUpdatePayload);
+                await generationService.update(generationId, spellStepUpdatePayload);
                 logger.debug(`[Webhook Processor] Successfully updated spell step generation record ${generationId} with cost data.`);
                 // >>>>> REMOVED EARLY RETURN: let main debit logic execute as for regular tools
             } catch (err) {
@@ -301,7 +254,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
     }
     logger.debug(`[Webhook Processor] Preparing to update generation ${generationId} for run_id ${run_id}. Payload:`, JSON.stringify(updatePayload, null, 2));
     try {
-      await _updateGeneration(generationId, updatePayload);
+      await generationService.update(generationId, updatePayload);
       logger.debug(`[Webhook Processor] Successfully updated generation record ${generationId} for run_id ${run_id}.`);
     } catch (err) {
       logger.error(`[Webhook Processor] Error updating generation record ${generationId} for run_id ${run_id}:`, err.message, err.stack);
@@ -416,10 +369,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
           
           // Re-apply the update to the generation record with the new accounting info
           try {
-            await generationDb.updateGenerationOutput(
-              generationId instanceof ObjectId ? generationId : new ObjectId(generationId.toString()),
-              { pointsSpent: totalPointsToCharge, contributorRewardPoints: totalRewards, protocolNetPoints, rewardBreakdown }
-            );
+            await generationService.recordPointsAccounting(generationId, { pointsSpent: totalPointsToCharge, contributorRewardPoints: totalRewards, protocolNetPoints, rewardBreakdown });
             logger.debug(`[Webhook Processor] Successfully updated generation ${generationId} with final point accounting.`);
           } catch(err) {
             logger.error(`[Webhook Processor] Non-critical error: Failed to update generation ${generationId} with point accounting details after a successful spend.`, err.message);
@@ -446,15 +396,8 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
 
         } catch (spendError) {
           logger.error(`[Webhook Processor] Spend FAILED for generation ${generationId}, user ${generationRecord.masterAccountId}. Error:`, spendError.message, spendError.stack);
-          const paymentFailedUpdatePayload = {
-            status: 'payment_failed',
-            statusReason: spendError.message || 'Spend failed post-generation.',
-          };
           try {
-            await generationDb.updateGenerationOutput(
-              generationId instanceof ObjectId ? generationId : new ObjectId(generationId.toString()),
-              paymentFailedUpdatePayload
-            );
+            await generationService.markPaymentFailed(generationId, spendError.message || 'Spend failed post-generation.');
             logger.debug(`[Webhook Processor] Updated generation ${generationId} status to 'payment_failed'.`);
           } catch (updateError) {
             logger.error(`[Webhook Processor] CRITICAL: Failed to update generation ${generationId} to 'payment_failed' after spend failure. Error:`, updateError.message, updateError.stack);

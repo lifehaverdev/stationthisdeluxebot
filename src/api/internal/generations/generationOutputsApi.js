@@ -1,6 +1,6 @@
 const express = require('express');
-const { ObjectId, Decimal128 } = require('mongodb');
-const notificationEvents = require('../../../core/events/notificationEvents');
+const { ObjectId } = require('mongodb');
+const { generationService } = require('../../../core/services/store/generations/GenerationService');
 
 const DEFAULT_GENERATION_LIMIT = 100;
 const MAX_GENERATION_LIMIT = 200;
@@ -336,73 +336,16 @@ module.exports = function generationOutputsApi(dependencies) {
       return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Request body must be a non-empty object containing fields to update.' } });
     }
 
-    // Basic validation (more specific type checks could be added)
-    // Example: Check costUsd if present
-    if (updatePayload.costUsd !== undefined) {
-      // If costUsd is null, set it to 0 for Decimal128 conversion
-      if (updatePayload.costUsd === null) {
-        updatePayload.costUsd = Decimal128.fromString("0");
-      } else {
-        try {
-          // Ensure it's a string before calling Decimal128.fromString
-          Decimal128.fromString(updatePayload.costUsd.toString());
-          // Convert to Decimal128 for the update operation
-          updatePayload.costUsd = Decimal128.fromString(updatePayload.costUsd.toString());
-        } catch (e) {
-          return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Invalid costUsd format. Must be convertible to Decimal128.', details: { field: 'costUsd' } } });
-        }
-      }
-    }
-
     try {
-      // The DB method `updateGenerationOutput` handles setting responseTimestamp if status is terminal.
-      const updateResult = await db.generationOutputs.updateGenerationOutput(generationId, updatePayload);
-
-      if (!updateResult || updateResult.matchedCount === 0) {
-          logger.warn(`[generationOutputsApi] PUT /${generationId}: Generation output not found for update.`);
-          return res.status(404).json({ 
-              error: { code: 'NOT_FOUND', message: 'Generation output not found.', details: { generationId: generationId.toString() } } 
-          });
+      const updated = await generationService.update(generationId, updatePayload);
+      if (!updated) {
+        logger.warn(`[generationOutputsApi] PUT /${generationId}: Generation output not found for update.`);
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Generation output not found.', details: { generationId: generationId.toString() } } });
       }
-      
-      // Fetch the updated record to return it
-      const updatedGeneration = await db.generationOutputs.findGenerationById(generationId);
-      if (!updatedGeneration) {
-        // Should be rare if update succeeded
-        logger.error(`[generationOutputsApi] PUT /${generationId}: Failed to fetch record after update.`);
-        throw new Error('Failed to fetch generation output after successful update.');
-      }
-
-      // We only want to fire the delivery event ONCE, when the status *changes* to a terminal state.
-      // We can infer this by checking if the 'status' field was part of the payload that triggered this update.
-      const statusJustBecameTerminal = updatePayload.status === 'completed' || updatePayload.status === 'failed';
-
-      // If the generation is complete and pending notification, emit an event
-      const isNotificationReady =
-        updatedGeneration.deliveryStatus === 'pending' &&
-        ['completed', 'failed'].includes(updatedGeneration.status) &&
-        updatedGeneration.notificationPlatform !== 'none';
-
-      if (isNotificationReady && statusJustBecameTerminal) {
-        logger.debug(`[generationOutputsApi] PUT /${generationId}: Generation has become terminal and is ready for delivery, emitting event.`);
-        
-        // Determine delivery strategy based on metadata
-        // If this is a spell step, set deliveryStrategy to 'spell_step' so NotificationDispatcher handles it correctly
-        const isSpellStep = updatedGeneration.metadata?.isSpell || updatedGeneration.metadata?.spell;
-        const recordToEmit = isSpellStep 
-          ? { ...updatedGeneration, deliveryStrategy: 'spell_step' }
-          : updatedGeneration;
-        
-        notificationEvents.emit('generationUpdated', recordToEmit);
-      } else if (isNotificationReady) {
-        logger.debug(`[generationOutputsApi] PUT /${generationId}: Generation is ready for delivery, but status did not just become terminal in this update. Suppressing redundant event.`);
-      }
-
       logger.debug(`[generationOutputsApi] PUT /${generationId}: Generation output updated successfully.`);
-      res.status(200).json(updatedGeneration);
-
-    } catch (error) {
-      logger.error(`[generationOutputsApi] PUT /${generationId}: Error processing request - ${error.message}`, error);
+      res.status(200).json(updated);
+    } catch (err) {
+      logger.error(`[generationOutputsApi] PUT /${generationId}: Error processing request - ${err.message}`, err);
       res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'Error updating generation output.' } });
     }
   });

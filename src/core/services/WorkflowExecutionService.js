@@ -45,7 +45,14 @@ class WorkflowExecutionService {
         
         // Initialize adapter and notification services
         const adapterRegistry = require('./adapterRegistry');
-        this.asyncJobPoller = new AsyncJobPoller({ 
+
+        // Register ComfyDeploy adapter so WebhookStrategy is selected for comfyui tools
+        if (comfyUIService) {
+            const ComfyDeployAdapter = require('./comfydeploy/comfyDeployAdapter');
+            adapterRegistry.register('comfyui', new ComfyDeployAdapter(comfyUIService));
+        }
+
+        this.asyncJobPoller = new AsyncJobPoller({
             logger, 
             generationRecordManager: this.generationRecordManager 
         });
