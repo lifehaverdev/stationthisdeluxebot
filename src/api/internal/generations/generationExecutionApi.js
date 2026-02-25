@@ -427,7 +427,7 @@ module.exports = function generationExecutionApi(dependencies) {
               costRate: costRateInfo,
               platformContext: user.platformContext,
               ...(meta ? { adapterMeta: meta } : {}),
-              runId,
+              run_id: runId,
               ...(user.platform === 'web-sandbox' ? { notificationContext: { platform: 'web-sandbox', windowId: metadata?.windowId || null } } : {})
             }
           };
@@ -435,8 +435,10 @@ module.exports = function generationExecutionApi(dependencies) {
           const createResponse = await db.generationOutputs.createGenerationOutput(generationParams);
           generationRecord = createResponse;
 
-          // --- kick off background poller ---
-          (async () => {
+          // --- kick off background poller (skip for webhook tools — completion arrives via webhook) ---
+          if (tool.deliveryMode === 'webhook') {
+            logger.debug(`[Execute] Skipping background poller for webhook tool ${tool.toolId} (runId ${runId})`);
+          } else (async () => {
             try {
               let attempts = 0;
               const maxAttempts = 60; // 5 min at 5s interval

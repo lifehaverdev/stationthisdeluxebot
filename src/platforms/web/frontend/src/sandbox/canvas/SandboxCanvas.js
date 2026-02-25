@@ -1188,9 +1188,11 @@ export class SandboxCanvas extends Component {
   }
 
   addSpellWindow(spell, position) {
+    // Normalize: ensure _id is always present (marketplace spells may use spellId instead)
+    const normalizedSpell = { ...spell, _id: spell._id || spell.spellId || spell.slug };
     return this._addWindow({
-      type: 'spell', spell,
-      tool: { displayName: spell.name, toolId: `spell:${spell.slug || spell._id}`, metadata: { outputType: 'image' } },
+      type: 'spell', spell: normalizedSpell,
+      tool: { displayName: normalizedSpell.name, toolId: `spell:${normalizedSpell.slug || normalizedSpell._id}`, metadata: { outputType: 'image' } },
       x: position?.x ?? 200, y: position?.y ?? 200,
       parameterMappings: {},
       output: null, outputVersions: [], currentVersionIndex: -1,
