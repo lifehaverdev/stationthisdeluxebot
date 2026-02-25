@@ -15,7 +15,8 @@ class ReferralVaultService {
     internalApiClient,
     depositNotificationService,
     contractConfig,
-    logger
+    logger,
+    userCoreDb = null // Phase 7b: optional for in-process wallet lookup
   ) {
     this.ethereumService = ethereumService;
     this.creditLedgerDb = creditLedgerDb;
@@ -24,6 +25,7 @@ class ReferralVaultService {
     this.depositNotificationService = depositNotificationService;
     this.contractConfig = contractConfig;
     this.logger = logger || console;
+    this.userCoreDb = userCoreDb;
   }
 
   /**
@@ -41,20 +43,28 @@ class ReferralVaultService {
     try {
       // 1. Verify user account and wallet ownership
       let masterAccountId;
-      try {
-        const response = await this.internalApiClient.get(`/internal/v1/data/wallets/lookup?address=${ownerAddress}`);
-        masterAccountId = response.data.masterAccountId;
-        this.logger.debug(`[ReferralVaultService] Found user account ${masterAccountId} for wallet ${ownerAddress}`);
-      } catch (error) {
-        if (error.response?.status === 404) {
+      if (this.userCoreDb) {
+        const user = await this.userCoreDb.findOne({ 'wallets.address': ownerAddress.toLowerCase() });
+        if (!user) {
           throw new Error('No user account found for this wallet address. The wallet must be linked to a user account first.');
         }
-        throw error;
+        masterAccountId = user._id.toString();
+        this.logger.debug(`[ReferralVaultService] Found user account ${masterAccountId} for wallet ${ownerAddress}`);
+      } else {
+        try {
+          const response = await this.internalApiClient.get(`/internal/v1/data/wallets/lookup?address=${ownerAddress}`);
+          masterAccountId = response.data.masterAccountId;
+          this.logger.debug(`[ReferralVaultService] Found user account ${masterAccountId} for wallet ${ownerAddress}`);
+        } catch (error) {
+          if (error.response?.status === 404) {
+            throw new Error('No user account found for this wallet address. The wallet must be linked to a user account first.');
+          }
+          throw error;
+        }
       }
 
       // 2. Check if user already has vaults (limit removed: users can create unlimited vaults)
-      const vaultsResponse = await this.internalApiClient.get(`/internal/v1/data/ledger/vaults/by-master-account/${masterAccountId}`);
-      const existingVaults = vaultsResponse.data.vaults;
+      const existingVaults = await this.creditLedgerDb.findReferralVaultsByMasterAccount(masterAccountId);
 
       // 3. Get a pre-mined salt that will generate a vanity address
       const { salt, predictedAddress } = await this.saltMiningService.getSalt(ownerAddress);
@@ -95,8 +105,8 @@ class ReferralVaultService {
 
       const vaultAddress = predictedAddress;
       
-      // 6. Record the vault through internal API
-      await this.internalApiClient.post('/internal/v1/data/ledger/vaults', {
+      // 6. Record the vault directly via DB
+      await this.creditLedgerDb.createReferralVault({
         vault_address: vaultAddress,
         owner_address: ownerAddress,
         master_account_id: masterAccountId,

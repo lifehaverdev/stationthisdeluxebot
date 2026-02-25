@@ -183,7 +183,8 @@ class CreditService {
       this.magicAmountLinkingService,
       this.eventDeduplicationService,
       this.contractConfig,
-      this.logger
+      this.logger,
+      this.userCoreDb // Phase 7b: in-process wallet lookup
     );
 
     // 10. Withdrawal Execution Service
@@ -205,7 +206,8 @@ class CreditService {
       this.internalApiClient,
       this.withdrawalExecutionService,
       this.contractConfig,
-      this.logger
+      this.logger,
+      this.userCoreDb // Phase 7b: in-process wallet lookup
     );
 
     // 12. Referral Vault Service
@@ -216,7 +218,8 @@ class CreditService {
       this.internalApiClient,
       this.depositNotificationService,
       this.contractConfig,
-      this.logger
+      this.logger,
+      this.userCoreDb // Phase 7b: in-process wallet lookup
     );
 
     // 13. Event Webhook Processor

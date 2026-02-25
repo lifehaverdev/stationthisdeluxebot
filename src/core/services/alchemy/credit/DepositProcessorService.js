@@ -15,7 +15,8 @@ class DepositProcessorService {
     magicAmountLinkingService,
     eventDeduplicationService,
     contractConfig,
-    logger
+    logger,
+    userCoreDb = null // Phase 7b: optional for in-process wallet lookup
   ) {
     this.ethereumService = ethereumService;
     this.creditLedgerDb = creditLedgerDb;
@@ -25,6 +26,7 @@ class DepositProcessorService {
     this.eventDeduplicationService = eventDeduplicationService;
     this.contractConfig = contractConfig;
     this.logger = logger || console;
+    this.userCoreDb = userCoreDb;
   }
 
   /**
@@ -39,18 +41,11 @@ class DepositProcessorService {
     const normalizedTxHash = transactionHash.toLowerCase();
     let { fundAddress, user, token, amount } = decodedLog;
 
-    // Check for existing entry
-    try {
-      const response = await this.internalApiClient.get(`/internal/v1/data/ledger/entries/${normalizedTxHash}`);
-      if (response.data.entry) {
-        this.logger.debug(`[DepositProcessorService] Skipping deposit event for tx ${normalizedTxHash} as it's already acknowledged.`);
-        return;
-      }
-    } catch (error) {
-      if (error.response?.status !== 404) {
-        throw error;
-      }
-      // 404 means entry doesn't exist, continue processing
+    // Check for existing entry (direct DB — creditLedgerDb always available)
+    const existingEntry = await this.creditLedgerDb.findLedgerEntryByTxHash(normalizedTxHash);
+    if (existingEntry) {
+      this.logger.debug(`[DepositProcessorService] Skipping deposit event for tx ${normalizedTxHash} as it's already acknowledged.`);
+      return;
     }
 
     // Handle magic amount linking
@@ -68,15 +63,16 @@ class DepositProcessorService {
       fundAddress = this.contractConfig.address;
     }
 
-    // Create ledger entry through internal API
-    await this.internalApiClient.post('/internal/v1/data/ledger/entries', {
+    // Create ledger entry directly via DB
+    await this.creditLedgerDb.createLedgerEntry({
       deposit_tx_hash: normalizedTxHash,
       deposit_log_index: logIndex,
       deposit_block_number: blockNumber,
       vault_account: fundAddress,
       depositor_address: user,
       token_address: token,
-      deposit_amount_wei: amount.toString()
+      deposit_amount_wei: amount.toString(),
+      status: 'PENDING_CONFIRMATION'
     });
 
     // Mark transaction as processed
@@ -106,6 +102,10 @@ class DepositProcessorService {
    * @returns {Promise<string|null>} The master account ID, or null if not found
    */
   async verifyUserAccount(address) {
+    if (this.userCoreDb) {
+      const user = await this.userCoreDb.findOne({ 'wallets.address': address.toLowerCase() });
+      return user ? user._id.toString() : null;
+    }
     try {
       const response = await this.internalApiClient.get(`/internal/v1/data/wallets/lookup?address=${address}`);
       return response.data.masterAccountId;

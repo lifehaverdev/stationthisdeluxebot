@@ -14,7 +14,8 @@ class WithdrawalProcessorService {
     internalApiClient,
     withdrawalExecutionService,
     contractConfig,
-    logger
+    logger,
+    userCoreDb = null // Phase 7b: optional for in-process wallet lookup
   ) {
     this.ethereumService = ethereumService;
     this.creditLedgerDb = creditLedgerDb;
@@ -22,6 +23,7 @@ class WithdrawalProcessorService {
     this.withdrawalExecutionService = withdrawalExecutionService;
     this.contractConfig = contractConfig;
     this.logger = logger || console;
+    this.userCoreDb = userCoreDb;
   }
 
   /**
@@ -37,15 +39,24 @@ class WithdrawalProcessorService {
     try {
       // 1. Verify user account exists
       let masterAccountId;
-      try {
-        const response = await this.internalApiClient.get(`/internal/v1/data/wallets/lookup?address=${userAddress}`);
-        masterAccountId = response.data.masterAccountId;
-        this.logger.debug(`[WithdrawalProcessorService] User found. MasterAccountId: ${masterAccountId}`);
-      } catch (error) {
-        if (error.response?.status === 404) {
+      if (this.userCoreDb) {
+        const user = await this.userCoreDb.findOne({ 'wallets.address': userAddress.toLowerCase() });
+        if (!user) {
           return { success: false, message: 'No user account found for this address.' };
         }
-        throw error;
+        masterAccountId = user._id.toString();
+        this.logger.debug(`[WithdrawalProcessorService] User found. MasterAccountId: ${masterAccountId}`);
+      } else {
+        try {
+          const response = await this.internalApiClient.get(`/internal/v1/data/wallets/lookup?address=${userAddress}`);
+          masterAccountId = response.data.masterAccountId;
+          this.logger.debug(`[WithdrawalProcessorService] User found. MasterAccountId: ${masterAccountId}`);
+        } catch (error) {
+          if (error.response?.status === 404) {
+            return { success: false, message: 'No user account found for this address.' };
+          }
+          throw error;
+        }
       }
 
       // 2. Get user's current credit balance and collateral value
@@ -107,31 +118,33 @@ class WithdrawalProcessorService {
   async processWithdrawalRequest(decodedLog, transactionHash, blockNumber) {
     const { fundAddress, user: userAddress, token: tokenAddress } = decodedLog;
 
-    // Check for existing request through internal API
-    try {
-      const response = await this.internalApiClient.get(`/internal/v1/data/ledger/withdrawals/${transactionHash}`);
-      if (response.data.request) {
-        this.logger.debug(`[WithdrawalProcessorService] Withdrawal request ${transactionHash} already processed`);
-        return;
-      }
-    } catch (error) {
-      if (error.response?.status !== 404) {
-        throw error;
-      }
-      // 404 means request doesn't exist, continue processing
+    // Check for existing request (direct DB — creditLedgerDb always available)
+    const existingRequest = await this.creditLedgerDb.findWithdrawalRequestByTxHash(transactionHash);
+    if (existingRequest) {
+      this.logger.debug(`[WithdrawalProcessorService] Withdrawal request ${transactionHash} already processed`);
+      return;
     }
 
     // Get user's master account ID
     let masterAccountId;
-    try {
-      const response = await this.internalApiClient.get(`/internal/v1/data/wallets/lookup?address=${userAddress}`);
-      masterAccountId = response.data.masterAccountId;
-    } catch (error) {
-      if (error.response?.status === 404) {
+    if (this.userCoreDb) {
+      const user = await this.userCoreDb.findOne({ 'wallets.address': userAddress.toLowerCase() });
+      if (!user) {
         this.logger.warn(`[WithdrawalProcessorService] No user account found for address ${userAddress}`);
         return;
       }
-      throw error;
+      masterAccountId = user._id.toString();
+    } else {
+      try {
+        const response = await this.internalApiClient.get(`/internal/v1/data/wallets/lookup?address=${userAddress}`);
+        masterAccountId = response.data.masterAccountId;
+      } catch (error) {
+        if (error.response?.status === 404) {
+          this.logger.warn(`[WithdrawalProcessorService] No user account found for address ${userAddress}`);
+          return;
+        }
+        throw error;
+      }
     }
 
     // Get current collateral amount
@@ -139,14 +152,15 @@ class WithdrawalProcessorService {
     const custodyValue = await this.ethereumService.read(this.contractConfig.address, this.contractConfig.abi, 'custody', custodyKey);
     const { userOwned: collateralAmount } = splitCustodyAmount(custodyValue);
 
-    // Create withdrawal request through internal API
-    await this.internalApiClient.post('/internal/v1/data/ledger/withdrawals', {
+    // Create withdrawal request directly via DB
+    await this.creditLedgerDb.createWithdrawalRequest({
       request_tx_hash: transactionHash,
       request_block_number: blockNumber,
       vault_account: fundAddress,
       user_address: userAddress,
       token_address: tokenAddress,
       master_account_id: masterAccountId,
+      status: 'PENDING_PROCESSING',
       collateral_amount_wei: collateralAmount.toString()
     });
 
