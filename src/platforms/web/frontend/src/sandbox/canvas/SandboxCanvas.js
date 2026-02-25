@@ -54,6 +54,7 @@ export class SandboxCanvas extends Component {
       activeConnection: null,
       activeDrag: null,
       activePan: null,
+      activePinch: null, // { startDist, startScale, startPanX, startPanY, midX, midY }
       activeLasso: null, // { originX, originY, startX, startY, currentX, currentY }
       // Set when an output anchor is dropped on empty canvas (Spec 3)
       pendingAnchorDrop: null, // { fromWindowId, outputType, workspacePos, screenX, screenY }
@@ -266,6 +267,22 @@ export class SandboxCanvas extends Component {
   // ── Touch pan (mobile) ────────────────────────────────────
 
   _onTouchStart(e) {
+    // Two-finger pinch to zoom
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      const midX = (t1.clientX + t2.clientX) / 2;
+      const midY = (t1.clientY + t2.clientY) / 2;
+      const { viewport } = this.state;
+      this.setState({
+        activePinch: { startDist: dist, startScale: viewport.scale, startPanX: viewport.panX, startPanY: viewport.panY, midX, midY },
+        activePan: null,
+      });
+      return;
+    }
+
     if (e.touches.length !== 1) return;
     // Touch on a window — let window interactions handle it
     if (e.target.closest('.nw-root')) return;
@@ -277,16 +294,67 @@ export class SandboxCanvas extends Component {
   }
 
   _onTouchMove(e) {
-    if (!this.state.activePan || e.touches.length !== 1) return;
+    const { activePinch, activePan, activeDrag, viewport } = this.state;
+
+    // Two-finger pinch zoom
+    if (e.touches.length === 2 && activePinch) {
+      e.preventDefault();
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, activePinch.startScale * (dist / activePinch.startDist)));
+      const rect = this._rootEl?.getBoundingClientRect();
+      if (!rect) return;
+      // Zoom centered on the original pinch midpoint
+      const mouseX = activePinch.midX - rect.left;
+      const mouseY = activePinch.midY - rect.top;
+      const scaleRatio = newScale / activePinch.startScale;
+      const newPanX = mouseX - (mouseX - activePinch.startPanX) * scaleRatio;
+      const newPanY = mouseY - (mouseY - activePinch.startPanY) * scaleRatio;
+      this.setState({ viewport: { panX: newPanX, panY: newPanY, scale: newScale } });
+      return;
+    }
+
+    if (e.touches.length !== 1) return;
+    if (!activePan && !activeDrag) return;
     e.preventDefault();
+
     const t = e.touches[0];
-    const { activePan, viewport } = this.state;
+
+    // Window drag
+    if (activeDrag) {
+      const pos = this.screenToWorkspace(t.clientX, t.clientY);
+      const newX = pos.x - activeDrag.offsetX / viewport.scale;
+      const newY = pos.y - activeDrag.offsetY / viewport.scale;
+      const windows = new Map(this.state.windows);
+      const win = windows.get(activeDrag.windowId);
+      if (win) {
+        windows.set(win.id, { ...win, x: newX, y: newY });
+        this.setState({ windows });
+      }
+      return;
+    }
+
+    // Canvas pan
     this.setState({
       viewport: { ...viewport, panX: activePan.startPanX + (t.clientX - activePan.startX), panY: activePan.startPanY + (t.clientY - activePan.startY) }
     });
   }
 
   _onTouchEnd(e) {
+    // Clear pinch state
+    if (this.state.activePinch) {
+      this.setState({ activePinch: null });
+      return;
+    }
+
+    // Clear window drag state
+    if (this.state.activeDrag) {
+      this.setState({ activeDrag: null });
+      this._persist();
+      return;
+    }
+
     const pan = this.state.activePan;
     if (!pan) return;
     const t = e.changedTouches?.[0];

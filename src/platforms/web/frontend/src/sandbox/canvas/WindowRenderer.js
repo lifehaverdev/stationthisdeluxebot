@@ -95,6 +95,20 @@ export class WindowRenderer extends Component {
     );
   }
 
+  _onHeaderTouchStart(e) {
+    if (e.target.closest('button, input, textarea, select, a')) return;
+    if (e.touches.length !== 1) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const t = e.touches[0];
+    const rect = e.currentTarget.closest('.nw-root').getBoundingClientRect();
+    this.props.onDragStart?.(
+      this.props.win.id,
+      t.clientX - rect.left,
+      t.clientY - rect.top
+    );
+  }
+
   _onHeaderClick(e) {
     // Ignore close button and other controls
     if (e.target.closest('button, input, textarea, select, a')) return;
@@ -363,7 +377,7 @@ export class WindowRenderer extends Component {
       h('span', { className: 'nw-bracket-bl' }),
 
       // Header (drag handle + click = select connected component)
-      h('div', { className: 'nw-header', onmousedown: this.bind(this._onHeaderMouseDown), onclick: this.bind(this._onHeaderClick) },
+      h('div', { className: 'nw-header', onmousedown: this.bind(this._onHeaderMouseDown), ontouchstart: this.bind(this._onHeaderTouchStart), onclick: this.bind(this._onHeaderClick) },
         h('span', { className: 'nw-title' }, this._getTitle()),
         h(CostDisplay, { windowId: win.id, initialCost: win.totalCostUsd ? { usd: win.totalCostUsd, points: 0, ms2: 0, cult: 0 } : null }),
         win.outputVersions?.length > 0

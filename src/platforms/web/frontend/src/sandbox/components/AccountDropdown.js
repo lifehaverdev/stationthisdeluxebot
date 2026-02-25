@@ -69,14 +69,14 @@ export class AccountDropdown extends Component {
   static get styles() {
     return `
       .acct-root { position: relative; }
-      .acct-btn { background: none; border: 1px solid #333; color: #ccc; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+      .acct-btn { background: none; border: 1px solid #333; color: #ccc; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; font-family: var(--ff-condensed); letter-spacing: var(--ls-wide); }
       .acct-btn:hover { border-color: #555; color: #fff; }
       .acct-menu { position: fixed; right: 8px; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; min-width: 240px; max-width: calc(100vw - 16px); z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
-      .acct-header { padding: 12px 16px; font-weight: 600; border-bottom: 1px solid #222; font-size: 16px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
-      .acct-item { padding: 8px 16px; font-size: 17px; color: #ccc; }
+      .acct-header { padding: 12px 16px; font-family: var(--ff-condensed); font-weight: 600; border-bottom: 1px solid #222; font-size: 16px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+      .acct-item { padding: 8px 16px; font-family: var(--ff-sans); font-size: 17px; color: #ccc; }
       .acct-item b { color: #fff; }
       .acct-actions { border-top: 1px solid #222; padding: 8px 0; }
-      .acct-action { display: block; padding: 8px 16px; color: #90caf9; font-size: 16px; text-decoration: none; cursor: pointer; }
+      .acct-action { display: block; padding: 8px 16px; font-family: var(--ff-sans); color: #90caf9; font-size: 16px; text-decoration: none; cursor: pointer; }
       .acct-action:hover { background: rgba(255,255,255,0.05); }
       .exp-bar { background: #333; border-radius: 4px; height: 6px; width: 100%; margin: 4px 0; }
       .exp-fill { background: #90caf9; height: 6px; border-radius: 4px; transition: width 0.3s; }
