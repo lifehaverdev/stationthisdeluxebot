@@ -12,11 +12,15 @@
  *   POST /internal/v1/data/models/lora/import      (Phase 6b)
  */
 
+const axios = require('axios');
 const LoRAModelsDB = require('../../db/loRAModelDb');
 const LoRAPermissionsDB = require('../../db/loRAPermissionsDb');
 const UserPreferencesDB = require('../../db/userPreferencesDb');
 const { ObjectId } = require('../../db/BaseDB');
 const { createLogger } = require('../../../../utils/logger');
+
+const VALID_CHECKPOINTS = ['SD1.5', 'SDXL', 'FLUX', 'SD3', 'KONTEXT'];
+const COMFY_DEPLOY_URL = 'https://api.comfydeploy.com/api/volume/model';
 
 const PUBLIC_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -618,6 +622,264 @@ class LoraService {
 
     this.logger.info(`[LoraService] LoRA submitted for review: ${newLora.name} (${newLora.slug})`);
     return { slug: newLora.slug, name: newLora.name };
+  }
+
+  // ── Phase 6d ───────────────────────────────────────────────────────────────
+
+  /**
+   * Add or remove a LoRA from a user's favorites.
+   * Replaces POST/DELETE /internal/v1/data/loras/:id/favorite.
+   */
+  async toggleFavorite(loraId, userId, add) {
+    const MAID = new ObjectId(userId);
+    if (add) {
+      await this.userPreferencesDb.addLoraFavorite(MAID, loraId);
+    } else {
+      await this.userPreferencesDb.removeLoraFavorite(MAID, loraId);
+    }
+  }
+
+  /**
+   * Check if a user has access to a LoRA.
+   * Replaces POST /internal/v1/data/loras/access.
+   */
+  async checkAccess(loraId, userId) {
+    const hasAccess = await this.loraPermissionsDb.hasAccess(userId, loraId);
+    return { hasAccess: !!hasAccess };
+  }
+
+  /**
+   * Grant the LoRA's owner access permission to it.
+   * Replaces POST /internal/v1/data/loras/:id/grant-owner-access.
+   */
+  async grantOwnerAccess(loraId) {
+    const lora = await this.loraModelsDb.findById(loraId);
+    if (!lora) {
+      const err = new Error('LoRA not found.');
+      err.statusCode = 404;
+      throw err;
+    }
+    if (!lora.ownedBy) {
+      const err = new Error('LoRA has no owner, cannot grant access.');
+      err.statusCode = 400;
+      throw err;
+    }
+    const ownerIdStr = lora.ownedBy.toString();
+    const loraIdStr = lora._id.toString();
+    const existing = await this.loraPermissionsDb.hasAccess(ownerIdStr, loraIdStr);
+    if (!existing) {
+      await this.loraPermissionsDb.grantAccess({
+        loraId: lora._id,
+        userId: lora.ownedBy,
+        licenseType: 'staff_grant',
+        priceCents: 0,
+        grantedBy: lora.ownedBy,
+      });
+    }
+  }
+
+  /**
+   * Update a LoRA's checkpoint/base-model type.
+   * Replaces POST /internal/v1/data/loras/:id/checkpoint.
+   */
+  async updateCheckpoint(loraId, checkpoint) {
+    if (!VALID_CHECKPOINTS.includes(checkpoint)) {
+      const err = new Error(`Invalid checkpoint. Must be one of: ${VALID_CHECKPOINTS.join(', ')}`);
+      err.statusCode = 400;
+      throw err;
+    }
+    const result = await this.loraModelsDb.updateModel(new ObjectId(loraId), { checkpoint });
+    if (!result || result.matchedCount === 0) {
+      const err = new Error('LoRA not found.');
+      err.statusCode = 404;
+      throw err;
+    }
+    this.invalidatePublicCache();
+  }
+
+  /**
+   * Hard-delete a LoRA.
+   * Replaces DELETE /internal/v1/data/loras/:id.
+   */
+  async deleteLora(loraId) {
+    const lora = await this.loraModelsDb.findById(loraId);
+    if (!lora) {
+      const err = new Error('LoRA not found.');
+      err.statusCode = 404;
+      throw err;
+    }
+    const result = await this.loraModelsDb.deleteOne({ _id: new ObjectId(loraId) });
+    if (!result || result.deletedCount === 0) {
+      const err = new Error('Failed to delete LoRA.');
+      err.statusCode = 500;
+      throw err;
+    }
+    this.invalidatePublicCache();
+  }
+
+  /**
+   * Admin approve a LoRA (deploy to ComfyUI + set visibility).
+   * Replaces POST /internal/v1/data/loras/:id/admin-approve[|-private].
+   *
+   * @param {string} loraId - slug or ObjectId
+   * @param {boolean} [isPrivate=false] - true → visibility 'private' + grant owner access
+   */
+  async adminApprove(loraId, isPrivate = false) {
+    let lora = await this.loraModelsDb.findOne({ slug: loraId });
+    if (!lora) {
+      try { lora = await this.loraModelsDb.findById(new ObjectId(loraId)); } catch (_) {}
+    }
+    if (!lora) {
+      const err = new Error('LoRA not found.');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const comfyDeployApiKey = process.env.COMFY_DEPLOY_API_KEY;
+    if (!comfyDeployApiKey) {
+      const err = new Error('ComfyUI deployment configuration error: API key missing.');
+      err.statusCode = 500;
+      throw err;
+    }
+
+    const source = (lora.importedFrom?.source || 'link').toLowerCase();
+    if (source !== 'civitai' && !lora.importedFrom?.modelFileUrl) {
+      const err = new Error('LoRA data incomplete for deployment (missing modelFileUrl).');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const filename = `${lora.slug}.safetensors`;
+    let deployPayload;
+    if (source === 'civitai') {
+      deployPayload = { source: 'civitai', folderPath: 'loras', filename, civitai: { url: lora.importedFrom.url } };
+    } else if (source === 'huggingface') {
+      deployPayload = { source: 'huggingface', folderPath: 'loras', filename, huggingface: { repoId: lora.importedFrom.modelFileUrl } };
+    } else {
+      deployPayload = { source: 'link', folderPath: 'loras', filename, download_link: lora.importedFrom.modelFileUrl };
+    }
+
+    try {
+      const deployResponse = await axios.post(COMFY_DEPLOY_URL, deployPayload, {
+        headers: { Authorization: `Bearer ${comfyDeployApiKey}`, 'Content-Type': 'application/json' },
+      });
+      if (deployResponse.status !== 200 && deployResponse.status !== 201) {
+        throw new Error(`ComfyUI deployment failed with status ${deployResponse.status}`);
+      }
+    } catch (deployError) {
+      await this.loraModelsDb.updateModel(lora._id, {
+        moderation: { ...(lora.moderation || {}), status: 'deployment_failed', reviewedBy: 'ADMIN_ACTION', reviewedAt: new Date() },
+        updatedAt: new Date(),
+      }).catch(() => {});
+      const err = new Error(`Failed to deploy LoRA to ComfyUI: ${deployError.response?.data?.detail || deployError.message}`);
+      err.statusCode = 500;
+      throw err;
+    }
+
+    if (isPrivate && lora.ownedBy) {
+      const ownerIdStr = lora.ownedBy.toString();
+      const loraIdStr = lora._id.toString();
+      const existing = await this.loraPermissionsDb.hasAccess(ownerIdStr, loraIdStr);
+      if (!existing) {
+        await this.loraPermissionsDb.grantAccess({
+          loraId: lora._id, userId: lora.ownedBy, licenseType: 'staff_grant', priceCents: 0, grantedBy: lora.ownedBy,
+        });
+      }
+    }
+
+    await this.loraModelsDb.updateModel(lora._id, {
+      visibility: isPrivate ? 'private' : 'public',
+      moderation: { ...(lora.moderation || {}), status: 'approved', flagged: false, reviewedBy: 'ADMIN_ACTION', reviewedAt: new Date() },
+      updatedAt: new Date(),
+    });
+    this.invalidatePublicCache();
+  }
+
+  /**
+   * Admin reject a LoRA.
+   * Replaces POST /internal/v1/data/loras/:id/admin-reject.
+   */
+  async adminReject(loraId) {
+    let lora = await this.loraModelsDb.findOne({ slug: loraId });
+    if (!lora) {
+      try { lora = await this.loraModelsDb.findById(new ObjectId(loraId)); } catch (_) {}
+    }
+    if (!lora) {
+      const err = new Error('LoRA not found.');
+      err.statusCode = 404;
+      throw err;
+    }
+    await this.loraModelsDb.updateModel(lora._id, {
+      moderation: { ...(lora.moderation || {}), status: 'rejected', flagged: false, reviewedBy: 'ADMIN_ACTION', reviewedAt: new Date() },
+      updatedAt: new Date(),
+    });
+    this.invalidatePublicCache();
+  }
+
+  /**
+   * List purchasable store LoRAs (private, for-sale, not owned by userId).
+   * Replaces GET /internal/v1/data/store/loras.
+   *
+   * @param {object} opts
+   * @param {string} opts.userId
+   * @param {string} [opts.storeFilterType]
+   * @param {string} [opts.checkpoint]
+   * @param {string} [opts.tag]
+   * @param {number} [opts.page=1]
+   * @param {number} [opts.limit=5]
+   */
+  async listStoreLoras({ userId, storeFilterType, checkpoint, tag, page = 1, limit = 5 } = {}) {
+    if (!userId) {
+      const err = new Error('userId is required to browse the LoRA store.');
+      err.statusCode = 400;
+      throw err;
+    }
+    const MAID = new ObjectId(userId);
+    const pageNum = parseInt(page, 10);
+    const limitNum = parseInt(limit, 10);
+    const skip = (pageNum - 1) * limitNum;
+
+    const dbQuery = { 'monetization.forSale': true, visibility: 'private', ownedBy: { $ne: MAID } };
+    let sortOptions = { createdAt: -1 };
+
+    if (checkpoint && checkpoint.toLowerCase() !== 'all') dbQuery.checkpoint = checkpoint;
+
+    if (storeFilterType === 'price_asc') {
+      sortOptions = { 'monetization.priceUSD': 1 };
+    } else if (storeFilterType === 'price_desc') {
+      sortOptions = { 'monetization.priceUSD': -1 };
+    } else if (storeFilterType === 'popular') {
+      sortOptions = { usageCount: -1 };
+    } else if (storeFilterType === 'tag' && tag) {
+      dbQuery['tags.tag'] = tag;
+    }
+
+    const totalLoras = await this.loraModelsDb.count(dbQuery);
+    const lorasFromDb = await this.loraModelsDb.findMany(dbQuery, { sort: sortOptions, skip, limit: limitNum });
+
+    const permissions = await this.loraPermissionsDb.listAccessibleLoRAs(MAID);
+    const purchasedSet = new Set(permissions.map(p => p.loraId.toString()));
+
+    const loras = lorasFromDb.map(lora => ({
+      _id: lora._id.toString(),
+      slug: lora.slug,
+      name: lora.name,
+      triggerWords: lora.triggerWords || [],
+      checkpoint: lora.checkpoint,
+      createdAt: lora.createdAt,
+      previewImageUrl: lora.previewImages?.[0] || null,
+      ownedBy: lora.ownedBy ? lora.ownedBy.toString() : null,
+      monetization: lora.monetization,
+      isPurchased: purchasedSet.has(lora._id.toString()),
+    }));
+
+    const totalPages = Math.ceil(totalLoras / limitNum);
+    return {
+      loras,
+      totalPages,
+      hasNextPage: pageNum < totalPages,
+      hasPrevPage: pageNum > 1,
+    };
   }
 
   // ── Cache management ───────────────────────────────────────────────────────

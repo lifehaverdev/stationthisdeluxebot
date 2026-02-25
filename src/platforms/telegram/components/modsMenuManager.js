@@ -115,10 +115,10 @@ async function handleModsCallback(bot, callbackQuery, masterAccountId, dependenc
 
         try {
           if (isCurrentlyFavorite) {
-            await dependencies.internal.client.delete(`/internal/v1/data/loras/${loraMongoId}/favorite`, { data: { masterAccountId } });
+            await dependencies.loraService.toggleFavorite(loraMongoId, masterAccountId, false);
             await bot.answerCallbackQuery(callbackQuery.id, { text: 'Removed from favorites 💔' });
           } else {
-            await dependencies.internal.client.post(`/internal/v1/data/loras/${loraMongoId}/favorite`, { masterAccountId });
+            await dependencies.loraService.toggleFavorite(loraMongoId, masterAccountId, true);
             await bot.answerCallbackQuery(callbackQuery.id, { text: 'Added to favorites! ❤️' });
           }
           // Refresh the detail screen, passing the same context back.
@@ -205,7 +205,7 @@ Send '/cancel' if you change your mind.`;
         } else if (adminAction === 'grant_owner_permission') {
             const [loraId] = params.slice(2);
             try {
-                await dependencies.internal.client.post(`/internal/v1/data/loras/${loraId}/grant-owner-access`);
+                await dependencies.loraService.grantOwnerAccess(loraId);
                 await bot.answerCallbackQuery(callbackQuery.id, { text: '✅ Owner permission granted!' });
             } catch(err) {
                 const errorDetail = err.response?.data?.details || err.response?.data?.error || err.message;
@@ -218,7 +218,7 @@ Send '/cancel' if you change your mind.`;
         } else if (adminAction === 'set_checkpoint') {
             const [loraId, newCheckpoint, backFilterShortcode, backCheckpoint, backPage] = params.slice(2);
             try {
-                await dependencies.internal.client.post(`/internal/v1/data/loras/${loraId}/checkpoint`, { checkpoint: newCheckpoint });
+                await dependencies.loraService.updateCheckpoint(loraId, newCheckpoint);
                 await bot.answerCallbackQuery(callbackQuery.id, { text: `Checkpoint updated to ${newCheckpoint}!` });
                 await displayChangeCheckpointMenu(bot, callbackQuery, masterAccountId, dependencies, true, loraId, backFilterShortcode, backCheckpoint, backPage);
             } catch(err) {
@@ -228,10 +228,8 @@ Send '/cancel' if you change your mind.`;
             }
         } else if (adminAction === 'delete_confirm') {
             const [loraId, backFilterShortcode, backCheckpoint, backPage] = params.slice(2);
-            const loraResponse = await dependencies.internal.client.get(`/internal/v1/data/loras/${loraId}`, {
-                params: { isAdmin: true }
-            });
-            const loraName = loraResponse.data?.lora?.name || 'Unknown Mod';
+            const loraForDelete = await dependencies.loraService.getById(loraId, { isAdmin: true });
+            const loraName = loraForDelete?.name || 'Unknown Mod';
             const text = `Are you sure you want to permanently delete Mod: *${loraName}* (ID: \`${loraId}\`)?\n\nThis action cannot be undone.`;
             const keyboard = [[
                 { text: '❌ Yes, Delete Permanently ❌', callback_data: `mods:admin:${ADMIN_ACTION_SHORTCODE_MAP.delete_execute}:${loraId}` },
@@ -246,7 +244,7 @@ Send '/cancel' if you change your mind.`;
         } else if (adminAction === 'delete_execute') {
             const [loraId] = params.slice(2);
             try {
-                await dependencies.internal.client.delete(`/internal/v1/data/loras/${loraId}`);
+                await dependencies.loraService.deleteLora(loraId);
                 await editEscapedMessageText(bot, `Mod with ID \`${loraId}\` has been deleted.`, {
                     chat_id: callbackQuery.message.chat.id,
                     message_id: callbackQuery.message.message_id,
@@ -272,7 +270,7 @@ Send '/cancel' if you change your mind.`;
       } else if (subAction === 'admin_grant_owner_permission') {
         const [loraId] = params.slice(1);
         try {
-            await dependencies.internal.client.post(`/internal/v1/data/loras/${loraId}/grant-owner-access`);
+            await dependencies.loraService.grantOwnerAccess(loraId);
             await bot.answerCallbackQuery(callbackQuery.id, { text: '✅ Owner permission granted!' });
         } catch(err) {
             const errorDetail = err.response?.data?.details || err.response?.data?.error || err.message;
@@ -287,7 +285,7 @@ Send '/cancel' if you change your mind.`;
       } else if (subAction === 'admin_set_checkpoint') {
         const [loraId, newCheckpoint, backFilterShortcode, backCheckpoint, backPage] = params.slice(1);
         try {
-            await dependencies.internal.client.post(`/internal/v1/data/loras/${loraId}/checkpoint`, { checkpoint: newCheckpoint });
+            await dependencies.loraService.updateCheckpoint(loraId, newCheckpoint);
             await bot.answerCallbackQuery(callbackQuery.id, { text: `Checkpoint updated to ${newCheckpoint}!` });
             // Refresh the change checkpoint menu to show the new state
             await displayChangeCheckpointMenu(bot, callbackQuery, masterAccountId, dependencies, true, loraId, backFilterShortcode, backCheckpoint, backPage);
@@ -299,8 +297,8 @@ Send '/cancel' if you change your mind.`;
         return;
       } else if (subAction === 'admin_delete_confirm') {
         const [loraId, backFilterShortcode, backCheckpoint, backPage] = params.slice(1);
-        const loraResponse = await dependencies.internal.client.get(`/internal/v1/data/loras/${loraId}`);
-        const loraName = loraResponse.data?.lora?.name || 'Unknown Mod';
+        const loraForDelete = await dependencies.loraService.getById(loraId, { isAdmin: true });
+        const loraName = loraForDelete?.name || 'Unknown Mod';
         const text = `Are you sure you want to permanently delete Mod: *${loraName}* (ID: \`${loraId}\`)?\n\nThis action cannot be undone.`;
         const keyboard = [[
             { text: '❌ Yes, Delete Permanently ❌', callback_data: `mods:admin:${ADMIN_ACTION_SHORTCODE_MAP.delete_execute}:${loraId}` },
@@ -316,7 +314,7 @@ Send '/cancel' if you change your mind.`;
       } else if (subAction === 'admin_delete_execute') {
         const [loraId] = params.slice(1);
         try {
-            await dependencies.internal.client.delete(`/internal/v1/data/loras/${loraId}`);
+            await dependencies.loraService.deleteLora(loraId);
             await editEscapedMessageText(bot, `Mod with ID \`${loraId}\` has been deleted.`, {
                 chat_id: callbackQuery.message.chat.id,
                 message_id: callbackQuery.message.message_id,
@@ -506,17 +504,14 @@ async function displayModsByFilterScreen(bot, callbackQuery, masterAccountId, de
   }).toString();
 
   try {
-    logger.info(`[ModsMenuManager] Calling /internal/v1/data/loras/list with params: filterType=${filterType}&checkpoint=${currentCheckpoint}&page=${currentPage}&limit=5&userId=${masterAccountId}`);
-    const response = await dependencies.internal.client.get('/internal/v1/data/loras/list', {
-      params: {
-        filterType: filterType,
-        checkpoint: currentCheckpoint,
-        page: currentPage,
-        limit: 5,
-        userId: masterAccountId
-      }
-    });
-    const responseData = response.data; // Assuming response.data is the object { loras: [], pagination: {} }
+    logger.info(`[ModsMenuManager] Fetching loras: filterType=${filterType}&checkpoint=${currentCheckpoint}&page=${currentPage}&limit=5&userId=${masterAccountId}`);
+    const responseData = await dependencies.loraService.listLoras({
+      filterType,
+      checkpoint: currentCheckpoint,
+      page: currentPage,
+      limit: 5,
+      userId: masterAccountId,
+    }); // Assuming response.data is the object { loras: [], pagination: {} }
     
     if (responseData && responseData.loras) {
       const fetchedLoras = responseData.loras;
@@ -624,11 +619,8 @@ async function displayModDetailScreen(bot, callbackQuery, masterAccountId, depen
   const backFilterShortcode = getFilterShortcode(backFilterType);
 
   try {
-    logger.info(`[ModsMenuManager] Calling /internal/v1/data/loras/${loraIdentifier}?userId=${masterAccountId}`);
-    const response = await dependencies.internal.client.get(`/internal/v1/data/loras/${loraIdentifier}`, {
-      params: { userId: masterAccountId }
-    });
-    const lora = response.data.lora;
+    logger.info(`[ModsMenuManager] Fetching lora detail: ${loraIdentifier} userId=${masterAccountId}`);
+    const lora = await dependencies.loraService.getById(loraIdentifier, { userId: masterAccountId });
 
     if (lora) {
       let tempName = lora.name || lora.slug;
@@ -911,11 +903,15 @@ _Fetching Mods from the store..._
   }).toString();
 
   try {
-    logger.info(`[ModsMenuManager] Calling /internal/v1/data/store/loras with params:`, queryParams);
-    const response = await dependencies.internal.client.get('/internal/v1/data/store/loras', {
-      params: queryParams
+    logger.info(`[ModsMenuManager] Fetching store loras:`, queryParams);
+    const { loras, totalPages, hasNextPage, hasPrevPage } = await dependencies.loraService.listStoreLoras({
+      userId: masterAccountId,
+      storeFilterType: queryParams.storeFilterType,
+      checkpoint: queryParams.checkpoint,
+      tag: queryParams.tag,
+      page: queryParams.page,
+      limit: queryParams.limit,
     });
-    const { loras, totalPages, hasNextPage, hasPrevPage } = response.data;
     
     if (loras.length > 0) {
       loraListText = ''; 
@@ -1007,20 +1003,13 @@ async function displayStoreModDetailScreen(bot, callbackQuery, masterAccountId, 
   const backFilterShortcode = getFilterShortcode(backFilterType);
 
   try {
-    // Use the existing /loras/:loraIdentifier endpoint.
-    logger.info(`[ModsMenuManager] Store Detail: Calling /internal/v1/data/loras/${loraIdentifier}?userId=${masterAccountId}`);
-    const response = await dependencies.internal.client.get(`/internal/v1/data/loras/${loraIdentifier}`, {
-      params: { userId: masterAccountId }
-    });
-    const lora = response.data.lora;
+    logger.info(`[ModsMenuManager] Store Detail: Fetching lora ${loraIdentifier} userId=${masterAccountId}`);
+    const lora = await dependencies.loraService.getById(loraIdentifier, { userId: masterAccountId });
 
     if (lora) {
       // Check if user owns this LoRA (has permission)
-      const permission = await dependencies.internal.client.post('/internal/v1/data/loras/access', {
-        loraId: lora._id,
-        userId: masterAccountId
-      });
-      isOwned = !!permission.data.hasAccess;
+      const permission = await dependencies.loraService.checkAccess(lora._id, masterAccountId);
+      isOwned = !!permission.hasAccess;
 
       let tempName = lora.name || lora.slug;
       if (tempName.length > 64) tempName = tempName.substring(0, 61) + '...';
@@ -1268,10 +1257,7 @@ async function displayChangeCheckpointMenu(bot, callbackQuery, masterAccountId, 
     logger.info(`[ModsMenuManager] Displaying change checkpoint menu for Mod ${loraId}`);
 
     try {
-        const response = await dependencies.internal.client.get(`/internal/v1/data/loras/${loraId}`, {
-            params: { isAdmin: true } // Pass admin flag to bypass permission checks
-        });
-        const lora = response.data.lora;
+        const lora = await dependencies.loraService.getById(loraId, { isAdmin: true });
         if (!lora) {
             await bot.answerCallbackQuery(callbackQuery.id, { text: 'Error: Could not find this Mod.', show_alert: true });
             return;
@@ -1326,14 +1312,8 @@ async function handleModImportReply(bot, msg, context, dependencies) {
     logger.info(`[ModsMenu] Received reply for mod import. MAID: ${masterAccountId}, URL: '${url}'`);
 
     try {
-        // NOTE: 2025-08-20 – This legacy endpoint now delegates internally to
-        // /internal/v1/data/models/lora/import (see modelImportApi.js). Telegram
-        // flow can keep using the original path for backward-compatibility.
-        const result = await dependencies.internal.client.post('/internal/v1/data/loras/import', {
-            url: url,
-            userId: masterAccountId
-        });
-        await sendEscapedMessage(bot, chatId, result.data.message, { reply_to_message_id: msg.message_id });
+        const importResult = await dependencies.loraService.importFromUrl(url, masterAccountId);
+        await sendEscapedMessage(bot, chatId, `LoRA submitted successfully for admin review! (${importResult.name})`, { reply_to_message_id: msg.message_id });
 
         // Refresh the menu
         if (msg.reply_to_message && msg.reply_to_message.message_id) {
@@ -1416,25 +1396,21 @@ async function loraAdminCallbackHandler(bot, callbackQuery, masterAccountId, dep
     }
 
     let resultText = '';
-    let apiEndpoint = '';
 
     try {
         if (subAction === 'approve_public') {
-            apiEndpoint = `/internal/v1/data/loras/${loraId}/admin-approve`;
+            await dependencies.loraService.adminApprove(loraId, false);
             resultText = '✅ Publicly Approved';
         } else if (subAction === 'approve_private') {
-            apiEndpoint = `/internal/v1/data/loras/${loraId}/admin-approve-private`;
+            await dependencies.loraService.adminApprove(loraId, true);
             resultText = '🔒 Privately Approved';
         } else if (subAction === 'reject') {
-            apiEndpoint = `/internal/v1/data/loras/${loraId}/admin-reject`;
+            await dependencies.loraService.adminReject(loraId);
             resultText = '❌ Rejected';
         } else {
             await bot.answerCallbackQuery(callbackQuery.id, { text: `Unknown admin action: ${subAction}` });
             return;
         }
-
-        // Call the internal API
-        await internal.client.post(apiEndpoint);
 
         // Edit the original message to show the result
         // Note: originalMessage may already be escaped if it was sent with MarkdownV2
@@ -1470,13 +1446,9 @@ async function loraAdminCallbackHandler(bot, callbackQuery, masterAccountId, dep
  * @param {object} dependencies - The canonical dependencies object.
  */
 function registerHandlers(dispatcherInstances, dependencies) {
-    // Ensure canonical internalApiClient is wired for legacy calls
-    const apiClient = dependencies.internalApiClient || dependencies.internal?.client;
-    if (!apiClient) {
-        throw new Error('[ModsMenuManager] internalApiClient dependency missing');
+    if (!dependencies.loraService) {
+        throw new Error('[ModsMenuManager] loraService dependency missing');
     }
-    if (!dependencies.internal) dependencies.internal = {};
-    dependencies.internal.client = apiClient;
 
     const { commandDispatcher, callbackQueryDispatcher, messageReplyDispatcher } = dispatcherInstances;
     const { logger } = dependencies;

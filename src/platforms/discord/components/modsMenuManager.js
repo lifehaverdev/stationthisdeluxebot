@@ -208,17 +208,13 @@ async function handleModsButtonInteraction(client, interaction, masterAccountId,
             
             try {
                 if (isCurrentlyFavorite) {
-                    await apiClient.delete(`/internal/v1/data/loras/${loraMongoId}/favorite`, {
-                        data: { masterAccountId: actualMasterAccountId }
-                    });
+                    await dependencies.loraService.toggleFavorite(loraMongoId, actualMasterAccountId, false);
                     await interaction.followUp({
                         content: 'Removed from favorites 💔',
                         flags: 64
                     });
                 } else {
-                    await apiClient.post(`/internal/v1/data/loras/${loraMongoId}/favorite`, {
-                        masterAccountId: actualMasterAccountId
-                    });
+                    await dependencies.loraService.toggleFavorite(loraMongoId, actualMasterAccountId, true);
                     await interaction.followUp({
                         content: 'Added to favorites! ❤️',
                         flags: 64
@@ -305,10 +301,9 @@ async function buildModsByFilterScreen(masterAccountId, filterType, currentCheck
             userId: masterAccountId
         };
         
-        logger.info(`[ModsMenuManager] Calling /internal/v1/data/loras/list with params: filterType=${filterType}&checkpoint=${currentCheckpoint}&page=${currentPage}&limit=25&userId=${masterAccountId}`);
-        
-        const response = await apiClient.get('/internal/v1/data/loras/list', { params });
-        const responseData = response.data;
+        logger.info(`[ModsMenuManager] Fetching loras: filterType=${filterType}&checkpoint=${currentCheckpoint}&page=${currentPage}&limit=25&userId=${masterAccountId}`);
+
+        const responseData = await dependencies.loraService.listLoras(params);
         const loras = responseData?.loras || [];
         const totalPages = responseData?.pagination?.totalPages || 1;
         
@@ -471,11 +466,8 @@ async function buildModDetailScreen(masterAccountId, loraIdentifier, backFilterT
         .setTitle('🎭 Mod Details');
     
     try {
-        logger.info(`[ModsMenuManager] Calling /internal/v1/data/loras/${loraIdentifier}?userId=${masterAccountId}`);
-        const response = await apiClient.get(`/internal/v1/data/loras/${loraIdentifier}`, {
-            params: { userId: masterAccountId }
-        });
-        const lora = response.data?.lora || response.data;
+        logger.info(`[ModsMenuManager] Fetching lora detail: ${loraIdentifier} userId=${masterAccountId}`);
+        const lora = await dependencies.loraService.getById(loraIdentifier, { userId: masterAccountId });
         
         if (!lora) {
             embed.setDescription('❌ Mod not found.');
@@ -629,13 +621,8 @@ async function handleModImportReply(client, message, context, dependencies) {
             return;
         }
         
-        // Call import API
-        await apiClient.post('/internal/v1/data/loras/import', {
-            url,
-            masterAccountId
-        });
-        
-        await message.reply('✅ Mod import request submitted! The Mod will be processed and added to the collection.');
+        const importResult = await dependencies.loraService.importFromUrl(url, masterAccountId);
+        await message.reply(`✅ Mod import request submitted! ${importResult.name} will be reviewed and added to the collection.`);
     } catch (error) {
         logger.error('[ModsMenuManager] Error importing mod:', error);
         const errorMsg = error.response?.data?.error || error.message || 'Unknown error';
@@ -647,12 +634,9 @@ async function handleModImportReply(client, message, context, dependencies) {
  * Registers all handlers for the mods menu feature.
  */
 function registerHandlers(dispatcherInstances, dependencies) {
-    const apiClient = getApiClient(dependencies);
-    if (!apiClient) {
-        throw new Error('[ModsMenuManager] internalApiClient dependency missing');
+    if (!dependencies.loraService) {
+        throw new Error('[ModsMenuManager] loraService dependency missing');
     }
-    if (!dependencies.internal) dependencies.internal = {};
-    dependencies.internal.client = apiClient;
     
     const { commandDispatcher, buttonInteractionDispatcher, selectMenuInteractionDispatcher, messageReplyDispatcher } = dispatcherInstances;
     const { logger } = dependencies;
