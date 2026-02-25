@@ -5,6 +5,7 @@ const { CookOrchestratorService } = require('../cook');
 const adapterRegistry = require('../adapterRegistry');
 const { getPricingService } = require('../pricing');
 const { generationService } = require('../store/generations/GenerationService');
+const { economyService } = require('../store/economy/EconomyService');
 const ResponsePayloadNormalizer = require('../notifications/ResponsePayloadNormalizer');
 
 // Temporary in-memory cache for live progress (can be managed within this module)
@@ -320,20 +321,11 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
         const pricingService = getPricingService(logger);
         const serviceName = generationRecord.serviceName || 'comfyui';
         let isMs2User = false;
-        const requestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
 
         try {
-          // Look up user's wallet address from their master account
-          const userRes = await internalApiClient.get(`/internal/v1/data/users/${spenderMasterAccountId}`, requestOptions);
-          const walletAddress = userRes.data?.walletAddress;
-
+          const walletAddress = await economyService.getUserWalletAddress(spenderMasterAccountId);
           if (walletAddress) {
-            // Check user's active deposits for MS2 tokens
-            const depositsRes = await internalApiClient.get(
-              `/internal/v1/data/ledger/deposits/by-wallet/${walletAddress}`,
-              requestOptions
-            );
-            const deposits = depositsRes.data?.deposits || [];
+            const deposits = await economyService.getActiveDepositsByWallet(walletAddress);
             isMs2User = pricingService.userQualifiesForMs2Pricing(deposits);
             if (isMs2User) {
               logger.info(`[Webhook Processor] User ${spenderMasterAccountId} qualifies for MS2 pricing tier.`);
@@ -360,11 +352,10 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
         try {
           // --- New Contributor Reward Logic ---
           // This must be called *before* issueSpend to determine the total charge.
-          const { totalPointsToCharge, totalRewards, rewardBreakdown } = await distributeContributorRewards(generationRecord, basePointsToSpend, { internalApiClient, logger });
-          
-          const spendPayload = { pointsToSpend: totalPointsToCharge, spendContext: { generationId: generationId.toString(), toolId } };
+          const { totalPointsToCharge, totalRewards, rewardBreakdown } = await distributeContributorRewards(generationRecord, basePointsToSpend, { logger });
+
           logger.debug(`[Webhook Processor] Attempting to spend ${totalPointsToCharge} points for generation ${generationId}, user ${generationRecord.masterAccountId}. (Base: ${basePointsToSpend}, Rewards: ${totalRewards})`);
-          await issueSpend(spenderMasterAccountId, spendPayload, { internalApiClient, logger });
+          await economyService.spend(spenderMasterAccountId, { pointsToSpend: totalPointsToCharge, spendContext: { generationId: generationId.toString(), toolId } });
           logger.info(`[Webhook Processor] Spend successful for generation ${generationId}, user ${generationRecord.masterAccountId}.`);
 
           const protocolNetPoints = basePointsToSpend;
@@ -382,17 +373,9 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
 
           // << ADR-005 EXP Update Start >>
           try {
-            const expPayload = {
-              expChange: totalPointsToCharge, // User gets EXP for the total amount spent
-              description: `EXP gained for ${totalPointsToCharge} points spent via tool ${toolId}`
-            };
-            const expUpdateEndpoint = `/internal/v1/data/users/${generationRecord.masterAccountId}/economy/exp`;
-            const expRequestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
-            
-            logger.debug(`[Webhook Processor] Attempting EXP update for masterAccountId ${generationRecord.masterAccountId}. Payload:`, JSON.stringify(expPayload));
-            await internalApiClient.put(expUpdateEndpoint, expPayload, expRequestOptions);
+            logger.debug(`[Webhook Processor] Attempting EXP update for masterAccountId ${generationRecord.masterAccountId}: +${totalPointsToCharge}`);
+            await economyService.updateExp(generationRecord.masterAccountId, totalPointsToCharge);
             logger.debug(`[Webhook Processor] EXP updated for masterAccountId ${generationRecord.masterAccountId}: +${totalPointsToCharge} points`);
-
           } catch (expError) {
             logger.warn(`[Webhook Processor] EXP update failed for masterAccountId ${generationRecord.masterAccountId}. This is non-blocking. Error:`, expError.message, expError.stack);
           }
@@ -445,7 +428,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
  * @param {{internalApiClient: object, logger: object}} dependencies - Dependencies.
  * @returns {Promise<{totalPointsToCharge: number, totalRewards: number, rewardBreakdown: Array}>}
  */
-async function distributeContributorRewards(generationRecord, basePoints, { internalApiClient, logger }) {
+async function distributeContributorRewards(generationRecord, basePoints, { logger }) {
     logger.debug(`[distributeContributorRewards] Calculating rewards for gen ${generationRecord._id} based on ${basePoints} base points.`);
     const generatingUserId = generationRecord.masterAccountId.toString();
     const rewardsToDistribute = [];
@@ -529,7 +512,12 @@ async function distributeContributorRewards(generationRecord, basePoints, { inte
                     sourceUserId: generatingUserId,
                 }
             };
-            await issuePointsCredit(reward.contributorId, creditPayload, { internalApiClient, logger });
+            await economyService.creditPoints(reward.contributorId, {
+                points: creditPayload.points,
+                description: creditPayload.description,
+                rewardType: creditPayload.rewardType,
+                relatedItems: creditPayload.relatedItems,
+            });
             logger.debug(`[distributeContributorRewards] Successfully credited ${reward.points} points to contributor ${reward.contributorId}.`);
             rewardBreakdown.push({
                 contributorId: reward.contributorId,
@@ -552,28 +540,6 @@ async function distributeContributorRewards(generationRecord, basePoints, { inte
     return { totalPointsToCharge, totalRewards: totalPointsDistributed, rewardBreakdown };
 }
 
-
-/**
- * Issues a points credit to a user's account via the internal API.
- * @param {string} masterAccountId - The user to credit.
- * @param {object} payload - The credit payload.
- * @param {{internalApiClient: object, logger: object}} dependencies - Dependencies.
- */
-async function issuePointsCredit(masterAccountId, payload, { internalApiClient, logger }) {
-    if (!masterAccountId) throw new Error('masterAccountId is required for points credit.');
-    
-    const creditEndpoint = `/internal/v1/data/users/${masterAccountId}/economy/credit-points`;
-    const requestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
-
-    logger.debug(`[issuePointsCredit] Sending POST to ${creditEndpoint} for user ${masterAccountId}.`, { payload });
-    try {
-        await internalApiClient.post(creditEndpoint, payload, requestOptions);
-    } catch (error) {
-        const errorMessage = error.response?.data?.message || error.message || 'Unknown error during points credit';
-        logger.error(`[issuePointsCredit] Points credit request failed for user ${masterAccountId}. Error: ${errorMessage}`);
-        throw new Error(`Points credit API call failed: ${errorMessage}`);
-    }
-}
 
 // This function is no longer needed as we are using a points-based system and a single reward function.
 /*
@@ -661,29 +627,6 @@ async function issueDebit(masterAccountId, payload, { internalApiClient, logger 
   }
 }
 
-// Helper function to issue the spend request via the internal API
-async function issueSpend(masterAccountId, payload, { internalApiClient, logger }) {
-  if (!masterAccountId) {
-    throw new Error('masterAccountId is required for spend.');
-  }
-  const spendEndpoint = `/internal/v1/data/users/${masterAccountId}/economy/spend`;
-  const requestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
-  
-  logger.debug(`[issueSpend] Sending POST to ${spendEndpoint} for user ${masterAccountId}.`, { payload });
-  
-  try {
-    const response = await internalApiClient.post(spendEndpoint, payload, requestOptions);
-    logger.debug(`[issueSpend] Spend request successful for user ${masterAccountId}. Response status: ${response.status}`);
-    return response.data;
-  } catch (error) {
-    const errorMessage = error.response?.data?.message || error.message || 'Unknown error during spend';
-    const errorStatus = error.response?.status || 500;
-    logger.error(`[issueSpend] Spend request failed for user ${masterAccountId}. Status: ${errorStatus}, Error: ${errorMessage}`);
-    const spendError = new Error(`Spend API call failed: ${errorMessage}`);
-    spendError.statusCode = errorStatus;
-    throw spendError;
-  }
-}
 
 /**
  * Convert costUsd from various formats to a number for WebSocket consumption
