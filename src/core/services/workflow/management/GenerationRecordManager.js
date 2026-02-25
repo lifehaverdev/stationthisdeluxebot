@@ -7,9 +7,10 @@
 const { retryWithBackoff } = require('../utils/RetryHandler');
 
 class GenerationRecordManager {
-    constructor({ logger, internalApiClient }) {
+    constructor({ logger, generationService, internalApiClient }) {
         this.logger = logger;
-        this.internalApiClient = internalApiClient;
+        this.generationService = generationService || null;
+        this.internalApiClient = internalApiClient || null;
     }
 
     /**
@@ -18,6 +19,12 @@ class GenerationRecordManager {
      * @returns {Promise<{generationId: string}>} - Generation ID from the API response
      */
     async createGenerationRecord(generationParams) {
+        if (this.generationService) {
+            const created = await this.generationService.create(generationParams);
+            const generationId = created._id;
+            this.logger.debug(`[GenerationRecordManager] Created generation record ${generationId}`);
+            return { generationId };
+        }
         const genResponse = await this.internalApiClient.post('/internal/v1/data/generations', generationParams);
         const generationId = genResponse.data._id;
         this.logger.debug(`[GenerationRecordManager] Created generation record ${generationId}`);
@@ -31,6 +38,11 @@ class GenerationRecordManager {
      * @returns {Promise<void>}
      */
     async updateGenerationRecord(generationId, updatePayload) {
+        if (this.generationService) {
+            await this.generationService.update(generationId, updatePayload);
+            this.logger.debug(`[GenerationRecordManager] Updated generation ${generationId}`);
+            return;
+        }
         await this.internalApiClient.put(`/internal/v1/data/generations/${generationId}`, updatePayload);
         this.logger.debug(`[GenerationRecordManager] Updated generation ${generationId}`);
     }
@@ -41,6 +53,9 @@ class GenerationRecordManager {
      * @returns {Promise<Object>} - Generation record
      */
     async getGenerationRecord(generationId) {
+        if (this.generationService) {
+            return this.generationService.findById(generationId);
+        }
         const genResponse = await this.internalApiClient.get(`/internal/v1/data/generations/${generationId}`);
         return genResponse.data;
     }
@@ -55,13 +70,16 @@ class GenerationRecordManager {
             return [];
         }
 
+        if (this.generationService) {
+            return this.generationService.findByIds(generationIds);
+        }
+
         try {
             const queryString = generationIds.map(id => `_id_in=${id}`).join('&');
             const genRes = await this.internalApiClient.get(`/internal/v1/data/generations?${queryString}`);
             let stepGens = genRes.data.generations || [];
-            
+
             if (stepGens.length === 0) {
-                // Possibly ObjectId mismatch; fetch each individually
                 stepGens = [];
                 for (const gid of generationIds) {
                     try {
@@ -72,7 +90,7 @@ class GenerationRecordManager {
                     }
                 }
             }
-            
+
             return stepGens;
         } catch (err) {
             this.logger.warn(`[GenerationRecordManager] Failed to fetch generation records:`, err.message);

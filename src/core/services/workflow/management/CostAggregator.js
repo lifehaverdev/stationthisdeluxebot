@@ -5,9 +5,10 @@
  */
 
 class CostAggregator {
-    constructor({ logger, internalApiClient }) {
+    constructor({ logger, generationService, internalApiClient }) {
         this.logger = logger;
-        this.internalApiClient = internalApiClient;
+        this.generationService = generationService || null;
+        this.internalApiClient = internalApiClient || null;
     }
 
     /**
@@ -24,22 +25,23 @@ class CostAggregator {
         }
 
         try {
-            // Fetch all generation records
-            // Use comma-separated format for _id_in to ensure all IDs are included
-            // Express may not handle multiple query params with same name as array
-            const queryString = `_id_in=${generationIds.join(',')}`;
-            const genRes = await this.internalApiClient.get(`/internal/v1/data/generations?${queryString}`);
-            let stepGens = genRes.data.generations || [];
-            
-            if (stepGens.length === 0) {
-                // Possibly ObjectId mismatch; fetch each individually
-                stepGens = [];
-                for (const gid of generationIds) {
-                    try {
-                        const one = await this.internalApiClient.get(`/internal/v1/data/generations/${gid}`);
-                        if (one.data) stepGens.push(one.data);
-                    } catch (e) {
-                        this.logger.warn(`[CostAggregator] Failed to fetch generation ${gid} individually for cost aggregation: ${e.message}`);
+            let stepGens;
+            if (this.generationService) {
+                stepGens = await this.generationService.findByIds(generationIds);
+            } else {
+                const queryString = `_id_in=${generationIds.join(',')}`;
+                const genRes = await this.internalApiClient.get(`/internal/v1/data/generations?${queryString}`);
+                stepGens = genRes.data.generations || [];
+
+                if (stepGens.length === 0) {
+                    stepGens = [];
+                    for (const gid of generationIds) {
+                        try {
+                            const one = await this.internalApiClient.get(`/internal/v1/data/generations/${gid}`);
+                            if (one.data) stepGens.push(one.data);
+                        } catch (e) {
+                            this.logger.warn(`[CostAggregator] Failed to fetch generation ${gid} individually for cost aggregation: ${e.message}`);
+                        }
                     }
                 }
             }

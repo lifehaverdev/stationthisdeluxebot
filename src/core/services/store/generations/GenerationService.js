@@ -13,6 +13,57 @@ class GenerationService {
   }
 
   /**
+   * Create a new generation record.
+   * Mirrors the coercion logic from the internal generationOutputsApi POST handler.
+   * @param {Object} params - All fields required by GenerationOutputsDB.createGenerationOutput
+   * @returns {Promise<Object>} the created record with _id
+   */
+  async create(params) {
+    const { masterAccountId, initiatingEventId, spellId, castId, cookId, ...rest } = params;
+    const dataToCreate = {
+      ...rest,
+      masterAccountId: masterAccountId instanceof ObjectId ? masterAccountId : new ObjectId(masterAccountId),
+      initiatingEventId: initiatingEventId instanceof ObjectId ? initiatingEventId : new ObjectId(initiatingEventId),
+      ...(spellId && { spellId: spellId instanceof ObjectId ? spellId : new ObjectId(spellId) }),
+      ...(castId && { castId: castId instanceof ObjectId ? castId : new ObjectId(castId) }),
+      ...(cookId && { cookId: cookId instanceof ObjectId ? cookId : new ObjectId(cookId) }),
+    };
+    const created = await this.db.createGenerationOutput(dataToCreate);
+    if (!created) throw new Error('Failed to create generation record');
+    this.logger.debug(`[GenerationService] Created generation record ${created._id}`);
+    return created;
+  }
+
+  /**
+   * Fetch multiple generation records by an array of IDs.
+   * Falls back to individual fetches if batch returns nothing (ObjectId mismatch safety).
+   * @param {string[]|ObjectId[]} ids
+   * @returns {Promise<Object[]>}
+   */
+  async findByIds(ids) {
+    if (!ids || ids.length === 0) return [];
+    const oids = ids.map(id => (id instanceof ObjectId ? id : new ObjectId(id.toString())));
+    try {
+      const results = await this.db.findGenerations({ _id: { $in: oids } });
+      if (results && results.length > 0) return results;
+      // Fallback: fetch individually (ObjectId mismatch safety)
+      const items = [];
+      for (const oid of oids) {
+        try {
+          const one = await this.db.findGenerationById(oid);
+          if (one) items.push(one);
+        } catch (e) {
+          this.logger.warn(`[GenerationService] findByIds: failed to fetch ${oid}: ${e.message}`);
+        }
+      }
+      return items;
+    } catch (err) {
+      this.logger.warn(`[GenerationService] findByIds batch failed: ${err.message}`);
+      return [];
+    }
+  }
+
+  /**
    * Find a generation by ComfyDeploy run_id stored in metadata.
    */
   async findByRunId(run_id) {

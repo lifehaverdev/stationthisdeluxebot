@@ -21,6 +21,7 @@
 const CastManager = require('./workflow/management/CastManager');
 const GenerationRecordManager = require('./workflow/management/GenerationRecordManager');
 const CostAggregator = require('./workflow/management/CostAggregator');
+const { generationService } = require('./store/generations/GenerationService');
 const StepExecutor = require('./workflow/execution/StepExecutor');
 const SpellExecutor = require('./workflow/execution/SpellExecutor');
 const StepContinuator = require('./workflow/continuation/StepContinuator');
@@ -40,8 +41,8 @@ class WorkflowExecutionService {
 
         // Initialize management services
         this.castManager = new CastManager({ logger, spellService });
-        this.generationRecordManager = new GenerationRecordManager({ logger, internalApiClient });
-        this.costAggregator = new CostAggregator({ logger, internalApiClient });
+        this.generationRecordManager = new GenerationRecordManager({ logger, generationService, internalApiClient });
+        this.costAggregator = new CostAggregator({ logger, generationService, internalApiClient });
         
         // Initialize adapter and notification services
         const adapterRegistry = require('./adapterRegistry');
@@ -70,6 +71,7 @@ class WorkflowExecutionService {
             toolRegistry,
             workflowsService,
             internalApiClient,
+            userEventsDb: db && db.userEvents ? db.userEvents : null, // Phase 7a: direct DB for event creation
             adapterRegistry,
             generationRecordManager: this.generationRecordManager,
             adapterCoordinator: this.adapterCoordinator,

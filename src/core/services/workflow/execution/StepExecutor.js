@@ -10,11 +10,13 @@ const ParameterResolver = require('./ParameterResolver');
 const StrategyFactory = require('./strategies/StrategyFactory');
 
 class StepExecutor {
-    constructor({ logger, toolRegistry, workflowsService, internalApiClient, adapterRegistry, generationRecordManager, adapterCoordinator, workflowNotifier }) {
+    constructor({ logger, toolRegistry, workflowsService, internalApiClient, userEventsDb, adapterRegistry, generationRecordManager, adapterCoordinator, workflowNotifier }) {
         this.logger = logger;
         this.toolRegistry = toolRegistry;
         this.workflowsService = workflowsService;
         this.internalApiClient = internalApiClient;
+        // userEventsDb preferred for event creation; falls back to internalApiClient
+        this.userEventsDb = userEventsDb || null;
         this.adapterRegistry = adapterRegistry;
         this.generationRecordManager = generationRecordManager;
         
@@ -54,11 +56,12 @@ class StepExecutor {
         this.logger.debug(`[StepExecutor] Executing Step ${stepIndex + 1}/${spell.steps.length}: ${tool.displayName}`);
 
         // Create event FIRST (required for initiatingEventId in generation records)
+        // Use userEventsDb directly if available (Phase 7a), fall back to internalApiClient
         const { eventId } = await createEvent(
             'spell_step_triggered',
             originalContext,
             { spellId: spell._id, stepId: step.stepId, toolId: tool.toolId },
-            this.internalApiClient
+            this.userEventsDb || this.internalApiClient
         );
         this.logger.debug(`[StepExecutor] Created event ${eventId} for spell step ${stepIndex + 1}`);
 
