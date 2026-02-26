@@ -17,6 +17,7 @@ class NotificationDispatcher {
     this.platformNotifiers = services.platformNotifiers || {};
     this.workflowExecutionService = services.workflowExecutionService;
     this.spellService = services.spellService || null;
+    this.generationOutputsDb = services.generationOutputsDb || null; // Phase 7h: in-process generation record access
     
     if (!this.workflowExecutionService) {
       this.logger.warn('[NotificationDispatcher] workflowExecutionService is not provided. Spell execution will not work.');
@@ -132,11 +133,13 @@ class NotificationDispatcher {
     // Defensive check for required metadata to prevent crashes on malformed records
     if (!record.metadata || !record.metadata.spell || typeof record.metadata.stepIndex === 'undefined') {
       this.logger.error(`[NotificationDispatcher] Cannot process spell step for GenID ${recordId}: record is missing required spell metadata.`);
-      const updateOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
-      await this.internalApiClient.put(`/internal/v1/data/generations/${recordId}`, {
-        deliveryStatus: 'failed',
-        deliveryError: 'Malformed spell step record, missing required metadata.'
-      }, updateOptions);
+      // Phase 7h: in-process update replacing HTTP PUT /generations/:id
+      if (this.generationOutputsDb) {
+        await this.generationOutputsDb.updateGenerationOutput(recordId, { deliveryStatus: 'failed', deliveryError: 'Malformed spell step record, missing required metadata.' });
+      } else {
+        const updateOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
+        await this.internalApiClient.put(`/internal/v1/data/generations/${recordId}`, { deliveryStatus: 'failed', deliveryError: 'Malformed spell step record, missing required metadata.' }, updateOptions);
+      }
       return;
     }
 
@@ -150,27 +153,33 @@ class NotificationDispatcher {
     const updateOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
     let currentRecord = null; // Hoisted to function scope so it's accessible in the second try block
     try {
-      // Fetch current record to check its deliveryStatus AND get full record data
-      const currentRecordResponse = await this.internalApiClient.get(`/internal/v1/data/generations/${recordId}`, updateOptions);
-      currentRecord = currentRecordResponse.data;
+      // Phase 7h: in-process fetch replacing HTTP GET /generations/:id
+      if (this.generationOutputsDb) {
+        currentRecord = await this.generationOutputsDb.findGenerationById(recordId);
+      } else {
+        const currentRecordResponse = await this.internalApiClient.get(`/internal/v1/data/generations/${recordId}`, updateOptions);
+        currentRecord = currentRecordResponse.data;
+      }
       const currentStatus = currentRecord?.deliveryStatus;
-      
+
       // If already processing or sent, skip (another handler is processing this)
       if (currentStatus === 'processing' || currentStatus === 'sent' || currentStatus === 'failed') {
         this.logger.info(`[NotificationDispatcher] Skipping generation ${recordId} - already ${currentStatus}`);
         return;
       }
-      
+
       // Only update if status is 'pending' (or null/undefined)
       if (currentStatus !== 'pending' && currentStatus !== null && currentStatus !== undefined) {
         this.logger.warn(`[NotificationDispatcher] Unexpected deliveryStatus '${currentStatus}' for generation ${recordId}, skipping`);
         return;
       }
-      
-      // Now set to 'processing' to claim this record
-      await this.internalApiClient.put(`/internal/v1/data/generations/${recordId}`, {
-        deliveryStatus: 'processing', // Mark as processing to prevent duplicate execution
-      }, updateOptions);
+
+      // Phase 7h: in-process update replacing HTTP PUT /generations/:id
+      if (this.generationOutputsDb) {
+        await this.generationOutputsDb.updateGenerationOutput(recordId, { deliveryStatus: 'processing' });
+      } else {
+        await this.internalApiClient.put(`/internal/v1/data/generations/${recordId}`, { deliveryStatus: 'processing' }, updateOptions);
+      }
     } catch (markErr) {
       this.logger.error(`[NotificationDispatcher] Failed to atomically mark generation ${recordId} as processing:`, markErr.message);
       // If the GET fails, the record might not exist - skip processing
@@ -213,10 +222,12 @@ class NotificationDispatcher {
         await this.workflowExecutionService.continueExecution(currentRecord || record);
         
         // Mark this step's generation record as complete so it isn't picked up again.
-        await this.internalApiClient.put(`/internal/v1/data/generations/${recordId}`, {
-          deliveryStatus: 'sent', // spell step handled by engine
-          deliveryTimestamp: new Date(),
-        }, updateOptions);
+        // Phase 7h: in-process update replacing HTTP PUT /generations/:id
+        if (this.generationOutputsDb) {
+          await this.generationOutputsDb.updateGenerationOutput(recordId, { deliveryStatus: 'sent', deliveryTimestamp: new Date() });
+        } else {
+          await this.internalApiClient.put(`/internal/v1/data/generations/${recordId}`, { deliveryStatus: 'sent', deliveryTimestamp: new Date() }, updateOptions);
+        }
 
         this.logger.info(`[NotificationDispatcher] Successfully processed spell step for GenID ${recordId}.`);
     } catch (error) {
@@ -225,10 +236,12 @@ class NotificationDispatcher {
         // Update the record to reflect the failure
         const updateOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
         try {
-          await this.internalApiClient.put(`/internal/v1/data/generations/${recordId}`, {
-            deliveryStatus: 'failed',
-            deliveryError: `Spell continuation failed: ${error.message}`
-          }, updateOptions);
+          // Phase 7h: in-process update replacing HTTP PUT /generations/:id
+          if (this.generationOutputsDb) {
+            await this.generationOutputsDb.updateGenerationOutput(recordId, { deliveryStatus: 'failed', deliveryError: `Spell continuation failed: ${error.message}` });
+          } else {
+            await this.internalApiClient.put(`/internal/v1/data/generations/${recordId}`, { deliveryStatus: 'failed', deliveryError: `Spell continuation failed: ${error.message}` }, updateOptions);
+          }
         } catch (updateErr) {
           this.logger.error(`[NotificationDispatcher] Failed to update generation ${recordId} deliveryStatus:`, updateErr.message);
         }
@@ -300,12 +313,13 @@ class NotificationDispatcher {
       await notifier.sendNotification(record.metadata?.notificationContext || {}, messageContent, record);
       
       this.logger.info(`[NotificationDispatcher] Successfully sent notification for generationId: ${recordId} via ${record.notificationPlatform}.`);
-      const updateSentOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
-      await this.internalApiClient.put(`/internal/v1/data/generations/${recordId}`, {
-        deliveryStatus: 'sent',
-        deliveryTimestamp: new Date(),
-        deliveryAttempts: (record.deliveryAttempts || 0) + 1
-      }, updateSentOptions);
+      // Phase 7h: in-process update replacing HTTP PUT /generations/:id
+      if (this.generationOutputsDb) {
+        await this.generationOutputsDb.updateGenerationOutput(recordId, { deliveryStatus: 'sent', deliveryTimestamp: new Date(), deliveryAttempts: (record.deliveryAttempts || 0) + 1 });
+      } else {
+        const updateSentOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
+        await this.internalApiClient.put(`/internal/v1/data/generations/${recordId}`, { deliveryStatus: 'sent', deliveryTimestamp: new Date(), deliveryAttempts: (record.deliveryAttempts || 0) + 1 }, updateSentOptions);
+      }
 
     } catch (dispatchError) {
       const attempts = (record.deliveryAttempts || 0) + 1;
@@ -321,12 +335,13 @@ class NotificationDispatcher {
         updatePayload.deliveryStatus = 'dropped';
       }
       try {
-        const requestOptions = {
-          headers: {
-            'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB 
-          }
-        };
-        await this.internalApiClient.put(`/internal/v1/data/generations/${recordId}`, updatePayload, requestOptions);
+        // Phase 7h: in-process update replacing HTTP PUT /generations/:id
+        if (this.generationOutputsDb) {
+          await this.generationOutputsDb.updateGenerationOutput(recordId, updatePayload);
+        } else {
+          const requestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
+          await this.internalApiClient.put(`/internal/v1/data/generations/${recordId}`, updatePayload, requestOptions);
+        }
       } catch (updateError) {
         this.logger.error(`[NotificationDispatcher] Failed to update generation ${recordId} after dispatch error:`, updateError.message);
       }

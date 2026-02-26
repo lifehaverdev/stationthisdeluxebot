@@ -281,7 +281,8 @@ async function initializeServices(options = {}) {
     const userSettingsService = getUserSettingsService({
       logger,
       toolRegistry,
-      internalApiClient // Use the directly imported singleton
+      internalApiClient, // Use the directly imported singleton
+      userPreferencesDb: initializedDbServices.data.userPreferences // Phase 7h: in-process preferences access
     });
     logger.debug('UserSettingsService initialized globally in core services.');
 

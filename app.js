@@ -233,6 +233,7 @@ async function startApp() {
             platformNotifiers: platformNotifiersMap,
             workflowExecutionService: services.workflowExecutionService,
             spellService: services.spellService,
+            generationOutputsDb: services.db?.generationOutputs || null, // Phase 7h: in-process generation record access
           },
           { /* Optional: pollingIntervalMs, etc. */ }
         );

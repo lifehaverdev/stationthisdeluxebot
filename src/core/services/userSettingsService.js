@@ -15,6 +15,7 @@ class UserSettingsService {
       // Consider throwing an error here if the service cannot function without it.
     }
     this.userPreferencesApi = services.userPreferencesApi; // Direct DB access or another service
+    this.userPreferencesDb = services.userPreferencesDb || null; // Phase 7h: in-process preferences access
   }
 
   /**
@@ -41,26 +42,30 @@ class UserSettingsService {
 
     let userPreferences = {};
     try {
-      // ADR-006 implies preferences are stored under a toolId key.
-      // The GET /preferences/:toolId route is not explicitly defined for UserSettingsService to call,
-      // but it's implied by PUT /preferences/:toolId and DELETE /preferences/:toolId.
-      // Assuming an internal API client method to fetch these.
-      // Example: /users/:masterAccountId/preferences/:toolId
-      const requestConfig = {};
-      if (internalApiKey) {
-        requestConfig.headers = { 'X-Internal-Client-Key': internalApiKey };
+      // Phase 7h: in-process preferences lookup replacing HTTP GET /users/:id/preferences/:toolId
+      if (this.userPreferencesDb) {
+        const prefs = await this.userPreferencesDb.getPreferenceByKey(masterAccountId, toolId);
+        if (prefs && typeof prefs === 'object') {
+          userPreferences = prefs;
+        }
+        logger.debug(`[getEffectiveSettings] Fetched user preferences`, { toolId, userPreferences });
+      } else {
+        const requestConfig = {};
+        if (internalApiKey) {
+          requestConfig.headers = { 'X-Internal-Client-Key': internalApiKey };
+        }
+        const response = await this.internalApiClient.get(`/v1/data/users/${masterAccountId}/preferences/${toolId}`, requestConfig);
+        if (response.data && typeof response.data === 'object') {
+          userPreferences = response.data;
+        }
+        logger.debug(`[getEffectiveSettings] Fetched user preferences`, { toolId, userPreferences });
       }
-      const response = await this.internalApiClient.get(`/v1/data/users/${masterAccountId}/preferences/${toolId}`, requestConfig);
-      if (response.data && typeof response.data === 'object') {
-        userPreferences = response.data; // Assuming the API returns the preferences for the toolId directly
-      }
-      logger.debug(`[getEffectiveSettings] Fetched user preferences`, { toolId, userPreferences });
     } catch (error) {
       if (error.response && error.response.status === 404) {
         logger.debug(`[getEffectiveSettings] No preferences found for user. Using defaults.`, { masterAccountId, toolId });
       } else {
         logger.error(`[getEffectiveSettings] Error fetching user preferences: ${error.message}`, { masterAccountId, toolId });
-        // Decide if to proceed with defaults or throw. For now, proceed with defaults.
+        // Proceed with defaults on error
       }
     }
 
@@ -154,14 +159,20 @@ class UserSettingsService {
 
     try {
       // ADR-006: "Applies validated preferences via internalApiClient.PUT /preferences/:toolId"
-      // The route is actually /users/:masterAccountId/preferences/:toolId
+      // Phase 7h: in-process save replacing HTTP PUT /users/:id/preferences/:toolId
+      if (this.userPreferencesDb) {
+        await this.userPreferencesDb.setPreferenceByKey(masterAccountId, toolId, preferences);
+        logger.debug(`[savePreferences] Preferences saved successfully (in-process).`, { masterAccountId, toolId });
+        return { success: true, data: preferences, errors: [] };
+      }
+      // Fallback: HTTP path
       const requestConfig = {};
       if (internalApiKey) {
         requestConfig.headers = { 'X-Internal-Client-Key': internalApiKey };
       }
       const response = await this.internalApiClient.put(
         `/v1/data/users/${masterAccountId}/preferences/${toolId}`,
-        preferences, // The body should be the preferences object for that toolId
+        preferences,
         requestConfig
       );
       logger.debug(`[savePreferences] Preferences saved successfully. Response status: ${response.status}`, { masterAccountId, toolId });
@@ -200,15 +211,24 @@ class UserSettingsService {
 
     let userPreferences = {};
     try {
-      const requestConfig = {};
-      if (internalApiKey) {
-        requestConfig.headers = { 'X-Internal-Client-Key': internalApiKey };
+      // Phase 7h: in-process preferences lookup replacing HTTP GET /users/:id/preferences/:toolId
+      if (this.userPreferencesDb) {
+        const prefs = await this.userPreferencesDb.getPreferenceByKey(masterAccountId, toolId);
+        if (prefs && typeof prefs === 'object') {
+          userPreferences = prefs;
+        }
+        logger.debug(`[getResolvedInput] User preferences fetched`, { masterAccountId, toolId, userPreferences });
+      } else {
+        const requestConfig = {};
+        if (internalApiKey) {
+          requestConfig.headers = { 'X-Internal-Client-Key': internalApiKey };
+        }
+        const response = await this.internalApiClient.get(`/v1/data/users/${masterAccountId}/preferences/${toolId}`, requestConfig);
+        if (response.data && typeof response.data === 'object') {
+          userPreferences = response.data;
+        }
+        logger.debug(`[getResolvedInput] User preferences fetched`, { masterAccountId, toolId, userPreferences });
       }
-      const response = await this.internalApiClient.get(`/v1/data/users/${masterAccountId}/preferences/${toolId}`, requestConfig);
-      if (response.data && typeof response.data === 'object') {
-        userPreferences = response.data;
-      }
-      logger.debug(`[getResolvedInput] User preferences fetched`, { masterAccountId, toolId, userPreferences });
     } catch (error) {
       if (error.response && error.response.status === 404) {
         logger.debug(`[getResolvedInput] No preferences found for user.`, { masterAccountId, toolId });
