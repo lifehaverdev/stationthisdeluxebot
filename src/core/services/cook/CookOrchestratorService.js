@@ -77,7 +77,10 @@ async function submitPiece({ spellId, submission }, orchestratorInstance) {
     // Fallback: HTTP path
     return internalApiClient.post('/internal/v1/data/spells/cast', { slug: spellId, context });
   }
-  // Tool path
+  // Tool path — Phase 8: in-process execution when service is available
+  if (orchestratorInstance.generationExecutionService) {
+    return orchestratorInstance.generationExecutionService.execute(submission);
+  }
   return internalApiClient.post('/internal/v1/data/execute', submission);
 }
 
@@ -116,6 +119,11 @@ class CookOrchestratorService {
   setCookService(cookService) {
     this.cookService = cookService;
     this.logger.debug('[CookOrchestrator] CookService configured');
+  }
+
+  setGenerationExecutionService(service) {
+    this.generationExecutionService = service;
+    this.logger.debug('[CookOrchestrator] GenerationExecutionService configured');
   }
 
   async _init() {

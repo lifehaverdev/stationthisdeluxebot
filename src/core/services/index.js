@@ -408,6 +408,10 @@ async function initializeServices(options = {}) {
       CookOrchestratorService.setCookService(cookService);
       logger.debug('[initializeServices] CookService injected into CookOrchestratorService.');
     }
+    if (typeof CookOrchestratorService.setGenerationExecutionService === 'function') {
+      CookOrchestratorService.setGenerationExecutionService(generationExecutionService);
+      logger.debug('[initializeServices] GenerationExecutionService injected into CookOrchestratorService.');
+    }
 
     // Initialize Guest Account Services
     const guestAccountService = new GuestAccountService({
