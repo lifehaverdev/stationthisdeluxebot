@@ -265,6 +265,7 @@ async function initializeServices(options = {}) {
             saltMiningService,
             adminActivityService, // Add admin activity service for real-time monitoring
             spellPaymentService: null, // Will be injected after SpellPaymentService is created
+            spellsDb: initializedDbServices.data.spells, // Phase 7i: in-process spell metadata lookup
           };
           creditServices[chainId] = new CreditService(creditDeps, creditServiceConfig, logger);
         } catch (err) {

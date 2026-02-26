@@ -58,19 +58,20 @@ class CreditService {
     this.logger = logger || console;
     tokenDecimalService.setLogger(this.logger);
 
-    const { 
-      ethereumService, 
-      creditLedgerDb, 
-      systemStateDb, 
-      priceFeedService, 
-      tokenRiskEngine, 
-      internalApiClient, 
-      userCoreDb, 
-      walletLinkingRequestDb, 
-      walletLinkingService, 
-      saltMiningService, 
-      webSocketService, 
-      adminActivityService 
+    const {
+      ethereumService,
+      creditLedgerDb,
+      systemStateDb,
+      priceFeedService,
+      tokenRiskEngine,
+      internalApiClient,
+      userCoreDb,
+      walletLinkingRequestDb,
+      walletLinkingService,
+      saltMiningService,
+      webSocketService,
+      adminActivityService,
+      spellsDb // Phase 7i: in-process spell metadata lookup
     } = services;
     
     if (!ethereumService || !creditLedgerDb || !systemStateDb || !priceFeedService || !tokenRiskEngine || !internalApiClient || !userCoreDb || !walletLinkingRequestDb || !walletLinkingService || !saltMiningService || !webSocketService) {
@@ -91,6 +92,7 @@ class CreditService {
     this.webSocketService = webSocketService;
     this.adminActivityService = adminActivityService;
     this.spellPaymentService = services.spellPaymentService || null;
+    this.spellsDb = spellsDb || null;
     
     const { foundationAddress, foundationAbi, disableWebhookActions: disableWebhookActionsConfig } = config;
     const disableWebhookActionsEnv = process.env.DISABLE_CREDIT_WEBHOOK_ACTIONS === '1';
@@ -764,10 +766,15 @@ class CreditService {
     }
 
     // 3. Fetch spell metadata to identify creator
+    // Phase 7i: in-process spell lookup replacing HTTP GET /spells/:id
     let spellMeta;
     try {
-      const resp = await this.internalApiClient.get(`/internal/v1/data/spells/${spellId}`);
-      spellMeta = resp.data;
+      if (this.spellsDb) {
+        spellMeta = await this.spellsDb.findById(spellId);
+      } else {
+        const resp = await this.internalApiClient.get(`/internal/v1/data/spells/${spellId}`);
+        spellMeta = resp.data;
+      }
     } catch (err) {
       this.logger.warn(`[CreditService] Unable to fetch spell ${spellId} for creator payout: ${err.message}`);
     }
