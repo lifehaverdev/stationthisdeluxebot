@@ -135,6 +135,7 @@ function initializeInternalServices(dependencies = {}) {
       datasetService: dependencies.datasetService,
       userService: dependencies.userService,
       trainingService: dependencies.trainingService,
+      generationExecutionService: dependencies.generationExecutionService, // Phase 8
   };
 
   // Create an instance of teamServiceDb and add it to apiDependencies

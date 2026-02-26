@@ -56,6 +56,8 @@ const { DatasetService } = require('./store/datasets/DatasetService');
 const { TrainingService } = require('./store/training/TrainingService');
 const VastAIService = require('./vastai/VastAIService');
 const { ModelService } = require('./store/models/ModelService');
+const { GenerationExecutionService } = require('./generationExecutionService');
+const notificationEvents = require('../events/notificationEvents');
 
 /**
  * Initialize all core services
@@ -326,6 +328,21 @@ async function initializeServices(options = {}) {
       userSettingsService,
       spellService,
     });
+    // Phase 8: GenerationExecutionService — in-process execution
+    const generationExecutionService = new GenerationExecutionService({
+      db: initializedDbServices.data,
+      toolRegistry,
+      comfyUIService: comfyUIService,
+      stringService,
+      loraResolutionService,
+      internalApiClient,
+      webSocketService,
+      adminActivityService,
+      notificationEvents,
+      logger,
+    });
+    logger.debug('GenerationExecutionService initialized.');
+
     // Initialize SpellMigrator for auto-healing spells when tool schemas change
     const spellMigrator = new SpellMigrator({
       toolRegistry,
@@ -495,7 +512,8 @@ async function initializeServices(options = {}) {
       guestAuthService, // Add guest auth service
       spellPaymentService, // Add spell payment service
       collectionExportService,
-      embellishmentTaskService // Add embellishment task service
+      embellishmentTaskService, // Add embellishment task service
+      generationExecutionService, // Phase 8: in-process execution
     });
     
     // The internalApiClient is a singleton utility, not from apiServices.
@@ -569,6 +587,7 @@ async function initializeServices(options = {}) {
       webSocketService, // Add the service here
       spellStatsService, // expose SpellStatsService
       stringService, // expose StringService
+      generationExecutionService, // Phase 8: expose GenerationExecutionService
       adminActivityService, // expose AdminActivityService
       guestAccountService, // expose GuestAccountService
       guestAuthService, // expose GuestAuthService
