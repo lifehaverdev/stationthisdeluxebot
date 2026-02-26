@@ -14,6 +14,8 @@ const assert = require('node:assert/strict');
 
 const { GenerationExecutionService } = require('../../../src/core/services/generationExecutionService');
 
+const FAKE_USER_ID = '649d9bc2381f3f90f7777e99';
+
 // Minimal mock tool with all required fields
 const mockTool = {
   toolId: 'test-tool',
@@ -68,7 +70,7 @@ describe('GenerationExecutionService', () => {
   describe('validation', () => {
     test('returns 400 when toolId is missing', async () => {
       const svc = new GenerationExecutionService({ toolRegistry: makeToolRegistry(), db: makeDb() });
-      const result = await svc.execute({ toolId: null, inputs: {}, user: { masterAccountId: 'u1' } });
+      const result = await svc.execute({ toolId: null, inputs: {}, user: { masterAccountId: FAKE_USER_ID } });
       assert.equal(result.statusCode, 400);
       assert.equal(result.body.error.code, 'INVALID_INPUT');
     });
@@ -81,7 +83,7 @@ describe('GenerationExecutionService', () => {
 
     test('returns 404 when tool is not found', async () => {
       const svc = new GenerationExecutionService({ toolRegistry: makeToolRegistryNotFound(), db: makeDb() });
-      const result = await svc.execute({ toolId: 'unknown', inputs: {}, user: { masterAccountId: 'u1' } });
+      const result = await svc.execute({ toolId: 'unknown', inputs: {}, user: { masterAccountId: FAKE_USER_ID } });
       assert.equal(result.statusCode, 404);
     });
 
@@ -93,7 +95,7 @@ describe('GenerationExecutionService', () => {
         },
       });
       const svc = new GenerationExecutionService({ toolRegistry: makeToolRegistry(), db });
-      const result = await svc.execute({ toolId: 'test-tool', inputs: {}, user: { masterAccountId: 'u1', platform: 'web' } });
+      const result = await svc.execute({ toolId: 'test-tool', inputs: {}, user: { masterAccountId: FAKE_USER_ID, platform: 'web' } });
       assert.equal(result.statusCode, 402);
       assert.equal(result.body.error.code, 'INSUFFICIENT_FUNDS');
     });
@@ -109,7 +111,7 @@ describe('GenerationExecutionService', () => {
       const result = await svc.execute({
         toolId: 'test-tool',
         inputs: { operation: 'uppercase', stringA: 'hello' },
-        user: { masterAccountId: 'u1', platform: 'web' },
+        user: { masterAccountId: FAKE_USER_ID, platform: 'web' },
       });
       assert.equal(result.statusCode, 200);
       assert.ok(result.body.generationId, 'generationId should be defined');
