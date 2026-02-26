@@ -318,17 +318,7 @@ async function initializeServices(options = {}) {
       spellsDb: initializedDbServices.data.spells,
       logger,
     });
-    const workflowExecutionService = new WorkflowExecutionService({
-      logger,
-      toolRegistry,
-      comfyUIService: comfyUIService,
-      internalApiClient, // Use the singleton directly
-      db: initializedDbServices.data,
-      workflowsService: workflowsService,
-      userSettingsService,
-      spellService,
-    });
-    // Phase 8: GenerationExecutionService — in-process execution
+    // Phase 8: GenerationExecutionService — in-process execution (must precede WorkflowExecutionService)
     const generationExecutionService = new GenerationExecutionService({
       db: initializedDbServices.data,
       toolRegistry,
@@ -342,6 +332,18 @@ async function initializeServices(options = {}) {
       logger,
     });
     logger.debug('GenerationExecutionService initialized.');
+
+    const workflowExecutionService = new WorkflowExecutionService({
+      logger,
+      toolRegistry,
+      comfyUIService: comfyUIService,
+      internalApiClient, // Use the singleton directly
+      db: initializedDbServices.data,
+      workflowsService: workflowsService,
+      userSettingsService,
+      spellService,
+      generationExecutionService, // Phase 8: in-process execution for ImmediateStrategy
+    });
 
     // Initialize SpellMigrator for auto-healing spells when tool schemas change
     const spellMigrator = new SpellMigrator({

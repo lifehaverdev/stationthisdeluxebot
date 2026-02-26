@@ -9,11 +9,12 @@ const AsyncAdapterStrategy = require('./AsyncAdapterStrategy');
 const WebhookStrategy = require('./WebhookStrategy');
 
 class StrategyFactory {
-    constructor({ logger, adapterRegistry, adapterCoordinator, workflowNotifier }) {
+    constructor({ logger, adapterRegistry, adapterCoordinator, workflowNotifier, generationExecutionService }) {
         this.logger = logger;
         this.adapterRegistry = adapterRegistry;
         this.adapterCoordinator = adapterCoordinator;
         this.workflowNotifier = workflowNotifier;
+        this.generationExecutionService = generationExecutionService || null;
     }
 
     /**
@@ -37,7 +38,7 @@ class StrategyFactory {
 
         // Determine strategy based on tool properties
         if (tool.deliveryMode === 'immediate') {
-            return new ImmediateStrategy({ logger: this.logger, workflowNotifier: this.workflowNotifier });
+            return new ImmediateStrategy({ logger: this.logger, workflowNotifier: this.workflowNotifier, generationExecutionService: this.generationExecutionService });
         }
 
         // Check if adapter exists and supports async jobs
@@ -52,7 +53,7 @@ class StrategyFactory {
 
         // Fallback to immediate strategy
         this.logger.warn(`[StrategyFactory] No adapter found for ${tool.service}, defaulting to immediate strategy`);
-        return new ImmediateStrategy({ logger: this.logger, workflowNotifier: this.workflowNotifier });
+        return new ImmediateStrategy({ logger: this.logger, workflowNotifier: this.workflowNotifier, generationExecutionService: this.generationExecutionService });
     }
 
     /**
@@ -63,14 +64,14 @@ class StrategyFactory {
     _createStrategyByType(type) {
         switch (type) {
             case 'immediate':
-                return new ImmediateStrategy({ logger: this.logger, workflowNotifier: this.workflowNotifier });
+                return new ImmediateStrategy({ logger: this.logger, workflowNotifier: this.workflowNotifier, generationExecutionService: this.generationExecutionService });
             case 'async_adapter':
                 return new AsyncAdapterStrategy({ logger: this.logger, adapterCoordinator: this.adapterCoordinator });
             case 'webhook':
                 return new WebhookStrategy({ logger: this.logger, adapterCoordinator: this.adapterCoordinator });
             default:
                 this.logger.warn(`[StrategyFactory] Unknown strategy type: ${type}, defaulting to immediate`);
-                return new ImmediateStrategy({ logger: this.logger, workflowNotifier: this.workflowNotifier });
+                return new ImmediateStrategy({ logger: this.logger, workflowNotifier: this.workflowNotifier, generationExecutionService: this.generationExecutionService });
         }
     }
 }

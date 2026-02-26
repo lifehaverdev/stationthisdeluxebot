@@ -30,7 +30,7 @@ const AdapterCoordinator = require('./workflow/adapters/AdapterCoordinator');
 const WorkflowNotifier = require('./workflow/notifications/WorkflowNotifier');
 
 class WorkflowExecutionService {
-    constructor({ logger, toolRegistry, comfyUIService, internalApiClient, db, workflowsService, spellService }) {
+    constructor({ logger, toolRegistry, comfyUIService, internalApiClient, db, workflowsService, spellService, generationExecutionService }) {
         this.logger = logger;
         this.toolRegistry = toolRegistry;
         this.internalApiClient = internalApiClient;
@@ -75,7 +75,8 @@ class WorkflowExecutionService {
             adapterRegistry,
             generationRecordManager: this.generationRecordManager,
             adapterCoordinator: this.adapterCoordinator,
-            workflowNotifier: this.workflowNotifier
+            workflowNotifier: this.workflowNotifier,
+            generationExecutionService: generationExecutionService || null, // Phase 8
         });
         this.spellExecutor = new SpellExecutor({
             logger,

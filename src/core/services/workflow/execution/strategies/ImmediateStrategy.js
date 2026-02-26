@@ -7,9 +7,10 @@
 const ExecutionStrategy = require('./ExecutionStrategy');
 
 class ImmediateStrategy extends ExecutionStrategy {
-    constructor({ logger, workflowNotifier }) {
+    constructor({ logger, workflowNotifier, generationExecutionService }) {
         super({ type: 'immediate', logger });
         this.workflowNotifier = workflowNotifier;
+        this.generationExecutionService = generationExecutionService || null;
     }
 
     /**
@@ -53,14 +54,22 @@ class ImmediateStrategy extends ExecutionStrategy {
         };
 
         try {
-            const executionResponse = await internalApiClient.post('/internal/v1/data/execute', executionPayload);
-            this.logger.debug(`[ImmediateStrategy] Step ${stepIndex + 1} submitted via centralized execution endpoint. GenID: ${executionResponse.data.generationId}, RunID: ${executionResponse.data.runId}`);
+            let executionData;
+            if (this.generationExecutionService) {
+                const result = await this.generationExecutionService.execute(executionPayload);
+                executionData = result.body;
+                this.logger.debug(`[ImmediateStrategy] Step ${stepIndex + 1} executed in-process. GenID: ${executionData.generationId}`);
+            } else {
+                const executionResponse = await internalApiClient.post('/internal/v1/data/execute', executionPayload);
+                executionData = executionResponse.data;
+                this.logger.debug(`[ImmediateStrategy] Step ${stepIndex + 1} submitted via HTTP. GenID: ${executionData.generationId}`);
+            }
 
             return {
-                generationId: executionResponse.data.generationId,
-                response: executionResponse.data.response,
-                status: executionResponse.data.response ? 'completed' : 'processing',
-                runId: executionResponse.data.runId
+                generationId: executionData.generationId,
+                response: executionData.response,
+                status: executionData.response ? 'completed' : 'processing',
+                runId: executionData.runId
             };
         } catch (err) {
             // For immediate tools, timeout errors are acceptable - generation continues in background
