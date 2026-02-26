@@ -13,9 +13,14 @@ module.exports = function generationExecutionApi(dependencies) {
   logger.debug('[generationExecutionApi] Initializing Generation Execution API routes...');
 
   router.post('/', async (req, res) => {
-    const { toolId, inputs, user, sessionId, eventId, metadata } = req.body;
-    const result = await generationExecutionService.execute({ toolId, inputs, user, metadata, eventId, sessionId });
-    return res.status(result.statusCode).json(result.body);
+    try {
+      const { toolId, inputs, user, sessionId, eventId, metadata } = req.body;
+      const result = await generationExecutionService.execute({ toolId, inputs, user, metadata, eventId, sessionId });
+      return res.status(result.statusCode).json(result.body);
+    } catch (err) {
+      logger.error('[generationExecutionApi] Unhandled error from service', err);
+      return res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'An unexpected error occurred.' } });
+    }
   });
 
   logger.debug('[generationExecutionApi] Generation Execution API routes initialized.');

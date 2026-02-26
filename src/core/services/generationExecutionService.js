@@ -264,6 +264,8 @@ class GenerationExecutionService {
       }
 
       // Adapter-based execution path
+      // Note: adapterRegistry is required inline (not injected) to avoid a circular dependency
+      // between generationExecutionService and the adapter modules that may themselves require services.
       const adapterRegistry = require('./adapterRegistry');
       const adapter = adapterRegistry.get(service);
       if (adapter && typeof adapter.execute === 'function' && (tool.deliveryMode === 'immediate' || !tool.deliveryMode)) {
