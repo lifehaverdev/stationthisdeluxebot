@@ -315,13 +315,19 @@ module.exports = function pointsApi(dependencies) {
                     try {
                         if (!creditService.estimateDepositGasCostInUsd) {
                             logger.warn('[pointsApi:/quote] Gas estimation not available', { requestId });
-                        } else if (userWalletAddress && isValidEthereumAddress(userWalletAddress)) {
-                        estimatedGasUsd = await creditService.estimateDepositGasCostInUsd({
-                            type,
-                            assetAddress,
-                            amount,
-                            userWalletAddress
-                        });
+                        } else {
+                            // ERC20 tokens don't need a real wallet address for gas estimation.
+                            // ETH (zero address) needs a `from` field — use the provided wallet or
+                            // a dummy address so estimation still runs without a connected wallet.
+                            const estimationAddress = (userWalletAddress && isValidEthereumAddress(userWalletAddress))
+                                ? userWalletAddress
+                                : '0x000000000000000000000000000000000000dEaD';
+                            estimatedGasUsd = await creditService.estimateDepositGasCostInUsd({
+                                type,
+                                assetAddress,
+                                amount,
+                                userWalletAddress: estimationAddress,
+                            });
                             logger.debug('[pointsApi:/quote] Dynamic gas estimate', { requestId, estimatedGasUsd });
                         }
                     } catch (err) {

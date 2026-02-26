@@ -98,6 +98,8 @@ export class BuyPointsModal extends Component {
       quote: null,
       donateQuote: null,
       quoteLoading: false,
+      referenceQuote: null,
+      referenceLoading: false,
       mode: 'contribute', // 'contribute' | 'donate'
       // Purchase
       purchase: null,
@@ -330,7 +332,7 @@ export class BuyPointsModal extends Component {
       }
 
       const fetchQuoteMode = async (quoteMode) => {
-        const body = { type: selectedAsset.type, assetAddress: selectedAsset.address, amount: amountToSend, mode: quoteMode };
+        const body = { type: selectedAsset.type, assetAddress: selectedAsset.address, amount: amountToSend, mode: quoteMode, userWalletAddress: this.state.walletAddress || undefined };
         const res = await postWithCsrf(`${API_BASE}/quote`, body);
         if (!res.ok) {
           const text = await res.text();
@@ -562,8 +564,46 @@ export class BuyPointsModal extends Component {
   }
 
   _selectAsset(asset, type) {
-    this.setState({ selectedAsset: { ...asset, type }, amount: '', quote: null, donateQuote: null, mode: 'contribute' });
+    this.setState({ selectedAsset: { ...asset, type }, amount: '', quote: null, donateQuote: null, mode: 'contribute', referenceQuote: null });
     this._goStep(STEP.AMOUNT);
+    if (type === 'token') this._fetchReferenceQuote({ ...asset, type });
+  }
+
+  async _fetchReferenceQuote(asset) {
+    this.setState({ referenceLoading: true });
+    try {
+      const refAmount = toSmallestUnit('1', asset.decimals || 18);
+      const res = await postWithCsrf(`${API_BASE}/quote`, {
+        type: 'token',
+        assetAddress: asset.address,
+        amount: refAmount,
+        mode: 'contribute',
+        userWalletAddress: this.state.walletAddress || undefined,
+      });
+      if (!res.ok) { this.setState({ referenceLoading: false }); return; }
+      const q = await res.json();
+      this.setState({ referenceQuote: q, referenceLoading: false });
+    } catch {
+      this.setState({ referenceLoading: false });
+    }
+  }
+
+  _computeAmountForPoints(targetPoints) {
+    const { referenceQuote } = this.state;
+    if (!referenceQuote) return null;
+    const gross1 = Number(referenceQuote.usdValue?.gross);
+    const fundingRate = Number(referenceQuote.fundingRate);
+    if (!gross1 || !fundingRate) return null;
+    // Gas is excluded here — it shows up in the real quote once they pick an amount.
+    // These buttons are just price anchors, not exact totals.
+    const grossNeeded = (targetPoints * 0.000337) / fundingRate;
+    const tokenAmount = grossNeeded / gross1;
+    if (!isFinite(tokenAmount) || tokenAmount <= 0) return null;
+    if (tokenAmount >= 1000000) return Math.round(tokenAmount).toLocaleString();
+    if (tokenAmount >= 100) return tokenAmount.toFixed(2);
+    if (tokenAmount >= 1) return tokenAmount.toFixed(4);
+    if (tokenAmount >= 0.0001) return tokenAmount.toFixed(6);
+    return tokenAmount.toExponential(2);
   }
 
   _acceptDonateDeal() {
@@ -690,8 +730,39 @@ export class BuyPointsModal extends Component {
   // ── Render: Step 2 — Amount Input ───────────────────────────
 
   _renderAmountStep() {
-    const { selectedAsset, amount, quote, donateQuote, quoteLoading, mode } = this.state;
+    const { selectedAsset, amount, quote, donateQuote, quoteLoading, mode, referenceQuote, referenceLoading } = this.state;
     const sym = selectedAsset ? (selectedAsset.symbol || selectedAsset.name) : '';
+
+    const QUICK_TARGETS = [1000, 10000, 100000, 1000000];
+    const QUICK_LABELS  = ['1K pts', '10K pts', '100K pts', '1M pts'];
+    const quickSelect = selectedAsset?.type === 'token'
+      ? h('div', { className: 'bp-quick-select' },
+          h('div', { className: 'bp-quick-label' }, 'Quick select — excl. gas'),
+          h('div', { className: 'bp-quick-btns' },
+            ...QUICK_TARGETS.map((pts, i) => {
+              const tokenAmt = this._computeAmountForPoints(pts);
+              return h('button', {
+                key: pts,
+                className: 'bp-quick-btn',
+                disabled: !tokenAmt,
+                onclick: () => {
+                  if (!tokenAmt) return;
+                  // strip commas from formatted large numbers before setting
+                  const raw = tokenAmt.replace(/,/g, '');
+                  this.setState({ amount: raw, quote: null, donateQuote: null });
+                  clearTimeout(this._quoteDebounce);
+                  this._quoteDebounce = setTimeout(() => this._fetchQuote(), 50);
+                },
+              },
+                h('span', { className: 'bp-quick-pts' }, QUICK_LABELS[i]),
+                h('span', { className: 'bp-quick-amt' },
+                  referenceLoading ? '...' : (tokenAmt ? `≈ ${tokenAmt} ${sym}` : '–')
+                ),
+              );
+            })
+          )
+        )
+      : null;
 
     const quoteBody = quoteLoading
       ? h(Loader, { message: 'Fetching quote...' })
@@ -715,6 +786,7 @@ export class BuyPointsModal extends Component {
 
     return h('div', null,
       h('div', { className: 'bp-selected' }, `Selected: ${sym}`),
+      quickSelect,
       h('input', {
         type: 'text',
         className: 'bp-input',
@@ -896,6 +968,18 @@ export class BuyPointsModal extends Component {
 
       /* Amount step */
       .bp-selected { font-size:var(--fs-md); color:var(--text-primary); margin-bottom:12px; }
+      .bp-quick-select { margin-bottom:12px; }
+      .bp-quick-label { font-family:var(--ff-mono); font-size:var(--fs-xs); color:var(--text-label); text-transform:uppercase; letter-spacing:var(--ls-wide); margin-bottom:6px; }
+      .bp-quick-btns { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; }
+      .bp-quick-btn {
+        background:var(--surface-1); border:var(--border-width) solid var(--border); padding:8px 4px;
+        cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:3px;
+        transition:border-color var(--dur-micro) var(--ease),background var(--dur-micro) var(--ease);
+      }
+      .bp-quick-btn:hover:not(:disabled) { border-color:var(--accent-border); background:var(--surface-3); }
+      .bp-quick-btn:disabled { opacity:0.45; cursor:not-allowed; }
+      .bp-quick-pts { font-family:var(--ff-condensed); font-size:var(--fs-sm); font-weight:var(--fw-medium); color:var(--accent); }
+      .bp-quick-amt { font-family:var(--ff-mono); font-size:var(--fs-xs); color:var(--text-secondary); }
       .bp-input {
         width:100%; padding:10px 14px; background:var(--surface-1); border:var(--border-width) solid var(--border); border-radius:0;
         color:var(--text-primary); font-size:var(--fs-md); box-sizing:border-box; margin-bottom:12px; outline:none;

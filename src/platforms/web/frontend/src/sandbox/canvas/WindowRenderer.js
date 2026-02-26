@@ -115,6 +115,12 @@ export class WindowRenderer extends Component {
     this.props.onWindowClick?.(this.props.win.id, { x: e.clientX, y: e.clientY });
   }
 
+  _onHeaderDblClick(e) {
+    if (e.target.closest('button, input, textarea, select, a')) return;
+    e.stopPropagation();
+    this.props.onClone?.(this.props.win.id);
+  }
+
   _onOutputAnchorDown(e, outputType) {
     e.stopPropagation();
     e.preventDefault();
@@ -377,7 +383,7 @@ export class WindowRenderer extends Component {
       h('span', { className: 'nw-bracket-bl' }),
 
       // Header (drag handle + click = select connected component)
-      h('div', { className: 'nw-header', onmousedown: this.bind(this._onHeaderMouseDown), ontouchstart: this.bind(this._onHeaderTouchStart), onclick: this.bind(this._onHeaderClick) },
+      h('div', { className: 'nw-header', onmousedown: this.bind(this._onHeaderMouseDown), ontouchstart: this.bind(this._onHeaderTouchStart), onclick: this.bind(this._onHeaderClick), ondblclick: this.bind(this._onHeaderDblClick) },
         h('span', { className: 'nw-title' }, this._getTitle()),
         h(CostDisplay, { windowId: win.id, initialCost: win.totalCostUsd ? { usd: win.totalCostUsd, points: 0, ms2: 0, cult: 0 } : null }),
         win.outputVersions?.length > 0

@@ -5,6 +5,7 @@ import { Sidebar } from '../sandbox/components/Sidebar.js';
 import { CostHUD } from '../sandbox/components/CostHUD.js';
 import { MintSpellFAB } from '../sandbox/components/MintSpellFAB.js';
 import { ActionModal } from '../sandbox/components/ActionModal.js';
+import { CheckpointPickerModal } from '../sandbox/components/CheckpointPickerModal.js';
 import { AuthWidget } from '../sandbox/components/AuthWidget.js';
 import { initStore } from '../sandbox/store.js';
 import { SandboxCanvas, loadCanvasState } from '../sandbox/canvas/SandboxCanvas.js';
@@ -35,6 +36,7 @@ export class Sandbox extends Component {
       actionModal: { visible: false, x: 0, y: 0, workspacePos: null },
       textEdit: { visible: false, windowId: null, value: '', displayName: '', kind: 'primitive', paramKey: null },
       resultOverlay: { visible: false, output: null, displayName: '', copied: false },
+      checkpointPicker: { visible: false, windowId: null, paramKey: null, displayName: '', currentValue: '' },
     };
   }
 
@@ -86,6 +88,11 @@ export class Sandbox extends Component {
     };
     eventBus.on('sandbox:openTextEdit', this._onOpenTextEdit);
 
+    this._onOpenCheckpointPicker = ({ windowId, paramKey, displayName, currentValue }) => {
+      this.setState({ checkpointPicker: { visible: true, windowId, paramKey, displayName, currentValue } });
+    };
+    eventBus.on('sandbox:openCheckpointPicker', this._onOpenCheckpointPicker);
+
     this._onOpenResultOverlay = ({ output, displayName }) => {
       this.setState({ resultOverlay: { visible: true, output, displayName: displayName || '', copied: false } });
     };
@@ -93,9 +100,10 @@ export class Sandbox extends Component {
 
     this._escHandler = (e) => {
       if (e.key !== 'Escape') return;
-      const { actionModal, resultOverlay, textEdit } = this.state;
+      const { actionModal, resultOverlay, textEdit, checkpointPicker } = this.state;
       if (resultOverlay.visible) { this._closeResultOverlay(); return; }
       if (textEdit.visible) { this._closeTextEdit(); return; }
+      if (checkpointPicker.visible) { this._closeCheckpointPicker(); return; }
       if (actionModal.visible) { this.setState({ actionModal: { visible: false, x: 0, y: 0, workspacePos: null } }); }
     };
     document.addEventListener('keydown', this._escHandler);
@@ -114,8 +122,9 @@ export class Sandbox extends Component {
     if (this._mouseDownHandler) document.removeEventListener('mousedown', this._mouseDownHandler);
     if (this._escHandler)      document.removeEventListener('keydown',   this._escHandler);
     if (this._onCanvasTap)     eventBus.off('sandbox:canvasTap',         this._onCanvasTap);
-    if (this._onOpenTextEdit)       eventBus.off('sandbox:openTextEdit',       this._onOpenTextEdit);
-    if (this._onOpenResultOverlay)  eventBus.off('sandbox:openResultOverlay',  this._onOpenResultOverlay);
+    if (this._onOpenTextEdit)           eventBus.off('sandbox:openTextEdit',           this._onOpenTextEdit);
+    if (this._onOpenResultOverlay)      eventBus.off('sandbox:openResultOverlay',      this._onOpenResultOverlay);
+    if (this._onOpenCheckpointPicker)   eventBus.off('sandbox:openCheckpointPicker',   this._onOpenCheckpointPicker);
     document.body.style.overflow = '';
     document.documentElement.style.overflow = '';
     delete window.__SANDBOX_SPA_MANAGED__;
@@ -138,6 +147,16 @@ export class Sandbox extends Component {
 
   _closeTextEdit() {
     this.setState({ textEdit: { visible: false, windowId: null, value: '', displayName: '', kind: 'primitive', paramKey: null } });
+  }
+
+  _closeCheckpointPicker() {
+    this.setState({ checkpointPicker: { visible: false, windowId: null, paramKey: null, displayName: '', currentValue: '' } });
+  }
+
+  _onCheckpointSelect(name) {
+    const { windowId, paramKey } = this.state.checkpointPicker;
+    window.sandboxCanvas?._onParamChange(windowId, paramKey, name);
+    this._closeCheckpointPicker();
   }
 
   _onTextEditInput(value) {
@@ -433,6 +452,7 @@ export class Sandbox extends Component {
     const am = this.state.actionModal;
     const te = this.state.textEdit;
     const ro = this.state.resultOverlay;
+    const cp = this.state.checkpointPicker;
     const { windows, connections } = this._canvasState || {};
     const { isAuthenticated } = this.state;
 
@@ -521,7 +541,16 @@ export class Sandbox extends Component {
                       )
             )
           )
-        : null
+        : null,
+      cp.visible
+        ? h(CheckpointPickerModal, {
+            visible: cp.visible,
+            displayName: cp.displayName,
+            currentValue: cp.currentValue,
+            onSelect: (name) => this._onCheckpointSelect(name),
+            onClose: () => this._closeCheckpointPicker(),
+          })
+        : null,
     );
   }
 }

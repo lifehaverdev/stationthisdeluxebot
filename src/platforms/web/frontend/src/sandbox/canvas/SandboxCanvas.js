@@ -1338,6 +1338,39 @@ export class SandboxCanvas extends Component {
     });
   }
 
+  _cloneWindow(windowId) {
+    const original = this.state.windows.get(windowId);
+    if (!original) return;
+
+    // Deep-clone parameterMappings but strip any nodeOutput connections
+    // (the clone has no connections, so only keep static values)
+    const clonedMappings = {};
+    for (const [key, mapping] of Object.entries(original.parameterMappings || {})) {
+      if (mapping.type === 'nodeOutput') {
+        clonedMappings[key] = { type: 'static', value: '' };
+      } else {
+        clonedMappings[key] = { ...mapping };
+      }
+    }
+
+    this._addWindow({
+      ...original,
+      id: undefined, // let _addWindow generate a fresh id
+      x: original.x + 120,
+      y: original.y + 80,
+      parameterMappings: clonedMappings,
+      output: null,
+      outputVersions: [],
+      currentVersionIndex: -1,
+      outputLoaded: false,
+      executing: false,
+      progress: undefined,
+      error: undefined,
+      totalCost: undefined,
+      costVersions: undefined,
+    });
+  }
+
   _initMappings(tool) {
     const mappings = {};
     for (const [key, param] of Object.entries(tool.inputSchema || {})) {
@@ -1494,6 +1527,7 @@ export class SandboxCanvas extends Component {
             onAnchorDragStart: (wid, type, e) => this._startConnectionDrag(wid, type, e),
             onVersionChange: (wid, idx) => this._onVersionChange(wid, idx),
             onWindowClick: (wid, pos) => this._onWindowClick(wid, pos),
+            onClone: (wid) => this._cloneWindow(wid),
             mobileConnecting,
             onMobileConnectStart: (wid, type) => this._onMobileConnectStart(wid, type),
             onMobileConnectComplete: (wid, pk) => this._onMobileConnectComplete(wid, pk),

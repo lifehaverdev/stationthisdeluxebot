@@ -95,6 +95,27 @@ export class ParameterForm extends Component {
 
     // Default: text input — click opens full-screen overlay
     const strVal = value !== undefined && value !== null ? String(value) : '';
+
+    // Checkpoint parameter — open the checkpoint picker overlay instead of text edit
+    if (key === 'input_checkpoint') {
+      return h('div', { className: 'pf-param', key, style: visible ? '' : 'display:none' },
+        h('label', { className: 'pf-label', title: param.description || '' }, param.name),
+        h('div', {
+          className: `pf-input pf-input--text-preview pf-input--checkpoint${strVal ? '' : ' pf-input--empty'}`,
+          title: 'Click to choose a checkpoint',
+          onclick: (e) => {
+            e.stopPropagation();
+            eventBus.emit('sandbox:openCheckpointPicker', {
+              windowId: this.props.windowId,
+              paramKey: key,
+              displayName: param.name,
+              currentValue: strVal,
+            });
+          },
+        }, strVal || param.description || param.name)
+      );
+    }
+
     return h('div', { className: 'pf-param', key, style: visible ? '' : 'display:none' },
       h('label', { className: 'pf-label', title: param.description || '' }, param.name),
       h('div', {

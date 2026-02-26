@@ -123,9 +123,9 @@ function initializeInternalServices(dependencies = {}) {
       // --- Inject required backend services for pointsApi ---
       priceFeedService: dependencies.priceFeedService,
       creditService: dependencies.creditService,
-      creditServices: dependencies.creditService, // keyed map for multichain support
+      creditServices: dependencies.creditServices, // keyed map for multichain support
       ethereumService: dependencies.ethereumService,
-      ethereumServices: dependencies.ethereumService, // keyed map for multichain support
+      ethereumServices: dependencies.ethereumServices, // keyed map for multichain support
       nftPriceService: dependencies.nftPriceService,
       saltMiningService: dependencies.saltMiningService,
       // Platform notifiers for cross-platform notifications

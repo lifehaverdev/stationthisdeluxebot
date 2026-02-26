@@ -688,7 +688,7 @@ class CreditService {
           const tx = {
             to: vaultAddress,
             from: userWalletAddress,
-            value: amount
+            value: '0x1', // 1 wei — gas units are identical regardless of ETH value sent
           };
           const gasEstimate = await this.ethereumService.getProvider().estimateGas(tx);
           const gasPrice = (await this.ethereumService.getProvider().getFeeData()).gasPrice;
