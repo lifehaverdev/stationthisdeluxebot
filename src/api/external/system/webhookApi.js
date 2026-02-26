@@ -34,7 +34,8 @@ function createWebhookApi(dependencies) {
         internalApiClient: dependencies.internalApiClient || dependencies.internal?.client,
         telegramNotifier: dependencies.telegramNotifier,
         logger: dependencies.logger || console,
-        webSocketService: dependencies.webSocketService // <-- add this
+        webSocketService: dependencies.webSocketService,
+        userCoreDb: dependencies.db?.userCore || null // Phase 7e: in-process group sponsor lookup
       };
       
       const result = await processComfyDeployWebhook(req.body, processorDeps);

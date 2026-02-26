@@ -16,8 +16,8 @@ async function processRunPayload(runPayload, deps){
   return processComfyDeployWebhook(runPayload, deps);
 }
 
-// Dependencies: internalApiClient (for economy/user/group calls), logger, and webSocketService for real-time updates.
-async function processComfyDeployWebhook(payload, { internalApiClient, logger, webSocketService: websocketServer }) {
+// Dependencies: internalApiClient (for economy/user/group calls), logger, webSocketService for real-time updates, and userCoreDb for group sponsor lookup.
+async function processComfyDeployWebhook(payload, { internalApiClient, logger, webSocketService: websocketServer, userCoreDb }) {
 
   const { run_id, status, progress, live_status, outputs, event_type } = payload;
 
@@ -302,8 +302,13 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
         let spenderMasterAccountId = generationRecord.masterAccountId;
         if (chatId && chatId < 0) {
           try {
-            const groupRes = await internalApiClient.get(`/internal/v1/data/groups/${chatId}`);
-            const groupDoc = groupRes.data;
+            let groupDoc;
+            if (userCoreDb) {
+              groupDoc = await userCoreDb.findUserCoreByPlatformId('telegram_group', chatId.toString());
+            } else {
+              const groupRes = await internalApiClient.get(`/internal/v1/data/groups/${chatId}`);
+              groupDoc = groupRes.data;
+            }
             if (groupDoc && groupDoc.sponsorMasterAccountId) {
               spenderMasterAccountId = groupDoc.sponsorMasterAccountId.toString();
               logger.debug(`[Webhook Processor] Group ${chatId} is sponsored by ${spenderMasterAccountId}. Charging sponsor.`);
