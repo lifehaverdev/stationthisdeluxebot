@@ -7,11 +7,6 @@ const ENABLE_QUEUE_METRICS = false;
 let started = false;
 let changeHandle = null;
 let metricsTimer = null;
-let generationExecutionService = null;
-
-function init(service) {
-  generationExecutionService = service;
-}
 
 async function ensure() {
   if (started) return;
@@ -53,14 +48,8 @@ async function ensure() {
           }
         };
         logger.debug(`[EmbeddedWorker] Submitting job ${job._id} for collection ${collectionId} (tool ${spellIdOrToolId})`);
-        let status;
-        if (generationExecutionService) {
-          const result = await generationExecutionService.execute(payload);
-          status = result?.body?.status || 'ok';
-        } else {
-          const resp = await internalApiClient.post('/internal/v1/data/execute', payload);
-          status = resp?.status || resp?.data?.status || 'ok';
-        }
+        const resp = await internalApiClient.post('/internal/v1/data/execute', payload);
+        const status = resp?.status || resp?.data?.status || 'ok';
         logger.debug(`[EmbeddedWorker] Submit result for job ${job._id}: ${status}`);
       } catch (err) {
         logger.error(`[EmbeddedWorker] Failed to submit job ${job._id}: ${err.message}`);
@@ -77,4 +66,4 @@ async function ensure() {
   }
 }
 
-module.exports = { ensure, init }; 
+module.exports = { ensure };
