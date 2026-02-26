@@ -169,11 +169,13 @@ module.exports = function generationExecutionApi(dependencies) {
 
         if (!isX402Execution) {
           const userId = user.masterAccountId;
-          const userCoreRes = await internalApiClient.get(`/internal/v1/data/users/${userId}`);
-          const userCore = userCoreRes.data;
+          // Phase 7g: in-process user lookup replacing HTTP GET /users/:id
+          const userCore = db.userCore
+            ? await db.userCore.findUserCoreById(userId)
+            : (await internalApiClient.get(`/internal/v1/data/users/${userId}`)).data;
 
           let walletAddress = null;
-          if (userCore.wallets && userCore.wallets.length > 0) {
+          if (userCore && userCore.wallets && userCore.wallets.length > 0) {
             const primary = userCore.wallets.find(w => w.isPrimary);
             walletAddress = (primary ? primary.address : userCore.wallets[0].address) || null;
           }
@@ -185,8 +187,10 @@ module.exports = function generationExecutionApi(dependencies) {
 
           // Check user's active deposits to determine MS2 status
           try {
-            const depositsResponse = await internalApiClient.get(`/internal/v1/data/ledger/deposits/by-wallet/${walletAddress}`);
-            const activeDeposits = depositsResponse.data.deposits || [];
+            // Phase 7g: in-process deposits lookup replacing HTTP GET /ledger/deposits/by-wallet/:addr
+            const activeDeposits = db.creditLedger
+              ? await db.creditLedger.findActiveDepositsForWalletAddress(walletAddress)
+              : (await internalApiClient.get(`/internal/v1/data/ledger/deposits/by-wallet/${walletAddress}`)).data.deposits || [];
             isMs2User = pricingService.userQualifiesForMs2Pricing(activeDeposits);
             logger.debug(`[Pricing] User ${userId} MS2 status: ${isMs2User}`);
           } catch (depositErr) {
@@ -210,8 +214,10 @@ module.exports = function generationExecutionApi(dependencies) {
           const USD_PER_POINT = 0.000337;
           pointsRequired = Math.max(1, Math.round(costUsd / USD_PER_POINT));
 
-          const pointsResponse = await internalApiClient.get(`/internal/v1/data/ledger/points/by-wallet/${walletAddress}`);
-          const currentPoints = pointsResponse.data.points || 0;
+          // Phase 7g: in-process points lookup replacing HTTP GET /ledger/points/by-wallet/:addr
+          const currentPoints = db.creditLedger
+            ? (await db.creditLedger.sumPointsRemainingForWalletAddress(walletAddress)) || 0
+            : ((await internalApiClient.get(`/internal/v1/data/ledger/points/by-wallet/${walletAddress}`)).data.points || 0);
 
           logger.debug(`[Pre-Execution Credit Check] User ${userId} (Wallet: ${walletAddress}) has ${currentPoints} points. Required: ${pointsRequired}`);
 

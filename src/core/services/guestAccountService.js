@@ -23,14 +23,23 @@ class GuestAccountService {
    */
   async createOrFindGuestAccount({ walletAddress, spellPaymentId, spellId, txHash }) {
     try {
-      // Use existing find-or-create endpoint
-      const response = await this.internalApiClient.post('/internal/v1/auth/find-or-create-by-wallet', {
-        address: walletAddress
-      });
-      
-      const user = response.data.user;
+      // Phase 7f: in-process find-or-create, replacing HTTP call to /auth/find-or-create-by-wallet
+      const normalizedAddress = walletAddress.toLowerCase();
+      let user = await this.userCoreDb.findUserCoreByWalletAddress(normalizedAddress);
+      let isNewUser = false;
+      if (!user) {
+        user = await this.userCoreDb.createUserCore({
+          wallets: [{ address: normalizedAddress, verified: true, isPrimary: true, addedAt: new Date() }],
+          lastLoginTimestamp: new Date(),
+          lastSeenPlatform: 'web'
+        });
+        isNewUser = true;
+      } else {
+        await this.userCoreDb.updateLastLogin(user._id, 'web');
+      }
+
       const userId = user._id.toString();
-      
+
       // Flag as guest account with metadata
       await this.userCoreDb.updateOne(
         { _id: user._id },
@@ -46,13 +55,13 @@ class GuestAccountService {
           }
         }
       );
-      
+
       this.logger.info(`[GuestAccountService] Created/found guest account ${userId} for wallet ${walletAddress}`);
-      
+
       return {
         masterAccountId: userId,
-        walletAddress: walletAddress.toLowerCase(),
-        isNewUser: response.data.isNewUser
+        walletAddress: normalizedAddress,
+        isNewUser
       };
     } catch (error) {
       this.logger.error(`[GuestAccountService] Failed to create/find guest account:`, error);
