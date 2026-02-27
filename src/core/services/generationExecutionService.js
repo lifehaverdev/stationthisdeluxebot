@@ -589,7 +589,7 @@ class GenerationExecutionService {
             const isCook = metadata && metadata.source === 'cook' && metadata.collectionId && metadata.jobId;
             if (isCook) {
               const { CookOrchestratorService } = require('./cook');
-              await CookOrchestratorService.appendEvent('PieceGenerated', { collectionId: metadata.collectionId, userId: String(user.masterAccountId), jobId: metadata.jobId, generationId: staticPayload.generationId });
+              await CookOrchestratorService.appendEvent('PieceGenerated', { collectionId: metadata.collectionId, cookId: metadata.cookId, userId: String(user.masterAccountId), jobId: metadata.jobId, generationId: staticPayload.generationId });
               await CookOrchestratorService.scheduleNext({ collectionId: metadata.collectionId, userId: String(user.masterAccountId), finishedJobId: metadata.jobId, success: true });
             }
           } catch (e) {
@@ -702,7 +702,7 @@ class GenerationExecutionService {
             const isCook = metadata && metadata.source === 'cook' && metadata.collectionId && metadata.jobId;
             if (isCook) {
               const { CookOrchestratorService } = require('./cook');
-              await CookOrchestratorService.appendEvent('PieceGenerated', { collectionId: metadata.collectionId, userId: String(user.masterAccountId), jobId: metadata.jobId, generationId: generationRecord._id.toString() });
+              await CookOrchestratorService.appendEvent('PieceGenerated', { collectionId: metadata.collectionId, cookId: metadata.cookId, userId: String(user.masterAccountId), jobId: metadata.jobId, generationId: generationRecord._id.toString() });
               await CookOrchestratorService.scheduleNext({ collectionId: metadata.collectionId, userId: String(user.masterAccountId), finishedJobId: metadata.jobId, success: true });
             }
           } catch (e) {

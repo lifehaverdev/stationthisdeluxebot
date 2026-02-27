@@ -6,6 +6,7 @@ import { CostHUD } from '../sandbox/components/CostHUD.js';
 import { MintSpellFAB } from '../sandbox/components/MintSpellFAB.js';
 import { ActionModal } from '../sandbox/components/ActionModal.js';
 import { CheckpointPickerModal } from '../sandbox/components/CheckpointPickerModal.js';
+import { InstructionPickerModal } from '../sandbox/components/InstructionPickerModal.js';
 import { AuthWidget } from '../sandbox/components/AuthWidget.js';
 import { initStore } from '../sandbox/store.js';
 import { SandboxCanvas, loadCanvasState } from '../sandbox/canvas/SandboxCanvas.js';
@@ -37,6 +38,7 @@ export class Sandbox extends Component {
       textEdit: { visible: false, windowId: null, value: '', displayName: '', kind: 'primitive', paramKey: null },
       resultOverlay: { visible: false, output: null, displayName: '', copied: false },
       checkpointPicker: { visible: false, windowId: null, paramKey: null, displayName: '', currentValue: '' },
+      instructionPicker: { visible: false, windowId: null, paramKey: null, displayName: '', currentValue: '' },
     };
   }
 
@@ -93,6 +95,11 @@ export class Sandbox extends Component {
     };
     eventBus.on('sandbox:openCheckpointPicker', this._onOpenCheckpointPicker);
 
+    this._onOpenInstructionPicker = ({ windowId, paramKey, displayName, currentValue }) => {
+      this.setState({ instructionPicker: { visible: true, windowId, paramKey, displayName, currentValue } });
+    };
+    eventBus.on('sandbox:openInstructionPicker', this._onOpenInstructionPicker);
+
     this._onOpenResultOverlay = ({ output, displayName }) => {
       this.setState({ resultOverlay: { visible: true, output, displayName: displayName || '', copied: false } });
     };
@@ -104,6 +111,7 @@ export class Sandbox extends Component {
       if (resultOverlay.visible) { this._closeResultOverlay(); return; }
       if (textEdit.visible) { this._closeTextEdit(); return; }
       if (checkpointPicker.visible) { this._closeCheckpointPicker(); return; }
+      if (this.state.instructionPicker.visible) { this._closeInstructionPicker(); return; }
       if (actionModal.visible) { this.setState({ actionModal: { visible: false, x: 0, y: 0, workspacePos: null } }); }
     };
     document.addEventListener('keydown', this._escHandler);
@@ -125,6 +133,7 @@ export class Sandbox extends Component {
     if (this._onOpenTextEdit)           eventBus.off('sandbox:openTextEdit',           this._onOpenTextEdit);
     if (this._onOpenResultOverlay)      eventBus.off('sandbox:openResultOverlay',      this._onOpenResultOverlay);
     if (this._onOpenCheckpointPicker)   eventBus.off('sandbox:openCheckpointPicker',   this._onOpenCheckpointPicker);
+    if (this._onOpenInstructionPicker)  eventBus.off('sandbox:openInstructionPicker',  this._onOpenInstructionPicker);
     document.body.style.overflow = '';
     document.documentElement.style.overflow = '';
     delete window.__SANDBOX_SPA_MANAGED__;
@@ -151,6 +160,15 @@ export class Sandbox extends Component {
 
   _closeCheckpointPicker() {
     this.setState({ checkpointPicker: { visible: false, windowId: null, paramKey: null, displayName: '', currentValue: '' } });
+  }
+
+  _closeInstructionPicker() {
+    this.setState({ instructionPicker: { visible: false, windowId: null, paramKey: null, displayName: '', currentValue: '' } });
+  }
+
+  _onInstructionApply(text) {
+    const { windowId, paramKey } = this.state.instructionPicker;
+    window.sandboxCanvas?._onParamChange(windowId, paramKey, text);
   }
 
   _onCheckpointSelect(name) {
@@ -453,6 +471,7 @@ export class Sandbox extends Component {
     const te = this.state.textEdit;
     const ro = this.state.resultOverlay;
     const cp = this.state.checkpointPicker;
+    const ip = this.state.instructionPicker;
     const { windows, connections } = this._canvasState || {};
     const { isAuthenticated } = this.state;
 
@@ -541,6 +560,14 @@ export class Sandbox extends Component {
                       )
             )
           )
+        : null,
+      ip.visible
+        ? h(InstructionPickerModal, {
+            displayName: ip.displayName,
+            currentValue: ip.currentValue,
+            onApply: (text) => this._onInstructionApply(text),
+            onClose: () => this._closeInstructionPicker(),
+          })
         : null,
       cp.visible
         ? h(CheckpointPickerModal, {

@@ -171,7 +171,18 @@ export class SandboxCanvas extends Component {
     const windows = new Map(this.state.windows);
     const connections = new Map(this.state.connections);
     for (const [cid, conn] of connections) {
-      if (conn.fromWindowId === id || conn.toWindowId === id) connections.delete(cid);
+      if (conn.fromWindowId === id || conn.toWindowId === id) {
+        // Clean up parameterMappings on the downstream node when the upstream is deleted
+        if (conn.fromWindowId === id) {
+          const toWin = windows.get(conn.toWindowId);
+          if (toWin?.parameterMappings?.[conn.toInput]) {
+            const mappings = { ...toWin.parameterMappings };
+            delete mappings[conn.toInput];
+            windows.set(conn.toWindowId, { ...toWin, parameterMappings: mappings });
+          }
+        }
+        connections.delete(cid);
+      }
     }
     windows.delete(id);
     const selection = new Set(this.state.selection);
@@ -578,6 +589,11 @@ export class SandboxCanvas extends Component {
     }
 
     if (activeConnection) {
+      // Any connection drag end should suppress the subsequent click from opening ActionModal
+      this._anchorDropPending = true;
+      clearTimeout(this._anchorDropPendingTimer);
+      this._anchorDropPendingTimer = setTimeout(() => { this._anchorDropPending = false; }, 200);
+
       const elem = document.elementFromPoint(e.clientX, e.clientY);
       const inputAnchor = elem?.closest('.nw-anchor-input');
       if (inputAnchor) {
@@ -590,10 +606,6 @@ export class SandboxCanvas extends Component {
         this.setState({ activeConnection: null });
       } else {
         // Spec 3: dropped on empty canvas → show contextual tool picker.
-        // Also suppress the next canvas click so ActionModal doesn't open.
-        this._anchorDropPending = true;
-        setTimeout(() => { this._anchorDropPending = false; }, 200);
-
         const workspacePos = this.screenToWorkspace(e.clientX, e.clientY);
         this.setState({
           activeConnection: null,

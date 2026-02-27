@@ -96,6 +96,26 @@ export class ParameterForm extends Component {
     // Default: text input — click opens full-screen overlay
     const strVal = value !== undefined && value !== null ? String(value) : '';
 
+    // Instructions parameter — open the instruction preset picker overlay
+    if (key === 'instructions') {
+      return h('div', { className: 'pf-param', key, style: visible ? '' : 'display:none' },
+        h('label', { className: 'pf-label', title: param.description || '' }, param.name),
+        h('div', {
+          className: `pf-input pf-input--text-preview pf-input--instructions${strVal ? '' : ' pf-input--empty'}`,
+          title: 'Click to choose or write instructions',
+          onclick: (e) => {
+            e.stopPropagation();
+            eventBus.emit('sandbox:openInstructionPicker', {
+              windowId: this.props.windowId,
+              paramKey: key,
+              displayName: param.name,
+              currentValue: strVal,
+            });
+          },
+        }, strVal || param.description || param.name)
+      );
+    }
+
     // Checkpoint parameter — open the checkpoint picker overlay instead of text edit
     if (key === 'input_checkpoint') {
       return h('div', { className: 'pf-param', key, style: visible ? '' : 'display:none' },

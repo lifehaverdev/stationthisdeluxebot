@@ -406,7 +406,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
         const collectionId = meta.collectionId;
         const finishedJobId = meta.jobId;
         if (collectionId && finishedJobId) {
-          await CookOrchestratorService.appendEvent('PieceGenerated', { collectionId, userId: String(generationRecord.masterAccountId), jobId: finishedJobId, generationId });
+          await CookOrchestratorService.appendEvent('PieceGenerated', { collectionId, cookId: meta.cookId, userId: String(generationRecord.masterAccountId), jobId: finishedJobId, generationId });
           // Remove dependency on cook_jobs queue progression; keep audit only
           // Schedule next piece immediately via orchestrator
           try {
