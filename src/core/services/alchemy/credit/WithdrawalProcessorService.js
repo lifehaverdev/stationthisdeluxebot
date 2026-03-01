@@ -147,10 +147,22 @@ class WithdrawalProcessorService {
       }
     }
 
-    // Get current collateral amount
-    const custodyKey = getCustodyKey(userAddress, tokenAddress);
-    const custodyValue = await this.ethereumService.read(this.contractConfig.address, this.contractConfig.abi, 'custody', custodyKey);
-    const { userOwned: collateralAmount } = splitCustodyAmount(custodyValue);
+    // Get current collateral amount.
+    // Admin withdrawals pull protocol escrow (custody[keccak(contractAddress, token)].escrow),
+    // not the admin wallet's own userOwned balance (which is 0).
+    const isAdmin = await this.withdrawalExecutionService.adminOperationsService.isAdmin(userAddress);
+    let collateralAmount;
+    if (isAdmin) {
+      const protocolCustodyKey = getCustodyKey(this.contractConfig.address, tokenAddress);
+      const protocolCustodyValue = await this.ethereumService.read(this.contractConfig.address, this.contractConfig.abi, 'custody', protocolCustodyKey);
+      const { escrow: protocolEscrow } = splitCustodyAmount(protocolCustodyValue);
+      collateralAmount = protocolEscrow;
+    } else {
+      const custodyKey = getCustodyKey(userAddress, tokenAddress);
+      const custodyValue = await this.ethereumService.read(this.contractConfig.address, this.contractConfig.abi, 'custody', custodyKey);
+      const { userOwned } = splitCustodyAmount(custodyValue);
+      collateralAmount = userOwned;
+    }
 
     // Create withdrawal request directly via DB
     await this.creditLedgerDb.createWithdrawalRequest({

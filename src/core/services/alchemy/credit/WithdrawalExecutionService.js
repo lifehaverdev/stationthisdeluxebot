@@ -206,12 +206,12 @@ class WithdrawalExecutionService {
     const allocateData = iface.encodeFunctionData('allocate', [userAddress, tokenAddress, amount]);
     const remitData = iface.encodeFunctionData('remit', [userAddress, tokenAddress, amount, 0, metadata]);
     
-    // Execute multicall
+    // Execute multicall — write() uses ...args rest param, so pass the bytes[] directly (not wrapped)
     const txResponse = await this.ethereumService.write(
       this.contractConfig.address,
       this.contractConfig.abi,
       'multicall',
-      [[allocateData, remitData]]
+      [allocateData, remitData]
     );
     
     const receipt = await this.ethereumService.waitForConfirmation(txResponse);
