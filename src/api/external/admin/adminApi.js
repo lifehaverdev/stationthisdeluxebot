@@ -2,6 +2,7 @@ const express = require('express');
 const { createLogger } = require('../../../utils/logger');
 const { createAdminVerificationMiddleware } = require('./middleware');
 const { getCustodyKey, splitCustodyAmount } = require('../../../core/services/alchemy/contractUtils');
+const { contracts: contractRegistry } = require('../../../core/contracts');
 const { USD_PER_POINT } = require('../../../core/constants/economy');
 const { createWalletRateLimitMiddleware } = require('../../../utils/rateLimiter');
 
@@ -470,11 +471,14 @@ function createAdminApi(dependencies) {
             // Calculate real user-owned balance based on points_remaining
             // User deposits are stored in individual user escrow balances, not Foundation protocol escrow
             // Get all confirmed deposits for this token (across all users)
-            const tokenDeposits = allDeposits.filter(d => 
+            const foundationAddr = contractConfig.address.toLowerCase();
+            const tokenDeposits = allDeposits.filter(d =>
               d.token_address && d.token_address.toLowerCase() === tokenAddress.toLowerCase() &&
               d.points_credited && d.points_credited > 0 &&
               d.deposit_amount_wei &&
-              d.depositor_address
+              d.depositor_address &&
+              // Foundation-only: vault_account is null/undefined (legacy) or explicitly Foundation
+              (!d.vault_account || d.vault_account.toLowerCase() === foundationAddr)
             );
 
             logger.info(`[AdminApi] Found ${tokenDeposits.length} deposits for token ${tokenAddress} (${symbol})`);
@@ -591,55 +595,81 @@ function createAdminApi(dependencies) {
       logger.info(`[AdminApi] Found ${charteredVaults.length} active chartered vaults`);
 
       // Get balances for each chartered vault
+      const charterFundAbi = contractRegistry.charteredFund.abi;
       const charteredVaultsWithBalances = await Promise.all(
         charteredVaults.map(async (vault) => {
           const vaultAddress = vault.vault_address;
+          const vaultAddrLower = vaultAddress.toLowerCase();
           const vaultBalances = await Promise.all(
             tokenAddresses.map(async (tokenAddress) => {
-              try {
-                const custodyKey = getCustodyKey(vaultAddress, tokenAddress);
-                const packedAmount = await ethereumService.read(
-                  contractConfig.address,
-                  contractConfig.abi,
-                  'custody',
-                  custodyKey
-                );
-                const { userOwned, escrow } = splitCustodyAmount(packedAmount);
+              // Get token metadata first (shared between success/error paths)
+              let symbol = 'N/A', decimals = 18, name = '';
+              if (tokenAddress.toLowerCase() === NATIVE_ETH.toLowerCase()) {
+                symbol = 'ETH';
+                decimals = 18;
+                name = 'Ethereum';
+              } else if (priceFeedService) {
+                try {
+                  const meta = await priceFeedService.getMetadata(tokenAddress);
+                  symbol = meta.symbol || 'N/A';
+                  decimals = meta.decimals || 18;
+                  name = meta.name || '';
+                } catch (e) { /* ignore */ }
+              }
 
-                // Get token metadata
-                let symbol = 'N/A', decimals = 18, name = '';
-                if (tokenAddress.toLowerCase() === NATIVE_ETH.toLowerCase()) {
-                  symbol = 'ETH';
-                  decimals = 18;
-                  name = 'Ethereum';
-                } else if (priceFeedService) {
-                  try {
-                    const meta = await priceFeedService.getMetadata(tokenAddress);
-                    symbol = meta.symbol || 'N/A';
-                    decimals = meta.decimals || 18;
-                    name = meta.name || '';
-                  } catch (e) {
-                    // Ignore metadata errors
+              try {
+                // Read vault's own protocol escrow bucket from the CharterFund contract itself.
+                // custody[keccak(vaultAddress, token)].escrow = accumulated protocol fees
+                // (these are what sweepProtocolFees moves to Foundation).
+                const vaultProtocolKey = getCustodyKey(vaultAddress, tokenAddress);
+                const packedAmount = await ethereumService.read(
+                  vaultAddress,       // CharterFund contract, NOT Foundation
+                  charterFundAbi,
+                  'custody',
+                  vaultProtocolKey
+                );
+                const { escrow } = splitCustodyAmount(packedAmount);
+
+                // Calculate pending seizure: what the ledger says this vault owes protocol
+                // minus what's already accumulated in the vault's protocol escrow bucket.
+                const vaultDeposits = allDeposits.filter(d =>
+                  d.token_address && d.token_address.toLowerCase() === tokenAddress.toLowerCase() &&
+                  d.points_credited && d.points_credited > 0 &&
+                  d.deposit_amount_wei &&
+                  d.depositor_address &&
+                  d.vault_account && d.vault_account.toLowerCase() === vaultAddrLower
+                );
+
+                let ledgerProtocolClaimWei = 0n;
+                for (const d of vaultDeposits) {
+                  const depositAmount = BigInt(d.deposit_amount_wei || '0');
+                  const pointsCredited = BigInt(d.points_credited || '0');
+                  const pointsRemaining = BigInt(d.points_remaining || '0');
+                  if (pointsCredited > 0n && pointsRemaining < pointsCredited) {
+                    ledgerProtocolClaimWei += ((pointsCredited - pointsRemaining) * depositAmount) / pointsCredited;
                   }
                 }
+
+                const pendingSeizureWei = ledgerProtocolClaimWei > escrow
+                  ? ledgerProtocolClaimWei - escrow
+                  : 0n;
 
                 return {
                   tokenAddress,
                   symbol,
                   decimals,
                   name,
-                  userOwned: userOwned.toString(),
-                  escrow: escrow.toString()
+                  escrow: escrow.toString(),
+                  pendingSeizureWei: pendingSeizureWei.toString(),
                 };
               } catch (error) {
-                // If custody key doesn't exist, return zero balance
                 return {
                   tokenAddress,
-                  symbol: 'N/A',
-                  decimals: 18,
-                  name: '',
-                  userOwned: '0',
-                  escrow: '0'
+                  symbol,
+                  decimals,
+                  name,
+                  escrow: '0',
+                  pendingSeizureWei: '0',
                 };
               }
             })
@@ -649,7 +679,7 @@ function createAdminApi(dependencies) {
             vaultAddress,
             vaultName: vault.vault_name || '(unnamed)',
             masterAccountId: vault.master_account_id?.toString(),
-            tokens: vaultBalances.filter(t => BigInt(t.userOwned) > 0n || BigInt(t.escrow) > 0n)
+            tokens: vaultBalances.filter(t => BigInt(t.escrow) > 0n || BigInt(t.pendingSeizureWei) > 0n)
           };
         })
       );

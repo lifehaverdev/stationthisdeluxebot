@@ -86,7 +86,8 @@ export class VaultBalances extends Component {
     `;
   }
 
-  renderFoundationToken(token) {
+  // grandTotal: cross-vault total (Foundation + all CharterFunds) for this token
+  renderFoundationToken(token, grandTotal) {
     const protocolEscrow = BigInt(token.protocolEscrow || '0');
     const userOwned = BigInt(token.userOwned || '0');
     const protocolOwnedNotSeized = BigInt(token.protocolOwnedNotSeized || '0');
@@ -94,11 +95,12 @@ export class VaultBalances extends Component {
     const pendingSeizureWei = BigInt(token.pendingSeizureWei || '0');
     const pointsOutstanding = token.pointsOutstanding || 0;
 
-    if (protocolEscrow === 0n && userOwned === 0n && protocolOwnedNotSeized === 0n) return null;
+    if (protocolEscrow === 0n && userOwned === 0n && protocolOwnedNotSeized === 0n && pendingSeizureWei === 0n) return null;
 
     const fmtProtocol = formatUnits(protocolEscrow.toString(), token.decimals);
     const fmtUser = formatUnits(userOwned.toString(), token.decimals);
-    const fmtWithdrawable = formatUnits(protocolOwnedNotSeized.toString(), token.decimals);
+    const fmtPendingSeizure = formatUnits(pendingSeizureWei.toString(), token.decimals);
+    const fmtGrandTotal = formatUnits(grandTotal.toString(), token.decimals);
     const pointsUsd = (pointsOutstanding * USD_PER_POINT).toFixed(2);
     const hasDebt = pointDebtWei > 0n;
     const hasPendingSeizure = pendingSeizureWei > 0n;
@@ -107,16 +109,20 @@ export class VaultBalances extends Component {
       h('span', { className: 'token-symbol' }, token.symbol),
       h('div', { className: 'token-stats' },
         h('div', { className: 'stat-item' },
-          h('span', { className: 'stat-label' }, 'Protocol Escrow'),
+          h('span', { className: 'stat-label' }, 'On-chain Escrow'),
           h('span', { className: 'stat-val orange' }, fmtProtocol),
         ),
         h('div', { className: 'stat-item' },
           h('span', { className: 'stat-label' }, 'User Owned'),
           h('span', { className: 'stat-val' }, fmtUser),
         ),
+        hasPendingSeizure ? h('div', { className: 'stat-item' },
+          h('span', { className: 'stat-label' }, 'Pending Seizure'),
+          h('span', { className: 'stat-val orange' }, fmtPendingSeizure),
+        ) : null,
         h('div', { className: 'stat-item' },
-          h('span', { className: 'stat-label' }, 'Withdrawable'),
-          h('span', { className: `stat-val ${protocolOwnedNotSeized > 0n ? 'green' : ''}` }, fmtWithdrawable),
+          h('span', { className: 'stat-label' }, 'Will Withdraw (all vaults)'),
+          h('span', { className: `stat-val ${grandTotal > 0n ? 'green' : ''}` }, fmtGrandTotal),
         ),
         h('div', { className: 'stat-item' },
           h('span', { className: 'stat-label' }, 'Pts Outstanding'),
@@ -126,54 +132,46 @@ export class VaultBalances extends Component {
           h('span', { className: 'stat-label' }, 'Point Debt'),
           h('span', { className: 'stat-val warn' }, `${formatUnits(pointDebtWei.toString(), token.decimals)} ⚠`),
         ) : null,
-        hasPendingSeizure ? h('div', { className: 'stat-item' },
-          h('span', { className: 'stat-label' }, 'Pending Seizure'),
-          h('span', { className: 'stat-val warn' }, formatUnits(pendingSeizureWei.toString(), token.decimals)),
-        ) : null,
       ),
-      protocolOwnedNotSeized > 0n
+      grandTotal > 0n
         ? h('button', {
             className: 'withdraw-btn',
-            onClick: () => this.props.onWithdraw?.(token.tokenAddress, '0x01152530028bd834EDbA9744885A882D025D84F6', token.protocolOwnedNotSeized, token.symbol, token.decimals)
-          }, `Withdraw ${fmtWithdrawable} ${token.symbol}`)
+            onClick: () => this.props.onWithdraw?.(token.tokenAddress, '0x01152530028bd834EDbA9744885A882D025D84F6', grandTotal.toString(), token.symbol, token.decimals)
+          }, `Seize + Withdraw ${fmtGrandTotal} ${token.symbol}`)
         : h('span', { className: 'no-balance' }, 'Nothing to withdraw'),
     );
   }
 
   renderCharteredVault(vault) {
     const tokens = (vault.tokens || []).filter(t => {
-      const uo = BigInt(t.userOwned || '0');
       const esc = BigInt(t.escrow || '0');
-      return uo > 0n || esc > 0n;
+      const ps = BigInt(t.pendingSeizureWei || '0');
+      return esc > 0n || ps > 0n;
     });
     if (!tokens.length) return null;
 
     return h('div', { key: vault.vaultAddress },
       h('h3', null, `${vault.vaultName} `, h('span', { style: { color: '#666', fontFamily: 'monospace', fontWeight: 400, fontSize: '0.8rem' } }, shortHash(vault.vaultAddress))),
       ...tokens.map(token => {
-        const userOwned = BigInt(token.userOwned || '0');
         const escrow = BigInt(token.escrow || '0');
-        const fmtUser = formatUnits(userOwned.toString(), token.decimals);
+        const pendingSeizure = BigInt(token.pendingSeizureWei || '0');
         const fmtEscrow = formatUnits(escrow.toString(), token.decimals);
+        const fmtPending = formatUnits(pendingSeizure.toString(), token.decimals);
+        const hasPending = pendingSeizure > 0n;
 
         return h('div', { className: 'token-row', key: token.tokenAddress },
           h('span', { className: 'token-symbol' }, token.symbol),
           h('div', { className: 'token-stats' },
             h('div', { className: 'stat-item' },
-              h('span', { className: 'stat-label' }, 'User Owned'),
-              h('span', { className: `stat-val ${userOwned > 0n ? 'green' : ''}` }, fmtUser),
+              h('span', { className: 'stat-label' }, 'On-chain Escrow'),
+              h('span', { className: `stat-val ${escrow > 0n ? 'orange' : ''}` }, fmtEscrow),
             ),
-            h('div', { className: 'stat-item' },
-              h('span', { className: 'stat-label' }, 'Escrow'),
-              h('span', { className: 'stat-val orange' }, fmtEscrow),
-            ),
+            hasPending ? h('div', { className: 'stat-item' },
+              h('span', { className: 'stat-label' }, 'Pending Seizure'),
+              h('span', { className: 'stat-val orange' }, fmtPending),
+            ) : null,
           ),
-          userOwned > 0n
-            ? h('button', {
-                className: 'withdraw-btn',
-                onClick: () => this.props.onWithdraw?.(token.tokenAddress, vault.vaultAddress, token.userOwned, token.symbol, token.decimals)
-              }, `Withdraw ${fmtUser} ${token.symbol}`)
-            : h('span', { className: 'no-balance' }, 'No user balance'),
+          h('span', { className: 'no-balance' }, 'Swept by Foundation withdrawal'),
         );
       })
     );
@@ -183,7 +181,25 @@ export class VaultBalances extends Component {
     const { balances } = this.props;
     if (!balances) return h('div', null);
 
-    const foundationTokens = (balances.foundation || []).map(t => this.renderFoundationToken(t)).filter(Boolean);
+    // Compute cross-vault grand total per token: Foundation + all CharterFund escrow + pending seizures.
+    // This is what the single Foundation "Seize + Withdraw" button will actually collect.
+    const grandTotals = new Map();
+    for (const token of (balances.foundation || [])) {
+      const key = token.tokenAddress.toLowerCase();
+      const amt = BigInt(token.protocolEscrow || '0') + BigInt(token.pendingSeizureWei || '0');
+      grandTotals.set(key, (grandTotals.get(key) || 0n) + amt);
+    }
+    for (const vault of (balances.charteredVaults || [])) {
+      for (const token of (vault.tokens || [])) {
+        const key = token.tokenAddress.toLowerCase();
+        const amt = BigInt(token.escrow || '0') + BigInt(token.pendingSeizureWei || '0');
+        grandTotals.set(key, (grandTotals.get(key) || 0n) + amt);
+      }
+    }
+
+    const foundationTokens = (balances.foundation || []).map(t =>
+      this.renderFoundationToken(t, grandTotals.get(t.tokenAddress.toLowerCase()) || 0n)
+    ).filter(Boolean);
     const charteredVaults = (balances.charteredVaults || []).map(v => this.renderCharteredVault(v)).filter(Boolean);
 
     if (!foundationTokens.length && !charteredVaults.length) {
