@@ -8,7 +8,7 @@ const { ethers } = require('ethers');
 const tokenDecimalService = require('../../tokenDecimalService');
 const { getGroupKey, acquireGroupLock } = require('./groupLockUtils');
 const { getCustodyKey, splitCustodyAmount } = require('../contractUtils');
-const { contracts: contractRegistry } = require('../../contracts');
+const { contracts: contractRegistry } = require('../../../contracts');
 const NATIVE_ETH_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 class WithdrawalExecutionService {
