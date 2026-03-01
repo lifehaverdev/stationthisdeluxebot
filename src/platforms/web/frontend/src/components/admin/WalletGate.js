@@ -1,7 +1,7 @@
 import { Component, h } from '@monygroupcorp/microact';
 import { ethers } from 'ethers';
 
-const MILADY_STATION_ADDRESS = '0xB24BaB1732D34cAD0A7c7035C3539aEC553bF3a0';
+const MILADY_STATION_ADDRESS = '0xB24BaB1732D34cAD0A7C7035C3539aEC553bF3a0';
 const ERC721A_ABI = [
   'function ownerOf(uint256 tokenId) view returns (address)',
   'function tokenURI(uint256 tokenId) view returns (string)'

@@ -52,7 +52,7 @@ if (isAppSubdomain) {
   // Lazy-load admin (ethers + chart.js are heavy)
   route('/admin', async () => {
     const { Admin } = await import('./pages/Admin.js');
-    renderPage(Admin);
+    renderSandbox(Admin);
   });
 }
 

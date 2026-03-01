@@ -1,11 +1,11 @@
 import { Component, h } from '@monygroupcorp/microact';
-import { formatUnits, getTokenMetadata, formatTokenAmount, shortHash } from '../../lib/format.js';
+import { formatUnits, shortHash } from '../../lib/format.js';
 
 const USD_PER_POINT = 0.000337;
 
 /**
  * Renders Foundation + Chartered vault balances.
- * Props: { balances, onChainBalances, onWithdraw }
+ * Props: { balances, onWithdraw }
  */
 export class VaultBalances extends Component {
   static get styles() {
@@ -25,15 +25,16 @@ export class VaultBalances extends Component {
       }
       .vault-section h3 {
         color: #c0c0c0;
-        font-size: 1rem;
+        font-size: 0.95rem;
         margin: 1rem 0 0.5rem;
+        font-weight: 500;
       }
-      .token-item {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
+      .token-row {
+        display: grid;
+        grid-template-columns: 80px 1fr auto;
+        align-items: center;
         gap: 1rem;
-        padding: 0.75rem;
+        padding: 0.65rem 0.75rem;
         background: #2a2f3a;
         border-radius: 4px;
         margin-bottom: 0.5rem;
@@ -41,36 +42,47 @@ export class VaultBalances extends Component {
       .token-symbol {
         font-weight: bold;
         color: #90caf9;
-        min-width: 80px;
+        font-size: 0.95rem;
       }
-      .token-details {
-        flex: 1;
+      .token-stats {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem 1.5rem;
+        font-size: 0.8rem;
+        color: #aaa;
+      }
+      .token-stats .stat-item {
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
+        gap: 1px;
       }
-      .token-detail-box {
-        padding: 0.5rem;
-        background: #1a1a1a;
-        border-radius: 4px;
-        font-size: 0.85rem;
-        color: #ccc;
-        line-height: 1.5;
+      .token-stats .stat-label {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #666;
       }
-      .token-detail-box strong {
-        color: #e0e0e0;
-      }
+      .token-stats .stat-val { color: #e0e0e0; }
+      .token-stats .stat-val.green { color: #4caf50; }
+      .token-stats .stat-val.orange { color: #ff9800; }
+      .token-stats .stat-val.warn { color: #f44336; }
       .withdraw-btn {
         background: #3f51b5;
         color: #fff;
         border: none;
-        padding: 0.5rem 1rem;
+        padding: 0.4rem 0.9rem;
         border-radius: 4px;
         cursor: pointer;
         white-space: nowrap;
-        font-size: 0.85rem;
+        font-size: 0.8rem;
+        flex-shrink: 0;
       }
       .withdraw-btn:hover { background: #5c6bc0; }
+      .no-balance {
+        color: #555;
+        font-size: 0.8rem;
+        white-space: nowrap;
+      }
     `;
   }
 
@@ -81,43 +93,50 @@ export class VaultBalances extends Component {
     const pointDebtWei = BigInt(token.pointDebtWei || '0');
     const pendingSeizureWei = BigInt(token.pendingSeizureWei || '0');
     const pointsOutstanding = token.pointsOutstanding || 0;
-    const pointsUsd = (pointsOutstanding * USD_PER_POINT).toFixed(2);
-
-    const contractTotal = formatUnits((userOwned + protocolEscrow).toString(), token.decimals);
-    const contractUser = formatUnits(userOwned.toString(), token.decimals);
-    const contractProtocol = formatUnits(protocolEscrow.toString(), token.decimals);
-    const ledgerUser = formatUnits((token.realUserOwned || '0').toString(), token.decimals);
-    const ledgerProtocol = formatUnits((token.protocolOwnedNotSeized || '0').toString(), token.decimals);
 
     if (protocolEscrow === 0n && userOwned === 0n && protocolOwnedNotSeized === 0n) return null;
 
-    return h('div', { className: 'token-item', key: token.tokenAddress },
+    const fmtProtocol = formatUnits(protocolEscrow.toString(), token.decimals);
+    const fmtUser = formatUnits(userOwned.toString(), token.decimals);
+    const fmtWithdrawable = formatUnits(protocolOwnedNotSeized.toString(), token.decimals);
+    const pointsUsd = (pointsOutstanding * USD_PER_POINT).toFixed(2);
+    const hasDebt = pointDebtWei > 0n;
+    const hasPendingSeizure = pendingSeizureWei > 0n;
+
+    return h('div', { className: 'token-row', key: token.tokenAddress },
       h('span', { className: 'token-symbol' }, token.symbol),
-      h('div', { className: 'token-details' },
-        h('div', { className: 'token-detail-box' },
-          h('strong', null, 'Contract Balances'), h('br'),
-          `Total Locked: ${contractTotal}`, h('br'),
-          `User Owned: ${contractUser}`, h('br'),
-          `Protocol Escrow: ${contractProtocol}`
+      h('div', { className: 'token-stats' },
+        h('div', { className: 'stat-item' },
+          h('span', { className: 'stat-label' }, 'Protocol Escrow'),
+          h('span', { className: 'stat-val orange' }, fmtProtocol),
         ),
-        h('div', { className: 'token-detail-box' },
-          h('strong', null, 'Ledger Claims'), h('br'),
-          'User Claim: ', h('span', { style: { color: '#4caf50' } }, ledgerUser), h('br'),
-          'Protocol Claim: ', h('span', { style: { color: '#ff9800' } }, ledgerProtocol)
+        h('div', { className: 'stat-item' },
+          h('span', { className: 'stat-label' }, 'User Owned'),
+          h('span', { className: 'stat-val' }, fmtUser),
         ),
-        h('div', { className: 'token-detail-box' },
-          h('strong', null, 'Debt & Signals'), h('br'),
-          `Point Debt: ${formatUnits(pointDebtWei.toString(), token.decimals)}`, pointDebtWei > 0n ? ' \u26A0\uFE0F' : '', h('br'),
-          `Pending Seizure: ${formatUnits(pendingSeizureWei.toString(), token.decimals)}`, h('br'),
-          `Points Outstanding: ${pointsOutstanding.toLocaleString()} pts (~$${pointsUsd})`
-        )
+        h('div', { className: 'stat-item' },
+          h('span', { className: 'stat-label' }, 'Withdrawable'),
+          h('span', { className: `stat-val ${protocolOwnedNotSeized > 0n ? 'green' : ''}` }, fmtWithdrawable),
+        ),
+        h('div', { className: 'stat-item' },
+          h('span', { className: 'stat-label' }, 'Pts Outstanding'),
+          h('span', { className: 'stat-val' }, `${pointsOutstanding.toLocaleString()} (~$${pointsUsd})`),
+        ),
+        hasDebt ? h('div', { className: 'stat-item' },
+          h('span', { className: 'stat-label' }, 'Point Debt'),
+          h('span', { className: 'stat-val warn' }, `${formatUnits(pointDebtWei.toString(), token.decimals)} ⚠`),
+        ) : null,
+        hasPendingSeizure ? h('div', { className: 'stat-item' },
+          h('span', { className: 'stat-label' }, 'Pending Seizure'),
+          h('span', { className: 'stat-val warn' }, formatUnits(pendingSeizureWei.toString(), token.decimals)),
+        ) : null,
       ),
       protocolOwnedNotSeized > 0n
         ? h('button', {
             className: 'withdraw-btn',
             onClick: () => this.props.onWithdraw?.(token.tokenAddress, '0x01152530028bd834EDbA9744885A882D025D84F6', token.protocolOwnedNotSeized, token.symbol, token.decimals)
-          }, `Withdraw ${formatUnits(token.protocolOwnedNotSeized.toString(), token.decimals)} ${token.symbol}`)
-        : h('span', { style: { color: '#888', fontSize: '0.85rem' } }, 'No withdrawable amount')
+          }, `Withdraw ${fmtWithdrawable} ${token.symbol}`)
+        : h('span', { className: 'no-balance' }, 'Nothing to withdraw'),
     );
   }
 
@@ -129,27 +148,32 @@ export class VaultBalances extends Component {
     });
     if (!tokens.length) return null;
 
-    return h('div', { key: vault.vaultAddress, style: { marginBottom: '1rem' } },
-      h('h3', null, `${vault.vaultName} (${shortHash(vault.vaultAddress)})`),
+    return h('div', { key: vault.vaultAddress },
+      h('h3', null, `${vault.vaultName} `, h('span', { style: { color: '#666', fontFamily: 'monospace', fontWeight: 400, fontSize: '0.8rem' } }, shortHash(vault.vaultAddress))),
       ...tokens.map(token => {
         const userOwned = BigInt(token.userOwned || '0');
-        const amount = formatUnits(userOwned.toString(), token.decimals);
-        const escrow = formatUnits((token.escrow || '0').toString(), token.decimals);
+        const escrow = BigInt(token.escrow || '0');
+        const fmtUser = formatUnits(userOwned.toString(), token.decimals);
+        const fmtEscrow = formatUnits(escrow.toString(), token.decimals);
 
-        return h('div', { className: 'token-item', key: token.tokenAddress },
+        return h('div', { className: 'token-row', key: token.tokenAddress },
           h('span', { className: 'token-symbol' }, token.symbol),
-          h('div', { className: 'token-details' },
-            h('div', { className: 'token-detail-box' },
-              `User Owned: ${amount}`, h('br'),
-              `Escrow: ${escrow}`
-            )
+          h('div', { className: 'token-stats' },
+            h('div', { className: 'stat-item' },
+              h('span', { className: 'stat-label' }, 'User Owned'),
+              h('span', { className: `stat-val ${userOwned > 0n ? 'green' : ''}` }, fmtUser),
+            ),
+            h('div', { className: 'stat-item' },
+              h('span', { className: 'stat-label' }, 'Escrow'),
+              h('span', { className: 'stat-val orange' }, fmtEscrow),
+            ),
           ),
           userOwned > 0n
             ? h('button', {
                 className: 'withdraw-btn',
                 onClick: () => this.props.onWithdraw?.(token.tokenAddress, vault.vaultAddress, token.userOwned, token.symbol, token.decimals)
-              }, `Withdraw ${amount} ${token.symbol}`)
-            : h('span', { style: { color: '#888', fontSize: '0.85rem' } }, 'No balance')
+              }, `Withdraw ${fmtUser} ${token.symbol}`)
+            : h('span', { className: 'no-balance' }, 'No user balance'),
         );
       })
     );
@@ -157,10 +181,17 @@ export class VaultBalances extends Component {
 
   render() {
     const { balances } = this.props;
-    if (!balances) return null;
+    if (!balances) return h('div', null);
 
     const foundationTokens = (balances.foundation || []).map(t => this.renderFoundationToken(t)).filter(Boolean);
     const charteredVaults = (balances.charteredVaults || []).map(v => this.renderCharteredVault(v)).filter(Boolean);
+
+    if (!foundationTokens.length && !charteredVaults.length) {
+      return h('section', { className: 'vault-section' },
+        h('h2', null, 'Vault Balances'),
+        h('p', { style: { color: '#666', fontSize: '0.9rem' } }, 'No balances found.')
+      );
+    }
 
     return h('div', null,
       foundationTokens.length > 0
@@ -174,7 +205,7 @@ export class VaultBalances extends Component {
             h('h2', null, 'Chartered Vaults'),
             ...charteredVaults
           )
-        : null
+        : null,
     );
   }
 }
