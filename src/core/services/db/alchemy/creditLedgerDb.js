@@ -118,8 +118,11 @@ class CreditLedgerDB extends BaseDB {
    * @returns {Promise<Array<Object>>} A list of entries to be processed.
    */
   async findProcessableEntries() {
-    return this.findMany({ 
-      status: { $in: ['PENDING_CONFIRMATION', 'ERROR'] } 
+    return this.findMany({
+      status: { $in: ['PENDING_CONFIRMATION', 'ERROR'] },
+      deposit_tx_hash: { $exists: true, $ne: null },
+      depositor_address: { $exists: true, $ne: null },
+      token_address: { $exists: true, $ne: null },
     });
   }
 
