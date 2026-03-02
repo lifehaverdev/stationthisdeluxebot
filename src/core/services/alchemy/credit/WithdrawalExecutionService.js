@@ -277,7 +277,7 @@ class WithdrawalExecutionService {
             depositorAddress,
             tokenAddress,
             seizureAmount,
-            0,                  // fee = 0, escrow itself is the seizure
+            seizureAmount,      // fee = seizureAmount: full amount credited to Foundation protocol escrow
             seizureMetadata,
           ]));
         } else {
