@@ -356,7 +356,6 @@ class WithdrawalExecutionService {
     }
 
     // ── 5. Phase 2: Foundation multicall (Foundation seizures + allocate + remit) ──
-    const chainId = String(this.ethereumService.chainId || '1');
     const riskAssessment = await this.tokenRiskEngine.assessCollateral(tokenAddress, totalAmount, chainId);
     const withdrawalValueUsd = tokenDecimalService.calculateUsdValue(totalAmount, tokenAddress, riskAssessment.price);
 
