@@ -117,13 +117,15 @@ class CreditLedgerDB extends BaseDB {
    * Useful for reconciliation or retrying failed confirmations.
    * @returns {Promise<Array<Object>>} A list of entries to be processed.
    */
-  async findProcessableEntries() {
-    return this.findMany({
+  async findProcessableEntries(chainId = null) {
+    const query = {
       status: { $in: ['PENDING_CONFIRMATION', 'ERROR'] },
       deposit_tx_hash: { $exists: true, $ne: null },
       depositor_address: { $exists: true, $ne: null },
       token_address: { $exists: true, $ne: null },
-    });
+    };
+    if (chainId) query.chain_id = chainId;
+    return this.findMany(query);
   }
 
   /**

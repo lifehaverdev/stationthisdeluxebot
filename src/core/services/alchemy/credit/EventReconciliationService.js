@@ -98,6 +98,7 @@ class EventReconciliationService {
       depositor_address: user,
       token_address: token,
       deposit_amount_wei: amount.toString(),
+      chain_id: String(this.ethereumService.chainId || '1'),
       status: 'PENDING_CONFIRMATION', // Initial status
     });
   }

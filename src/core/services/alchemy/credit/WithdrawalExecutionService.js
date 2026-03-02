@@ -214,9 +214,11 @@ class WithdrawalExecutionService {
     const seizureMetadata = ethers.toUtf8Bytes('ADMIN_SEIZURE');
 
     // ── 1. Query all confirmed deposits for this token across all vaults ──────
+    const chainId = String(this.ethereumService.chainId || '1');
     const allDeposits = await this.creditLedgerDb.findMany({
       status: 'CONFIRMED',
       token_address: tokenAddress.toLowerCase(),
+      chain_id: chainId,
       points_credited: { $gt: 0 },
     });
 

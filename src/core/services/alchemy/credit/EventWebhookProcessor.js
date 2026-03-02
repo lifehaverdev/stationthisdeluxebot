@@ -141,7 +141,8 @@ class EventWebhookProcessor {
     // Delay to ensure MongoDB write is visible across replicas
     await new Promise(resolve => setTimeout(resolve, MONGODB_WRITE_DELAY_MS));
 
-    const pendingDepositsAll = await creditLedgerDb.findProcessableEntries();
+    const chainId = String(this.ethereumService.chainId || '1');
+    const pendingDepositsAll = await creditLedgerDb.findProcessableEntries(chainId);
     const pendingDeposits = pendingDepositsAll.filter(d => d.deposit_type !== 'TOKEN_DONATION');
 
     if (pendingDeposits.length === 0) {
@@ -224,7 +225,8 @@ class EventWebhookProcessor {
     this.logger.debug('[EventWebhookProcessor] Starting reconciliation of stuck deposits...');
     const creditLedgerDb = this.depositConfirmationService.creditLedgerDb;
 
-    const pendingDepositsAll = await creditLedgerDb.findProcessableEntries();
+    const chainId = String(this.ethereumService.chainId || '1');
+    const pendingDepositsAll = await creditLedgerDb.findProcessableEntries(chainId);
     const now = Date.now();
 
     // Filter for deposits that are older than the threshold
