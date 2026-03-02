@@ -213,10 +213,14 @@ class WithdrawalExecutionService {
       points_credited: { $gt: 0 },
     });
 
-    // Group by vault_account (Foundation or a CharterFund address)
+    // Group by vault_account (Foundation or a CharterFund address).
+    // Treat null/undefined AND the zero address as Foundation — DonationProcessorService
+    // can write vault_account='0x000...000' as a fallback when contractConfig.address is absent.
+    const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
     const depositsByVault = new Map();
     for (const d of allDeposits) {
-      const vault = (d.vault_account || foundationAddress).toLowerCase();
+      const raw = (d.vault_account || '').toLowerCase();
+      const vault = (!raw || raw === ZERO_ADDRESS) ? foundationAddress.toLowerCase() : raw;
       if (!depositsByVault.has(vault)) depositsByVault.set(vault, []);
       depositsByVault.get(vault).push(d);
     }
@@ -256,8 +260,14 @@ class WithdrawalExecutionService {
 
         // Cap at user's actual on-chain userOwned in this vault
         const custodyKey = getCustodyKey(depositorAddress, tokenAddress);
-        const custodyValue = await this.ethereumService.read(vaultContractAddress, vaultAbi, 'custody', custodyKey);
-        const { userOwned: onChainUserOwned } = splitCustodyAmount(custodyValue);
+        let onChainUserOwned;
+        try {
+          const custodyValue = await this.ethereumService.read(vaultContractAddress, vaultAbi, 'custody', custodyKey);
+          ({ userOwned: onChainUserOwned } = splitCustodyAmount(custodyValue));
+        } catch (e) {
+          this.logger.warn(`[WithdrawalExecutionService] Could not read custody for ${depositorAddress} in ${vaultContractAddress}: ${e.message} — skipping depositor`);
+          continue;
+        }
         const seizureAmount = ledgerOwedWei < onChainUserOwned ? ledgerOwedWei : onChainUserOwned;
         if (seizureAmount === 0n) continue;
 

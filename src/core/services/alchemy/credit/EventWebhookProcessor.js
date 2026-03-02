@@ -244,7 +244,7 @@ class EventWebhookProcessor {
     // Log details of stuck deposits for debugging
     for (const deposit of stuckDeposits) {
       const age = Math.round((now - new Date(deposit.createdAt).getTime()) / 1000);
-      this.logger.debug(`[EventWebhookProcessor] Stuck deposit: ${deposit.deposit_tx_hash} (${deposit.token_address}), age: ${age}s, status: ${deposit.status}`);
+      this.logger.debug(`[EventWebhookProcessor] Stuck deposit: ${deposit.deposit_tx_hash} (${deposit.token_address ?? 'unknown'}), age: ${age}s, status: ${deposit.status}`);
     }
 
     // Reset retry counters for stuck deposits (they've been stuck long enough to warrant a fresh try)
@@ -256,6 +256,10 @@ class EventWebhookProcessor {
     // Group and process with reconciliation flag
     const groupedDeposits = new Map();
     for (const deposit of stuckDeposits) {
+      if (!deposit.depositor_address || !deposit.token_address) {
+        this.logger.warn(`[EventWebhookProcessor] Skipping stuck deposit ${deposit.deposit_tx_hash} — missing depositor_address or token_address`);
+        continue;
+      }
       const key = `${deposit.depositor_address.toLowerCase()}-${deposit.token_address.toLowerCase()}`;
       if (!groupedDeposits.has(key)) {
         groupedDeposits.set(key, []);
