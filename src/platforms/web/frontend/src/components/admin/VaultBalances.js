@@ -181,8 +181,10 @@ export class VaultBalances extends Component {
     const { balances } = this.props;
     if (!balances) return h('div', null);
 
-    // Compute cross-vault grand total per token: Foundation + all CharterFund escrow + pending seizures.
-    // This is what the single Foundation "Seize + Withdraw" button will actually collect.
+    // Compute cross-vault grand total per token for the "Seize + Withdraw" button.
+    // Foundation pendingSeizureWei already captures all-vault ledger owed (Foundation + CharterFund),
+    // so we only add CharterFund on-chain escrow (pre-existing fees not yet swept to Foundation).
+    // Adding CharterFund pendingSeizureWei would double-count since it's already in Foundation's figure.
     const grandTotals = new Map();
     for (const token of (balances.foundation || [])) {
       const key = token.tokenAddress.toLowerCase();
@@ -192,7 +194,8 @@ export class VaultBalances extends Component {
     for (const vault of (balances.charteredVaults || [])) {
       for (const token of (vault.tokens || [])) {
         const key = token.tokenAddress.toLowerCase();
-        const amt = BigInt(token.escrow || '0') + BigInt(token.pendingSeizureWei || '0');
+        // Only add pre-existing on-chain escrow — pendingSeizureWei is already in Foundation's figure
+        const amt = BigInt(token.escrow || '0');
         grandTotals.set(key, (grandTotals.get(key) || 0n) + amt);
       }
     }

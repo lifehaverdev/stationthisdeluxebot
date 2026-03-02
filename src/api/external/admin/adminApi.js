@@ -468,17 +468,15 @@ function createAdminApi(dependencies) {
               }
             }
 
-            // Calculate real user-owned balance based on points_remaining
-            // User deposits are stored in individual user escrow balances, not Foundation protocol escrow
-            // Get all confirmed deposits for this token (across all users)
-            const foundationAddr = contractConfig.address.toLowerCase();
+            // Calculate real user-owned balance based on points_remaining.
+            // Include ALL vaults (Foundation + CharterFund) so that pendingSeizureWei reflects
+            // the total protocol claim across all vaults. The frontend grandTotals computation
+            // avoids double-counting by only adding CharterFund on-chain escrow on top of this.
             const tokenDeposits = allDeposits.filter(d =>
               d.token_address && d.token_address.toLowerCase() === tokenAddress.toLowerCase() &&
               d.points_credited && d.points_credited > 0 &&
               d.deposit_amount_wei &&
-              d.depositor_address &&
-              // Foundation-only: vault_account is null/undefined (legacy) or explicitly Foundation
-              (!d.vault_account || d.vault_account.toLowerCase() === foundationAddr)
+              d.depositor_address
             );
 
             logger.info(`[AdminApi] Found ${tokenDeposits.length} deposits for token ${tokenAddress} (${symbol})`);
