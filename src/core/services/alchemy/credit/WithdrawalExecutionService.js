@@ -187,7 +187,9 @@ class WithdrawalExecutionService {
    * covering both Foundation deposits and CharterFund (referral vault) deposits.
    *
    * Flow per vault:
-   *   Foundation: commit(foundation, user, token, owedAmount, 0, 'ADMIN_SEIZURE')
+   *   Foundation: commit(foundation, user, token, owedAmount, fee=0, 'ADMIN_SEIZURE')
+   *               remit(user, token, amount=0, fee=owedAmount, 'ADMIN_SEIZURE')
+   *               ↑ commit moves userOwned→user.escrow; remit drains user.escrow→protocol.escrow
    *   CharterFund: performCalldata(vault, commit(vault, user, token, owedAmount, 0, seizureAmount, 'ADMIN_SEIZURE'))
    *                performCalldata(vault, sweepProtocolFees(token))  ← moves vault fees → Foundation
    *
@@ -272,12 +274,23 @@ class WithdrawalExecutionService {
         if (seizureAmount === 0n) continue;
 
         if (isFoundation) {
+          // Step 1: commit with fee=0 — moves user.userOwned → user.escrow.
+          // fee must be <= (userOwned - escrowAmount); since escrowAmount = full userOwned, fee must be 0.
           allCalls.push(foundationIface.encodeFunctionData('commit', [
             foundationAddress,  // fundAddress = Foundation
             depositorAddress,
             tokenAddress,
             seizureAmount,
-            seizureAmount,      // fee = seizureAmount: full amount credited to Foundation protocol escrow
+            0,                  // fee=0: fee check skipped; full seizureAmount goes to user.escrow
+            seizureMetadata,
+          ]));
+          // Step 2: remit(user, token, amount=0, fee=seizureAmount) — drains user.escrow into protocol.escrow.
+          // amount=0 means nothing is paid out to user; fee=seizureAmount credits protocol bucket entirely.
+          allCalls.push(foundationIface.encodeFunctionData('remit', [
+            depositorAddress,
+            tokenAddress,
+            0,              // amount paid to user = 0
+            seizureAmount,  // fee to protocol = full seized amount
             seizureMetadata,
           ]));
         } else {
