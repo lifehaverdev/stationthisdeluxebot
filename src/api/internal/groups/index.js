@@ -17,8 +17,8 @@ function createGroupsApi(deps = {}) {
   const userCoreDb = deps.db.userCore;
 
   // Util: locate group doc by chatId
-  async function findGroupDoc(chatId) {
-    return userCoreDb.findUserCoreByPlatformId('telegram_group', chatId.toString());
+  async function findGroupDoc(chatId, platform = 'telegram_group') {
+    return userCoreDb.findUserCoreByPlatformId(platform, chatId.toString());
   }
 
   /**
@@ -27,8 +27,9 @@ function createGroupsApi(deps = {}) {
    */
   router.get('/:chatId', async (req, res) => {
     const { chatId } = req.params;
+    const platform = req.query.platform || 'telegram_group';
     try {
-      const groupDoc = await findGroupDoc(chatId);
+      const groupDoc = await findGroupDoc(chatId, platform);
       if (!groupDoc) return res.status(404).json({ error: { code: 'GROUP_NOT_FOUND' } });
       res.json(groupDoc);
     } catch (err) {
@@ -43,15 +44,15 @@ function createGroupsApi(deps = {}) {
    * Body: { chatId, chatTitle, sponsorMasterAccountId }
    */
   router.post('/sponsor', async (req, res) => {
-    const { chatId, chatTitle, sponsorMasterAccountId } = req.body;
+    const { chatId, chatTitle, sponsorMasterAccountId, platform = 'telegram_group' } = req.body;
     if (!chatId || !sponsorMasterAccountId) {
       return res.status(400).json({ error: { code: 'INVALID_PARAMS', message: 'chatId and sponsorMasterAccountId required' } });
     }
     try {
-      let groupDoc = await findGroupDoc(chatId);
+      let groupDoc = await findGroupDoc(chatId, platform);
       if (!groupDoc) {
         // create
-        const { user: created } = await userCoreDb.findOrCreateByPlatformId('telegram_group', chatId.toString(), {
+        const { user: created } = await userCoreDb.findOrCreateByPlatformId(platform, chatId.toString(), {
           accountType: 'group',
           sponsorMasterAccountId: new ObjectId(sponsorMasterAccountId),
           profile: { name: chatTitle || `Group ${chatId}` }
@@ -77,8 +78,9 @@ function createGroupsApi(deps = {}) {
   router.patch('/:chatId/sponsor', async (req, res) => {
     const { chatId } = req.params;
     const { sponsorMasterAccountId } = req.body;
+    const platform = req.query.platform || req.body.platform || 'telegram_group';
     try {
-      const groupDoc = await findGroupDoc(chatId);
+      const groupDoc = await findGroupDoc(chatId, platform);
       if (!groupDoc) return res.status(404).json({ error: { code: 'GROUP_NOT_FOUND' } });
       const update = sponsorMasterAccountId ? { $set: { sponsorMasterAccountId: new ObjectId(sponsorMasterAccountId) } } : { $unset: { sponsorMasterAccountId: '' } };
       const updated = await userCoreDb.updateUserCore(groupDoc._id, update);
