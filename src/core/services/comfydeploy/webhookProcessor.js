@@ -297,48 +297,55 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
       if (!toolId) {
         logger.error(`[Webhook Processor] Debit skipped for generation ${generationId}: toolId is missing in metadata or record.`);
       } else {
-        const notifCtx = generationRecord.metadata?.notificationContext || {};
-        const chatId = notifCtx.chatId;
+        const isGroupPool = !!generationRecord.metadata?.groupPoolActive;
         let spenderMasterAccountId = generationRecord.masterAccountId;
-        if (chatId && chatId < 0) {
-          try {
-            let groupDoc;
-            if (userCoreDb) {
-              groupDoc = await userCoreDb.findUserCoreByPlatformId('telegram_group', chatId.toString());
-            } else {
-              const groupRes = await internalApiClient.get(`/internal/v1/data/groups/${chatId}`);
-              groupDoc = groupRes.data;
-            }
-            if (groupDoc && groupDoc.sponsorMasterAccountId) {
-              spenderMasterAccountId = groupDoc.sponsorMasterAccountId.toString();
-              logger.debug(`[Webhook Processor] Group ${chatId} is sponsored by ${spenderMasterAccountId}. Charging sponsor.`);
-            }
-          } catch (e) {
-            if (e.response?.status !== 404) {
-              logger.warn(`[Webhook Processor] Failed to resolve sponsor for group ${chatId}: ${e.message}`);
+
+        // Legacy Telegram group sponsor resolution (non-pool path)
+        if (!isGroupPool) {
+          const notifCtx = generationRecord.metadata?.notificationContext || {};
+          const chatId = notifCtx.chatId;
+          if (chatId && chatId < 0) {
+            try {
+              let groupDoc;
+              if (userCoreDb) {
+                groupDoc = await userCoreDb.findUserCoreByPlatformId('telegram_group', chatId.toString());
+              } else {
+                const groupRes = await internalApiClient.get(`/internal/v1/data/groups/${chatId}`);
+                groupDoc = groupRes.data;
+              }
+              if (groupDoc && groupDoc.sponsorMasterAccountId) {
+                spenderMasterAccountId = groupDoc.sponsorMasterAccountId.toString();
+                logger.debug(`[Webhook Processor] Group ${chatId} is sponsored by ${spenderMasterAccountId}. Charging sponsor.`);
+              }
+            } catch (e) {
+              if (e.response?.status !== 404) {
+                logger.warn(`[Webhook Processor] Failed to resolve sponsor for group ${chatId}: ${e.message}`);
+              }
             }
           }
         }
 
         // --- Platform Fee Recovery (Pricing Multiplier) ---
-        // Get pricing service and determine if user qualifies for MS2 discount
         const pricingService = getPricingService(logger);
         const serviceName = generationRecord.serviceName || 'comfyui';
         let isMs2User = false;
 
-        try {
-          const walletAddress = await economyService.getUserWalletAddress(spenderMasterAccountId);
-          if (walletAddress) {
-            const deposits = await economyService.getActiveDepositsByWallet(walletAddress);
-            isMs2User = pricingService.userQualifiesForMs2Pricing(deposits);
-            if (isMs2User) {
-              logger.info(`[Webhook Processor] User ${spenderMasterAccountId} qualifies for MS2 pricing tier.`);
+        // Group pools have no wallets — skip MS2 check
+        if (!isGroupPool) {
+          try {
+            const walletAddress = await economyService.getUserWalletAddress(spenderMasterAccountId);
+            if (walletAddress) {
+              const deposits = await economyService.getActiveDepositsByWallet(walletAddress);
+              isMs2User = pricingService.userQualifiesForMs2Pricing(deposits);
+              if (isMs2User) {
+                logger.info(`[Webhook Processor] User ${spenderMasterAccountId} qualifies for MS2 pricing tier.`);
+              }
+            } else {
+              logger.debug(`[Webhook Processor] User ${spenderMasterAccountId} has no wallet address. Using standard pricing.`);
             }
-          } else {
-            logger.debug(`[Webhook Processor] User ${spenderMasterAccountId} has no wallet address. Using standard pricing.`);
+          } catch (e) {
+            logger.warn(`[Webhook Processor] Could not check MS2 status for ${spenderMasterAccountId}: ${e.message}. Using standard pricing.`);
           }
-        } catch (e) {
-          logger.warn(`[Webhook Processor] Could not check MS2 status for ${spenderMasterAccountId}: ${e.message}. Using standard pricing.`);
         }
 
         // Calculate final cost with platform fee multiplier
@@ -354,8 +361,6 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
         logger.debug(`[Webhook Processor] Pricing breakdown for gen ${generationId}: computeUsd=$${costUsd.toFixed(4)}, multiplier=${quote.multiplier}x, finalUsd=$${quote.finalCostUsd.toFixed(4)}, points=${basePointsToSpend} (MS2: ${isMs2User})`);
 
         try {
-          // --- New Contributor Reward Logic ---
-          // This must be called *before* issueSpend to determine the total charge.
           const { totalPointsToCharge, totalRewards, rewardBreakdown } = await distributeContributorRewards(generationRecord, basePointsToSpend, { logger });
 
           logger.debug(`[Webhook Processor] Attempting to spend ${totalPointsToCharge} points for generation ${generationId}, user ${generationRecord.masterAccountId}. (Base: ${basePointsToSpend}, Rewards: ${totalRewards})`);
@@ -363,17 +368,15 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
           logger.info(`[Webhook Processor] Spend successful for generation ${generationId}, user ${generationRecord.masterAccountId}.`);
 
           const protocolNetPoints = basePointsToSpend;
-          
+
           logger.debug(`[Webhook Processor] Points accounting for gen ${generationId}: Total Spent: ${totalPointsToCharge}, Contributor Rewards: ${totalRewards}, Protocol Net: ${protocolNetPoints}`);
-          
-          // Re-apply the update to the generation record with the new accounting info
+
           try {
             await generationService.recordPointsAccounting(generationId, { pointsSpent: totalPointsToCharge, contributorRewardPoints: totalRewards, protocolNetPoints, rewardBreakdown });
             logger.debug(`[Webhook Processor] Successfully updated generation ${generationId} with final point accounting.`);
           } catch(err) {
             logger.error(`[Webhook Processor] Non-critical error: Failed to update generation ${generationId} with point accounting details after a successful spend.`, err.message);
           }
-          // --- End New Contributor Reward Logic ---
 
           // << ADR-005 EXP Update Start >>
           try {
@@ -386,12 +389,42 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
           // << ADR-005 EXP Update End >>
 
         } catch (spendError) {
-          logger.error(`[Webhook Processor] Spend FAILED for generation ${generationId}, user ${generationRecord.masterAccountId}. Error:`, spendError.message, spendError.stack);
-          try {
-            await generationService.markPaymentFailed(generationId, spendError.message || 'Spend failed post-generation.');
-            logger.debug(`[Webhook Processor] Updated generation ${generationId} status to 'payment_failed'.`);
-          } catch (updateError) {
-            logger.error(`[Webhook Processor] CRITICAL: Failed to update generation ${generationId} to 'payment_failed' after spend failure. Error:`, updateError.message, updateError.stack);
+          // --- Group pool fallback: retry with user's own account ---
+          if (isGroupPool && generationRecord.metadata?.fallbackMasterAccountId && spendError.code === 'INSUFFICIENT_FUNDS') {
+            const fallbackId = generationRecord.metadata.fallbackMasterAccountId;
+            logger.info(`[Webhook Processor] Group pool spend failed (INSUFFICIENT_FUNDS). Falling back to user ${fallbackId} for generation ${generationId}.`);
+            try {
+              const { totalPointsToCharge, totalRewards, rewardBreakdown } = await distributeContributorRewards(generationRecord, basePointsToSpend, { logger });
+              await economyService.spend(fallbackId, { pointsToSpend: totalPointsToCharge, spendContext: { generationId: generationId.toString(), toolId, fallbackFrom: 'group_pool' } });
+              logger.info(`[Webhook Processor] Fallback spend successful for generation ${generationId}, user ${fallbackId}.`);
+
+              try {
+                await generationService.recordPointsAccounting(generationId, { pointsSpent: totalPointsToCharge, contributorRewardPoints: totalRewards, protocolNetPoints: basePointsToSpend, rewardBreakdown });
+              } catch(err) {
+                logger.error(`[Webhook Processor] Non-critical: Failed to record accounting after fallback spend for ${generationId}.`, err.message);
+              }
+
+              try {
+                await economyService.updateExp(generationRecord.masterAccountId, totalPointsToCharge);
+              } catch (expError) {
+                logger.warn(`[Webhook Processor] EXP update failed after fallback for ${generationRecord.masterAccountId}. Non-blocking.`, expError.message);
+              }
+            } catch (fallbackError) {
+              logger.error(`[Webhook Processor] Fallback spend also FAILED for generation ${generationId}, user ${fallbackId}. Error:`, fallbackError.message);
+              try {
+                await generationService.markPaymentFailed(generationId, fallbackError.message || 'Fallback spend failed post-generation.');
+              } catch (updateError) {
+                logger.error(`[Webhook Processor] CRITICAL: Failed to mark generation ${generationId} as payment_failed after fallback failure.`, updateError.message);
+              }
+            }
+          } else {
+            logger.error(`[Webhook Processor] Spend FAILED for generation ${generationId}, user ${generationRecord.masterAccountId}. Error:`, spendError.message, spendError.stack);
+            try {
+              await generationService.markPaymentFailed(generationId, spendError.message || 'Spend failed post-generation.');
+              logger.debug(`[Webhook Processor] Updated generation ${generationId} status to 'payment_failed'.`);
+            } catch (updateError) {
+              logger.error(`[Webhook Processor] CRITICAL: Failed to update generation ${generationId} to 'payment_failed' after spend failure. Error:`, updateError.message, updateError.stack);
+            }
           }
         }
       }

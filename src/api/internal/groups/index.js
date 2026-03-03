@@ -1,5 +1,7 @@
 const express = require('express');
 const { ObjectId } = require('../../../core/services/db/BaseDB');
+const { economyService } = require('../../../core/services/store/economy/EconomyService');
+const CreditLedgerDB = require('../../../core/services/db/alchemy/creditLedgerDb');
 
 /**
  * Creates the Groups API router using the existing userCoreDb.
@@ -15,6 +17,7 @@ function createGroupsApi(deps = {}) {
     throw new Error('userCoreDb dependency missing');
   }
   const userCoreDb = deps.db.userCore;
+  const creditLedgerDb = deps.db.creditLedger || new CreditLedgerDB(logger);
 
   // Util: locate group doc by chatId
   async function findGroupDoc(chatId, platform = 'telegram_group') {
@@ -87,6 +90,83 @@ function createGroupsApi(deps = {}) {
       res.json(updated);
     } catch (err) {
       logger.error(`[GroupsApi] PATCH /groups/${chatId}/sponsor failed: ${err.message}`);
+      res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: err.message } });
+    }
+  });
+
+  /**
+   * GET /groups/:chatId/balance
+   * Returns the group pool balance (sum of points_remaining from credit ledger).
+   */
+  router.get('/:chatId/balance', async (req, res) => {
+    const { chatId } = req.params;
+    const platform = req.query.platform || 'telegram_group';
+    try {
+      const groupDoc = await findGroupDoc(chatId, platform);
+      if (!groupDoc) return res.status(404).json({ error: { code: 'GROUP_NOT_FOUND' } });
+
+      const activeDeposits = await creditLedgerDb.findActiveDepositsForUser(groupDoc._id);
+      const balance = activeDeposits.reduce((sum, d) => sum + (d.points_remaining || 0), 0);
+
+      res.json({ balance });
+    } catch (err) {
+      logger.error(`[GroupsApi] GET /groups/${chatId}/balance failed: ${err.message}`);
+      res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: err.message } });
+    }
+  });
+
+  /**
+   * POST /groups/:chatId/fund
+   * Transfer points from a user to a group's pool.
+   * Body: { funderMasterAccountId, points, platform? }
+   */
+  router.post('/:chatId/fund', async (req, res) => {
+    const { chatId } = req.params;
+    const { funderMasterAccountId, points, platform = 'telegram_group' } = req.body;
+
+    if (!funderMasterAccountId || !points) {
+      return res.status(400).json({ error: { code: 'INVALID_PARAMS', message: 'funderMasterAccountId and points required' } });
+    }
+    if (!Number.isInteger(points) || points <= 0) {
+      return res.status(400).json({ error: { code: 'INVALID_PARAMS', message: 'points must be a positive integer' } });
+    }
+
+    try {
+      const groupDoc = await findGroupDoc(chatId, platform);
+      if (!groupDoc) return res.status(404).json({ error: { code: 'GROUP_NOT_FOUND' } });
+      if (!groupDoc.sponsorMasterAccountId) {
+        return res.status(400).json({ error: { code: 'NOT_SPONSORED', message: 'Group must be sponsored before funding' } });
+      }
+
+      // Deduct from funder
+      try {
+        await economyService.spend(funderMasterAccountId, {
+          pointsToSpend: points,
+          spendContext: { type: 'GROUP_FUND', groupId: groupDoc._id.toString(), chatId }
+        });
+      } catch (spendErr) {
+        if (spendErr.code === 'INSUFFICIENT_FUNDS') {
+          return res.status(402).json({ error: { code: 'INSUFFICIENT_FUNDS', message: 'Not enough points to fund this amount.' } });
+        }
+        throw spendErr;
+      }
+
+      // Credit to group pool
+      try {
+        await economyService.creditPoints(groupDoc._id, {
+          points,
+          description: 'Group pool funding',
+          rewardType: 'GROUP_POOL_FUND',
+          relatedItems: { funderMasterAccountId, chatId }
+        });
+      } catch (creditErr) {
+        logger.error(`[GroupsApi] CRITICAL: Spend succeeded but credit failed for group ${chatId}. Funder: ${funderMasterAccountId}, Points: ${points}. Manual reconciliation required. Error: ${creditErr.message}`);
+        return res.status(500).json({ error: { code: 'CREDIT_FAILED', message: 'Points were deducted but could not be credited to group pool. Please contact support.' } });
+      }
+
+      res.json({ success: true, pointsFunded: points });
+    } catch (err) {
+      logger.error(`[GroupsApi] POST /groups/${chatId}/fund failed: ${err.message}`);
       res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: err.message } });
     }
   });

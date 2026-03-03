@@ -38,6 +38,135 @@ class GenerationExecutionService {
   }
 
   /**
+   * Pre-check for group pool executions.
+   * Groups have no wallets, so we check deposits by masterAccountId (the group's _id).
+   * No MS2 discount for group pools.
+   */
+  async _groupPoolPreCheck({ userId, baseCostUsd, tool, pricingService, metadata }) {
+    this.logger.debug(`[Execute] Group pool pre-check for group _id ${userId}`);
+
+    const pricingResult = pricingService.calculateCost({
+      computeCostUsd: baseCostUsd,
+      serviceName: tool.service,
+      isMs2User: false,
+      toolId: tool.toolId,
+    });
+
+    const USD_PER_POINT = 0.000337;
+    const pointsRequired = Math.max(1, Math.round(pricingResult.finalCostUsd / USD_PER_POINT));
+
+    let groupPoolPoints = 0;
+    try {
+      const groupDeposits = this.db.creditLedger
+        ? await this.db.creditLedger.findActiveDepositsForUser(userId)
+        : [];
+      groupPoolPoints = groupDeposits.reduce((sum, d) => sum + (d.points_remaining || 0), 0);
+    } catch (poolErr) {
+      this.logger.warn(`[Execute] Could not check group pool balance for ${userId}: ${poolErr.message}`);
+    }
+
+    this.logger.debug(`[Pre-Execution Credit Check] Group pool ${userId} has ${groupPoolPoints} points. Required: ${pointsRequired}`);
+
+    if (groupPoolPoints < pointsRequired) {
+      if (metadata.fallbackMasterAccountId) {
+        this.logger.debug(`[Execute] Group pool insufficient (${groupPoolPoints} < ${pointsRequired}), fallback user will be charged post-execution.`);
+      } else {
+        return {
+          error: {
+            statusCode: 402,
+            body: {
+              error: {
+                code: 'INSUFFICIENT_FUNDS',
+                message: 'The server pool does not have enough points to execute this workflow.',
+                details: { required: pointsRequired, available: groupPoolPoints, pricing: pricingResult.breakdown }
+              }
+            }
+          }
+        };
+      }
+    }
+
+    return {
+      isMs2User: false,
+      costUsd: pricingResult.finalCostUsd,
+      pricingBreakdown: pricingResult.breakdown,
+      pointsRequired,
+    };
+  }
+
+  /**
+   * Standard wallet-based pre-check for individual user executions.
+   * Resolves wallet, checks MS2 tier, verifies sufficient points.
+   */
+  async _walletPreCheck({ userId, baseCostUsd, tool, pricingService }) {
+    const userCore = this.db.userCore
+      ? await this.db.userCore.findUserCoreById(userId)
+      : (await this.internalApiClient.get(`/internal/v1/data/users/${userId}`)).data;
+
+    let walletAddress = null;
+    if (userCore && userCore.wallets && userCore.wallets.length > 0) {
+      const primary = userCore.wallets.find(w => w.isPrimary);
+      walletAddress = (primary ? primary.address : userCore.wallets[0].address) || null;
+    }
+
+    if (!walletAddress) {
+      this.logger.error(`[Execute] Pre-check failed: Could not find a wallet address for user ${userId}.`);
+      return { error: { statusCode: 403, body: { error: { code: 'WALLET_NOT_FOUND', message: 'User wallet not available for credit check.' } } } };
+    }
+
+    let isMs2User = false;
+    try {
+      const activeDeposits = this.db.creditLedger
+        ? await this.db.creditLedger.findActiveDepositsForWalletAddress(walletAddress)
+        : (await this.internalApiClient.get(`/internal/v1/data/ledger/deposits/by-wallet/${walletAddress}`)).data.deposits || [];
+      isMs2User = pricingService.userQualifiesForMs2Pricing(activeDeposits);
+      this.logger.debug(`[Pricing] User ${userId} MS2 status: ${isMs2User}`);
+    } catch (depositErr) {
+      this.logger.warn(`[Pricing] Could not determine MS2 status for user ${userId}: ${depositErr.message}. Defaulting to standard pricing.`);
+    }
+
+    const pricingResult = pricingService.calculateCost({
+      computeCostUsd: baseCostUsd,
+      serviceName: tool.service,
+      isMs2User,
+      toolId: tool.toolId,
+    });
+
+    this.logger.debug(`[Pricing] Service: ${tool.service}, Base: $${baseCostUsd.toFixed(4)}, Final: $${pricingResult.finalCostUsd.toFixed(4)}, Tier: ${isMs2User ? 'MS2' : 'standard'}`);
+
+    const USD_PER_POINT = 0.000337;
+    const pointsRequired = Math.max(1, Math.round(pricingResult.finalCostUsd / USD_PER_POINT));
+
+    const currentPoints = this.db.creditLedger
+      ? (await this.db.creditLedger.sumPointsRemainingForWalletAddress(walletAddress)) || 0
+      : ((await this.internalApiClient.get(`/internal/v1/data/ledger/points/by-wallet/${walletAddress}`)).data.points || 0);
+
+    this.logger.debug(`[Pre-Execution Credit Check] User ${userId} (Wallet: ${walletAddress}) has ${currentPoints} points. Required: ${pointsRequired}`);
+
+    if (currentPoints < pointsRequired) {
+      return {
+        error: {
+          statusCode: 402,
+          body: {
+            error: {
+              code: 'INSUFFICIENT_FUNDS',
+              message: 'You do not have enough points to execute this workflow.',
+              details: { required: pointsRequired, available: currentPoints, pricing: pricingResult.breakdown }
+            }
+          }
+        }
+      };
+    }
+
+    return {
+      isMs2User,
+      costUsd: pricingResult.finalCostUsd,
+      pricingBreakdown: pricingResult.breakdown,
+      pointsRequired,
+    };
+  }
+
+  /**
    * Execute a generation.
    * @param {object} params
    * @param {string} params.toolId
@@ -164,69 +293,23 @@ class GenerationExecutionService {
         const pricingService = getPricingService(this.logger);
 
         if (!isX402Execution) {
-          const userId = user.masterAccountId;
-          const userCore = this.db.userCore
-            ? await this.db.userCore.findUserCoreById(userId)
-            : (await this.internalApiClient.get(`/internal/v1/data/users/${userId}`)).data;
+          const checkFn = metadata.groupPoolActive === true
+            ? this._groupPoolPreCheck.bind(this)
+            : this._walletPreCheck.bind(this);
 
-          let walletAddress = null;
-          if (userCore && userCore.wallets && userCore.wallets.length > 0) {
-            const primary = userCore.wallets.find(w => w.isPrimary);
-            walletAddress = (primary ? primary.address : userCore.wallets[0].address) || null;
-          }
-
-          if (!walletAddress) {
-            this.logger.error(`[Execute] Pre-check failed: Could not find a wallet address for user ${userId}.`);
-            return { statusCode: 403, body: { error: { code: 'WALLET_NOT_FOUND', message: 'User wallet not available for credit check.' } } };
-          }
-
-          try {
-            const activeDeposits = this.db.creditLedger
-              ? await this.db.creditLedger.findActiveDepositsForWalletAddress(walletAddress)
-              : (await this.internalApiClient.get(`/internal/v1/data/ledger/deposits/by-wallet/${walletAddress}`)).data.deposits || [];
-            isMs2User = pricingService.userQualifiesForMs2Pricing(activeDeposits);
-            this.logger.debug(`[Pricing] User ${userId} MS2 status: ${isMs2User}`);
-          } catch (depositErr) {
-            this.logger.warn(`[Pricing] Could not determine MS2 status for user ${userId}: ${depositErr.message}. Defaulting to standard pricing.`);
-            isMs2User = false;
-          }
-
-          const pricingResult = pricingService.calculateCost({
-            computeCostUsd: baseCostUsd,
-            serviceName: tool.service,
-            isMs2User,
-            toolId: tool.toolId,
+          const preCheck = await checkFn({
+            userId: user.masterAccountId,
+            baseCostUsd,
+            tool,
+            pricingService,
+            metadata,
           });
-          costUsd = pricingResult.finalCostUsd;
-          pricingBreakdown = pricingResult.breakdown;
 
-          this.logger.debug(`[Pricing] Service: ${tool.service}, Base: $${baseCostUsd.toFixed(4)}, Final: $${costUsd.toFixed(4)}, Tier: ${isMs2User ? 'MS2' : 'standard'}`);
-
-          const USD_PER_POINT = 0.000337;
-          pointsRequired = Math.max(1, Math.round(costUsd / USD_PER_POINT));
-
-          const currentPoints = this.db.creditLedger
-            ? (await this.db.creditLedger.sumPointsRemainingForWalletAddress(walletAddress)) || 0
-            : ((await this.internalApiClient.get(`/internal/v1/data/ledger/points/by-wallet/${walletAddress}`)).data.points || 0);
-
-          this.logger.debug(`[Pre-Execution Credit Check] User ${userId} (Wallet: ${walletAddress}) has ${currentPoints} points. Required: ${pointsRequired}`);
-
-          if (currentPoints < pointsRequired) {
-            return {
-              statusCode: 402,
-              body: {
-                error: {
-                  code: 'INSUFFICIENT_FUNDS',
-                  message: 'You do not have enough points to execute this workflow.',
-                  details: {
-                    required: pointsRequired,
-                    available: currentPoints,
-                    pricing: pricingBreakdown
-                  }
-                }
-              }
-            };
-          }
+          if (preCheck.error) return preCheck.error;
+          isMs2User = preCheck.isMs2User;
+          costUsd = preCheck.costUsd;
+          pricingBreakdown = preCheck.pricingBreakdown;
+          pointsRequired = preCheck.pointsRequired;
         } else {
           const pricingResult = pricingService.calculateCost({
             computeCostUsd: baseCostUsd,
@@ -260,6 +343,21 @@ class GenerationExecutionService {
             { internal: { client: this.internalApiClient } }
           );
           resolvedInputs[promptInputKey] = modifiedPrompt;
+        }
+      }
+
+      // Pre-routing Seed Randomization (must happen before adapter routing)
+      if (service === 'comfyui') {
+        const seedKey = tool.metadata?.seedInputKey || 'input_seed';
+        if (
+          resolvedInputs[seedKey] === undefined ||
+          resolvedInputs[seedKey] === null ||
+          resolvedInputs[seedKey] === '' ||
+          resolvedInputs[seedKey] === -1 ||
+          resolvedInputs[seedKey] === '-1'
+        ) {
+          resolvedInputs[seedKey] = Math.floor(Math.random() * 0xffffffff);
+          this.logger.debug(`[Execute] Auto-assigned random ${seedKey}=${resolvedInputs[seedKey]} for tool '${toolId}'.`);
         }
       }
 
@@ -471,17 +569,7 @@ class GenerationExecutionService {
       switch (service) {
         case 'comfyui': {
           const { masterAccountId } = user;
-          let finalInputs = { ...resolvedInputs }; // Use pre-resolved inputs (LoRA already resolved above)
-
-          const seedKey = tool.metadata?.seedInputKey || 'input_seed';
-          if (
-            finalInputs[seedKey] === undefined ||
-            finalInputs[seedKey] === null ||
-            finalInputs[seedKey] === ''
-          ) {
-            finalInputs[seedKey] = Math.floor(Math.random() * 0xffffffff);
-            this.logger.debug(`[Execute] Auto-assigned random ${seedKey}=${finalInputs[seedKey]} for tool '${toolId}'.`);
-          }
+          let finalInputs = { ...resolvedInputs }; // Seed already randomized in pre-routing step
 
           const isSpellStep = metadata && metadata.isSpell;
           const initialDeliveryStatus = (user.platform && user.platform !== 'none') ? 'pending' : 'skipped';

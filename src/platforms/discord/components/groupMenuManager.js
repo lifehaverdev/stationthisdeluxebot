@@ -6,7 +6,7 @@
  * Analogous to Telegram's groupMenuManager.
  */
 
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 
 function getApiClient(dependencies) {
     return dependencies.internalApiClient || dependencies.internal?.client;
@@ -34,14 +34,25 @@ async function buildGroupMenu(guildId, guildName, currentMasterAccountId, depend
     const isSponsored = groupDoc && groupDoc.sponsorMasterAccountId;
     const isSponsor = isSponsored && groupDoc.sponsorMasterAccountId.toString() === currentMasterAccountId;
 
+    // Fetch pool balance if sponsored
+    let poolBalance = 0;
+    if (isSponsored) {
+        try {
+            const balanceRes = await apiClient.get(`/internal/v1/data/groups/${guildId}/balance?platform=${PLATFORM_KEY}`);
+            poolBalance = balanceRes.data?.balance || 0;
+        } catch (balErr) {
+            logger.warn(`[GroupMenu] Failed to fetch pool balance for guild ${guildId}: ${balErr.message}`);
+        }
+    }
+
+    const description = isSponsored
+        ? `This server is sponsored. Admins use the server pool when running commands.\n\n**Server Pool: ${poolBalance.toLocaleString()} points**`
+        : 'No sponsor set. Commands use each user\'s own account.';
+
     const embed = new EmbedBuilder()
         .setColor(isSponsored ? 0x00CC66 : 0x666666)
         .setTitle('Group Sponsorship')
-        .setDescription(
-            isSponsored
-                ? 'This server is sponsored. Admins will use the sponsor\'s account when running commands.'
-                : 'No sponsor set. Commands use each user\'s own account.'
-        )
+        .setDescription(description)
         .setFooter({ text: guildName });
 
     const row = new ActionRowBuilder();
@@ -53,13 +64,22 @@ async function buildGroupMenu(guildId, guildName, currentMasterAccountId, depend
                 .setLabel('Sponsor this server')
                 .setStyle(ButtonStyle.Success)
         );
-    } else if (isSponsor) {
+    } else {
+        // Fund button — visible to everyone (anyone can fund)
         row.addComponents(
             new ButtonBuilder()
-                .setCustomId(`groupsettings:unsponsor:${guildId}`)
-                .setLabel('Withdraw sponsorship')
-                .setStyle(ButtonStyle.Danger)
+                .setCustomId(`groupsettings:fund:${guildId}`)
+                .setLabel('Fund this server')
+                .setStyle(ButtonStyle.Primary)
         );
+        if (isSponsor) {
+            row.addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`groupsettings:unsponsor:${guildId}`)
+                    .setLabel('Withdraw sponsorship')
+                    .setStyle(ButtonStyle.Danger)
+            );
+        }
     }
 
     row.addComponents(
@@ -123,13 +143,35 @@ async function handleGroupSettingsInteraction(client, interaction, masterAccount
     const { logger = console } = dependencies;
     const apiClient = getApiClient(dependencies);
 
+    const parts = interaction.customId.split(':');
+    const action = parts[1]; // sponsor | unsponsor | close | fund
+    const guildId = parts[2];
+
+    // Fund action must show a modal — do NOT deferUpdate before showModal
+    if (action === 'fund') {
+        try {
+            const modal = new ModalBuilder()
+                .setCustomId(`groupsettings:fundmodal:${guildId}`)
+                .setTitle('Fund Server Pool');
+
+            const pointsInput = new TextInputBuilder()
+                .setCustomId('points')
+                .setLabel('How many points to add?')
+                .setPlaceholder('e.g. 500')
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true);
+
+            modal.addComponents(new ActionRowBuilder().addComponents(pointsInput));
+            await interaction.showModal(modal);
+        } catch (err) {
+            logger.error(`[GroupMenu] Failed to show fund modal: ${err.message}`);
+        }
+        return;
+    }
+
     if (!interaction.deferred && !interaction.replied) {
         await interaction.deferUpdate();
     }
-
-    const parts = interaction.customId.split(':');
-    const action = parts[1]; // sponsor | unsponsor | close
-    const guildId = parts[2];
 
     if (action === 'close') {
         await interaction.editReply({ content: 'Group settings closed.', embeds: [], components: [] });
@@ -179,6 +221,66 @@ function registerHandlers(dispatcherInstances, dependencies) {
 
     commandDispatcher.register('groupsettings', handleGroupSettingsCommand);
     buttonInteractionDispatcher.register('groupsettings', handleGroupSettingsInteraction);
+
+    // Register modal submit handler for fund modal
+    if (dependencies.client) {
+        dependencies.client.on('interactionCreate', async interaction => {
+            if (!interaction.isModalSubmit()) return;
+            if (!interaction.customId.startsWith('groupsettings:fundmodal:')) return;
+
+            const apiClient = getApiClient(dependencies);
+            const guildId = interaction.customId.split(':')[2];
+
+            try {
+                await interaction.deferReply({ flags: 64 });
+
+                const pointsStr = interaction.fields.getTextInputValue('points');
+                const points = parseInt(pointsStr, 10);
+                if (!Number.isInteger(points) || points <= 0) {
+                    await interaction.editReply({ content: 'Please enter a valid positive number of points.' });
+                    return;
+                }
+
+                // Resolve user's masterAccountId
+                const userResponse = await apiClient.post('/internal/v1/data/users/find-or-create', {
+                    platform: 'discord',
+                    platformId: interaction.user.id.toString(),
+                    platformContext: {
+                        username: interaction.user.username,
+                        discriminator: interaction.user.discriminator,
+                        globalName: interaction.user.globalName
+                    }
+                });
+                const funderMasterAccountId = userResponse.data.masterAccountId;
+
+                // Call fund endpoint
+                const fundRes = await apiClient.post(`/internal/v1/data/groups/${guildId}/fund`, {
+                    funderMasterAccountId,
+                    points,
+                    platform: PLATFORM_KEY
+                });
+
+                if (fundRes.data?.success) {
+                    // Show updated menu
+                    const menu = await buildGroupMenu(guildId, interaction.guild?.name || '', funderMasterAccountId, dependencies);
+                    await interaction.editReply({
+                        content: `Successfully funded **${points.toLocaleString()} points** to the server pool!`,
+                        ...menu
+                    });
+                } else {
+                    await interaction.editReply({ content: 'Funding failed. Please try again.' });
+                }
+            } catch (err) {
+                logger.error(`[GroupMenu] Fund modal submit error: ${err.message}`);
+                const errMsg = err.response?.data?.error?.code === 'INSUFFICIENT_FUNDS'
+                    ? 'You do not have enough points. Purchase more with `/buypoints`.'
+                    : 'Failed to fund the server pool. Please try again.';
+                if (interaction.deferred || interaction.replied) {
+                    await interaction.editReply({ content: errMsg });
+                }
+            }
+        });
+    }
 
     logger.debug('[GroupMenuManager] Handlers registered');
 }

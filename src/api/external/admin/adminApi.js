@@ -10,18 +10,22 @@ const logger = createLogger('AdminVaultApi');
 const NATIVE_ETH = '0x0000000000000000000000000000000000000000';
 
 function createAdminApi(dependencies) {
-  const { 
-    internalApiClient, 
+  const {
+    internalApiClient,
     priceFeedService,
-    creditServices = {}, 
-    ethereumServices = {}, 
-    creditService: legacyCredit, 
-    ethereumService: legacyEth
+    creditServices = {},
+    creditService: legacyCredit,
   } = dependencies;
 
+  // dependencies.ethereumService is the multi-chain map { chainId: EthereumService }
+  // dependencies.creditService is also the multi-chain map { chainId: CreditService }
+  // (see core/services/index.js lines 505-582)
+  const ethereumServiceMap = dependencies.ethereumService || {};
+  const creditServiceMap = dependencies.creditService || {};
+
   const getChainServices = (chainId = '1') => ({
-    creditService: creditServices[String(chainId)] || legacyCredit,
-    ethereumService: ethereumServices[String(chainId)] || legacyEth,
+    creditService: creditServices[String(chainId)] || creditServiceMap[String(chainId)] || legacyCredit,
+    ethereumService: ethereumServiceMap[String(chainId)],
   });
 
   if (!internalApiClient) {

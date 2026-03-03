@@ -285,11 +285,14 @@ async function setupDynamicCommands(commandRegistry, dependencies, client, token
           });
           masterAccountId = userResponse.data.masterAccountId;
 
-          // --- Guild sponsorship handling ---
+          // --- Guild pool sponsorship handling ---
+          let groupPoolActive = false;
+          let fallbackMasterAccountId = null;
           if (interaction.guild && interaction.guildId) {
             try {
               const groupRes = await apiClient.get(`/internal/v1/data/groups/${interaction.guildId}?platform=discord_guild`);
-              if (groupRes.data && groupRes.data.sponsorMasterAccountId) {
+              const groupDoc = groupRes.data;
+              if (groupDoc && groupDoc.sponsorMasterAccountId) {
                 // Check if user is admin in this guild
                 let isAdmin = false;
                 try {
@@ -299,8 +302,11 @@ async function setupDynamicCommands(commandRegistry, dependencies, client, token
                   logger.warn(`[Discord EXEC /${commandName}] Could not fetch member permissions: ${memberErr.message}`);
                 }
                 if (isAdmin) {
-                  masterAccountId = groupRes.data.sponsorMasterAccountId.toString();
-                  logger.info(`[Discord EXEC /${commandName}] Admin ${interaction.user.id} using sponsor MAID ${masterAccountId} for guild ${interaction.guildId}`);
+                  const originalMasterAccountId = masterAccountId;
+                  masterAccountId = groupDoc._id.toString(); // Use group's own _id for pool billing
+                  groupPoolActive = true;
+                  fallbackMasterAccountId = originalMasterAccountId;
+                  logger.info(`[Discord EXEC /${commandName}] Admin ${interaction.user.id} using group pool ${masterAccountId} (fallback: ${fallbackMasterAccountId}) for guild ${interaction.guildId}`);
                 }
               }
             } catch (e) {
@@ -451,6 +457,8 @@ async function setupDynamicCommands(commandRegistry, dependencies, client, token
               eventId: initiatingEventId,
               metadata: {
                 platform: 'discord',
+                ...(groupPoolActive && { groupPoolActive: true }),
+                ...(fallbackMasterAccountId && { fallbackMasterAccountId }),
                 // Pass notification context for the dispatcher to use upon completion
                 notificationContext: {
                   channelId: interaction.channel?.id,

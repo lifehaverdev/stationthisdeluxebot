@@ -40,25 +40,18 @@ function setCachedOwner(walletAddress, owner) {
  * @returns {Function} Express middleware
  */
 function createAdminVerificationMiddleware(dependencies) {
-  const { 
-    ethereumServices = {}, 
-    ethereumService: legacyEth,
+  const {
     creditServices = {},
     creditService: legacyCredit
   } = dependencies;
-  
-  logger.debug(`[AdminMiddleware] Initializing with dependencies:`, {
-    hasEthereumServices: !!ethereumServices,
-    ethereumServicesKeys: Object.keys(ethereumServices || {}),
-    hasLegacyEth: !!legacyEth,
-    legacyEthType: typeof legacyEth,
-    hasCreditServices: !!creditServices,
-    creditServicesKeys: Object.keys(creditServices || {})
-  });
-  
+
+  // dependencies.ethereumService is the multi-chain map { chainId: EthereumService }
+  // (see core/services/index.js lines 505-582)
+  const ethereumServiceMap = dependencies.ethereumService || {};
+
   const getEthereumService = (chainId = '1') => {
-    // Try direct ethereumServices first
-    let service = ethereumServices[String(chainId)] || ethereumServices[Number(chainId)] || legacyEth;
+    // Get from the map directly
+    let service = ethereumServiceMap[String(chainId)] || ethereumServiceMap[Number(chainId)];
     
     // Fallback: get from creditService if available
     if (!service || typeof service.read !== 'function') {
