@@ -285,6 +285,31 @@ async function setupDynamicCommands(commandRegistry, dependencies, client, token
           });
           masterAccountId = userResponse.data.masterAccountId;
 
+          // --- Guild sponsorship handling ---
+          if (interaction.guild && interaction.guildId) {
+            try {
+              const groupRes = await apiClient.get(`/internal/v1/data/groups/${interaction.guildId}?platform=discord_guild`);
+              if (groupRes.data && groupRes.data.sponsorMasterAccountId) {
+                // Check if user is admin in this guild
+                let isAdmin = false;
+                try {
+                  const member = await interaction.guild.members.fetch(interaction.user.id);
+                  isAdmin = member.permissions.has('Administrator') || member.permissions.has('ManageGuild');
+                } catch (memberErr) {
+                  logger.warn(`[Discord EXEC /${commandName}] Could not fetch member permissions: ${memberErr.message}`);
+                }
+                if (isAdmin) {
+                  masterAccountId = groupRes.data.sponsorMasterAccountId.toString();
+                  logger.info(`[Discord EXEC /${commandName}] Admin ${interaction.user.id} using sponsor MAID ${masterAccountId} for guild ${interaction.guildId}`);
+                }
+              }
+            } catch (e) {
+              if (e.response?.status !== 404) {
+                logger.warn(`[Discord EXEC /${commandName}] Failed to fetch guild sponsor: ${e.message}`);
+              }
+            }
+          }
+
           // Step 2: Create the initiating event record
           const eventResponse = await apiClient.post('/internal/v1/data/events', {
             masterAccountId,
