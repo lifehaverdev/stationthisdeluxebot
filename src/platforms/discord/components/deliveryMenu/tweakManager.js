@@ -547,11 +547,41 @@ async function handleApplyTweaks(client, interaction, masterAccountId, dependenc
             logger.warn('[TweakManager] failed to create event for tweak submission:', e.message);
         }
 
+        // --- Guild pool sponsorship handling ---
+        let tweakMasterAccountId = masterAccountId;
+        let groupPoolActive = false;
+        let fallbackMasterAccountId = null;
+        if (interaction.guild && interaction.guildId) {
+            try {
+                const groupRes = await apiClient.get(`/internal/v1/data/groups/${interaction.guildId}?platform=discord_guild`);
+                const groupDoc = groupRes.data;
+                if (groupDoc && groupDoc.sponsorMasterAccountId) {
+                    let isAdmin = false;
+                    try {
+                        const member = await interaction.guild.members.fetch(user.id);
+                        isAdmin = member.permissions.has('Administrator') || member.permissions.has('ManageGuild');
+                    } catch (memberErr) {
+                        logger.warn(`[TweakManager] Could not fetch member permissions: ${memberErr.message}`);
+                    }
+                    if (isAdmin) {
+                        fallbackMasterAccountId = tweakMasterAccountId;
+                        tweakMasterAccountId = groupDoc._id.toString();
+                        groupPoolActive = true;
+                        logger.info(`[TweakManager] Admin ${user.id} using group pool ${tweakMasterAccountId} (fallback: ${fallbackMasterAccountId}) for guild ${interaction.guildId}`);
+                    }
+                }
+            } catch (e) {
+                if (e.response?.status !== 404) {
+                    logger.warn(`[TweakManager] Failed to fetch guild sponsor: ${e.message}`);
+                }
+            }
+        }
+
         const executionPayload = {
             toolId,
             inputs: servicePayload,
             user: {
-                masterAccountId,
+                masterAccountId: tweakMasterAccountId,
                 platform: 'discord',
                 platformId: user.id.toString(),
                 platformContext: platformContext || {
@@ -566,6 +596,8 @@ async function handleApplyTweaks(client, interaction, masterAccountId, dependenc
             ...(eventId ? { eventId } : {}),
             metadata: {
                 ...newGenMetadata,
+                ...(groupPoolActive && { groupPoolActive: true }),
+                ...(fallbackMasterAccountId && { fallbackMasterAccountId }),
                 platform: 'discord'
             }
         };

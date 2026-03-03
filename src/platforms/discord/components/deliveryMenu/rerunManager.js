@@ -111,12 +111,42 @@ async function handleRerunGenCallback(client, interaction, masterAccountId, depe
             }
         }
 
+        // --- Guild pool sponsorship handling ---
+        let rerunMasterAccountId = masterAccountId;
+        let groupPoolActive = false;
+        let fallbackMasterAccountId = null;
+        if (interaction.guild && interaction.guildId) {
+            try {
+                const groupRes = await apiClient.get(`/internal/v1/data/groups/${interaction.guildId}?platform=discord_guild`);
+                const groupDoc = groupRes.data;
+                if (groupDoc && groupDoc.sponsorMasterAccountId) {
+                    let isAdmin = false;
+                    try {
+                        const member = await interaction.guild.members.fetch(user.id);
+                        isAdmin = member.permissions.has('Administrator') || member.permissions.has('ManageGuild');
+                    } catch (memberErr) {
+                        logger.warn(`[RerunManager] Could not fetch member permissions: ${memberErr.message}`);
+                    }
+                    if (isAdmin) {
+                        fallbackMasterAccountId = rerunMasterAccountId;
+                        rerunMasterAccountId = groupDoc._id.toString();
+                        groupPoolActive = true;
+                        logger.info(`[RerunManager] Admin ${user.id} using group pool ${rerunMasterAccountId} (fallback: ${fallbackMasterAccountId}) for guild ${interaction.guildId}`);
+                    }
+                }
+            } catch (e) {
+                if (e.response?.status !== 404) {
+                    logger.warn(`[RerunManager] Failed to fetch guild sponsor: ${e.message}`);
+                }
+            }
+        }
+
         // Construct execution payload similar to dynamicCommands.js
         const executionPayload = {
             toolId: currentTool.toolId,
             inputs,
             user: {
-                masterAccountId,
+                masterAccountId: rerunMasterAccountId,
                 platform: 'discord',
                 platformId: user.id.toString(),
                 platformContext: {
@@ -130,6 +160,8 @@ async function handleRerunGenCallback(client, interaction, masterAccountId, depe
             eventId: eventResponse.data._id,
             metadata: {
                 platform: 'discord',
+                ...(groupPoolActive && { groupPoolActive: true }),
+                ...(fallbackMasterAccountId && { fallbackMasterAccountId }),
                 notificationContext: {
                     channelId: channelId,
                     messageId: messageId,
