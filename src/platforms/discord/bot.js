@@ -35,6 +35,7 @@ const linkManager = require('./components/linkManager');
 const modsMenuManager = require('./components/modsMenuManager');
 const toolsMenuManager = require('./components/toolsMenuManager');
 const buyPointsManager = require('./components/buyPointsManager');
+const groupMenuManager = require('./components/groupMenuManager');
 
 // --- Delivery Menu Managers ---
 const globalMenuManager = require('./components/deliveryMenu/globalMenuManager');
@@ -104,6 +105,7 @@ function createDiscordBot(dependencies, token, options = {}) {
     modsMenuManager.registerHandlers(dispatcherInstances, allDependencies);
     toolsMenuManager.registerHandlers(dispatcherInstances, allDependencies);
     buyPointsManager.registerHandlers(dispatcherInstances, allDependencies);
+    groupMenuManager.registerHandlers(dispatcherInstances, allDependencies);
 
     // Register delivery menu managers
     globalMenuManager.registerHandlers(dispatcherInstances, allDependencies);
@@ -282,6 +284,11 @@ function createDiscordBot(dependencies, token, options = {}) {
     {
       name: 'buypoints',
       description: 'Purchase points via ETH contribution',
+      type: 1 // CHAT_INPUT
+    },
+    {
+      name: 'groupsettings',
+      description: 'View and manage server sponsorship settings',
       type: 1 // CHAT_INPUT
     },
     {
