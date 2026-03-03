@@ -27,6 +27,7 @@ function initializeDiscordPlatform(services, options = {}) {
     mediaService,
     openaiService, // For dynamic commands
     loraResolutionService, // For dynamic commands
+    loraService, // For mods menu manager
     internal, // Internal API services
     toolRegistry, // Tool registry for dynamic commands and settings
     // commandRegistry removed - we create our own platform-specific instance
@@ -55,6 +56,7 @@ function initializeDiscordPlatform(services, options = {}) {
       mediaService,
       openaiService, // Pass for dynamic commands
       loraResolutionService, // Pass for dynamic commands
+      loraService, // Pass for mods menu manager
       internal, // Pass internal API services
       toolRegistry, // Pass tool registry
       commandRegistry: discordCommandRegistry, // Pass platform-specific command registry

@@ -2,16 +2,17 @@ import { Component, h, eventBus } from '@monygroupcorp/microact';
 import { ethers } from 'ethers';
 import { FloatingWalletButton, WalletService } from '@monygroupcorp/micro-web3';
 import * as adminApi from '../lib/adminApi.js';
-import { websocketClient } from '../lib/websocket.js';
 import { VaultBalances } from '../components/admin/VaultBalances.js';
 import { AccountsTable } from '../components/admin/AccountsTable.js';
 import { AnalyticsCharts } from '../components/admin/AnalyticsCharts.js';
-import { ActivityFeed } from '../components/admin/ActivityFeed.js';
 import { UserSearch } from '../components/admin/UserSearch.js';
 import { DepositRecovery } from '../components/admin/DepositRecovery.js';
 
 const FOUNDATION_ADDRESS = '0x01152530028bd834EDbA9744885A882D025D84F6';
-const FOUNDATION_ABI = ['function requestRescission(address token) external'];
+const FOUNDATION_ABI = [
+  'function requestRescission(address token) external',
+  'function withdrawProtocolOwned(address token, uint256 amount) external',
+];
 const CHARTERED_FUND_ABI = ['function requestRescission(address token) external'];
 const MILADY_STATION_ADDRESS = '0xB24BaB1732D34cAD0A7C7035C3539aEC553bF3a0';
 const ERC721A_ABI = ['function ownerOf(uint256 tokenId) view returns (address)'];
@@ -40,8 +41,6 @@ export class Admin extends Component {
       costs: null,
       costTotals: null,
       depositRecovery: { deposits: [], metrics: null, loading: false, error: null },
-      activityFeed: [],
-      alerts: [],
       dateRange: {
         period: 'daily',
         startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
@@ -50,6 +49,9 @@ export class Admin extends Component {
       // Withdrawal: confirmation → in-flight tracking
       pendingWithdrawal: null, // { tokenAddress, vaultAddress, amount, symbol, decimals }
       withdrawalTx: null,      // { status: 'submitting'|'mining'|'done'|'error', hash, error }
+      // Protocol owned withdrawal (owner-only, direct wallet tx)
+      pendingProtocolWithdraw: null, // { tokenAddress, amount, symbol, decimals }
+      protocolWithdrawTx: null,      // { status, hash, error }
       // Inline points adjustment panel
       adjustPoints: null,      // { masterAccountId, address, points, description, submitting, error }
     };
@@ -87,7 +89,6 @@ export class Admin extends Component {
       const resolvedSigner = signer || await provider.getSigner();
       this.setState({ verified: true, verifying: false, verifyError: null, wallet: address, provider, signer: resolvedSigner, loading: true });
       await this.loadDashboard(address, provider, resolvedSigner);
-      this.setupActivityFeed(address);
     } catch (e) {
       this.setState({ verifying: false, verifyError: 'Error verifying admin: ' + e.message });
     }
@@ -148,18 +149,6 @@ export class Admin extends Component {
     }
   }
 
-  setupActivityFeed(wallet) {
-    websocketClient.connect();
-    websocketClient.on('adminActivity', (payload) => {
-      const activity = { ...payload, id: Date.now() + Math.random(), receivedAt: new Date() };
-      const feed = [activity, ...this.state.activityFeed].slice(0, 100);
-      const updates = { activityFeed: feed };
-      if (payload.eventType === 'alert') {
-        updates.alerts = [activity, ...this.state.alerts].slice(0, 50);
-      }
-      this.setState(updates);
-    });
-  }
 
   // ── Withdrawal ────────────────────────────────────────────────────────────
 
@@ -184,6 +173,29 @@ export class Admin extends Component {
       setTimeout(() => this.setState({ withdrawalTx: null }), 10000);
     } catch (err) {
       this.setState({ withdrawalTx: { status: 'error', hash: null, error: err.message } });
+    }
+  }
+
+  // ── Protocol Owned Withdrawal ─────────────────────────────────────────────
+
+  handleWithdrawProtocolOwned(tokenAddress, amount, symbol, decimals) {
+    this.setState({ pendingProtocolWithdraw: { tokenAddress, amount, symbol, decimals } });
+  }
+
+  async _confirmProtocolWithdraw() {
+    const { signer, pendingProtocolWithdraw: w } = this.state;
+    if (!signer || !w) return;
+    this.setState({ pendingProtocolWithdraw: null, protocolWithdrawTx: { status: 'submitting', hash: null, error: null } });
+    try {
+      const contract = new ethers.Contract(FOUNDATION_ADDRESS, FOUNDATION_ABI, signer);
+      const tx = await contract.withdrawProtocolOwned(w.tokenAddress, w.amount);
+      this.setState({ protocolWithdrawTx: { status: 'mining', hash: tx.hash, error: null } });
+      await tx.wait();
+      this.setState({ protocolWithdrawTx: { status: 'done', hash: tx.hash, error: null } });
+      await this.loadDashboard();
+      setTimeout(() => this.setState({ protocolWithdrawTx: null }), 10000);
+    } catch (err) {
+      this.setState({ protocolWithdrawTx: { status: 'error', hash: null, error: err.message } });
     }
   }
 
@@ -402,6 +414,46 @@ export class Admin extends Component {
     return null;
   }
 
+  _renderProtocolWithdrawConfirm() {
+    const { pendingProtocolWithdraw: w } = this.state;
+    if (!w) return null;
+    const fmtAmount = ethers.formatUnits(w.amount, w.decimals);
+    return h('div', { className: 'admin-banner danger' },
+      h('span', null, `Withdraw ${fmtAmount} ${w.symbol} protocol-owned from Foundation? This calls withdrawProtocolOwned as contract owner.`),
+      h('button', { className: 'danger', onClick: this.bind(this._confirmProtocolWithdraw) }, 'Confirm'),
+      h('button', { onClick: () => this.setState({ pendingProtocolWithdraw: null }) }, 'Cancel'),
+    );
+  }
+
+  _renderProtocolWithdrawTx() {
+    const { protocolWithdrawTx: tx } = this.state;
+    if (!tx) return null;
+    const etherscanBase = 'https://etherscan.io/tx/';
+    if (tx.status === 'submitting') {
+      return h('div', { className: 'admin-banner info' }, 'Waiting for wallet signature...');
+    }
+    if (tx.status === 'mining') {
+      return h('div', { className: 'admin-banner info' },
+        'Mining — ',
+        h('a', { href: etherscanBase + tx.hash, target: '_blank' }, tx.hash.slice(0, 18) + '...')
+      );
+    }
+    if (tx.status === 'done') {
+      return h('div', { className: 'admin-banner success' },
+        'Protocol owned withdrawn — ',
+        h('a', { href: etherscanBase + tx.hash, target: '_blank' }, tx.hash.slice(0, 18) + '...'),
+        h('button', { onClick: () => this.setState({ protocolWithdrawTx: null }) }, 'Dismiss'),
+      );
+    }
+    if (tx.status === 'error') {
+      return h('div', { className: 'admin-banner danger' },
+        'Protocol withdrawal failed: ' + tx.error,
+        h('button', { onClick: () => this.setState({ protocolWithdrawTx: null }) }, 'Dismiss'),
+      );
+    }
+    return null;
+  }
+
   _renderAdjustPanel() {
     const { adjustPoints: ap } = this.state;
     if (!ap) return null;
@@ -448,7 +500,7 @@ export class Admin extends Component {
       wallet, loading, error,
       balances, accounts, freePoints,
       analytics, withdrawalAnalytics,
-      depositRecovery, activityFeed, alerts,
+      depositRecovery,
     } = this.state;
 
     return h('div', { className: 'admin-page' },
@@ -465,6 +517,8 @@ export class Admin extends Component {
 
         this._renderWithdrawalConfirm(),
         this._renderWithdrawalTx(),
+        this._renderProtocolWithdrawConfirm(),
+        this._renderProtocolWithdrawTx(),
         this._renderAdjustPanel(),
 
         loading
@@ -491,7 +545,8 @@ export class Admin extends Component {
 
               h(VaultBalances, {
                 balances,
-                onWithdraw: this.bind(this.handleWithdraw)
+                onWithdraw: this.bind(this.handleWithdraw),
+                onWithdrawProtocolOwned: this.bind(this.handleWithdrawProtocolOwned),
               }),
 
               h(AccountsTable, {
@@ -505,11 +560,6 @@ export class Admin extends Component {
               }),
 
               h(UserSearch, { wallet }),
-
-              h(ActivityFeed, {
-                activities: activityFeed,
-                alerts
-              })
             )
       ) : null
     );

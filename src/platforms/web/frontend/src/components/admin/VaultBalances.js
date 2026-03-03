@@ -66,6 +66,12 @@ export class VaultBalances extends Component {
       .token-stats .stat-val.green { color: #4caf50; }
       .token-stats .stat-val.orange { color: #ff9800; }
       .token-stats .stat-val.warn { color: #f44336; }
+      .token-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        flex-shrink: 0;
+      }
       .withdraw-btn {
         background: #3f51b5;
         color: #fff;
@@ -75,9 +81,12 @@ export class VaultBalances extends Component {
         cursor: pointer;
         white-space: nowrap;
         font-size: 0.8rem;
-        flex-shrink: 0;
       }
       .withdraw-btn:hover { background: #5c6bc0; }
+      .withdraw-btn.protocol-owned {
+        background: #e65100;
+      }
+      .withdraw-btn.protocol-owned:hover { background: #f57c00; }
       .no-balance {
         color: #555;
         font-size: 0.8rem;
@@ -93,14 +102,16 @@ export class VaultBalances extends Component {
     const protocolOwnedNotSeized = BigInt(token.protocolOwnedNotSeized || '0');
     const pointDebtWei = BigInt(token.pointDebtWei || '0');
     const pendingSeizureWei = BigInt(token.pendingSeizureWei || '0');
+    const foundationOwned = BigInt(token.contractUserOwnedWei || '0'); // custody[Foundation].userOwned
     const pointsOutstanding = token.pointsOutstanding || 0;
 
-    if (protocolEscrow === 0n && userOwned === 0n && protocolOwnedNotSeized === 0n && pendingSeizureWei === 0n) return null;
+    if (protocolEscrow === 0n && userOwned === 0n && protocolOwnedNotSeized === 0n && pendingSeizureWei === 0n && foundationOwned === 0n) return null;
 
     const fmtProtocol = formatUnits(protocolEscrow.toString(), token.decimals);
     const fmtUser = formatUnits(userOwned.toString(), token.decimals);
     const fmtPendingSeizure = formatUnits(pendingSeizureWei.toString(), token.decimals);
     const fmtGrandTotal = formatUnits(grandTotal.toString(), token.decimals);
+    const fmtFoundationOwned = formatUnits(foundationOwned.toString(), token.decimals);
     const pointsUsd = (pointsOutstanding * USD_PER_POINT).toFixed(2);
     const hasDebt = pointDebtWei > 0n;
     const hasPendingSeizure = pendingSeizureWei > 0n;
@@ -116,6 +127,10 @@ export class VaultBalances extends Component {
           h('span', { className: 'stat-label' }, 'User Owned'),
           h('span', { className: 'stat-val' }, fmtUser),
         ),
+        foundationOwned > 0n ? h('div', { className: 'stat-item' },
+          h('span', { className: 'stat-label' }, 'Protocol Owned'),
+          h('span', { className: 'stat-val orange' }, fmtFoundationOwned),
+        ) : null,
         hasPendingSeizure ? h('div', { className: 'stat-item' },
           h('span', { className: 'stat-label' }, 'Pending Seizure'),
           h('span', { className: 'stat-val orange' }, fmtPendingSeizure),
@@ -133,12 +148,20 @@ export class VaultBalances extends Component {
           h('span', { className: 'stat-val warn' }, `${formatUnits(pointDebtWei.toString(), token.decimals)} ⚠`),
         ) : null,
       ),
-      grandTotal > 0n
-        ? h('button', {
-            className: 'withdraw-btn',
-            onClick: () => this.props.onWithdraw?.(token.tokenAddress, '0x01152530028bd834EDbA9744885A882D025D84F6', grandTotal.toString(), token.symbol, token.decimals)
-          }, `Seize + Withdraw ${fmtGrandTotal} ${token.symbol}`)
-        : h('span', { className: 'no-balance' }, 'Nothing to withdraw'),
+      h('div', { className: 'token-actions' },
+        grandTotal > 0n
+          ? h('button', {
+              className: 'withdraw-btn',
+              onClick: () => this.props.onWithdraw?.(token.tokenAddress, '0x01152530028bd834EDbA9744885A882D025D84F6', grandTotal.toString(), token.symbol, token.decimals)
+            }, `Seize + Withdraw ${fmtGrandTotal} ${token.symbol}`)
+          : h('span', { className: 'no-balance' }, 'Nothing to seize'),
+        foundationOwned > 0n
+          ? h('button', {
+              className: 'withdraw-btn protocol-owned',
+              onClick: () => this.props.onWithdrawProtocolOwned?.(token.tokenAddress, foundationOwned.toString(), token.symbol, token.decimals)
+            }, `Withdraw ${fmtFoundationOwned} ${token.symbol} (owner)`)
+          : null,
+      ),
     );
   }
 

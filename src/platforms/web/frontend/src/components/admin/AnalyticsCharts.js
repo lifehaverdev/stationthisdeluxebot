@@ -33,15 +33,20 @@ export class AnalyticsCharts extends Component {
   constructor(props) {
     super(props);
     this.charts = {};
-    this.canvasRefs = {};
+    this._containerRef = null;
   }
 
-  didMount() { this.renderCharts(); }
-  didUpdate() { this.renderCharts(); }
+  didMount() { this._scheduleRender(); }
+  didUpdate() { this._scheduleRender(); }
 
   willUnmount() {
     Object.values(this.charts).forEach(c => c?.destroy());
     this.charts = {};
+  }
+
+  _scheduleRender() {
+    // Defer to next microtask so DOM is fully settled after microact patch
+    Promise.resolve().then(() => this.renderCharts());
   }
 
   renderCharts() {
@@ -49,10 +54,14 @@ export class AnalyticsCharts extends Component {
     Object.values(this.charts).forEach(c => c?.destroy());
     this.charts = {};
 
+    if (!this._containerRef) return;
     const { analytics, withdrawalAnalytics } = this.props;
 
-    if (analytics?.pointUsage?.length && this.canvasRefs.pointUsage) {
-      this.charts.pointUsage = new Chart(this.canvasRefs.pointUsage, {
+    const getCanvas = (name) => this._containerRef.querySelector(`canvas[data-chart="${name}"]`);
+
+    const pointUsageCanvas = getCanvas('pointUsage');
+    if (analytics?.pointUsage?.length && pointUsageCanvas) {
+      this.charts.pointUsage = new Chart(pointUsageCanvas, {
         type: 'line',
         data: {
           labels: analytics.pointUsage.map(d => d.date),
@@ -73,8 +82,9 @@ export class AnalyticsCharts extends Component {
       });
     }
 
-    if (analytics?.deposits?.length && this.canvasRefs.deposits) {
-      this.charts.deposits = new Chart(this.canvasRefs.deposits, {
+    const depositsCanvas = getCanvas('deposits');
+    if (analytics?.deposits?.length && depositsCanvas) {
+      this.charts.deposits = new Chart(depositsCanvas, {
         type: 'bar',
         data: {
           labels: analytics.deposits.map(d => d.date),
@@ -84,8 +94,9 @@ export class AnalyticsCharts extends Component {
       });
     }
 
-    if (analytics?.activeUsers?.length && this.canvasRefs.activeUsers) {
-      this.charts.activeUsers = new Chart(this.canvasRefs.activeUsers, {
+    const activeUsersCanvas = getCanvas('activeUsers');
+    if (analytics?.activeUsers?.length && activeUsersCanvas) {
+      this.charts.activeUsers = new Chart(activeUsersCanvas, {
         type: 'line',
         data: {
           labels: analytics.activeUsers.map(d => d.date),
@@ -95,8 +106,9 @@ export class AnalyticsCharts extends Component {
       });
     }
 
-    if (withdrawalAnalytics?.withdrawals?.length && this.canvasRefs.withdrawals) {
-      this.charts.withdrawals = new Chart(this.canvasRefs.withdrawals, {
+    const withdrawalsCanvas = getCanvas('withdrawals');
+    if (withdrawalAnalytics?.withdrawals?.length && withdrawalsCanvas) {
+      this.charts.withdrawals = new Chart(withdrawalsCanvas, {
         type: 'bar',
         data: {
           labels: withdrawalAnalytics.withdrawals.map(d => d.date),
@@ -144,21 +156,21 @@ export class AnalyticsCharts extends Component {
     const { analytics, withdrawalAnalytics } = this.props;
     if (!analytics) return null;
 
-    return h('section', { className: 'analytics-section' },
+    return h('section', { className: 'analytics-section', ref: el => { this._containerRef = el; } },
       h('h2', null, 'Analytics'),
       h('div', { className: 'chart-grid' },
         h('div', { className: 'chart-box' },
-          h('canvas', { ref: el => { this.canvasRefs.pointUsage = el; } })
+          h('canvas', { 'data-chart': 'pointUsage' })
         ),
         h('div', { className: 'chart-box' },
-          h('canvas', { ref: el => { this.canvasRefs.deposits = el; } })
+          h('canvas', { 'data-chart': 'deposits' })
         ),
         h('div', { className: 'chart-box' },
-          h('canvas', { ref: el => { this.canvasRefs.activeUsers = el; } })
+          h('canvas', { 'data-chart': 'activeUsers' })
         ),
         withdrawalAnalytics?.withdrawals?.length
           ? h('div', { className: 'chart-box' },
-              h('canvas', { ref: el => { this.canvasRefs.withdrawals = el; } })
+              h('canvas', { 'data-chart': 'withdrawals' })
             )
           : null
       )
