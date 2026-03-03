@@ -147,27 +147,9 @@ async function handleGroupSettingsInteraction(client, interaction, masterAccount
     const action = parts[1]; // sponsor | unsponsor | close | fund
     const guildId = parts[2];
 
-    // Fund action must show a modal — do NOT deferUpdate before showModal
-    if (action === 'fund') {
-        try {
-            const modal = new ModalBuilder()
-                .setCustomId(`groupsettings:fundmodal:${guildId}`)
-                .setTitle('Fund Server Pool');
-
-            const pointsInput = new TextInputBuilder()
-                .setCustomId('points')
-                .setLabel('How many points to add?')
-                .setPlaceholder('e.g. 500')
-                .setStyle(TextInputStyle.Short)
-                .setRequired(true);
-
-            modal.addComponents(new ActionRowBuilder().addComponents(pointsInput));
-            await interaction.showModal(modal);
-        } catch (err) {
-            logger.error(`[GroupMenu] Failed to show fund modal: ${err.message}`);
-        }
-        return;
-    }
+    // Fund action is handled by the interactionCreate listener in registerHandlers
+    // (must show modal before any defer — can't be handled by dispatcher)
+    if (action === 'fund') return;
 
     if (!interaction.deferred && !interaction.replied) {
         await interaction.deferUpdate();
@@ -222,8 +204,33 @@ function registerHandlers(dispatcherInstances, dependencies) {
     commandDispatcher.register('groupsettings', handleGroupSettingsCommand);
     buttonInteractionDispatcher.register('groupsettings', handleGroupSettingsInteraction);
 
-    // Register modal submit handler for fund modal
+    // Register fund button handler — must intercept BEFORE bot.js defers the interaction
     if (dependencies.client) {
+        dependencies.client.on('interactionCreate', async interaction => {
+            if (!interaction.isButton()) return;
+            if (!interaction.customId.startsWith('groupsettings:fund:')) return;
+
+            try {
+                const guildId = interaction.customId.split(':')[2];
+                const modal = new ModalBuilder()
+                    .setCustomId(`groupsettings:fundmodal:${guildId}`)
+                    .setTitle('Fund Server Pool');
+
+                const pointsInput = new TextInputBuilder()
+                    .setCustomId('points')
+                    .setLabel('How many points to add?')
+                    .setPlaceholder('e.g. 500')
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(true);
+
+                modal.addComponents(new ActionRowBuilder().addComponents(pointsInput));
+                await interaction.showModal(modal);
+            } catch (err) {
+                logger.error(`[GroupMenu] Failed to show fund modal: ${err.message}`);
+            }
+        });
+
+        // Register modal submit handler for fund modal
         dependencies.client.on('interactionCreate', async interaction => {
             if (!interaction.isModalSubmit()) return;
             if (!interaction.customId.startsWith('groupsettings:fundmodal:')) return;

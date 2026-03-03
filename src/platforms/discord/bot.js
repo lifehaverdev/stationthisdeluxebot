@@ -902,10 +902,13 @@ function createDiscordBot(dependencies, token, options = {}) {
     if (!interaction.isButton()) return;
     
       logger.info(`[Discord Bot] Received button interaction: ${interaction.customId}`);
-      
+
+      // Skip if already handled (e.g. by a modal-showing listener that responded first)
+      if (interaction.replied || interaction.deferred) return;
+
       // Defer update immediately (Discord requires response within 3 seconds)
       await interaction.deferUpdate();
-      
+
       // Try dispatcher
       const handled = await buttonInteractionDispatcher.handle(client, interaction, { ...dependencies, replyContextManager });
       
