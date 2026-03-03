@@ -54,7 +54,7 @@ async function showGroupSettingsMenu(bot, msg, deps) {
         keyboard.push([{ text: 'Withdraw sponsorship', callback_data: `grp_unsponsor:${chatId}` }]);
       }
     }
-    keyboard.push([{ text: 'Close', callback_data: 'close' }]);
+    keyboard.push([{ text: 'Close', callback_data: 'grp_close' }]);
 
     await sendEscapedMessage(bot, chatId, text, {
       reply_to_message_id: msg.message_id,
@@ -70,7 +70,15 @@ async function handleCallbackQuery(bot, query, deps) {
   const data = query.data || '';
   if (!data.startsWith('grp_')) return false;
   const [action, chatIdStr] = data.split(':');
-  if (action === 'grp_sponsor') {
+  if (action === 'grp_close') {
+    try {
+      await bot.answerCallbackQuery(query.id);
+      await bot.deleteMessage(query.message.chat.id, query.message.message_id);
+    } catch (err) {
+      logger.warn(`[GroupMenu] Failed to delete menu message: ${err.message}`);
+    }
+    return true;
+  } else if (action === 'grp_sponsor') {
     const chatId = parseInt(chatIdStr, 10);
     try {
       const api = getApiClient(deps);
@@ -86,7 +94,7 @@ async function handleCallbackQuery(bot, query, deps) {
         sponsorMasterAccountId
       });
       await bot.answerCallbackQuery(query.id, { text: 'Chat sponsored!' });
-      await editEscapedMessageText(bot, 'Group Sponsorship\nThis chat is now sponsored', { chat_id: chatId, message_id: query.message.message_id, reply_markup: { inline_keyboard: [[{ text:'Close', callback_data:'close_menu'}]] } });
+      await editEscapedMessageText(bot, 'Group Sponsorship\nThis chat is now sponsored', { chat_id: chatId, message_id: query.message.message_id, reply_markup: { inline_keyboard: [[{ text:'Close', callback_data:'grp_close'}]] } });
     } catch (err) {
       logger.error(`[GroupMenu] Sponsor action failed: ${err.message}`);
       await bot.answerCallbackQuery(query.id, { text: 'Failed to sponsor', show_alert: true });
@@ -98,31 +106,30 @@ async function handleCallbackQuery(bot, query, deps) {
       const api = getApiClient(deps);
       await api.patch(`/internal/v1/data/groups/${chatId}/sponsor`, { sponsorMasterAccountId: null });
       await bot.answerCallbackQuery(query.id, { text: 'Sponsorship withdrawn' });
-      await editEscapedMessageText(bot, 'Group Sponsorship\nNo sponsor set', { chat_id: chatId, message_id: query.message.message_id, reply_markup: { inline_keyboard: [[{ text:'Sponsor this chat', callback_data:`grp_sponsor:${chatId}` }],[{ text:'Close', callback_data:'close'}]] } });
+      await editEscapedMessageText(bot, 'Group Sponsorship\nNo sponsor set', { chat_id: chatId, message_id: query.message.message_id, reply_markup: { inline_keyboard: [[{ text:'Sponsor this chat', callback_data:`grp_sponsor:${chatId}` }],[{ text:'Close', callback_data:'grp_close'}]] } });
     } catch (err) {
       logger.error(`[GroupMenu] Unsponsor failed: ${err.message}`);
       await bot.answerCallbackQuery(query.id, { text: 'Failed to withdraw', show_alert: true });
     }
     return true;
   } else if (action === 'grp_fund') {
-    const chatId = parseInt(chatIdStr, 10);
+    // Use the actual chat from the callback message, not the ID from callback data
+    const actualChatId = query.message.chat.id;
     try {
       await bot.answerCallbackQuery(query.id);
-      // Ask user to reply with amount
-      const prompt = await bot.sendMessage(chatId, 'Reply to this message with the number of points you want to add to the group pool.', {
+      const prompt = await bot.sendMessage(actualChatId, 'Reply to this message with the number of points you want to add to the group pool.', {
         reply_markup: { force_reply: true, selective: true }
       });
 
-      // Store pending fund request
-      const key = `${chatId}:${query.from.id}`;
-      // Clear any existing timeout
+      const key = `${actualChatId}:${query.from.id}`;
       if (pendingFunds.has(key)) {
         clearTimeout(pendingFunds.get(key).timeout);
       }
       pendingFunds.set(key, {
         userId: query.from.id,
         promptMessageId: prompt.message_id,
-        timeout: setTimeout(() => pendingFunds.delete(key), 60000) // 60s expiry
+        chatIdForFund: chatIdStr, // the original group chatId for the API call
+        timeout: setTimeout(() => pendingFunds.delete(key), 60000)
       });
     } catch (err) {
       logger.error(`[GroupMenu] Fund prompt failed: ${err.message}`);
@@ -166,7 +173,8 @@ async function handleFundReply(bot, msg, deps) {
       platformContext: { firstName: msg.from.first_name, username: msg.from.username }
     });
 
-    const fundRes = await api.post(`/internal/v1/data/groups/${chatId}/fund`, {
+    const groupChatId = pending.chatIdForFund || chatId;
+    const fundRes = await api.post(`/internal/v1/data/groups/${groupChatId}/fund`, {
       funderMasterAccountId,
       points
     });
@@ -191,7 +199,7 @@ module.exports = { showGroupSettingsMenu, handleCallbackQuery, handleFundReply }
 function registerHandlers(dispatchers, deps) {
   const { callbackQueryDispatcher } = dispatchers;
   if (callbackQueryDispatcher && typeof callbackQueryDispatcher.register === 'function') {
-    callbackQueryDispatcher.register(/^grp_(sponsor|unsponsor|fund):(-?\d+)/, async (bot, query) => {
+    callbackQueryDispatcher.register(/^grp_(sponsor|unsponsor|fund|close)/, async (bot, query) => {
       await handleCallbackQuery(bot, query, deps);
     });
   }
