@@ -238,7 +238,8 @@ class WithdrawalExecutionService {
     const charterVaultCalls = new Map();
     const foundationCalls = [];
     let totalFoundationSeizureWei = 0n;
-    let totalCharterSeizureWei = 0n;
+    let charterSweptWei = 0n;      // seized via protocolFee+sweep → lands in Foundation.escrow
+    let charterDirectExitWei = 0n;  // existing escrow drained via charter allocate+remit → admin wallet directly
 
     for (const [vaultAddress, vaultDeposits] of depositsByVault) {
       const isFoundation = vaultAddress === foundationAddress.toLowerCase();
@@ -253,7 +254,9 @@ class WithdrawalExecutionService {
       }
 
       const vaultCalls = isFoundation ? foundationCalls : [];
-      let vaultSeizureWei = 0n;
+      let vaultFoundationSeizureWei = 0n;  // Foundation: all remit fees land in Foundation.escrow
+      let vaultSweptWei = 0n;              // Charter: protocolFee routed via sweep → Foundation.escrow
+      let vaultDirectExitWei = 0n;         // Charter: escrow drained via charter allocate+remit → admin wallet
 
       for (const [depositorAddress, deposits] of byDepositor) {
         let ledgerOwedWei = 0n;
@@ -291,37 +294,60 @@ class WithdrawalExecutionService {
               foundationAddress, depositorAddress, tokenAddress, seizureAmount, 0, seizureMetadata,
             ]));
           }
-          // remit drains escrow (newly committed + any pre-existing) → protocol bucket
+          // remit drains escrow (newly committed + any pre-existing) → Foundation.escrow
           const totalRemit = seizureAmount + existingEscrow;
           vaultCalls.push(foundationIface.encodeFunctionData('remit', [
             depositorAddress, tokenAddress, 0, totalRemit, seizureMetadata,
           ]));
+          vaultFoundationSeizureWei += totalRemit;
         } else {
+          // CharterFund seizure — two separate flows:
+          //   Flow A: new seizure via commit(protocolFee) + sweepProtocolFees → Foundation.escrow
+          //   Flow B: existing escrow (+ 1 wei dust) via charter allocate+remit → admin wallet directly
+          const dustWei = seizureAmount > 0n ? 1n : 0n;
+
           if (seizureAmount > 0n) {
-            // commit(fee=0, charterFee=0): userOwned → user.escrow
+            // Flow A: commit(escrowAmount=1, protocolFee=seizureAmount-1)
+            //   user.owned -= seizureAmount, user.escrow += 1
+            //   custody[foundation][token].owned += (seizureAmount - 1)
+            const protocolFee = seizureAmount - 1n;
             vaultCalls.push(charterFundIface.encodeFunctionData('commit', [
-              vaultAddress, depositorAddress, tokenAddress, seizureAmount, 0, 0, seizureMetadata,
+              vaultAddress, depositorAddress, tokenAddress, 1, 0, protocolFee, seizureMetadata,
             ]));
+            vaultSweptWei += protocolFee;
           }
-          // remit drains escrow (newly committed + any pre-existing) → vault protocol bucket
-          const totalRemit = seizureAmount + existingEscrow;
-          vaultCalls.push(charterFundIface.encodeFunctionData('remit', [
-            depositorAddress, tokenAddress, 0, totalRemit, seizureMetadata,
-          ]));
+
+          // Flow B: drain escrow (existing + 1 wei dust from commit) via charter's own allocate+remit
+          const escrowToDrain = existingEscrow + dustWei;
+          if (escrowToDrain > 0n) {
+            // remit(fee=escrowToDrain): user.escrow → custody[charterFund].escrow
+            vaultCalls.push(charterFundIface.encodeFunctionData('remit', [
+              depositorAddress, tokenAddress, 0, escrowToDrain, seizureMetadata,
+            ]));
+            // allocate: custody[charterFund].escrow → admin.escrow on charter fund
+            vaultCalls.push(charterFundIface.encodeFunctionData('allocate', [
+              userAddress, tokenAddress, escrowToDrain,
+            ]));
+            // remit(amount=escrowToDrain, fee=0): admin.escrow → ETH exits charter fund to admin wallet
+            vaultCalls.push(charterFundIface.encodeFunctionData('remit', [
+              userAddress, tokenAddress, escrowToDrain, 0, seizureMetadata,
+            ]));
+            vaultDirectExitWei += escrowToDrain;
+          }
         }
 
-        vaultSeizureWei += seizureAmount + existingEscrow;
         this.logger.info(`[WithdrawalExecutionService] Seizure queued: ${depositorAddress} in ${isFoundation ? 'Foundation' : vaultAddress} — new=${seizureAmount} wei, drainEscrow=${existingEscrow} wei`);
       }
 
       if (isFoundation) {
-        totalFoundationSeizureWei += vaultSeizureWei;
+        totalFoundationSeizureWei += vaultFoundationSeizureWei;
       } else {
-        totalCharterSeizureWei += vaultSeizureWei;
-        // Append sweep — moves vault protocol bucket → Foundation.creditProtocolEscrow
-        if (vaultSeizureWei > 0n) {
+        charterSweptWei += vaultSweptWei;
+        charterDirectExitWei += vaultDirectExitWei;
+        // Sweep moves custody[foundation].owned → Foundation.escrow via creditProtocolEscrow
+        if (vaultSweptWei > 0n) {
           vaultCalls.push(charterFundIface.encodeFunctionData('sweepProtocolFees', [tokenAddress]));
-          this.logger.info(`[WithdrawalExecutionService] Sweep queued for CharterFund ${vaultAddress}: seized=${vaultSeizureWei} wei`);
+          this.logger.info(`[WithdrawalExecutionService] Sweep queued for CharterFund ${vaultAddress}: swept=${vaultSweptWei} wei, directExit=${vaultDirectExitWei} wei`);
         }
         if (vaultCalls.length > 0) charterVaultCalls.set(vaultAddress, vaultCalls);
       }
@@ -343,18 +369,21 @@ class WithdrawalExecutionService {
       this.logger.info(`[WithdrawalExecutionService] CharterFund ${vaultAddress} multicall confirmed: ${receipt.hash}`);
     }
 
-    // ── 4. Re-read Foundation protocol bucket after sweeps have landed ────────
-    // The protocol bucket lives in custody[Foundation][token].userOwned (fee accumulator).
-    // Swept CharterFund fees land here via creditProtocolEscrow.
+    // ── 4. Re-read Foundation protocol escrow after sweeps have landed ─────────
+    // custody[Foundation].escrow = fees accumulated from remit() calls → drain via allocate()
+    // Note: custody[Foundation].userOwned is managed separately by contract owner via recoverProtocolOwned()
     const protocolCustodyKey = getCustodyKey(foundationAddress, tokenAddress);
     const protocolCustodyValue = await this.ethereumService.read(foundationAddress, this.contractConfig.abi, 'custody', protocolCustodyKey);
-    const { userOwned: currentFoundationOwned, escrow: currentFoundationEscrow } = splitCustodyAmount(protocolCustodyValue);
-    const currentFoundationTotal = currentFoundationOwned + currentFoundationEscrow;
+    const { escrow: currentFoundationEscrow } = splitCustodyAmount(protocolCustodyValue);
 
-    // Total for Foundation multicall: protocol bucket + Foundation depositor seizures
-    const totalAmount = currentFoundationTotal + totalFoundationSeizureWei;
+    // foundationAllocateAmount: what flows through Foundation allocate→remit
+    //   currentFoundationEscrow includes pre-existing escrow + charter swept fees (read after step 3)
+    //   totalFoundationSeizureWei = new seizure fees added by Foundation remits in this same multicall
+    const foundationAllocateAmount = currentFoundationEscrow + totalFoundationSeizureWei;
+    // grandTotal: everything extracted this run (Foundation allocate + charter direct exits)
+    const grandTotal = foundationAllocateAmount + charterDirectExitWei;
 
-    if (totalAmount === 0n && foundationCalls.length === 0) {
+    if (grandTotal === 0n && foundationCalls.length === 0) {
       this.logger.warn(`[WithdrawalExecutionService] Admin withdrawal: nothing to withdraw for token ${tokenAddress}`);
       await this.creditLedgerDb.updateWithdrawalRequestStatus(request.request_tx_hash, 'COMPLETED', {
         withdrawal_amount_wei: '0',
@@ -367,41 +396,52 @@ class WithdrawalExecutionService {
       return;
     }
 
-    // ── 5. Phase 2: Foundation multicall (Foundation seizures + allocate + remit) ──
-    const riskAssessment = await this.tokenRiskEngine.assessCollateral(tokenAddress, totalAmount, chainId);
-    const withdrawalValueUsd = tokenDecimalService.calculateUsdValue(totalAmount, tokenAddress, riskAssessment.price);
+    // ── 5. Phase 2: Foundation multicall (seizures + allocate + remit) ──
+    const totalCharterSeizureWei = charterSweptWei + charterDirectExitWei;
+    const riskAssessment = await this.tokenRiskEngine.assessCollateral(tokenAddress, grandTotal, chainId);
+    const withdrawalValueUsd = tokenDecimalService.calculateUsdValue(grandTotal, tokenAddress, riskAssessment.price);
 
     this.logger.warn(
       `[WithdrawalExecutionService] ADMIN WITHDRAWAL+SEIZURE: admin=${userAddress}, ` +
-      `token=${tokenAddress}, foundationBucket=${currentFoundationTotal} (owned=${currentFoundationOwned} escrow=${currentFoundationEscrow}), ` +
-      `foundationSeizures=${totalFoundationSeizureWei} wei, charterSeizures=${totalCharterSeizureWei} wei, ` +
-      `total=${totalAmount} wei (~$${withdrawalValueUsd.toFixed(2)})`
+      `token=${tokenAddress}, foundationEscrow=${currentFoundationEscrow}, ` +
+      `foundationSeizures=${totalFoundationSeizureWei} wei, charterSwept=${charterSweptWei} wei, ` +
+      `charterDirectExit=${charterDirectExitWei} wei, grandTotal=${grandTotal} wei (~$${withdrawalValueUsd.toFixed(2)})`
     );
 
     const withdrawalMetadata = ethers.toUtf8Bytes('ADMIN_WITHDRAWAL');
-    foundationCalls.push(foundationIface.encodeFunctionData('allocate', [userAddress, tokenAddress, totalAmount]));
-    foundationCalls.push(foundationIface.encodeFunctionData('remit', [userAddress, tokenAddress, totalAmount, 0, withdrawalMetadata]));
 
-    const txResponse = await this.ethereumService.write(
-      foundationAddress,
-      this.contractConfig.abi,
-      'multicall',
-      foundationCalls
-    );
+    // Drain Foundation escrow: allocate → admin.escrow, then remit → admin wallet
+    if (foundationAllocateAmount > 0n) {
+      foundationCalls.push(foundationIface.encodeFunctionData('allocate', [userAddress, tokenAddress, foundationAllocateAmount]));
+      foundationCalls.push(foundationIface.encodeFunctionData('remit', [userAddress, tokenAddress, foundationAllocateAmount, 0, withdrawalMetadata]));
+    }
 
-    const receipt = await this.ethereumService.waitForConfirmation(txResponse);
-    if (!receipt || !receipt.hash) {
-      throw new Error('Failed to get valid receipt for Foundation withdrawal transaction');
+    let foundationTxHash = null;
+    let actualGasCostEth = 0n;
+
+    if (foundationCalls.length > 0) {
+      const txResponse = await this.ethereumService.write(
+        foundationAddress,
+        this.contractConfig.abi,
+        'multicall',
+        foundationCalls
+      );
+
+      const receipt = await this.ethereumService.waitForConfirmation(txResponse);
+      if (!receipt || !receipt.hash) {
+        throw new Error('Failed to get valid receipt for Foundation withdrawal transaction');
+      }
+      foundationTxHash = receipt.hash;
+      actualGasCostEth = receipt.gasUsed * (receipt.gasPrice || receipt.effectiveGasPrice);
     }
 
     // ── 6. Record completion ──────────────────────────────────────────────────
-    const actualGasCostEth = receipt.gasUsed * (receipt.gasPrice || receipt.effectiveGasPrice);
     const ethPriceInUsd = await this.priceFeedService.getPriceInUsd(NATIVE_ETH_ADDRESS);
     const actualGasCostUsd = parseFloat(tokenDecimalService.formatTokenAmount(actualGasCostEth, NATIVE_ETH_ADDRESS)) * ethPriceInUsd;
 
     await this.creditLedgerDb.updateWithdrawalRequestStatus(request.request_tx_hash, 'COMPLETED', {
-      withdrawal_tx_hash: receipt.hash,
-      withdrawal_amount_wei: totalAmount.toString(),
+      withdrawal_tx_hash: foundationTxHash,
+      withdrawal_amount_wei: grandTotal.toString(),
       fee_wei: '0',
       withdrawal_value_usd: withdrawalValueUsd,
       gas_cost_usd: actualGasCostUsd,
@@ -412,8 +452,8 @@ class WithdrawalExecutionService {
 
     this.logger.warn(
       `[WithdrawalExecutionService] ADMIN WITHDRAWAL COMPLETED: ${userAddress}, ` +
-      `Tx: ${receipt.hash}, Amount: $${withdrawalValueUsd.toFixed(2)}, ` +
-      `Seized: foundation=${totalFoundationSeizureWei} charter=${totalCharterSeizureWei} wei`
+      `Tx: ${foundationTxHash || 'charter-only'}, Amount: $${withdrawalValueUsd.toFixed(2)}, ` +
+      `Seized: foundation=${totalFoundationSeizureWei} charterSwept=${charterSweptWei} charterDirect=${charterDirectExitWei} wei`
     );
 
     if (this.adminActivityService) {
@@ -421,8 +461,8 @@ class WithdrawalExecutionService {
         masterAccountId: request.master_account_id,
         depositorAddress: userAddress,
         tokenAddress: tokenAddress,
-        amount: totalAmount.toString(),
-        txHash: receipt.hash,
+        amount: grandTotal.toString(),
+        txHash: foundationTxHash,
         chainId: '1',
       });
     }
