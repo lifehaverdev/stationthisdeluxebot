@@ -247,6 +247,8 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
         let masterAccountId;
         // sessions deprecated
         let initiatingEventId;
+        let groupPoolActive = false;
+        let fallbackMasterAccountId = null;
 
         try {
           // Step 1: Find or create user to get masterAccountId
@@ -259,11 +261,12 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
             },
           }));
 
-          // --- Group sponsorship handling ---
+          // --- Group pool sponsorship handling ---
           if (msg.chat && msg.chat.id < 0) {
             try {
               const groupRes = await apiClient.get(`/internal/v1/data/groups/${msg.chat.id}`);
-              if (groupRes.data && groupRes.data.sponsorMasterAccountId) {
+              const groupDoc = groupRes.data;
+              if (groupDoc && groupDoc.sponsorMasterAccountId) {
                 // Check admin status
                 let isAdmin = false;
                 try {
@@ -285,8 +288,11 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
                   }
                 }
                 if (isAdmin) {
-                  masterAccountId = groupRes.data.sponsorMasterAccountId.toString();
-                  logger.info(`[dynamicCommands] Admin ${msg.from.id} using sponsor MAID ${masterAccountId} for group ${msg.chat.id}`);
+                  const originalMasterAccountId = masterAccountId;
+                  masterAccountId = groupDoc._id.toString(); // Use group's own _id for pool billing
+                  groupPoolActive = true;
+                  fallbackMasterAccountId = originalMasterAccountId;
+                  logger.info(`[dynamicCommands] Admin ${msg.from.id} using group pool ${masterAccountId} (fallback: ${fallbackMasterAccountId}) for group ${msg.chat.id}`);
                 }
               }
             } catch (e) {
@@ -404,6 +410,8 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
               },
               eventId: initiatingEventId,
               metadata: {
+                ...(groupPoolActive && { groupPoolActive: true }),
+                ...(fallbackMasterAccountId && { fallbackMasterAccountId }),
                 // Pass notification context for the dispatcher to use upon completion
                 notificationContext: {
                   chatId: msg.chat.id,

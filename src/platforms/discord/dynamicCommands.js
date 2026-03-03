@@ -271,6 +271,8 @@ async function setupDynamicCommands(commandRegistry, dependencies, client, token
 
         let masterAccountId;
         let initiatingEventId;
+        let groupPoolActive = false;
+        let fallbackMasterAccountId = null;
 
         try {
           // Step 1: Find or create user to get masterAccountId
@@ -286,8 +288,6 @@ async function setupDynamicCommands(commandRegistry, dependencies, client, token
           masterAccountId = userResponse.data.masterAccountId;
 
           // --- Guild pool sponsorship handling ---
-          let groupPoolActive = false;
-          let fallbackMasterAccountId = null;
           if (interaction.guild && interaction.guildId) {
             try {
               const groupRes = await apiClient.get(`/internal/v1/data/groups/${interaction.guildId}?platform=discord_guild`);

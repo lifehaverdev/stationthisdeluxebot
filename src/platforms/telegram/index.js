@@ -515,6 +515,13 @@ function initializeTelegramPlatform(dependencies, options = {}) {
     if (!handled) return; // let others handle
   });
 
+  // Handle fund reply messages (user replies with points amount)
+  bot.on('message', async (msg) => {
+    if (!msg.reply_to_message || msg.chat.id >= 0) return;
+    const { handleFundReply } = require('./components/groupMenuManager');
+    await handleFundReply(bot, msg, dependencies);
+  });
+
   return {
     bot,
     async setupCommands() {
