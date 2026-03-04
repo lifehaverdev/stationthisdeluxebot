@@ -16,7 +16,7 @@ const initArgs = encodeCharteredFundInitArgs(foundationAddress, ownerAddress);
 let provider, foundation;
 try {
     provider = new ethers.JsonRpcProvider(process.env.ETHEREUM_RPC_URL || process.env.ALCHEMY_RPC_URL);
-    const foundationAbi = require('../../contracts/abis/foundation.json');
+    const foundationAbi = require('../../contracts/abis/foundation-legacy.json');
     foundation = new ethers.Contract(foundationAddress, foundationAbi, provider);
 } catch (error) {
     console.warn('[SaltMiningWorker] Failed to initialize provider/contract, will use local-only mode:', error.message);

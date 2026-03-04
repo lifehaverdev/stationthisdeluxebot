@@ -1,4 +1,4 @@
-const foundationAbi = require('./abis/foundation.json');
+const foundationAbi = require('./abis/foundation-legacy.json');
 const charteredFundAbi = require('./abis/charteredFund.json');
 const uniswapV3QuoterV2Abi = require('./abis/uniswapV3QuoterV2.json');
 const { FOUNDATION_ADDRESSES, getFoundationAddress } = require('../services/alchemy/foundationConfig');

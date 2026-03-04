@@ -1,7 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const { ethers } = require('ethers');
-const foundationAbi = require('../../../core/contracts/abis/foundation.json');
+const foundationAbi = require('../../../core/contracts/abis/foundation-legacy.json');
 const { contracts } = require('../../../core/contracts');
 const { getFundingRate, getDonationFundingRate, getDecimals, DEFAULT_FUNDING_RATE, getChainTokenConfig, getChainNftConfig } = require('../../../core/services/alchemy/tokenConfig');
 const { RPC_ENV_VARS, CHAIN_NAMES } = require('../../../core/services/alchemy/foundationConfig');
