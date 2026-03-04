@@ -9,6 +9,14 @@ const express = require('express');
 const { randomUUID } = require('crypto');
 const { filterToolsForMcp, transformToolToMcp } = require('./toolTransformer');
 const { createLogger } = require('../../../utils/logger');
+const {
+  createX402ExecutionService,
+  X402PricingService,
+  BASE_USDC_ADDRESS,
+  BASE_SEPOLIA_USDC_ADDRESS,
+  NETWORKS
+} = require('../../../core/services/x402');
+const { encodePaymentRequiredHeader } = require('@x402/core/http');
 
 const logger = createLogger('McpRouter');
 
@@ -18,7 +26,10 @@ const logger = createLogger('McpRouter');
  * @returns {express.Router} Configured router
  */
 function createMcpRouter(dependencies) {
-  const { toolRegistry, internalApiClient, loraService, trainingService } = dependencies;
+  const {
+    toolRegistry, internalApiClient, loraService, trainingService,
+    x402PaymentLogDb, receiverAddress, network: x402Network
+  } = dependencies;
 
   if (!toolRegistry) {
     logger.error('[MCP] toolRegistry dependency missing');
@@ -31,6 +42,21 @@ function createMcpRouter(dependencies) {
   }
 
   const router = express.Router();
+
+  // Initialize x402 services if configured
+  const x402Enabled = !!(receiverAddress && x402Network);
+  let x402ExecutionService = null;
+  let x402PricingService = null;
+  let usdcAddress = null;
+
+  if (x402Enabled) {
+    x402ExecutionService = createX402ExecutionService({ x402PaymentLogDb });
+    x402PricingService = new X402PricingService({ toolRegistry });
+    usdcAddress = x402Network === NETWORKS.BASE_SEPOLIA
+      ? BASE_SEPOLIA_USDC_ADDRESS
+      : BASE_USDC_ADDRESS;
+    logger.info('[MCP] x402 payment support enabled', { network: x402Network });
+  }
 
   // Server info for initialization
   const serverInfo = {
@@ -100,21 +126,26 @@ function createMcpRouter(dependencies) {
     const host = req.headers['x-forwarded-host'] || req.headers.host || 'noema.art';
     const baseUrl = `${protocol}://${host}`;
 
-    logger.info(`[MCP] ${method}`, { id, hasApiKey: !!apiKey });
+    logger.info(`[MCP] ${method}`, { id, hasApiKey: !!apiKey, hasX402: !!req.x402?.verified });
 
     try {
-      const result = await handleMethod(method, params, { apiKey, toolRegistry, internalApiClient, loraService, baseUrl });
+      const result = await handleMethod(method, params, {
+        apiKey, toolRegistry, internalApiClient, loraService, baseUrl,
+        x402: req.x402, x402ExecutionService, x402PricingService,
+        x402Enabled, receiverAddress, x402Network, usdcAddress
+      });
       res.json({ jsonrpc: '2.0', result, id });
     } catch (error) {
       logger.error(`[MCP] Error in ${method}:`, error.message);
-      res.json({
-        jsonrpc: '2.0',
-        error: {
-          code: error.code || -32603,
-          message: error.message || 'Internal error'
-        },
-        id
-      });
+      const errorResponse = {
+        code: error.code || -32603,
+        message: error.message || 'Internal error'
+      };
+      // Include payment data for -32002 (payment required) errors
+      if (error.data) {
+        errorResponse.data = error.data;
+      }
+      res.json({ jsonrpc: '2.0', error: errorResponse, id });
     }
   });
 
@@ -126,22 +157,45 @@ function createMcpRouter(dependencies) {
  * Handle MCP JSON-RPC methods
  */
 async function handleMethod(method, params, context) {
-  const { apiKey, toolRegistry, internalApiClient, loraService, baseUrl } = context;
+  const {
+    apiKey, toolRegistry, internalApiClient, loraService, baseUrl,
+    x402, x402ExecutionService, x402PricingService,
+    x402Enabled, receiverAddress, x402Network, usdcAddress
+  } = context;
 
   switch (method) {
     // ============================================
     // Lifecycle
     // ============================================
-    case 'initialize':
-      return {
+    case 'initialize': {
+      logger.info('[MCP] 🤖 Agent connected', {
+        clientInfo: params?.clientInfo?.name || 'unknown',
+        protocolVersion: params?.protocolVersion || 'unknown',
+        x402Enabled
+      });
+      const initResult = {
         protocolVersion: '2025-11-25',
         serverInfo: { name: 'noema', version: '1.0.0' },
         capabilities: {
           tools: { listChanged: false },
           resources: { subscribe: false, listChanged: false },
           prompts: { listChanged: false }
+        },
+        authentication: {
+          methods: ['x-api-key'],
+          discovery: 'Discovery methods (tools/list, spells/list, resources/list) are public'
         }
       };
+      if (x402Enabled) {
+        initResult.authentication.methods.push('x402');
+        initResult.authentication.x402 = {
+          network: x402Network,
+          asset: usdcAddress,
+          protocol: 'x402v2'
+        };
+      }
+      return initResult;
+    }
 
     case 'initialized':
     case 'notifications/initialized':
@@ -161,13 +215,25 @@ async function handleMethod(method, params, context) {
       const mcpTools = publicTools.map(transformToolToMcp);
       return { tools: mcpTools };
 
-    case 'tools/call':
-      if (!apiKey) {
-        const error = new Error('API key required. Include X-API-Key header.');
-        error.code = -32001;
-        throw error;
+    case 'tools/call': {
+      // Tri-path auth: API key > x402 payment > payment required
+      if (apiKey) {
+        return await executeToolCall(params, apiKey, internalApiClient, baseUrl, toolRegistry);
       }
-      return await executeToolCall(params, apiKey, internalApiClient, baseUrl, toolRegistry);
+      if (x402 && x402.verified && x402ExecutionService) {
+        return await executeToolCallX402(params, x402, {
+          x402ExecutionService, x402PricingService, internalApiClient, baseUrl, toolRegistry
+        });
+      }
+      if (x402Enabled && x402PricingService) {
+        throw buildPaymentRequiredError(params, x402PricingService, {
+          receiverAddress, x402Network, usdcAddress, baseUrl
+        });
+      }
+      const noAuthErr = new Error('Authentication required. Include X-API-Key header or X-PAYMENT header for x402.');
+      noAuthErr.code = -32001;
+      throw noAuthErr;
+    }
 
     // ============================================
     // Resources (LoRAs)
@@ -237,8 +303,7 @@ async function handleMethod(method, params, context) {
       const spellSlug = params.slug || params.spellId;
       return await forwardToApi('GET', `/api/v1/spells/public/${spellSlug}`, null, apiKey, internalApiClient);
 
-    case 'spells/cast':
-      requireApiKey(apiKey);
+    case 'spells/cast': {
       // Validate required parameters
       const spellIdentifier = params.slug || params.spellId;
       if (!spellIdentifier) {
@@ -246,20 +311,37 @@ async function handleMethod(method, params, context) {
         err.code = -32602;
         throw err;
       }
-      // Resolve user from API key to get masterAccountId
-      const userInfo = await resolveUserFromApiKey(apiKey, internalApiClient);
-      // Transform params to match internal API expectations
-      // Support both 'context' and 'parameters' for flexibility
-      const castParams = {
-        slug: spellIdentifier,
-        context: {
-          ...(params.context || params.parameters || {}),
-          masterAccountId: userInfo.masterAccountId,
-          platform: 'mcp'
-        }
-      };
-      logger.info('[MCP] spells/cast', { slug: spellIdentifier, masterAccountId: userInfo.masterAccountId });
-      return await forwardToApi('POST', '/api/v1/spells/cast', castParams, apiKey, internalApiClient);
+
+      // Tri-path auth: API key > x402 payment > payment required
+      if (apiKey) {
+        const userInfo = await resolveUserFromApiKey(apiKey, internalApiClient);
+        const castParams = {
+          slug: spellIdentifier,
+          context: {
+            ...(params.context || params.parameters || {}),
+            masterAccountId: userInfo.masterAccountId,
+            platform: 'mcp'
+          }
+        };
+        logger.info('[MCP] spells/cast (apiKey)', { slug: spellIdentifier, masterAccountId: userInfo.masterAccountId });
+        return await forwardToApi('POST', '/api/v1/spells/cast', castParams, apiKey, internalApiClient);
+      }
+      if (x402 && x402.verified && x402ExecutionService) {
+        return await executeSpellCastX402(params, spellIdentifier, x402, {
+          x402ExecutionService, x402PricingService, internalApiClient, baseUrl
+        });
+      }
+      if (x402Enabled && x402PricingService) {
+        // Use a generic spell cost for the payment required response
+        throw buildPaymentRequiredError(
+          { name: `spell:${spellIdentifier}` }, x402PricingService,
+          { receiverAddress, x402Network, usdcAddress, baseUrl }
+        );
+      }
+      const noAuthErr = new Error('Authentication required. Include X-API-Key header or X-PAYMENT header for x402.');
+      noAuthErr.code = -32001;
+      throw noAuthErr;
+    }
 
     case 'spells/status':
       requireApiKey(apiKey);
@@ -726,6 +808,279 @@ function getPrompt(params) {
   }
 
   return template(args || {});
+}
+
+/**
+ * Execute a tool call via x402 payment (no account required)
+ */
+async function executeToolCallX402(params, x402, services) {
+  const { x402ExecutionService, x402PricingService, internalApiClient, baseUrl, toolRegistry } = services;
+  const { name, arguments: args } = params;
+
+  const resolvedToolId = resolveToolName(name, toolRegistry);
+  logger.info(`[MCP x402] 💰 Tool call with payment: "${name}" → toolId="${resolvedToolId}"`, {
+    payer: x402.payer,
+    paymentAmount: x402.amount
+  });
+
+  // Calculate cost
+  let quote;
+  try {
+    quote = x402PricingService.calculateToolCost(resolvedToolId, args || {});
+    logger.info(`[MCP x402] Quoted $${quote.totalCostUsd} for ${resolvedToolId}`, {
+      baseCostUsd: quote.baseCostUsd, markupUsd: quote.markupUsd
+    });
+  } catch (error) {
+    logger.error('[MCP x402] Pricing error', { error: error.message, toolId: resolvedToolId });
+    return { content: [{ type: 'text', text: JSON.stringify({ error: 'Failed to calculate cost' }) }], isError: true };
+  }
+
+  // Validate payment covers cost
+  const validation = await x402ExecutionService.validatePaymentForExecution(x402, quote.totalCostUsd);
+  if (!validation.valid) {
+    logger.warn(`[MCP x402] Payment validation failed`, { errorCode: validation.errorCode, required: validation.requiredUsd, provided: validation.providedUsd });
+    const err = new Error(
+      validation.errorCode === 'INSUFFICIENT_PAYMENT'
+        ? `Payment of $${validation.providedUsd} is less than required $${validation.requiredUsd}`
+        : validation.error || 'Payment validation failed'
+    );
+    err.code = -32002;
+    throw err;
+  }
+
+  // Record payment as verified
+  let signatureHash;
+  try {
+    const record = await x402ExecutionService.recordPaymentVerified(x402, {
+      toolId: resolvedToolId,
+      costUsd: quote.totalCostUsd
+    });
+    signatureHash = record.signatureHash;
+  } catch (error) {
+    logger.error('[MCP x402] Failed to record payment', { error: error.message });
+    return { content: [{ type: 'text', text: JSON.stringify({ error: 'Failed to record payment' }) }], isError: true };
+  }
+
+  // Execute via internal API with synthetic user
+  let executionResult;
+  try {
+    const response = await internalApiClient.post('/internal/v1/data/execute', {
+      toolId: resolvedToolId,
+      inputs: args || {},
+      user: {
+        masterAccountId: `x402:${x402.payer}`,
+        platform: 'x402',
+        isX402: true,
+        payerAddress: x402.payer
+      },
+      metadata: {
+        x402: true,
+        payer: x402.payer,
+        signatureHash
+      }
+    });
+    executionResult = response.data;
+  } catch (error) {
+    // Execution failed - don't settle
+    logger.error('[MCP x402] Execution failed', { error: error.message, toolId: resolvedToolId });
+    if (x402ExecutionService.x402PaymentLogDb) {
+      await x402ExecutionService.x402PaymentLogDb.recordFailed(signatureHash, `Execution failed: ${error.message}`);
+    }
+    return {
+      content: [{ type: 'text', text: JSON.stringify({ error: 'Generation failed. Payment was not charged.', details: error.response?.data || error.message }) }],
+      isError: true
+    };
+  }
+
+  // Execution succeeded - settle payment
+  logger.info('[MCP x402] ✅ Tool executed, settling payment', { signatureHash, toolId: resolvedToolId, payer: x402.payer });
+  const settlement = await x402ExecutionService.settlePayment(x402, signatureHash);
+
+  const generationId = executionResult.generationId || executionResult._id;
+
+  if (settlement.success) {
+    logger.info(`[MCP x402] 💸 Payment settled! $${quote.totalCostUsd} USDC from ${x402.payer}`, {
+      transaction: settlement.transaction, network: settlement.network, toolId: resolvedToolId, generationId
+    });
+  } else {
+    logger.error(`[MCP x402] ⚠️ Settlement failed after successful execution`, {
+      error: settlement.error, signatureHash, toolId: resolvedToolId, payer: x402.payer
+    });
+  }
+
+  return {
+    content: [{
+      type: 'text',
+      text: JSON.stringify({
+        success: true,
+        generationId,
+        status: executionResult.status || 'pending',
+        pollUrl: `${baseUrl || 'https://noema.art'}/api/v1/generation/status/${generationId}`,
+        x402: {
+          settled: settlement.success,
+          transaction: settlement.transaction,
+          network: settlement.network,
+          payer: x402.payer,
+          costUsd: quote.totalCostUsd,
+          ...(settlement.error && { settlementError: settlement.error })
+        }
+      })
+    }]
+  };
+}
+
+/**
+ * Execute a spell cast via x402 payment (no account required)
+ */
+async function executeSpellCastX402(params, spellIdentifier, x402, services) {
+  const { x402ExecutionService, x402PricingService, internalApiClient, baseUrl } = services;
+
+  // Calculate cost (use generic spell pricing)
+  let quote;
+  try {
+    quote = x402PricingService.calculateToolCost(`spell:${spellIdentifier}`, params.context || params.parameters || {});
+  } catch {
+    // Fallback to minimum charge if spell-specific pricing not available
+    quote = { totalCostUsd: 0.01, baseCostUsd: 0.01, markupUsd: 0 };
+  }
+
+  // Validate payment covers cost
+  const validation = await x402ExecutionService.validatePaymentForExecution(x402, quote.totalCostUsd);
+  if (!validation.valid) {
+    const err = new Error(
+      validation.errorCode === 'INSUFFICIENT_PAYMENT'
+        ? `Payment of $${validation.providedUsd} is less than required $${validation.requiredUsd}`
+        : validation.error || 'Payment validation failed'
+    );
+    err.code = -32002;
+    throw err;
+  }
+
+  // Record payment
+  let signatureHash;
+  try {
+    const record = await x402ExecutionService.recordPaymentVerified(x402, {
+      toolId: `spell:${spellIdentifier}`,
+      costUsd: quote.totalCostUsd
+    });
+    signatureHash = record.signatureHash;
+  } catch (error) {
+    logger.error('[MCP x402] Failed to record spell payment', { error: error.message });
+    return { content: [{ type: 'text', text: JSON.stringify({ error: 'Failed to record payment' }) }], isError: true };
+  }
+
+  // Execute spell with synthetic x402 user
+  let castResult;
+  try {
+    const castParams = {
+      slug: spellIdentifier,
+      context: {
+        ...(params.context || params.parameters || {}),
+        masterAccountId: `x402:${x402.payer}`,
+        platform: 'x402',
+        isX402: true,
+        payerAddress: x402.payer
+      }
+    };
+    logger.info(`[MCP x402] 💰 Spell cast with payment: "${spellIdentifier}"`, {
+      payer: x402.payer, costUsd: quote.totalCostUsd
+    });
+
+    const internalPath = '/internal/v1/data/spells/cast';
+    const response = await internalApiClient.post(internalPath, castParams);
+    castResult = response.data;
+  } catch (error) {
+    logger.error('[MCP x402] Spell cast failed', { error: error.message, slug: spellIdentifier });
+    if (x402ExecutionService.x402PaymentLogDb) {
+      await x402ExecutionService.x402PaymentLogDb.recordFailed(signatureHash, `Spell cast failed: ${error.message}`);
+    }
+    return {
+      content: [{ type: 'text', text: JSON.stringify({ error: 'Spell cast failed. Payment was not charged.', details: error.response?.data || error.message }) }],
+      isError: true
+    };
+  }
+
+  // Settle payment
+  logger.info('[MCP x402] ✅ Spell cast succeeded, settling payment', { signatureHash, slug: spellIdentifier, payer: x402.payer });
+  const settlement = await x402ExecutionService.settlePayment(x402, signatureHash);
+
+  if (settlement.success) {
+    logger.info(`[MCP x402] 💸 Spell payment settled! $${quote.totalCostUsd} USDC from ${x402.payer}`, {
+      transaction: settlement.transaction, network: settlement.network, slug: spellIdentifier
+    });
+  } else {
+    logger.error(`[MCP x402] ⚠️ Spell settlement failed after successful cast`, {
+      error: settlement.error, signatureHash, slug: spellIdentifier, payer: x402.payer
+    });
+  }
+
+  return {
+    content: [{
+      type: 'text',
+      text: JSON.stringify({
+        ...castResult,
+        x402: {
+          settled: settlement.success,
+          transaction: settlement.transaction,
+          network: settlement.network,
+          payer: x402.payer,
+          costUsd: quote.totalCostUsd,
+          ...(settlement.error && { settlementError: settlement.error })
+        }
+      }, null, 2)
+    }]
+  };
+}
+
+/**
+ * Build a -32002 error with embedded PaymentRequired data
+ */
+function buildPaymentRequiredError(params, pricingService, config) {
+  const { receiverAddress, x402Network, usdcAddress, baseUrl } = config;
+  const toolName = params.name || 'unknown';
+
+  let paymentRequired;
+  try {
+    const resolvedToolId = toolName.startsWith('spell:') ? toolName : toolName;
+    paymentRequired = pricingService.generatePaymentRequired(resolvedToolId, params.arguments || {}, {
+      receiverAddress,
+      network: x402Network,
+      usdcAddress,
+      resourceUrl: `${baseUrl || 'https://noema.art'}/api/v1/mcp`
+    });
+  } catch {
+    // Fallback if tool not found in pricing - return generic payment info
+    const { MINIMUM_CHARGE_USD } = require('../../../core/services/x402/X402PricingService');
+    const minAmountAtomic = String(Math.ceil(MINIMUM_CHARGE_USD * 1e6));
+    paymentRequired = {
+      x402Version: 2,
+      accepts: [{
+        scheme: 'exact',
+        network: x402Network,
+        asset: usdcAddress,
+        amount: minAmountAtomic,
+        payTo: receiverAddress,
+        maxTimeoutSeconds: 300,
+        extra: {}
+      }]
+    };
+  }
+
+  const headerValue = encodePaymentRequiredHeader(paymentRequired);
+
+  logger.info(`[MCP x402] 🔒 Payment required for "${toolName}"`, {
+    amount: paymentRequired.accepts?.[0]?.amount,
+    network: x402Network,
+    payTo: receiverAddress
+  });
+
+  const err = new Error('Payment required. Include X-PAYMENT header with x402 payment.');
+  err.code = -32002;
+  err.data = {
+    paymentRequired,
+    paymentRequiredHeader: headerValue
+  };
+  return err;
 }
 
 module.exports = { createMcpRouter };

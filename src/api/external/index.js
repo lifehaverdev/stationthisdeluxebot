@@ -276,10 +276,16 @@ function initializeExternalApi(dependencies) {
     internalApiClient: dependencies.internalApiClient || internalApiClient,
     loraService: dependencies.loraService,
     trainingService: dependencies.trainingService,
+    // x402 support for pay-per-request via MCP
+    x402PaymentLogDb: dependencies.db?.data?.x402PaymentLog,
+    receiverAddress: x402ReceiverAddress,
+    network: x402Network,
   });
   if (mcpRouter) {
-    externalApiRouter.use('/mcp', mcpRouter);
-    logger.debug('External MCP API router mounted at /mcp. (Public discovery, API key for execution)');
+    // Apply x402 middleware so req.x402 is populated when X-PAYMENT header present
+    const mcpMiddleware = x402Middleware ? [x402Middleware] : [];
+    externalApiRouter.use('/mcp', ...mcpMiddleware, mcpRouter);
+    logger.debug('External MCP API router mounted at /mcp. (Public discovery, API key or x402 for execution)');
   } else {
     logger.warn('External MCP API router not mounted due to missing dependencies.');
   }

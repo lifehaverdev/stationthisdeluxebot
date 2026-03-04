@@ -1,13 +1,9 @@
 // src/platforms/telegram/components/groupMenuManager.js
 const { sendEscapedMessage, editEscapedMessageText } = require('../utils/messaging');
-const { escapeMarkdownV2 } = require('../../../utils/stringUtils');
 
 function getApiClient(deps) {
   return deps.internalApiClient || deps.internal?.client;
 }
-
-// Track pending fund requests: chatId -> { userId, messageId, timeout }
-const pendingFunds = new Map();
 
 async function showGroupSettingsMenu(bot, msg, deps) {
   const { logger } = deps;
@@ -82,7 +78,6 @@ async function handleCallbackQuery(bot, query, deps) {
     const chatId = parseInt(chatIdStr, 10);
     try {
       const api = getApiClient(deps);
-      // find or create user for sponsor
       const { masterAccountId: sponsorMasterAccountId } = await deps.userService.findOrCreate({
         platform: 'telegram',
         platformId: query.from.id.toString(),
@@ -113,7 +108,6 @@ async function handleCallbackQuery(bot, query, deps) {
     }
     return true;
   } else if (action === 'grp_fund') {
-    // Use the actual chat from the callback message, not the ID from callback data
     const actualChatId = query.message.chat.id;
     try {
       await bot.answerCallbackQuery(query.id);
@@ -121,16 +115,15 @@ async function handleCallbackQuery(bot, query, deps) {
         reply_markup: { force_reply: true, selective: true }
       });
 
-      const key = `${actualChatId}:${query.from.id}`;
-      if (pendingFunds.has(key)) {
-        clearTimeout(pendingFunds.get(key).timeout);
+      // Use the established replyContextManager pattern
+      if (deps.replyContextManager) {
+        deps.replyContextManager.addContext(prompt, {
+          type: 'group_fund',
+          groupChatId: chatIdStr // the original group chatId for the API call
+        }, 60000);
+      } else {
+        logger.error('[GroupMenu] replyContextManager not available in dependencies. Cannot set context for fund reply.');
       }
-      pendingFunds.set(key, {
-        userId: query.from.id,
-        promptMessageId: prompt.message_id,
-        chatIdForFund: chatIdStr, // the original group chatId for the API call
-        timeout: setTimeout(() => pendingFunds.delete(key), 60000)
-      });
     } catch (err) {
       logger.error(`[GroupMenu] Fund prompt failed: ${err.message}`);
       await bot.answerCallbackQuery(query.id, { text: 'Failed to start funding', show_alert: true });
@@ -141,28 +134,18 @@ async function handleCallbackQuery(bot, query, deps) {
 }
 
 /**
- * Handle reply messages that may be fund amount responses.
+ * Handle fund reply via MessageReplyDispatcher.
+ * Called when user replies to the fund prompt message.
  */
-async function handleFundReply(bot, msg, deps) {
+async function handleFundReply(bot, msg, context, deps) {
   const { logger } = deps;
   const chatId = msg.chat.id;
   const userId = msg.from.id;
-  const key = `${chatId}:${userId}`;
-
-  const pending = pendingFunds.get(key);
-  if (!pending) return false;
-
-  // Check this is a reply to our prompt
-  if (!msg.reply_to_message || msg.reply_to_message.message_id !== pending.promptMessageId) return false;
-
-  // Clean up
-  clearTimeout(pending.timeout);
-  pendingFunds.delete(key);
 
   const points = parseInt(msg.text, 10);
   if (!Number.isInteger(points) || points <= 0) {
     await bot.sendMessage(chatId, 'Please provide a valid positive number of points.', { reply_to_message_id: msg.message_id });
-    return true;
+    return;
   }
 
   try {
@@ -173,7 +156,7 @@ async function handleFundReply(bot, msg, deps) {
       platformContext: { firstName: msg.from.first_name, username: msg.from.username }
     });
 
-    const groupChatId = pending.chatIdForFund || chatId;
+    const groupChatId = context.groupChatId || chatId;
     const fundRes = await api.post(`/internal/v1/data/groups/${groupChatId}/fund`, {
       funderMasterAccountId,
       points
@@ -191,17 +174,23 @@ async function handleFundReply(bot, msg, deps) {
       : 'Failed to fund the group pool. Please try again.';
     await bot.sendMessage(chatId, errMsg, { reply_to_message_id: msg.message_id });
   }
-  return true;
 }
 
 module.exports = { showGroupSettingsMenu, handleCallbackQuery, handleFundReply };
 
 function registerHandlers(dispatchers, deps) {
-  const { callbackQueryDispatcher } = dispatchers;
+  const { callbackQueryDispatcher, messageReplyDispatcher } = dispatchers;
   if (callbackQueryDispatcher && typeof callbackQueryDispatcher.register === 'function') {
-    callbackQueryDispatcher.register(/^grp_(sponsor|unsponsor|fund|close)/, async (bot, query) => {
-      await handleCallbackQuery(bot, query, deps);
-    });
+    const handler = async (bot, query, masterAccountId, passedDeps) => {
+      await handleCallbackQuery(bot, query, passedDeps);
+    };
+    callbackQueryDispatcher.register('grp_sponsor:', handler);
+    callbackQueryDispatcher.register('grp_unsponsor:', handler);
+    callbackQueryDispatcher.register('grp_fund:', handler);
+    callbackQueryDispatcher.register('grp_close', handler);
+  }
+  if (messageReplyDispatcher && typeof messageReplyDispatcher.register === 'function') {
+    messageReplyDispatcher.register('group_fund', (bot, msg, ctx) => handleFundReply(bot, msg, ctx, deps));
   }
 }
 
