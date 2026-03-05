@@ -4,7 +4,7 @@
 
 | Document | Description |
 |---|---|
-| [GPU Compute Platform](plans/2026-03-04-gpu-compute-platform-design.md) | Core compute strategy: provider abstraction, demand flywheel, concierge UX, warming incentives, roadmap |
+| [ChainEngine](plans/2026-03-04-gpu-compute-platform-design.md) | Core compute strategy: provider-agnostic GPU pool, provenance hashing, concierge UX, warming incentives, on-chain finality, roadmap |
 
 ## Implementation Plans
 
