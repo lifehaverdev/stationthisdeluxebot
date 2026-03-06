@@ -67,28 +67,22 @@ export async function uploadToStorage(file) {
     if (!csrfRes.ok) throw new Error('Could not fetch CSRF token.');
     const { csrfToken } = await csrfRes.json();
 
-    const response = await fetch('/api/v1/storage/upload-url', {
+    const response = await fetch('/api/v1/storage/upload', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrfToken },
-        body: JSON.stringify({ fileName: file.name, contentType: file.type }),
+        headers: {
+            'Content-Type': file.type || 'application/octet-stream',
+            'X-Content-Type': file.type || 'application/octet-stream',
+            'X-File-Name': file.name || 'upload',
+            'x-csrf-token': csrfToken,
+        },
+        body: file,
         credentials: 'include',
     });
     if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error?.message || 'Could not get signed URL.');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Upload failed');
     }
-    const { signedUrl, permanentUrl } = await response.json();
-
-    const uploadResponse = await fetch(signedUrl, {
-        method: 'PUT',
-        body: file,
-        headers: { 'Content-Type': file.type },
-    });
-    if (!uploadResponse.ok) {
-        const errorText = await uploadResponse.text();
-        throw new Error(`Failed to upload file to storage: ${errorText}`);
-    }
-
+    const { permanentUrl } = await response.json();
     return permanentUrl;
 }
 

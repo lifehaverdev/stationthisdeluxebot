@@ -160,18 +160,14 @@ export class ToolWindowBody extends Component {
 export class UploadWindowBody extends Component {
   constructor(props) {
     super(props);
-    this.state = { uploading: false, uploadError: null, batchOffer: null };
+    this.state = { uploading: false, uploadError: null, dragOver: false, batchOffer: null };
   }
 
-  shouldUpdate(oldProps, newProps) {
-    return oldProps.win !== newProps.win || this.state !== arguments[2];
-  }
-
-  _onFiles(files) {
-    files = Array.from(files || []).filter(f => f.type.startsWith('image/'));
+  _onFiles(rawFiles) {
+    const files = Array.from(rawFiles || []).filter(f => f.type.startsWith('image/'));
     if (!files.length) return;
     if (files.length > 1) {
-      this.setState({ batchOffer: files });
+      this.setState({ batchOffer: files, uploadError: null });
       return;
     }
     this._handleFile(files[0]);
@@ -190,91 +186,124 @@ export class UploadWindowBody extends Component {
 
   render() {
     const { win } = this.props;
-    const { uploading, uploadError, batchOffer } = this.state;
+    const { uploading, uploadError, dragOver, batchOffer } = this.state;
     const url = win.output?.url;
 
-    if (batchOffer) {
-      return h('div', { className: 'nwb-root nwb-upload-zone' },
-        h('div', { className: 'nwb-upload-zone-label' }, `${batchOffer.length} images selected`),
-        h('div', { style: 'display:flex;gap:8px;margin-top:8px;' },
-          h('button', {
-            className: 'nwb-upload-zone-btn',
-            onclick: () => {
-              const [first] = batchOffer;
-              this.setState({ batchOffer: null });
-              this._handleFile(first);
-            },
-          }, 'Add one'),
-          h('button', {
-            className: 'nwb-upload-zone-btn nwb-upload-zone-btn--primary',
-            onclick: () => {
-              const files = batchOffer;
-              this.setState({ batchOffer: null });
-              const canvasTool = window.sandboxCanvas?._getLastActiveTool?.() || null;
-              window.dispatchEvent(new CustomEvent('sandbox:openBatch', {
-                detail: { files, initialTool: canvasTool }
-              }));
-            },
-          }, 'Run as Batch \u2192'),
+    // State: image uploaded — show preview + re-upload option
+    if (url) {
+      return h('div', { className: 'nwb-root nwb-upload nwb-upload--done' },
+        h('img', { src: url, className: 'nwb-upload-img', alt: 'Uploaded image' }),
+        h('label', { className: 'nwb-upload-replace' },
+          h('input', { type: 'file', accept: 'image/*', multiple: true, onchange: (e) => this._onFiles(e.target.files) }),
+          'Replace'
         )
       );
     }
 
-    if (url) {
-      return h('div', { className: 'nwb-root nwb-upload' },
-        h('img', { src: url, className: 'nwb-upload-img', alt: 'Uploaded image' }),
-        h('div', { className: 'nwb-upload-url', title: url }, url.split('/').pop())
+    // State: multiple files selected — offer batch or single
+    if (batchOffer) {
+      return h('div', { className: 'nwb-root nwb-upload-offer' },
+        h('div', { className: 'nwb-upload-offer-count' }, `${batchOffer.length} images`),
+        h('button', {
+          className: 'nwb-upload-offer-btn nwb-upload-offer-btn--primary',
+          onclick: () => {
+            const files = batchOffer;
+            this.setState({ batchOffer: null });
+            window.dispatchEvent(new CustomEvent('sandbox:openBatch', {
+              detail: { files, initialTool: window.sandboxCanvas?._getLastActiveTool?.() || null }
+            }));
+          },
+        }, 'Run as Batch \u2192'),
+        h('button', {
+          className: 'nwb-upload-offer-btn',
+          onclick: () => { const [f] = batchOffer; this.setState({ batchOffer: null }); this._handleFile(f); },
+        }, 'Use first only'),
       );
     }
 
+    // State: uploading
     if (uploading) {
-      return h('div', { className: 'nwb-root nwb-upload-zone' },
-        h('div', { className: 'nwb-upload-zone-label' }, 'uploading...')
+      return h('div', { className: 'nwb-root nwb-upload-zone nwb-upload-zone--uploading' },
+        h('div', { className: 'nwb-upload-spinner' }),
+        h('div', { className: 'nwb-upload-zone-label' }, 'Uploading\u2026'),
       );
     }
 
-    return h('div', { className: 'nwb-root nwb-upload-zone' },
-      h('input', {
-        type: 'file',
-        accept: 'image/*',
-        multiple: true,
-        onchange: (e) => this._onFiles(e.target.files),
-      }),
+    // State: idle — drag zone with visible file input
+    return h('label', {
+      className: `nwb-root nwb-upload-zone${dragOver ? ' nwb-upload-zone--over' : ''}`,
+      ondragover: (e) => { e.preventDefault(); e.stopPropagation(); this.setState({ dragOver: true }); },
+      ondragleave: () => this.setState({ dragOver: false }),
+      ondrop: (e) => { e.preventDefault(); e.stopPropagation(); this.setState({ dragOver: false }); this._onFiles(e.dataTransfer?.files); },
+    },
+      h('input', { type: 'file', accept: 'image/*', multiple: true, onchange: (e) => this._onFiles(e.target.files) }),
+      h('div', { className: 'nwb-upload-zone-icon' }, '\uD83D\uDDBC\uFE0F'),
+      h('div', { className: 'nwb-upload-zone-label' }, dragOver ? 'Drop to upload' : 'Drop images or click'),
+      h('div', { className: 'nwb-upload-zone-hint' }, 'Single image uploads here \u00B7 Multiple opens batch'),
       uploadError ? h('div', { className: 'nwb-upload-zone-error' }, uploadError) : null,
     );
   }
 
   static get styles() {
     return `
-      .nwb-upload { padding: 0; }
+      .nwb-upload--done { padding: 0; position: relative; }
       .nwb-upload-img { display: block; width: 100%; max-height: 280px; object-fit: contain; background: #111; }
-      .nwb-upload-url { font-size: 12px; color: #555; padding: 4px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .nwb-upload-replace {
+        position: absolute; bottom: 6px; right: 6px;
+        background: rgba(0,0,0,0.7); color: var(--text-primary, #fff);
+        font-size: 11px; padding: 3px 8px; border-radius: 4px; cursor: pointer;
+        border: 1px solid rgba(255,255,255,0.15);
+      }
+      .nwb-upload-replace input { display: none; }
+      .nwb-upload-replace:hover { background: rgba(0,0,0,0.9); }
+
       .nwb-upload-zone {
-        padding: 24px 16px;
-        text-align: center;
-        border: var(--border-width) dashed var(--border);
-        cursor: pointer;
-        transition: border-color var(--dur-micro) var(--ease), background var(--dur-micro) var(--ease);
-        margin: 8px;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 6px; padding: 24px 16px; text-align: center; cursor: pointer;
+        border: var(--border-width, 1px) dashed var(--border, #333);
+        transition: border-color 0.15s, background 0.15s;
+        margin: 8px; min-height: 100px;
       }
-      .nwb-upload-zone:hover,
-      .nwb-upload-zone--over { border-color: var(--accent-border); }
-      .nwb-upload-zone--over { background: var(--accent-dim); }
+      .nwb-upload-zone input[type=file] { display: none; }
+      .nwb-upload-zone:hover, .nwb-upload-zone--over { border-color: var(--accent-border, #90caf9); }
+      .nwb-upload-zone--over { background: var(--accent-dim, rgba(144,202,249,0.08)); }
+      .nwb-upload-zone--uploading { cursor: default; }
+      .nwb-upload-zone-icon { font-size: 24px; line-height: 1; pointer-events: none; }
       .nwb-upload-zone-label {
-        font-family: var(--ff-mono);
-        font-size: var(--fs-xs);
-        letter-spacing: var(--ls-wide);
-        text-transform: uppercase;
-        color: var(--text-label);
-        pointer-events: none;
+        font-family: var(--ff-mono, monospace); font-size: var(--fs-xs, 11px);
+        letter-spacing: var(--ls-wide, 0.08em); text-transform: uppercase;
+        color: var(--text-label, #888); pointer-events: none;
       }
-      .nwb-upload-zone--over .nwb-upload-zone-label { color: var(--accent); }
-      .nwb-upload-zone-error {
-        color: var(--danger);
-        font-family: var(--ff-mono);
-        font-size: var(--fs-xs);
-        margin-top: 6px;
+      .nwb-upload-zone--over .nwb-upload-zone-label { color: var(--accent, #90caf9); }
+      .nwb-upload-zone-hint {
+        font-size: 10px; color: var(--text-label, #888); opacity: 0.6; pointer-events: none;
       }
+      .nwb-upload-zone-error { color: var(--danger, #f44); font-size: 11px; margin-top: 4px; }
+
+      .nwb-upload-spinner {
+        width: 20px; height: 20px; border: 2px solid var(--border, #333);
+        border-top-color: var(--accent, #90caf9); border-radius: 50%;
+        animation: nwb-spin 0.8s linear infinite;
+      }
+      @keyframes nwb-spin { to { transform: rotate(360deg); } }
+
+      .nwb-upload-offer {
+        display: flex; flex-direction: column; align-items: center; gap: 8px;
+        padding: 16px; margin: 8px;
+      }
+      .nwb-upload-offer-count {
+        font-family: var(--ff-mono, monospace); font-size: 13px; color: var(--text-primary, #fff);
+        font-weight: 600;
+      }
+      .nwb-upload-offer-btn {
+        width: 100%; padding: 8px 12px; border-radius: 6px; font-size: 13px; cursor: pointer;
+        border: 1px solid var(--border, #333); background: var(--surface-2, #222);
+        color: var(--text-primary, #fff);
+      }
+      .nwb-upload-offer-btn--primary {
+        background: var(--accent, #90caf9); color: #000; border-color: transparent; font-weight: 600;
+      }
+      .nwb-upload-offer-btn:hover { opacity: 0.85; }
     `;
   }
 }
