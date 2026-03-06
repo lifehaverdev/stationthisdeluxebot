@@ -5,13 +5,6 @@
 // original API surface while optionally accepting a `chainId` argument so that
 // existing callers remain functional (they default to MAINNET_CHAIN_ID).
 //
-// New in Donate v1 — 2025-09-08:
-// • Each token may now specify `donationFundingRate`, the boosted rate applied
-//   when users choose the one-tx *donate* path (see credit-donate ADR).
-// • Helper `getDonationFundingRate(address, chainId)` added. It looks up the
-//   token’s `donationFundingRate` and falls back to `fundingRate` when the
-//   boosted value is not present.
-
 const MAINNET_CHAIN_ID = '1';
 const SEPOLIA_CHAIN_ID = '11155111';
 
@@ -145,22 +138,6 @@ function getFundingRate(address, chainId = MAINNET_CHAIN_ID) {
   return Math.max(0, Math.min(1, rate));
 }
 
-function getDonationFundingRate(address, chainId = MAINNET_CHAIN_ID) {
-  const cfg = getTokenConfig(address, chainId);
-  if (!cfg) return DEFAULT_FUNDING_RATE;
-  
-  let rate;
-  if (typeof cfg.donationFundingRate === 'number') {
-    rate = cfg.donationFundingRate;
-  } else {
-    // Default 5% boost, capped at 1.0 (100%) not 1.05
-    rate = Math.min(1.0, cfg.fundingRate * 1.05);
-  }
-  
-  // Ensure rate is within bounds (defensive check)
-  return Math.max(0, Math.min(1, rate));
-}
-
 function getDecimals(address, chainId = MAINNET_CHAIN_ID) {
   const cfg = getTokenConfig(address, chainId);
   return cfg ? cfg.decimals : 18;
@@ -193,7 +170,6 @@ module.exports = {
   // Helpers
   getTokenConfig,
   getFundingRate,
-  getDonationFundingRate,
   getDecimals,
   getChainTokenConfig,
   getChainNftConfig,

@@ -5,12 +5,17 @@ const COLLECTION_NAME = 'credit_ledger';
 
 // State machine definitions for status transitions
 const LEDGER_STATUS_TRANSITIONS = {
-  PENDING_CONFIRMATION: ['CONFIRMED', 'ERROR', 'FAILED_RISK_ASSESSMENT', 'REJECTED_UNPROFITABLE'],
-  ERROR: ['CONFIRMED', 'PENDING_CONFIRMATION', 'FAILED_RISK_ASSESSMENT', 'REJECTED_UNPROFITABLE'], // Allow retry/reconciliation
+  QUOTED: ['CONFIRMED', 'EXPIRED', 'ERROR'], // Pre-staged quote from frontend
+  PENDING_CONFIRMATION: ['CONFIRMED', 'ERROR', 'FAILED_RISK_ASSESSMENT', 'REJECTED_UNPROFITABLE'], // Legacy
+  ERROR: ['CONFIRMED', 'PENDING_CONFIRMATION', 'FAILED_RISK_ASSESSMENT', 'REJECTED_UNPROFITABLE'],
   FAILED_RISK_ASSESSMENT: [], // Final failure state
   REJECTED_UNPROFITABLE: [], // Final failure state
+  EXPIRED: [], // Quote expired without matching deposit
   CONFIRMED: [] // Final success state - no transitions allowed
 };
+
+// Default TTL for quotes (15 minutes)
+const QUOTE_TTL_MS = 15 * 60 * 1000;
 
 const WITHDRAWAL_STATUS_TRANSITIONS = {
   PENDING_PROCESSING: ['COMPLETED', 'FAILED', 'REJECTED_UNPROFITABLE', 'ERROR'],
@@ -56,6 +61,121 @@ class CreditLedgerDB extends BaseDB {
       updatedAt: new Date(),
     };
     return this.insertOne(dataToInsert);
+  }
+
+  /**
+   * Creates a pre-staged quote entry in the credit ledger.
+   * Called by the /quote endpoint so that when the deposit event arrives,
+   * we can match it and award the pre-quoted points.
+   * @param {object} quoteDetails
+   * @param {string} quoteDetails.depositor_address - The wallet address that will make the deposit.
+   * @param {string} quoteDetails.token_address - The token address being deposited.
+   * @param {string} quoteDetails.deposit_amount_wei - The amount in wei (smallest unit).
+   * @param {number} quoteDetails.points_quoted - Points shown to the user.
+   * @param {object} quoteDetails.pricing_snapshot - Pricing data at quote time.
+   * @param {string} [quoteDetails.referral_key] - Referral hash (bytes32) if applicable.
+   * @param {string} [quoteDetails.chain_id] - Chain ID for the deposit.
+   * @returns {Promise<Object>} The created quote entry with its _id as quoteId.
+   */
+  async createQuotedEntry(quoteDetails) {
+    const now = new Date();
+    const dataToInsert = {
+      ...quoteDetails,
+      depositor_address: (quoteDetails.depositor_address || '').toLowerCase(),
+      token_address: (quoteDetails.token_address || '').toLowerCase(),
+      status: 'QUOTED',
+      quoted_at: now,
+      quote_expires_at: new Date(now.getTime() + QUOTE_TTL_MS),
+      createdAt: now,
+      updatedAt: now,
+    };
+    return this.insertOne(dataToInsert);
+  }
+
+  /**
+   * Finds a matching QUOTED entry for an incoming deposit event.
+   * Matches on depositor + token + amount, and ensures the quote hasn't expired.
+   * @param {string} depositorAddress - The depositor's wallet address.
+   * @param {string} tokenAddress - The token address.
+   * @param {string} amountWei - The deposit amount in wei.
+   * @returns {Promise<Object|null>} The matching quote entry, or null.
+   */
+  async findQuotedEntry(depositorAddress, tokenAddress, amountWei) {
+    return this.findOne({
+      depositor_address: (depositorAddress || '').toLowerCase(),
+      token_address: (tokenAddress || '').toLowerCase(),
+      deposit_amount_wei: amountWei,
+      status: 'QUOTED',
+      quote_expires_at: { $gt: new Date() },
+    });
+  }
+
+  /**
+   * Atomically transitions a QUOTED entry to CONFIRMED when the deposit event arrives.
+   * @param {ObjectId} entryId - The _id of the QUOTED ledger entry.
+   * @param {object} eventData - Data from the onchain event to merge in.
+   * @param {string} eventData.deposit_tx_hash - The deposit transaction hash.
+   * @param {number} eventData.deposit_log_index - Log index within the block.
+   * @param {number} eventData.deposit_block_number - Block number of the deposit.
+   * @param {number} [eventData.points_credited] - Final points (defaults to points_quoted).
+   * @returns {Promise<Object>} The result of the update operation.
+   */
+  async transitionQuoteToConfirmed(entryId, eventData) {
+    const setFields = {
+      status: 'CONFIRMED',
+      ...eventData,
+      updatedAt: new Date(),
+    };
+
+    // If points_credited not provided in eventData, the quote's points_quoted
+    // will be used by the caller to set it before calling this method
+    const result = await this.updateOne(
+      {
+        _id: entryId,
+        status: 'QUOTED',
+      },
+      { $set: setFields },
+      {},
+      false,
+      PRIORITY.HIGH
+    );
+
+    if (result.matchedCount === 0) {
+      throw new Error(`Quote entry ${entryId} not found or no longer in QUOTED status`);
+    }
+
+    // Set points_remaining equal to points_credited for spending
+    if (setFields.points_credited != null) {
+      await this.updateOne(
+        { _id: entryId },
+        { $set: { points_remaining: setFields.points_credited } }
+      );
+    }
+
+    return result;
+  }
+
+  /**
+   * Ensures TTL and query indexes exist for quote staging.
+   * Should be called once during service initialization.
+   */
+  async ensureQuoteIndexes() {
+    try {
+      const collection = await this.getCollection();
+      // TTL index: automatically delete expired quotes after 1 hour grace period
+      await collection.createIndex(
+        { quote_expires_at: 1 },
+        { expireAfterSeconds: 3600, partialFilterExpression: { status: 'QUOTED' } }
+      );
+      // Compound index for fast quote matching
+      await collection.createIndex(
+        { depositor_address: 1, token_address: 1, deposit_amount_wei: 1, status: 1 },
+        { partialFilterExpression: { status: 'QUOTED' } }
+      );
+      this.logger.info('[CreditLedgerDB] Quote indexes ensured');
+    } catch (error) {
+      this.logger.error('[CreditLedgerDB] Failed to create quote indexes:', error);
+    }
   }
 
   /**

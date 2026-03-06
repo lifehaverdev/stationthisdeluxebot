@@ -179,13 +179,18 @@ class X402PricingService {
   _calculateMachineCost(tool, parameters) {
     const { costingModel, metadata } = tool;
 
-    // Rate per second
-    const ratePerSecond = costingModel.rate || 0.001;
+    // Prefer actual historical cost from billing data when available
+    if (metadata?.avgHistoricalCost && metadata.avgHistoricalCost > 0) {
+      this.logger.debug(`[x402] Using historical cost for ${tool.toolId}: $${metadata.avgHistoricalCost}`);
+      return metadata.avgHistoricalCost;
+    }
 
-    // Estimate duration from historical data or defaults
+    // Fallback: estimate from GPU rate × duration
+    const ratePerSecond = costingModel.rate || 0.001;
     const avgDurationMs = metadata?.avgHistoricalDurationMs || 10000; // 10s default
     const durationSec = avgDurationMs / 1000;
 
+    this.logger.debug(`[x402] No historical cost for ${tool.toolId}, estimating: rate=${ratePerSecond}/s × ${durationSec}s`);
     return ratePerSecond * durationSec;
   }
 

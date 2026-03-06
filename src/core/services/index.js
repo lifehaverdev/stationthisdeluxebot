@@ -190,7 +190,7 @@ async function initializeServices(options = {}) {
       logger.info('[initializeServices] starting on-chain services...');;
       
       // --- MULTICHAIN INITIALISATION ---
-      const { RPC_ENV_VARS, getRpcUrl, getFoundationAddress, getCharterBeaconAddress } = require('./alchemy/foundationConfig');
+      const { RPC_ENV_VARS, getRpcUrl, getFoundationAddress, getCharterBeaconAddress, CREDIT_VAULT_ADDRESSES, getCreditVaultAddress } = require('./alchemy/foundationConfig');
       // Get unique chainIds - normalize 'mainnet' -> '1', etc. to avoid duplicates
       const CHAIN_NAME_TO_ID = {
         'mainnet': '1',
@@ -248,9 +248,16 @@ async function initializeServices(options = {}) {
             logger.debug('[initializeServices] TokenRiskEngine initialized.');
           }
 
+          // Skip chains without a CreditVault deployment
+          const vaultAddr = CREDIT_VAULT_ADDRESSES[String(chainId)];
+          if (!vaultAddr) {
+            logger.info(`[initializeServices] No CreditVault deployed for chain ${chainId}, skipping CreditService.`);
+            continue;
+          }
+
           const creditServiceConfig = {
-            foundationAddress: getFoundationAddress(chainId),
-            foundationAbi: contracts.foundation.abi,
+            foundationAddress: vaultAddr,
+            foundationAbi: contracts.creditVault.abi,
             disableWebhookActions: process.env.DISABLE_CREDIT_WEBHOOK_ACTIONS === '1',
           };
           const creditDeps = {
@@ -258,6 +265,7 @@ async function initializeServices(options = {}) {
             creditLedgerDb: initializedDbServices.data.creditLedger,
             systemStateDb: initializedDbServices.data.systemState,
             priceFeedService,
+            nftPriceService,
             tokenRiskEngine,
             internalApiClient,
             userCoreDb: initializedDbServices.data.userCore,

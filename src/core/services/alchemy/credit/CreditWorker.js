@@ -201,11 +201,6 @@ class CreditWorker {
           result = await this.eventWebhookProcessor.processWebhook(event.payload);
           break;
 
-        case 'withdrawal_webhook':
-          // If you have a separate withdrawal processor, add it here
-          result = await this.eventWebhookProcessor.processWebhook(event.payload);
-          break;
-
         default:
           throw new Error(`Unknown event type: ${event.event_type}`);
       }

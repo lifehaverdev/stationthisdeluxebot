@@ -1,7 +1,8 @@
 const foundationAbi = require('./abis/foundation-legacy.json');
+const creditVaultAbi = require('./abis/creditVault.json');
 const charteredFundAbi = require('./abis/charteredFund.json');
 const uniswapV3QuoterV2Abi = require('./abis/uniswapV3QuoterV2.json');
-const { FOUNDATION_ADDRESSES, getFoundationAddress } = require('../services/alchemy/foundationConfig');
+const { FOUNDATION_ADDRESSES, CREDIT_VAULT_ADDRESSES, getFoundationAddress } = require('../services/alchemy/foundationConfig');
 
 const contracts = {
   foundation: {
@@ -15,6 +16,15 @@ const contracts = {
       sepolia: FOUNDATION_ADDRESSES['11155111'] || null,
       base: FOUNDATION_ADDRESSES['8453'] || null,
       arbitrum: FOUNDATION_ADDRESSES['42161'] || null,
+    },
+  },
+  creditVault: {
+    abi: creditVaultAbi,
+    addresses: {
+      '1': CREDIT_VAULT_ADDRESSES['1'] || null,
+      '8453': CREDIT_VAULT_ADDRESSES['8453'] || null,
+      mainnet: CREDIT_VAULT_ADDRESSES['1'] || null,
+      base: CREDIT_VAULT_ADDRESSES['8453'] || null,
     },
   },
   charteredFund: {
@@ -80,7 +90,8 @@ function getNetworkName(chainId) {
             return 'mainnet';
         case '11155111':
             return 'sepolia';
-        // Add other networks here
+        case '8453':
+            return 'base';
         default:
             return null;
     }
