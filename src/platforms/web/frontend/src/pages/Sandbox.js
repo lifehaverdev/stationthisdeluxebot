@@ -108,7 +108,19 @@ export class Sandbox extends Component {
     };
     eventBus.on('sandbox:openResultOverlay', this._onOpenResultOverlay);
 
-    this._onOpenBatch = (e) => this.setState({ batchFiles: e.detail.files, batchInitialTool: e.detail.initialTool || null });
+    this._onOpenBatch = (e) => {
+      const { files, nodeId } = e.detail;
+      let connectedTool = null;
+      if (nodeId && window.sandboxCanvas) {
+        const canvas = window.sandboxCanvas;
+        const downstream = [...canvas.state.connections.values()].filter(c => c.fromWindowId === nodeId);
+        if (downstream.length > 0) {
+          const toolWin = canvas.state.windows.get(downstream[0].toWindowId);
+          if (toolWin?.tool) connectedTool = toolWin.tool;
+        }
+      }
+      this.setState({ batchFiles: files, batchInitialTool: connectedTool });
+    };
     window.addEventListener('sandbox:openBatch', this._onOpenBatch);
 
     this._onBatchPromoted = (e) => {

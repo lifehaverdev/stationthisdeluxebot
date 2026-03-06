@@ -50,15 +50,9 @@ export class BatchPanel extends Component {
       items,
       batchId: null,
 
-      // Generator selection
+      // Generator — detected from canvas connections, not user-picked
       selectedTool: props.initialTool || null,
-      selectedSpell: null,
-      generatorType: props.initialTool ? 'tool' : null,
       paramOverrides: {},
-
-      // Tool picker visibility
-      showToolPicker: false,
-      toolOptions: [],
 
       // Stats
       completedCount: 0,
@@ -80,15 +74,6 @@ export class BatchPanel extends Component {
     this.state.items.forEach(item => URL.revokeObjectURL(item.previewUrl));
   }
 
-  async _loadToolOptions() {
-    try {
-      const tools = await fetchJson('/api/v1/tools/registry');
-      this.setState({ toolOptions: Array.isArray(tools) ? tools : [] });
-    } catch (e) {
-      console.warn('[BatchPanel] Could not load tool options:', e);
-    }
-  }
-
   _removeItem(id) {
     if (this.state.status !== STATUS.IDLE) return;
     const items = this.state.items.filter(it => it.id !== id);
@@ -103,12 +88,9 @@ export class BatchPanel extends Component {
   }
 
   async _runBatch() {
-    const { items, selectedTool, selectedSpell, generatorType, paramOverrides } = this.state;
+    const { items, selectedTool, paramOverrides } = this.state;
     if (!items.length) return;
-    if (!selectedTool && !selectedSpell) {
-      alert('Please select a tool or spell first.');
-      return;
-    }
+    if (!selectedTool) return;
 
     this.setState({ status: STATUS.UPLOADING, startedAt: Date.now() });
 
@@ -137,9 +119,8 @@ export class BatchPanel extends Component {
       const body = {
         images: successfulUploads.map(it => it.storageUrl),
         paramOverrides,
+        toolId: selectedTool.id || selectedTool._id || selectedTool.toolId,
       };
-      if (generatorType === 'tool' && selectedTool) body.toolId = selectedTool.id || selectedTool._id;
-      if (generatorType === 'spell' && selectedSpell) body.spellId = selectedSpell.id || selectedSpell._id;
 
       const res = await postWithCsrf('/api/v1/batch/start', body);
       const data = await res.json();
@@ -226,15 +207,13 @@ export class BatchPanel extends Component {
   }
 
   _renderHeader() {
-    const { status, items, selectedTool, selectedSpell } = this.state;
-    const generatorName = selectedTool?.displayName || selectedSpell?.name || 'No generator';
+    const { status, items } = this.state;
     const isRunning = status === STATUS.RUNNING || status === STATUS.UPLOADING;
 
     return h('div', { className: 'bp-header' },
       h('div', { className: 'bp-header-left' },
         h('span', { className: 'bp-title' }, 'Batch'),
         h('span', { className: 'bp-meta' }, `${items.length} images`),
-        h('span', { className: 'bp-meta' }, generatorName),
       ),
       h('button', {
         className: 'bp-close',
@@ -245,46 +224,28 @@ export class BatchPanel extends Component {
   }
 
   _renderControls() {
-    const { status, selectedTool, selectedSpell, showToolPicker } = this.state;
+    const { status, selectedTool } = this.state;
     const isRunning = status === STATUS.RUNNING || status === STATUS.UPLOADING;
-    const generatorLabel = selectedTool?.displayName || selectedSpell?.name || 'Select tool or spell...';
+
+    if (!selectedTool) {
+      return h('div', { className: 'bp-controls' },
+        h('div', { className: 'bp-no-tool' },
+          'Connect this upload node to a tool on the canvas, then run batch.'
+        )
+      );
+    }
 
     return h('div', { className: 'bp-controls' },
-      h('button', {
-        className: 'bp-generator-btn',
-        onclick: () => {
-          if (!this.state.toolOptions.length) this._loadToolOptions();
-          this.setState({ showToolPicker: !showToolPicker });
-        },
-        disabled: isRunning,
-      }, generatorLabel),
-      showToolPicker ? this._renderToolPicker() : null,
+      h('div', { className: 'bp-connected-tool' },
+        h('span', { className: 'bp-connected-icon' }, '\u21e2'),
+        h('span', { className: 'bp-connected-name' }, selectedTool.displayName || selectedTool.name),
+      ),
       h(AsyncButton, {
         label: 'Run Batch',
         loading: isRunning,
-        disabled: isRunning || (!selectedTool && !selectedSpell),
+        disabled: isRunning,
         onclick: () => this._runBatch(),
       })
-    );
-  }
-
-  _renderToolPicker() {
-    const { toolOptions } = this.state;
-    if (!toolOptions.length) return h('div', { className: 'bp-picker-loading' }, 'Loading tools...');
-
-    return h('div', { className: 'bp-tool-picker' },
-      ...toolOptions.map(tool =>
-        h('button', {
-          key: tool.id || tool._id,
-          className: 'bp-tool-option',
-          onclick: () => this.setState({
-            selectedTool: tool,
-            selectedSpell: null,
-            generatorType: 'tool',
-            showToolPicker: false,
-          }),
-        }, tool.displayName || tool.name)
-      )
     );
   }
 
@@ -420,12 +381,11 @@ export class BatchPanel extends Component {
       .bp-close { background: none; border: none; color: var(--text-label, #888); font-size: 18px; cursor: pointer; padding: 4px 8px; border-radius: 4px; }
       .bp-close:hover { color: var(--text-primary, #fff); }
       .bp-close:disabled { opacity: 0.4; cursor: not-allowed; }
-      .bp-controls { display: flex; align-items: center; gap: 8px; position: relative; }
-      .bp-generator-btn { background: var(--surface-2, #222); border: 1px solid var(--border, #333); color: var(--text-primary, #fff); padding: 6px 12px; border-radius: 6px; font-size: 13px; cursor: pointer; }
-      .bp-generator-btn:hover { border-color: var(--accent, #90caf9); }
-      .bp-tool-picker { position: absolute; top: 100%; left: 0; background: var(--surface-2, #222); border: 1px solid var(--border, #333); border-radius: 8px; padding: 8px; z-index: 10; max-height: 240px; overflow-y: auto; min-width: 240px; display: flex; flex-direction: column; gap: 2px; }
-      .bp-tool-option { background: none; border: none; color: var(--text-primary, #fff); padding: 6px 10px; border-radius: 4px; cursor: pointer; text-align: left; font-size: 13px; }
-      .bp-tool-option:hover { background: var(--surface-3, #333); }
+      .bp-controls { display: flex; align-items: center; gap: 8px; }
+      .bp-no-tool { font-size: 13px; color: var(--text-label, #888); font-family: var(--ff-mono, monospace); }
+      .bp-connected-tool { display: flex; align-items: center; gap: 6px; background: var(--surface-2, #222); border: 1px solid var(--border, #333); border-radius: 6px; padding: 5px 10px; }
+      .bp-connected-icon { font-size: 15px; color: var(--accent, #90caf9); }
+      .bp-connected-name { font-size: 13px; color: var(--text-primary, #fff); font-family: var(--ff-mono, monospace); }
       .bp-input-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
       .bp-input-thumb { position: relative; flex-shrink: 0; }
       .bp-thumb-img { width: 64px; height: 64px; object-fit: cover; border-radius: 4px; display: block; }
@@ -445,7 +405,7 @@ export class BatchPanel extends Component {
       .bp-zip-link { background: var(--accent, #90caf9); color: #000; padding: 6px 14px; border-radius: 6px; font-size: 13px; text-decoration: none; font-weight: 600; }
       .bp-promote-btn { background: none; border: 1px solid var(--border, #333); color: var(--text-label, #888); padding: 6px 12px; border-radius: 6px; font-size: 13px; cursor: pointer; }
       .bp-promote-btn:hover { border-color: var(--accent, #90caf9); color: var(--text-primary, #fff); }
-      .bp-picker-loading { padding: 12px; color: var(--text-label, #888); font-size: 13px; }
+
     `;
   }
 }

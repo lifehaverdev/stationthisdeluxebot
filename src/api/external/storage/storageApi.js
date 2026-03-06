@@ -29,7 +29,7 @@ function createPublicStorageApi(services) {
 
       const { Readable } = require('stream');
       const stream = Readable.from(req.body);
-      const permanentUrl = await storageService.uploadFromStream(stream, key, contentType);
+      const { permanentUrl } = await storageService.uploadFromStream(stream, key, contentType);
       return res.json({ permanentUrl });
     } catch (err) {
       logger.error('[storageApi] proxy upload error:', err.message);

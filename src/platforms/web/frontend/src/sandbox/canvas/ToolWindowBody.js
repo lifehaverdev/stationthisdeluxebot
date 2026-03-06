@@ -1,5 +1,6 @@
 import { Component, h, eventBus } from '@monygroupcorp/microact';
 import { uploadToStorage } from '../io.js';
+import { postWithCsrf, fetchJson } from '../../lib/api.js';
 import { ParameterForm } from '../components/windows/ParameterForm.js';
 import { ResultDisplay } from '../components/windows/ResultDisplay.js';
 import { AsyncButton } from '../components/ModalKit.js';
@@ -160,14 +161,32 @@ export class ToolWindowBody extends Component {
 export class UploadWindowBody extends Component {
   constructor(props) {
     super(props);
-    this.state = { uploading: false, uploadError: null, dragOver: false, batchOffer: null };
+    this.state = {
+      uploading: false,
+      uploadError: null,
+      dragOver: false,
+      // Batch execution state
+      batchId: null,
+      batchStatus: null, // 'running' | 'complete' | 'error'
+      batchCompleted: 0,
+      batchFailed: 0,
+      batchTotal: 0,
+      batchZipUrl: null,
+      batchZipBuilding: false,
+    };
+    this._pollInterval = null;
+    this._processedResults = new Set();
+  }
+
+  willUnmount() {
+    if (this._pollInterval) clearInterval(this._pollInterval);
   }
 
   _onFiles(rawFiles) {
     const files = Array.from(rawFiles || []).filter(f => f.type.startsWith('image/'));
     if (!files.length) return;
     if (files.length > 1) {
-      this.setState({ batchOffer: files, uploadError: null });
+      this._handleFiles(files);
       return;
     }
     this._handleFile(files[0]);
@@ -184,12 +203,206 @@ export class UploadWindowBody extends Component {
     }
   }
 
+  async _handleFiles(files) {
+    this.setState({ uploading: true, uploadError: null });
+    try {
+      const urls = await Promise.all(files.map(f => uploadToStorage(f)));
+      const outputs = urls.map((url, i) => ({ key: `image_${i}`, type: 'image', url }));
+      window.sandboxCanvas?.updateWindowOutputs(this.props.win.id, outputs);
+    } catch (err) {
+      this.setState({ uploading: false, uploadError: err.message });
+    }
+  }
+
+  _getBatchConn() {
+    return (this.props.connections || []).find(c => c.fromOutput === 'batch');
+  }
+
+  _getBatchToolWin(batchConn) {
+    if (!batchConn) return null;
+    return window.sandboxCanvas?.state.windows.get(batchConn.toWindowId) || null;
+  }
+
+  async _runBatch() {
+    const batchConn = this._getBatchConn();
+    const toolWin = this._getBatchToolWin(batchConn);
+    if (!toolWin?.tool) return;
+
+    const images = (this.props.win.outputs || []).map(o => o.url);
+    if (!images.length) return;
+
+    const toolId = toolWin.tool.toolId || toolWin.tool.id || toolWin.tool._id;
+    this._processedResults = new Set();
+    this.setState({
+      batchStatus: 'running',
+      batchTotal: images.length,
+      batchCompleted: 0,
+      batchFailed: 0,
+      batchZipUrl: null,
+    });
+
+    try {
+      const res = await postWithCsrf('/api/v1/batch/start', { images, toolId });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Batch start failed');
+      const batchId = data.collectionId || data.batchId;
+      this.setState({ batchId });
+      this._startPolling(batchId, batchConn.toWindowId, images.length);
+    } catch (err) {
+      this.setState({ batchStatus: 'error' });
+      console.error('[UploadWindowBody] batch start error:', err);
+    }
+  }
+
+  _startPolling(batchId, toolWindowId, total) {
+    const MAX_POLLS = 60; // ~10 min at 10s — safety stop
+    const TERMINAL = new Set(['completed', 'failed', 'stopped', 'error']);
+    let pollCount = 0;
+
+    const stop = (status) => {
+      clearInterval(this._pollInterval);
+      this._pollInterval = null;
+      this.setState({ batchStatus: status });
+    };
+
+    this._pollInterval = setInterval(async () => {
+      pollCount++;
+      try {
+        const data = await fetchJson(`/api/v1/batch/${batchId}`);
+        const outputs = data.outputs || [];
+        const effectiveTotal = data.total || total;
+        let completedCount = 0, failedCount = 0;
+
+        for (const output of outputs) {
+          const url = output.resultUrl || output.imageUrl;
+          if (url && !this._processedResults.has(url)) {
+            this._processedResults.add(url);
+            window.sandboxCanvas?.updateWindowOutput(toolWindowId, { type: 'image', url });
+          }
+          if (url) completedCount++;
+          if (output.error) failedCount++;
+        }
+
+        this.setState({ batchCompleted: completedCount, batchFailed: failedCount });
+
+        const serverDone = data.cookStatus && TERMINAL.has(data.cookStatus);
+        const countDone  = (completedCount + failedCount) >= effectiveTotal;
+        if (serverDone || countDone || pollCount >= MAX_POLLS) {
+          stop(completedCount > 0 ? 'complete' : 'error');
+        }
+      } catch (e) {
+        console.warn('[UploadWindowBody] poll error:', e);
+      }
+    }, 10000);
+  }
+
+  async _buildZip() {
+    const { batchId } = this.state;
+    if (!batchId) return;
+    this.setState({ batchZipBuilding: true });
+    try {
+      const res = await postWithCsrf(`/api/v1/batch/${batchId}/zip`, {});
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'ZIP failed');
+      this.setState({ batchZipUrl: data.zipUrl, batchZipBuilding: false });
+    } catch (err) {
+      this.setState({ batchZipBuilding: false });
+      console.error('[UploadWindowBody] zip error:', err);
+    }
+  }
+
+  _renderBatchFooter(outputs) {
+    const { batchStatus, batchCompleted, batchFailed, batchTotal, batchZipUrl, batchZipBuilding } = this.state;
+    const batchConn = this._getBatchConn();
+    const toolWin = this._getBatchToolWin(batchConn);
+    const isRunning = batchStatus === 'running';
+    const isComplete = batchStatus === 'complete';
+
+    return h('div', { className: 'nwb-batch-footer' },
+      h('div', { className: 'nwb-batch-footer-top' },
+        h('span', { className: 'nwb-batch-label' }, 'batch'),
+        h('span', {
+          className: 'nwb-batch-info',
+          title: 'Connect the batch anchor (circular dot, right side) to a tool\'s image input. Then click Run to process each image through that tool. Results appear as versions on the tool node.',
+        }, '?'),
+        toolWin
+          ? h('span', { className: 'nwb-batch-connected' }, `\u2192 ${toolWin.tool?.displayName || 'tool'}`)
+          : h('span', { className: 'nwb-batch-unconnected' }, 'connect to a tool'),
+      ),
+
+      // Progress / status
+      isRunning
+        ? h('div', { className: 'nwb-batch-progress' },
+            h('div', { className: 'nwb-batch-bar-track' },
+              h('div', {
+                className: 'nwb-batch-bar-fill',
+                style: `width:${batchTotal > 0 ? Math.round((batchCompleted / batchTotal) * 100) : 0}%`,
+              })
+            ),
+            h('span', { className: 'nwb-batch-progress-text' }, `${batchCompleted}/${batchTotal}`)
+          )
+        : null,
+
+      isComplete
+        ? h('div', { className: 'nwb-batch-results' },
+            h('span', { className: 'nwb-batch-done-text' },
+              `${batchCompleted} done${batchFailed > 0 ? `, ${batchFailed} failed` : ''}`
+            ),
+            batchZipUrl
+              ? h('a', { href: batchZipUrl, className: 'nwb-batch-zip-link', download: true }, 'ZIP')
+              : h('button', {
+                  className: 'nwb-batch-zip-btn',
+                  disabled: batchZipBuilding,
+                  onclick: () => this._buildZip(),
+                }, batchZipBuilding ? '\u22ef' : 'ZIP'),
+          )
+        : null,
+
+      // Run button
+      !isRunning && !isComplete
+        ? h('button', {
+            className: 'nwb-batch-run-btn',
+            disabled: !toolWin || !outputs.length,
+            onclick: () => this._runBatch(),
+          }, 'Run as Batch')
+        : null,
+
+      isComplete
+        ? h('button', {
+            className: 'nwb-batch-run-btn nwb-batch-run-btn--rerun',
+            onclick: () => this._runBatch(),
+          }, 'Re-run')
+        : null,
+    );
+  }
+
   render() {
     const { win } = this.props;
-    const { uploading, uploadError, dragOver, batchOffer } = this.state;
+    const { uploading, uploadError, dragOver } = this.state;
+    const outputs = win.outputs || [];
     const url = win.output?.url;
+    const isBatchReady = outputs.length > 1 && outputs.every(o => o.type === outputs[0].type);
 
-    // State: image uploaded — show preview + re-upload option
+    // State: multiple outputs — show thumbnail grid, one per file
+    if (outputs.length > 0) {
+      return h('div', { className: 'nwb-root nwb-upload nwb-upload--multi' },
+        h('div', { className: 'nwb-upload-multi-grid' },
+          ...outputs.map((slot, i) =>
+            h('div', { key: slot.key, className: 'nwb-upload-multi-thumb' },
+              h('img', { src: slot.url, className: 'nwb-upload-multi-img', alt: `Image ${i + 1}` }),
+              h('span', { className: 'nwb-upload-multi-idx' }, `${i + 1}`)
+            )
+          )
+        ),
+        h('label', { className: 'nwb-upload-replace' },
+          h('input', { type: 'file', accept: 'image/*', multiple: true, onchange: (e) => this._onFiles(e.target.files) }),
+          'Replace'
+        ),
+        isBatchReady ? this._renderBatchFooter(outputs) : null,
+      );
+    }
+
+    // State: single image uploaded — show preview + re-upload option
     if (url) {
       return h('div', { className: 'nwb-root nwb-upload nwb-upload--done' },
         h('img', { src: url, className: 'nwb-upload-img', alt: 'Uploaded image' }),
@@ -197,27 +410,6 @@ export class UploadWindowBody extends Component {
           h('input', { type: 'file', accept: 'image/*', multiple: true, onchange: (e) => this._onFiles(e.target.files) }),
           'Replace'
         )
-      );
-    }
-
-    // State: multiple files selected — offer batch or single
-    if (batchOffer) {
-      return h('div', { className: 'nwb-root nwb-upload-offer' },
-        h('div', { className: 'nwb-upload-offer-count' }, `${batchOffer.length} images`),
-        h('button', {
-          className: 'nwb-upload-offer-btn nwb-upload-offer-btn--primary',
-          onclick: () => {
-            const files = batchOffer;
-            this.setState({ batchOffer: null });
-            window.dispatchEvent(new CustomEvent('sandbox:openBatch', {
-              detail: { files, initialTool: window.sandboxCanvas?._getLastActiveTool?.() || null }
-            }));
-          },
-        }, 'Run as Batch \u2192'),
-        h('button', {
-          className: 'nwb-upload-offer-btn',
-          onclick: () => { const [f] = batchOffer; this.setState({ batchOffer: null }); this._handleFile(f); },
-        }, 'Use first only'),
       );
     }
 
@@ -239,7 +431,7 @@ export class UploadWindowBody extends Component {
       h('input', { type: 'file', accept: 'image/*', multiple: true, onchange: (e) => this._onFiles(e.target.files) }),
       h('div', { className: 'nwb-upload-zone-icon' }, '\uD83D\uDDBC\uFE0F'),
       h('div', { className: 'nwb-upload-zone-label' }, dragOver ? 'Drop to upload' : 'Drop images or click'),
-      h('div', { className: 'nwb-upload-zone-hint' }, 'Single image uploads here \u00B7 Multiple opens batch'),
+      h('div', { className: 'nwb-upload-zone-hint' }, 'Single or multiple \u2014 each gets its own anchor'),
       uploadError ? h('div', { className: 'nwb-upload-zone-error' }, uploadError) : null,
     );
   }
@@ -247,6 +439,19 @@ export class UploadWindowBody extends Component {
   static get styles() {
     return `
       .nwb-upload--done { padding: 0; position: relative; }
+      .nwb-upload--multi { padding: 0; position: relative; }
+      .nwb-upload-multi-grid {
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+        gap: 2px; padding: 4px;
+      }
+      .nwb-upload-multi-thumb { position: relative; }
+      .nwb-upload-multi-img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; }
+      .nwb-upload-multi-idx {
+        position: absolute; bottom: 2px; left: 2px;
+        background: rgba(0,0,0,0.65); color: #fff;
+        font-size: 9px; padding: 1px 3px; border-radius: 2px;
+        font-family: var(--ff-mono, monospace); line-height: 1.2;
+      }
       .nwb-upload-img { display: block; width: 100%; max-height: 280px; object-fit: contain; background: #111; }
       .nwb-upload-replace {
         position: absolute; bottom: 6px; right: 6px;
@@ -287,23 +492,78 @@ export class UploadWindowBody extends Component {
       }
       @keyframes nwb-spin { to { transform: rotate(360deg); } }
 
-      .nwb-upload-offer {
-        display: flex; flex-direction: column; align-items: center; gap: 8px;
-        padding: 16px; margin: 8px;
+      /* ── Batch footer ── */
+      .nwb-batch-footer {
+        border-top: var(--border-width, 1px) solid var(--border, #333);
+        padding: 6px 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
       }
-      .nwb-upload-offer-count {
-        font-family: var(--ff-mono, monospace); font-size: 13px; color: var(--text-primary, #fff);
-        font-weight: 600;
+      .nwb-batch-footer-top { display: flex; align-items: center; gap: 5px; }
+      .nwb-batch-label {
+        font-family: var(--ff-mono, monospace); font-size: 9px;
+        letter-spacing: 0.1em; text-transform: uppercase;
+        color: var(--accent, #90caf9);
       }
-      .nwb-upload-offer-btn {
-        width: 100%; padding: 8px 12px; border-radius: 6px; font-size: 13px; cursor: pointer;
-        border: 1px solid var(--border, #333); background: var(--surface-2, #222);
-        color: var(--text-primary, #fff);
+      .nwb-batch-info {
+        width: 13px; height: 13px; border-radius: 50%;
+        border: 1px solid var(--border, #444); color: var(--text-label, #888);
+        font-size: 9px; display: flex; align-items: center; justify-content: center;
+        cursor: default; flex-shrink: 0;
       }
-      .nwb-upload-offer-btn--primary {
-        background: var(--accent, #90caf9); color: #000; border-color: transparent; font-weight: 600;
+      .nwb-batch-connected {
+        font-family: var(--ff-mono, monospace); font-size: 10px;
+        color: var(--accent, #90caf9);
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
       }
-      .nwb-upload-offer-btn:hover { opacity: 0.85; }
+      .nwb-batch-unconnected {
+        font-family: var(--ff-mono, monospace); font-size: 10px;
+        color: var(--text-label, #666);
+      }
+      .nwb-batch-run-btn {
+        width: 100%; padding: 4px 0;
+        background: var(--accent-dim, rgba(144,202,249,0.1));
+        border: 1px solid var(--accent-border, #4a90d9);
+        color: var(--accent, #90caf9);
+        font-family: var(--ff-mono, monospace); font-size: 10px;
+        letter-spacing: 0.06em; text-transform: uppercase;
+        cursor: pointer; border-radius: 3px;
+        transition: background var(--dur-micro) var(--ease);
+      }
+      .nwb-batch-run-btn:hover:not(:disabled) { background: rgba(144,202,249,0.18); }
+      .nwb-batch-run-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+      .nwb-batch-run-btn--rerun { border-color: var(--border, #444); color: var(--text-label, #888); background: none; }
+      .nwb-batch-progress { display: flex; align-items: center; gap: 6px; }
+      .nwb-batch-bar-track {
+        flex: 1; height: 3px; background: var(--surface-3, #2a2a2a);
+        border-radius: 2px; overflow: hidden;
+      }
+      .nwb-batch-bar-fill {
+        height: 100%; background: var(--accent, #90caf9);
+        transition: width 0.3s ease; border-radius: 2px;
+      }
+      .nwb-batch-progress-text {
+        font-family: var(--ff-mono, monospace); font-size: 9px;
+        color: var(--text-label, #888); flex-shrink: 0;
+      }
+      .nwb-batch-results { display: flex; align-items: center; gap: 6px; }
+      .nwb-batch-done-text {
+        font-family: var(--ff-mono, monospace); font-size: 10px;
+        color: var(--text-label, #888); flex: 1;
+      }
+      .nwb-batch-zip-btn {
+        padding: 2px 8px; background: none;
+        border: 1px solid var(--border, #444); color: var(--text-label, #888);
+        font-size: 10px; cursor: pointer; border-radius: 3px;
+      }
+      .nwb-batch-zip-btn:hover { color: var(--text-primary); border-color: var(--border-hover); }
+      .nwb-batch-zip-link {
+        padding: 2px 8px; background: var(--accent-dim);
+        border: 1px solid var(--accent-border, #4a90d9);
+        color: var(--accent); font-size: 10px;
+        text-decoration: none; border-radius: 3px;
+      }
     `;
   }
 }

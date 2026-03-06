@@ -1746,10 +1746,14 @@ function createCookApi(deps = {}) {
       const db = client.db(dbName);
       const outputsCol = db.collection('generationOutputs');
 
-      const outputs = await outputsCol.find(
-        { 'metadata.collectionId': batchId, 'metadata.mode': 'batch' },
-        { projection: { status: 1, 'metadata.batchImageUrl': 1, 'metadata.pieceIndex': 1, outputs: 1, costUsd: 1, durationMs: 1, error: 1 } }
-      ).toArray();
+      const cooksCol = db.collection('cooks');
+      const [outputs, cookDoc] = await Promise.all([
+        outputsCol.find(
+          { 'metadata.collectionId': batchId, 'metadata.mode': 'batch' },
+          { projection: { status: 1, 'metadata.batchImageUrl': 1, 'metadata.pieceIndex': 1, outputs: 1, costUsd: 1, durationMs: 1, error: 1 } }
+        ).toArray(),
+        cooksCol.findOne({ collectionId: batchId }, { projection: { status: 1, targetSupply: 1 } }),
+      ]);
 
       const formatted = outputs.map(o => ({
         pieceIndex: o.metadata?.pieceIndex,
@@ -1761,7 +1765,12 @@ function createCookApi(deps = {}) {
         error: o.error || null,
       }));
 
-      return res.json({ collectionId: batchId, outputs: formatted });
+      return res.json({
+        collectionId: batchId,
+        cookStatus: cookDoc?.status || 'running',
+        total: cookDoc?.targetSupply || outputs.length,
+        outputs: formatted,
+      });
     } catch (err) {
       logger.error('[CookAPI] batch status error', err);
       return res.status(500).json({ error: 'batch-status-failed' });
