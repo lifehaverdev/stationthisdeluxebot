@@ -455,8 +455,8 @@ class CookOrchestratorService {
    * Start cook with immediate submission of the first piece and orchestration-managed scheduling.
    * ✅ MODIFIED: Now accepts batchSize (explicit number to generate) instead of totalSupply (auto-calculate from target)
    */
-  async startCook({ collectionId, userId, cookId, spellId, toolId, traitTypes = [], paramsTemplate = {}, traitTree = [], paramOverrides = {}, batchSize = 1 }) {
-    this.logger.debug(`[CookOrchestrator] startCook called for collection ${collectionId}, userId: ${userId}, cookId: ${cookId}, spellId: ${spellId}, toolId: ${toolId}, batchSize: ${batchSize}`);
+  async startCook({ collectionId, userId, cookId, spellId, toolId, traitTypes = [], paramsTemplate = {}, traitTree = [], paramOverrides = {}, batchSize = 1, mode = 'collection', images = null }) {
+    this.logger.debug(`[CookOrchestrator] startCook called for collection ${collectionId}, userId: ${userId}, cookId: ${cookId}, spellId: ${spellId}, toolId: ${toolId}, batchSize: ${batchSize}, mode: ${mode}`);
     try {
       this.logger.debug(`[CookOrchestrator] Calling _init()...`);
     await this._init();
@@ -465,6 +465,56 @@ class CookOrchestratorService {
       if (!spellId && !toolId) {
         this.logger.error(`[CookOrchestrator] startCook failed: spellId or toolId required. spellId: ${spellId}, toolId: ${toolId}`);
         throw new Error('spellId or toolId required');
+      }
+
+      // Batch mode: use pre-supplied image URLs as inputs instead of TraitEngine
+      if (mode === 'batch') {
+        if (!Array.isArray(images) || images.length === 0) {
+          throw new Error('Batch mode requires a non-empty images array');
+        }
+
+        const submissions = this._buildBatchSubmissions({
+          images,
+          toolId,
+          spellId,
+          paramOverrides,
+          userId,
+          cookId,
+          collectionId,
+        });
+
+        const key = this._getKey(collectionId, userId);
+        const maxConcurrent = 2;
+        this.runningByCollection.set(key, {
+          running: new Set(),
+          nextIndex: 0,
+          generatedCount: 0,
+          batchTarget: submissions.length,
+          batchStartIndex: 0,
+          maxConcurrent,
+          toolId: toolId || null,
+          spellId: spellId || null,
+          cookId,
+          mode: 'batch',
+          submissions,
+          paused: false,
+          pauseReason: null,
+          stopped: false,
+        });
+
+        await this.appendEvent('CookStarted', { collectionId, userId, cookId, batchSize: submissions.length });
+
+        const state = this.runningByCollection.get(key);
+        const toSubmit = submissions.slice(0, maxConcurrent);
+        for (const piece of toSubmit) {
+          state.running.add(piece.jobId);
+          state.nextIndex++;
+          submitPiece({ spellId: piece.spellId, submission: piece.submission }, this).catch(err => {
+            this.logger.error(`[Batch] Failed to submit piece ${piece.pieceIndex}:`, err.message);
+          });
+        }
+
+        return { cookId, collectionId, mode: 'batch', total: submissions.length, queued: toSubmit.length };
       }
 
     // ✅ NEW: batchSize is the exact number of pieces to generate (no auto-calculation)
@@ -809,6 +859,34 @@ class CookOrchestratorService {
   }
 
   /**
+   * Build batch submission objects for each image URL, bypassing TraitEngine.
+   */
+  _buildBatchSubmissions({ images, toolId, spellId, paramOverrides, userId, cookId, collectionId }) {
+    return images.map((imageUrl, index) => {
+      const jobId = `batch-${cookId}-${index}`;
+      return {
+        jobId,
+        pieceIndex: index,
+        spellId: spellId || null,
+        submission: {
+          toolId: toolId || undefined,
+          inputs: { ...paramOverrides, input_image: imageUrl },
+          user: { masterAccountId: userId, platform: 'cook' },
+          metadata: {
+            source: 'cook',
+            cookId,
+            collectionId,
+            pieceIndex: index,
+            batchImageUrl: imageUrl,
+            mode: 'batch',
+            jobId,
+          },
+        },
+      };
+    });
+  }
+
+  /**
    * Called when a piece completes. Schedules the next submissions immediately (up to max concurrency) without any worker.
    */
   async scheduleNext({ collectionId, userId, finishedJobId, success = true }) {
@@ -939,10 +1017,33 @@ class CookOrchestratorService {
       return { queued: 0 };
     }
 
-    // ✅ MODIFIED: Use batchTarget for loop condition instead of total supply
     let queued = 0;
     const piecesNeeded = state.batchTarget - state.generatedCount;
 
+    // Batch mode: use pre-built submissions instead of TraitEngine
+    if (state.mode === 'batch') {
+      while (
+        state.running.size < state.maxConcurrent &&
+        (state.generatedCount + state.running.size) < state.batchTarget &&
+        state.nextIndex < state.submissions.length
+      ) {
+        const nextPiece = state.submissions[state.nextIndex];
+        if (!nextPiece) break;
+        try {
+          const resp = await submitPiece({ spellId: nextPiece.spellId, submission: nextPiece.submission }, this);
+          this.logger.info(`[Batch] Submitted piece ${nextPiece.pieceIndex}. job=${nextPiece.jobId} resp=${resp?.status || 'ok'}`);
+          state.running.add(String(nextPiece.jobId));
+          state.nextIndex++;
+          queued++;
+        } catch (e) {
+          this.logger.error(`[CookOrchestrator] Batch submit failed for piece ${nextPiece.pieceIndex}: ${e.message}`);
+          break;
+        }
+      }
+      return { queued };
+    }
+
+    // Collection mode: use TraitEngine to build submissions
     while (
       state.running.size < state.maxConcurrent &&
       (state.generatedCount + state.running.size) < state.batchTarget &&
