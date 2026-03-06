@@ -37,8 +37,9 @@ class BatchZipService {
 
     const zipUrl = await this.storageService.uploadFromStream(
       zipStream,
-      `batch-zips/${zipFileName}`,
-      'application/zip'
+      `exports/${zipFileName}`,
+      'application/zip',
+      'exports'
     );
 
     this.logger.info(`[BatchZip] Uploaded zip for ${batchId}: ${zipUrl}`);
