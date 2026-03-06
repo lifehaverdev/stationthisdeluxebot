@@ -160,35 +160,25 @@ export class ToolWindowBody extends Component {
 export class UploadWindowBody extends Component {
   constructor(props) {
     super(props);
-    this.state = { uploading: false, uploadError: null, dragOver: false, batchOffer: null };
-  }
-
-  _openFilePicker() {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.multiple = true;
-    input.onchange = (e) => {
-      const files = Array.from(e.target.files || []);
-      if (files.length > 1) {
-        const imageFiles = files.filter(f => f.type.startsWith('image/'));
-        if (imageFiles.length) { this.setState({ batchOffer: imageFiles }); return; }
-      }
-      this._handleFile(files[0]);
-    };
-    input.click();
+    this.state = { uploading: false, uploadError: null, batchOffer: null };
   }
 
   shouldUpdate(oldProps, newProps) {
-    return oldProps.win !== newProps.win;
+    return oldProps.win !== newProps.win || this.state !== arguments[2];
+  }
+
+  _onFiles(files) {
+    files = Array.from(files || []).filter(f => f.type.startsWith('image/'));
+    if (!files.length) return;
+    if (files.length > 1) {
+      this.setState({ batchOffer: files });
+      return;
+    }
+    this._handleFile(files[0]);
   }
 
   async _handleFile(file) {
     if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      this.setState({ uploadError: 'Images only.' });
-      return;
-    }
     this.setState({ uploading: true, uploadError: null });
     try {
       const url = await uploadToStorage(file);
@@ -200,7 +190,7 @@ export class UploadWindowBody extends Component {
 
   render() {
     const { win } = this.props;
-    const { uploading, uploadError, dragOver, batchOffer } = this.state;
+    const { uploading, uploadError, batchOffer } = this.state;
     const url = win.output?.url;
 
     if (batchOffer) {
@@ -243,22 +233,13 @@ export class UploadWindowBody extends Component {
       );
     }
 
-    return h('div', {
-      className: `nwb-root nwb-upload-zone${dragOver ? ' nwb-upload-zone--over' : ''}`,
-      onclick: (e) => { e.stopPropagation(); this._openFilePicker(); },
-      ondragover: (e) => { e.preventDefault(); e.stopPropagation(); this.setState({ dragOver: true }); },
-      ondragleave: () => this.setState({ dragOver: false }),
-      ondrop: (e) => {
-        e.preventDefault(); e.stopPropagation(); this.setState({ dragOver: false });
-        const files = Array.from(e.dataTransfer?.files || []);
-        if (files.length > 1) {
-          const imageFiles = files.filter(f => f.type.startsWith('image/'));
-          if (imageFiles.length) { this.setState({ batchOffer: imageFiles }); return; }
-        }
-        this._handleFile(files[0]);
-      },
-    },
-      h('div', { className: 'nwb-upload-zone-label' }, dragOver ? 'drop image' : 'drop or click'),
+    return h('div', { className: 'nwb-root nwb-upload-zone' },
+      h('input', {
+        type: 'file',
+        accept: 'image/*',
+        multiple: true,
+        onchange: (e) => this._onFiles(e.target.files),
+      }),
       uploadError ? h('div', { className: 'nwb-upload-zone-error' }, uploadError) : null,
     );
   }
