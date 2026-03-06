@@ -161,7 +161,22 @@ export class UploadWindowBody extends Component {
   constructor(props) {
     super(props);
     this.state = { uploading: false, uploadError: null, dragOver: false, batchOffer: null };
-    this._fileInput = null;
+  }
+
+  _openFilePicker() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.multiple = true;
+    input.onchange = (e) => {
+      const files = Array.from(e.target.files || []);
+      if (files.length > 1) {
+        const imageFiles = files.filter(f => f.type.startsWith('image/'));
+        if (imageFiles.length) { this.setState({ batchOffer: imageFiles }); return; }
+      }
+      this._handleFile(files[0]);
+    };
+    input.click();
   }
 
   shouldUpdate(oldProps, newProps) {
@@ -230,7 +245,7 @@ export class UploadWindowBody extends Component {
 
     return h('div', {
       className: `nwb-root nwb-upload-zone${dragOver ? ' nwb-upload-zone--over' : ''}`,
-      onclick: (e) => { e.stopPropagation(); this._fileInput?.click(); },
+      onclick: (e) => { e.stopPropagation(); this._openFilePicker(); },
       ondragover: (e) => { e.preventDefault(); e.stopPropagation(); this.setState({ dragOver: true }); },
       ondragleave: () => this.setState({ dragOver: false }),
       ondrop: (e) => {
@@ -243,18 +258,6 @@ export class UploadWindowBody extends Component {
         this._handleFile(files[0]);
       },
     },
-      h('input', {
-        type: 'file', accept: 'image/*', multiple: true, style: 'display:none',
-        ref: (el) => { this._fileInput = el; },
-        onchange: (e) => {
-          const files = Array.from(e.target.files || []);
-          if (files.length > 1) {
-            const imageFiles = files.filter(f => f.type.startsWith('image/'));
-            if (imageFiles.length) { this.setState({ batchOffer: imageFiles }); return; }
-          }
-          this._handleFile(files[0]);
-        },
-      }),
       h('div', { className: 'nwb-upload-zone-label' }, dragOver ? 'drop image' : 'drop or click'),
       uploadError ? h('div', { className: 'nwb-upload-zone-error' }, uploadError) : null,
     );
