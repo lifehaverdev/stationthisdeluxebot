@@ -5,7 +5,16 @@
  * Manages the lifecycle of referral vaults from creation to active deployment.
  */
 const { ethers } = require('ethers');
-const { getGroupKey, acquireGroupLock } = require('./groupLockUtils');
+
+// Simple in-memory lock for preventing concurrent vault creation per user
+const _locks = new Map();
+async function acquireGroupLock(key) {
+  while (_locks.has(key)) {
+    await new Promise(r => setTimeout(r, 50));
+  }
+  _locks.set(key, true);
+  return () => _locks.delete(key);
+}
 
 class ReferralVaultService {
   constructor(

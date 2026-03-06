@@ -192,7 +192,7 @@ async function initializeServices(options = {}) {
       logger.info('[initializeServices] starting on-chain services...');;
       
       // --- MULTICHAIN INITIALISATION ---
-      const { RPC_ENV_VARS, getRpcUrl, getFoundationAddress, getCharterBeaconAddress } = require('./alchemy/foundationConfig');
+      const { RPC_ENV_VARS, getRpcUrl, getFoundationAddress, getCharterBeaconAddress, CREDIT_VAULT_ADDRESSES, getCreditVaultAddress } = require('./alchemy/foundationConfig');
       // Get unique chainIds - normalize 'mainnet' -> '1', etc. to avoid duplicates
       const CHAIN_NAME_TO_ID = {
         'mainnet': '1',
@@ -250,12 +250,13 @@ async function initializeServices(options = {}) {
             logger.debug('[initializeServices] TokenRiskEngine initialized.');
           }
 
-          const { getCreditVaultAddress, CREDIT_VAULT_ADDRESSES } = require('./alchemy/foundationConfig');
+          // Skip chains without a CreditVault deployment
           const vaultAddr = CREDIT_VAULT_ADDRESSES[String(chainId)];
           if (!vaultAddr) {
             logger.info(`[initializeServices] No CreditVault deployed for chain ${chainId}, skipping CreditService.`);
             continue;
           }
+
           const creditServiceConfig = {
             foundationAddress: vaultAddr,
             foundationAbi: contracts.creditVault.abi,

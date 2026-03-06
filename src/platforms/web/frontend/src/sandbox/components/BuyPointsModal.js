@@ -96,11 +96,9 @@ export class BuyPointsModal extends Component {
       // Amount + quote
       amount: '',
       quote: null,
-      donateQuote: null,
       quoteLoading: false,
       referenceQuote: null,
       referenceLoading: false,
-      mode: 'contribute', // 'contribute' | 'donate'
       // Purchase
       purchase: null,
       // Tx status
@@ -307,7 +305,7 @@ export class BuyPointsModal extends Component {
     const val = e.target.value;
     if (val !== '' && !/^\d*\.?\d*$/.test(val)) return;
     if (val.startsWith('-')) return;
-    this.setState({ amount: val, quote: null, donateQuote: null, error: null });
+    this.setState({ amount: val, quote: null, error: null });
     clearTimeout(this._quoteDebounce);
     if (val && this.state.selectedAsset) {
       this._quoteDebounce = setTimeout(() => this._fetchQuote(), 400);
@@ -315,7 +313,7 @@ export class BuyPointsModal extends Component {
   }
 
   async _fetchQuote() {
-    const { selectedAsset, amount, mode } = this.state;
+    const { selectedAsset, amount } = this.state;
     if (!selectedAsset || !amount) return;
 
     if (!(await this._ensureCorrectNetwork())) return;
@@ -331,28 +329,16 @@ export class BuyPointsModal extends Component {
         amountToSend = toSmallestUnit(amount, selectedAsset.decimals || 18);
       }
 
-      const fetchQuoteMode = async (quoteMode) => {
-        const body = { type: selectedAsset.type, assetAddress: selectedAsset.address, amount: amountToSend, mode: quoteMode, userWalletAddress: this.state.walletAddress || undefined };
-        const res = await postWithCsrf(`${API_BASE}/quote`, body);
-        if (!res.ok) {
-          const text = await res.text();
-          let msg = 'Could not fetch quote.';
-          try { msg = JSON.parse(text).message || msg; } catch {}
-          throw new Error(msg);
-        }
-        return res.json();
-      };
-
-      if (mode === 'contribute') {
-        const [cQuote, dQuote] = await Promise.all([
-          fetchQuoteMode('contribute'),
-          fetchQuoteMode('donate').catch(e => { if (e.name !== 'AbortError') console.warn('[BuyPointsModal] donate quote failed:', e); return null; }),
-        ]);
-        this.setState({ quote: cQuote, donateQuote: dQuote, quoteLoading: false });
-      } else {
-        const q = await fetchQuoteMode('donate');
-        this.setState({ quote: q, donateQuote: null, quoteLoading: false });
+      const body = { type: selectedAsset.type, assetAddress: selectedAsset.address, amount: amountToSend, userWalletAddress: this.state.walletAddress || undefined };
+      const res = await postWithCsrf(`${API_BASE}/quote`, body);
+      if (!res.ok) {
+        const text = await res.text();
+        let msg = 'Could not fetch quote.';
+        try { msg = JSON.parse(text).message || msg; } catch {}
+        throw new Error(msg);
       }
+      const quote = await res.json();
+      this.setState({ quote, quoteLoading: false });
     } catch (err) {
       if (err.name === 'AbortError') return;
       this.setState({ quoteLoading: false, error: err.message || 'Could not fetch quote.' });
@@ -391,7 +377,7 @@ export class BuyPointsModal extends Component {
   }
 
   async _initiatePurchase() {
-    const { quote, selectedAsset, amount, mode } = this.state;
+    const { quote, selectedAsset, amount } = this.state;
     if (!quote) return;
     if (!(await this._ensureCorrectNetwork())) return;
 
@@ -418,7 +404,6 @@ export class BuyPointsModal extends Component {
         assetAddress: selectedAsset.address,
         amount: amountToSend,
         userWalletAddress: addr,
-        mode,
       };
 
       const res = await postWithCsrf(`${API_BASE}/purchase`, body);
@@ -426,7 +411,7 @@ export class BuyPointsModal extends Component {
       const purchase = await res.json();
       this.setState({ purchase });
 
-      const { approvalRequired, approvalTx, depositTx, donationTx } = purchase;
+      const { approvalRequired, approvalTx, depositTx } = purchase;
       let txHash;
 
       // Approval phase
@@ -457,12 +442,9 @@ export class BuyPointsModal extends Component {
       }
 
       // Deposit phase
-      const finalTx = mode === 'donate' ? (donationTx || depositTx) : depositTx;
-      const actionLabel = mode === 'donate' ? 'DONATION' : 'DEPOSIT';
-
       try {
-        this.setState({ statusMessage: `Please sign the ${actionLabel} in your wallet...`, statusPhase: 'deposit', statusProgress: 65 });
-        txHash = await this._sendTransaction(finalTx);
+        this.setState({ statusMessage: 'Please sign the PAYMENT in your wallet...', statusPhase: 'deposit', statusProgress: 65 });
+        txHash = await this._sendTransaction(depositTx);
         this.setState({
           statusMessage: null, statusPhase: null, statusProgress: 0,
           txStatus: { status: 'submitted', txHash, message: 'Transaction submitted. Waiting for confirmation...' },
@@ -493,9 +475,7 @@ export class BuyPointsModal extends Component {
 
     // Check relevance
     if (txStatus.txHash !== txHash) {
-      if (originalTxHashes && originalTxHashes.includes(txStatus.txHash)) {
-        this.setState({ txStatus: { ...txStatus, confirmationTxHash: txHash } });
-      } else {
+      if (!(originalTxHashes && originalTxHashes.includes(txStatus.txHash))) {
         return;
       }
     }
@@ -518,7 +498,7 @@ export class BuyPointsModal extends Component {
 
     if (status === 'confirmed') {
       this.setState({
-        txStatus: { ...txStatus, status: 'Success!', receipt: receiptData, confirmationTxHash: receiptData.confirmation_tx_hash },
+        txStatus: { ...txStatus, status: 'Success!', receipt: receiptData },
         step: STEP.RECEIPT,
       });
     } else if (status === 'failed') {
@@ -542,7 +522,6 @@ export class BuyPointsModal extends Component {
         ...txStatus,
         status: data.status,
         receipt: data.receipt,
-        confirmationTxHash: data.receipt?.confirmation_tx_hash || data.receipt?.confirmationTxHash,
         failureReason: data.failureReason,
       };
       if (data.status === 'CONFIRMED' && data.receipt) {
@@ -564,7 +543,7 @@ export class BuyPointsModal extends Component {
   }
 
   _selectAsset(asset, type) {
-    this.setState({ selectedAsset: { ...asset, type }, amount: '', quote: null, donateQuote: null, mode: 'contribute', referenceQuote: null });
+    this.setState({ selectedAsset: { ...asset, type }, amount: '', quote: null, referenceQuote: null });
     this._goStep(STEP.AMOUNT);
     if (type === 'token') this._fetchReferenceQuote({ ...asset, type });
   }
@@ -577,7 +556,6 @@ export class BuyPointsModal extends Component {
         type: 'token',
         assetAddress: asset.address,
         amount: refAmount,
-        mode: 'contribute',
         userWalletAddress: this.state.walletAddress || undefined,
       });
       if (!res.ok) { this.setState({ referenceLoading: false }); return; }
@@ -604,12 +582,6 @@ export class BuyPointsModal extends Component {
     if (tokenAmount >= 1) return tokenAmount.toFixed(4);
     if (tokenAmount >= 0.0001) return tokenAmount.toFixed(6);
     return tokenAmount.toExponential(2);
-  }
-
-  _acceptDonateDeal() {
-    this.setState({ mode: 'donate', quote: null, donateQuote: null });
-    clearTimeout(this._quoteDebounce);
-    this._quoteDebounce = setTimeout(() => this._fetchQuote(), 50);
   }
 
   // ── Render: Step 1 — Asset Selection ────────────────────────
@@ -730,7 +702,7 @@ export class BuyPointsModal extends Component {
   // ── Render: Step 2 — Amount Input ───────────────────────────
 
   _renderAmountStep() {
-    const { selectedAsset, amount, quote, donateQuote, quoteLoading, mode, referenceQuote, referenceLoading } = this.state;
+    const { selectedAsset, amount, quote, quoteLoading, referenceQuote, referenceLoading } = this.state;
     const sym = selectedAsset ? (selectedAsset.symbol || selectedAsset.name) : '';
 
     const QUICK_TARGETS = [1000, 10000, 100000, 1000000];
@@ -749,7 +721,7 @@ export class BuyPointsModal extends Component {
                   if (!tokenAmt) return;
                   // strip commas from formatted large numbers before setting
                   const raw = tokenAmt.replace(/,/g, '');
-                  this.setState({ amount: raw, quote: null, donateQuote: null });
+                  this.setState({ amount: raw, quote: null });
                   clearTimeout(this._quoteDebounce);
                   this._quoteDebounce = setTimeout(() => this._fetchQuote(), 50);
                 },
@@ -775,15 +747,6 @@ export class BuyPointsModal extends Component {
         )
         : h('div', { style: 'color:var(--text-secondary);font-size:var(--fs-base)' }, 'Enter an amount to get a quote.');
 
-    // Donate deal banner
-    const isEligible = mode === 'contribute' && quote && donateQuote && donateQuote.pointsCredited > quote.pointsCredited;
-    const donateBanner = isEligible
-      ? h('div', { className: 'bp-donate-banner' },
-        h('span', { style: 'font-weight:bold' }, `Get +${donateQuote.pointsCredited - quote.pointsCredited} more points by donating `),
-        h(AsyncButton, { variant: 'secondary', onclick: this.bind(this._acceptDonateDeal), label: 'Accept Deal' })
-      )
-      : null;
-
     return h('div', null,
       h('div', { className: 'bp-selected' }, `Selected: ${sym}`),
       quickSelect,
@@ -795,7 +758,6 @@ export class BuyPointsModal extends Component {
         oninput: this.bind(this._onAmountInput),
       }),
       quoteBody,
-      donateBanner,
       h('div', { className: 'bp-nav' },
         h(AsyncButton, { variant: 'secondary', onclick: () => this._goStep(STEP.ASSET), label: 'Back' }),
         h(AsyncButton, { disabled: !quote, onclick: () => this._goStep(STEP.REVIEW), label: 'Review Purchase' })
@@ -806,7 +768,7 @@ export class BuyPointsModal extends Component {
   // ── Render: Step 3 — Review ─────────────────────────────────
 
   _renderReviewStep() {
-    const { selectedAsset, amount, quote, mode } = this.state;
+    const { selectedAsset, amount, quote } = this.state;
     if (!quote) return h('div', { style: 'color:var(--text-secondary)' }, 'No quote available.');
 
     const q = quote;
@@ -814,32 +776,24 @@ export class BuyPointsModal extends Component {
     const toNum = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 
     const estimatedGas = toNum(b.estimatedGasUsd ?? q.fees?.estimatedGasUsd);
-    const showGasRow = mode !== 'donate';
-    let userReceives = toNum(b.userReceivesUsd ?? q.userReceivesUsd ?? q.usdValue?.netAfterFundingRate ?? q.usdValue?.gross);
-    if (!showGasRow && estimatedGas) userReceives += estimatedGas;
-
+    const userReceives = toNum(b.userReceivesUsd ?? q.userReceivesUsd ?? q.usdValue?.netAfterFundingRate ?? q.usdValue?.gross);
     const sym = selectedAsset.symbol || selectedAsset.name;
-    const ctaLabel = mode === 'donate' ? 'Donate & Buy Points' : 'Buy Points';
 
     return h('div', null,
       h('div', { className: 'bp-review' },
         h('div', null, `Asset: ${sym}`),
         h('div', null, `Amount: ${amount}`),
-        h('div', null, 'Points: ', h('b', { style: 'color:var(--accent)' }, q.pointsCredited),
-          mode === 'donate' ? h('span', { style: 'font-size:var(--fs-xs);color:var(--accent);margin-left:6px' }, '(boosted)') : null
-        ),
+        h('div', null, 'Points: ', h('b', { style: 'color:var(--accent)' }, q.pointsCredited)),
         h('hr', { style: 'border-color:var(--border);margin:12px 0' }),
         h('div', null, 'Gross USD: ', h('b', null, `$${safeToFixed(b.grossUsd ?? q.usdValue?.gross)}`)),
         h('div', null, 'Funding Rate Deduction: ', h('b', null, `-$${safeToFixed(b.fundingRateDeduction ?? 0)}`)),
         h('div', null, 'Net After Funding Rate: ', h('b', null, `$${safeToFixed(b.netAfterFundingRate ?? q.usdValue?.netAfterFundingRate)}`)),
-        showGasRow
-          ? h('div', null, 'Estimated Gas Fee: ', h('b', null, `-$${safeToFixed(estimatedGas)}`))
-          : h('div', null, 'Estimated Gas Fee: ', h('b', null, '$0 (covered for donations)')),
+        h('div', null, 'Estimated Gas Fee: ', h('b', null, `-$${safeToFixed(estimatedGas)}`)),
         h('div', { style: 'font-weight:bold;color:var(--accent);margin-top:8px' }, `User Receives: $${safeToFixed(userReceives)}`)
       ),
       h('div', { className: 'bp-nav' },
         h(AsyncButton, { variant: 'secondary', onclick: () => this._goStep(STEP.AMOUNT), label: 'Back' }),
-        h(AsyncButton, { onclick: this.bind(this._initiatePurchase), label: ctaLabel })
+        h(AsyncButton, { onclick: this.bind(this._initiatePurchase), label: 'Buy Points' })
       )
     );
   }
@@ -889,15 +843,6 @@ export class BuyPointsModal extends Component {
           h(CopyButton, { text: txStatus.txHash })
         )
       ),
-      txStatus.confirmationTxHash
-        ? h('div', { className: 'bp-hash-box' },
-          h('div', { style: 'font-size:var(--fs-xs);color:var(--text-label);margin-bottom:4px' }, 'Confirmation Tx'),
-          h('div', { style: 'display:flex;align-items:center;gap:8px' },
-            h('code', { style: 'font-size:var(--fs-base);word-break:break-all;color:var(--accent);flex:1;font-family:var(--ff-mono)' }, txStatus.confirmationTxHash),
-            h(CopyButton, { text: txStatus.confirmationTxHash })
-          )
-        )
-        : null,
       txStatus.failureReason
         ? h('div', { style: 'background:var(--danger-dim);color:var(--danger);padding:12px;border-radius:0;margin-top:12px;border:var(--border-width) solid var(--danger)' }, txStatus.failureReason)
         : null,
@@ -931,13 +876,6 @@ export class BuyPointsModal extends Component {
         h('code', { style: 'font-size:var(--fs-xs);word-break:break-all;color:var(--accent);font-family:var(--ff-mono)' }, txStatus.txHash),
         h(CopyButton, { text: txStatus.txHash })
       ),
-      r.confirmation_tx_hash
-        ? h('div', { style: 'margin-top:6px' },
-          h('span', { style: 'color:var(--text-secondary);font-size:var(--fs-xs)' }, 'Confirmation Tx: '),
-          h('code', { style: 'font-size:var(--fs-xs);word-break:break-all;color:var(--accent);font-family:var(--ff-mono)' }, r.confirmation_tx_hash),
-          h(CopyButton, { text: r.confirmation_tx_hash })
-        )
-        : null,
       h('div', { className: 'bp-nav', style: 'margin-top:20px' },
         h(AsyncButton, { onclick: () => this.props.onClose?.(), label: 'Close' })
       )
@@ -986,12 +924,6 @@ export class BuyPointsModal extends Component {
       }
       .bp-input:focus { border-color:var(--accent-border); }
       .bp-quote { background:var(--surface-1); padding:12px; border-radius:0; font-size:var(--fs-base); line-height:1.8; }
-      .bp-donate-banner {
-        display:flex; align-items:center; justify-content:space-between; gap:12px;
-        background:var(--surface-3); padding:10px 14px; border-radius:0; margin-top:10px; color:var(--text-primary);
-        border:var(--border-width) solid var(--border);
-      }
-
       /* Review */
       .bp-review { background:var(--surface-1); padding:16px; border-radius:0; font-size:var(--fs-md); line-height:1.8; }
 

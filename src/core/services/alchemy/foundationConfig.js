@@ -1,12 +1,14 @@
-// Chain-aware Foundation.sol deployment addresses
+// Chain-aware Foundation.sol deployment addresses (legacy)
 // Keyed by chainId (string).
 const FOUNDATION_ADDRESSES = {
-  // Sepolia testnet
-  //'11155111': '0x01152E6f5177f2c4089612954b410820db946B5E',
   '1': '0x01152530028bd834EDbA9744885A882D025D84F6',
-  //'42161': '0x01152E6f5177f2c4089612954b410820db946B5E',
-  //'8453': '0x01152E6f5177f2c4089612954b410820db946B5E',
-  // Add mainnet and other networks when deployed
+};
+
+// Chain-aware CreditVault deployment addresses
+// Keyed by chainId (string).
+const CREDIT_VAULT_ADDRESSES = {
+  '1': '0x00000001152D633eb2AC3Cf91eac9994aEEFc021',
+  '8453': '0x00000001152D633eb2AC3Cf91eac9994aEEFc021',
 };
 
 // Chain-aware CharteredFund beacon addresses
@@ -82,6 +84,14 @@ function getFoundationAddress(chainId) {
   return addr;
 }
 
+function getCreditVaultAddress(chainId) {
+  const addr = CREDIT_VAULT_ADDRESSES[String(chainId)] || null;
+  if (!addr) {
+    throw new Error(`No CreditVault deployment configured for chainId=${chainId}`);
+  }
+  return addr;
+}
+
 /**
  * Gets the CharteredFund beacon address for a given chain.
  * @param {string|number} chainId - The chain ID to get the beacon address for.
@@ -98,8 +108,10 @@ function getCharterBeaconAddress(chainId) {
 
 module.exports = {
   FOUNDATION_ADDRESSES,
+  CREDIT_VAULT_ADDRESSES,
   CHARTER_BEACON_ADDRESSES,
   getFoundationAddress,
+  getCreditVaultAddress,
   getCharterBeaconAddress,
   CHAIN_NAMES,
   RPC_ENV_VARS,

@@ -453,7 +453,8 @@ function createAdminApi(dependencies) {
       const foundationBalances = await Promise.all(
         tokenAddresses.map(async (tokenAddress) => {
           try {
-            const balance = await creditService.getProtocolEscrowBalance(tokenAddress);
+            // CreditVault has no onchain custody model — tokens are held directly
+            const balance = { userOwned: 0n, escrow: 0n, protocolEscrow: 0n };
             
             // Get token metadata
             let symbol = 'N/A', decimals = 18, name = '';
