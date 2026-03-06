@@ -244,9 +244,16 @@ export class UploadWindowBody extends Component {
       },
     },
       h('input', {
-        type: 'file', accept: 'image/*', style: 'display:none',
+        type: 'file', accept: 'image/*', multiple: true, style: 'display:none',
         ref: (el) => { this._fileInput = el; },
-        onchange: (e) => this._handleFile(e.target.files[0]),
+        onchange: (e) => {
+          const files = Array.from(e.target.files || []);
+          if (files.length > 1) {
+            const imageFiles = files.filter(f => f.type.startsWith('image/'));
+            if (imageFiles.length) { this.setState({ batchOffer: imageFiles }); return; }
+          }
+          this._handleFile(files[0]);
+        },
       }),
       h('div', { className: 'nwb-upload-zone-label' }, dragOver ? 'drop image' : 'drop or click'),
       uploadError ? h('div', { className: 'nwb-upload-zone-error' }, uploadError) : null,
