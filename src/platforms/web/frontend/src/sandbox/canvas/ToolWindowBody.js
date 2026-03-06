@@ -160,7 +160,7 @@ export class ToolWindowBody extends Component {
 export class UploadWindowBody extends Component {
   constructor(props) {
     super(props);
-    this.state = { uploading: false, uploadError: null, dragOver: false };
+    this.state = { uploading: false, uploadError: null, dragOver: false, batchOffer: null };
     this._fileInput = null;
   }
 
@@ -185,8 +185,35 @@ export class UploadWindowBody extends Component {
 
   render() {
     const { win } = this.props;
-    const { uploading, uploadError, dragOver } = this.state;
+    const { uploading, uploadError, dragOver, batchOffer } = this.state;
     const url = win.output?.url;
+
+    if (batchOffer) {
+      return h('div', { className: 'nwb-root nwb-upload-zone' },
+        h('div', { className: 'nwb-upload-zone-label' }, `${batchOffer.length} images selected`),
+        h('div', { style: 'display:flex;gap:8px;margin-top:8px;' },
+          h('button', {
+            className: 'nwb-upload-zone-btn',
+            onclick: () => {
+              const [first] = batchOffer;
+              this.setState({ batchOffer: null });
+              this._handleFile(first);
+            },
+          }, 'Add one'),
+          h('button', {
+            className: 'nwb-upload-zone-btn nwb-upload-zone-btn--primary',
+            onclick: () => {
+              const files = batchOffer;
+              this.setState({ batchOffer: null });
+              const canvasTool = window.sandboxCanvas?._getLastActiveTool?.() || null;
+              window.dispatchEvent(new CustomEvent('sandbox:openBatch', {
+                detail: { files, initialTool: canvasTool }
+              }));
+            },
+          }, 'Run as Batch \u2192'),
+        )
+      );
+    }
 
     if (url) {
       return h('div', { className: 'nwb-root nwb-upload' },
@@ -206,7 +233,15 @@ export class UploadWindowBody extends Component {
       onclick: (e) => { e.stopPropagation(); this._fileInput?.click(); },
       ondragover: (e) => { e.preventDefault(); e.stopPropagation(); this.setState({ dragOver: true }); },
       ondragleave: () => this.setState({ dragOver: false }),
-      ondrop: (e) => { e.preventDefault(); e.stopPropagation(); this.setState({ dragOver: false }); this._handleFile(e.dataTransfer.files[0]); },
+      ondrop: (e) => {
+        e.preventDefault(); e.stopPropagation(); this.setState({ dragOver: false });
+        const files = Array.from(e.dataTransfer?.files || []);
+        if (files.length > 1) {
+          const imageFiles = files.filter(f => f.type.startsWith('image/'));
+          if (imageFiles.length) { this.setState({ batchOffer: imageFiles }); return; }
+        }
+        this._handleFile(files[0]);
+      },
     },
       h('input', {
         type: 'file', accept: 'image/*', style: 'display:none',
