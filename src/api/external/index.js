@@ -20,6 +20,7 @@ const { authenticateUser, authenticateUserOrApiKey } = require('../../platforms/
 const { createPointsApi, createRatesApi } = require('./economy');
 const createSpellsApi = require('./spells');
 const createCookApiRouter = require('./cookApi');
+const createBatchApiRouter = require('./batchApi');
 const createReviewQueueApiRouter = require('./reviewQueueApi');
 const createWorkspacesApiRouter = require('./workspacesApi');
 const createPaymentsApi = require('./payments/paymentsApi');
@@ -520,6 +521,15 @@ function initializeExternalApi(dependencies) {
     logger.debug('External Cook API router mounted (collections & cooks endpoints).');
   } else {
     logger.warn('External Cook API router not mounted due to missing dependencies.');
+  }
+
+  // Mount the Batch API router (JWT/API key protected)
+  const batchApiRouter = createBatchApiRouter(dependencies);
+  if (batchApiRouter) {
+    externalApiRouter.use('/', authenticateUserOrApiKey, batchApiRouter);
+    logger.debug('External Batch API router mounted (batch endpoints).');
+  } else {
+    logger.warn('External Batch API router not mounted due to missing dependencies.');
   }
   const reviewQueueRouter = createReviewQueueApiRouter({ ...dependencies, authenticateUserOrApiKey });
   if (reviewQueueRouter) {

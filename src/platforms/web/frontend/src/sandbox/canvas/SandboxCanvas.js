@@ -191,16 +191,25 @@ export class SandboxCanvas extends Component {
     this._persist();
   }
 
-  _addConnection(fromWindowId, toWindowId, type, toParam) {
+  _addConnection(fromWindowId, toWindowId, outputKey, toParam, dataType) {
+    dataType = dataType || outputKey;
+    // Block chaining from batch-connected nodes — not yet supported
+    const fromWin = this.state.windows.get(fromWindowId);
+    if (fromWin?.type !== 'upload' && Object.values(fromWin?.parameterMappings || {}).some(
+      m => m?.type === 'nodeOutput' && m?.outputKey === 'batch'
+    )) {
+      console.info('[Canvas] Downstream chaining from batch-connected nodes is not yet supported.');
+      return;
+    }
     const connections = new Map(this.state.connections);
     const id = `conn-${Math.random().toString(36).substr(2, 9)}`;
-    connections.set(id, { id, fromWindowId, toWindowId, fromOutput: type, toInput: toParam, type });
+    connections.set(id, { id, fromWindowId, toWindowId, fromOutput: outputKey, toInput: toParam, type: dataType });
 
     const windows = new Map(this.state.windows);
     const toWin = windows.get(toWindowId);
     if (toWin) {
       const mappings = { ...(toWin.parameterMappings || {}) };
-      mappings[toParam] = { type: 'nodeOutput', nodeId: fromWindowId, outputKey: type };
+      mappings[toParam] = { type: 'nodeOutput', nodeId: fromWindowId, outputKey };
       windows.set(toWindowId, { ...toWin, parameterMappings: mappings });
     }
 
@@ -446,7 +455,9 @@ export class SandboxCanvas extends Component {
     if (!winEl || !this._rootEl) return null;
 
     const anchorEl = anchorType === 'output'
-      ? winEl.querySelector('.nw-anchor-output')
+      ? (paramKey
+          ? (winEl.querySelector(`.nw-anchor-output[data-output-key="${paramKey}"]`) || winEl.querySelector('.nw-anchor-output'))
+          : winEl.querySelector('.nw-anchor-output'))
       : winEl.querySelector(`.nw-anchor-input[data-param="${paramKey}"]`);
 
     if (!anchorEl) return null;
@@ -504,10 +515,10 @@ export class SandboxCanvas extends Component {
     document.addEventListener('mouseup', this._onMouseUp);
   }
 
-  _startConnectionDrag(windowId, outputType, event) {
+  _startConnectionDrag(windowId, outputKey, dataType, event) {
     const pos = this.screenToWorkspace(event.clientX, event.clientY);
     this.setState({
-      activeConnection: { fromWindowId: windowId, outputType, mouseX: pos.x, mouseY: pos.y }
+      activeConnection: { fromWindowId: windowId, outputKey, outputType: dataType || outputKey, mouseX: pos.x, mouseY: pos.y }
     });
     document.addEventListener('mousemove', this._onMouseMove);
     document.addEventListener('mouseup', this._onMouseUp);
@@ -515,13 +526,13 @@ export class SandboxCanvas extends Component {
 
   // ── Mobile two-tap connections ────────────────────────────
 
-  _onMobileConnectStart(fromWindowId, outputType) {
+  _onMobileConnectStart(fromWindowId, outputKey, dataType) {
     // Tapping same anchor again cancels
     const { mobileConnecting } = this.state;
     if (mobileConnecting?.fromWindowId === fromWindowId) {
       this.setState({ mobileConnecting: null });
     } else {
-      this.setState({ mobileConnecting: { fromWindowId, outputType } });
+      this.setState({ mobileConnecting: { fromWindowId, outputKey, outputType: dataType || outputKey } });
     }
   }
 
@@ -532,7 +543,7 @@ export class SandboxCanvas extends Component {
       this.setState({ mobileConnecting: null });
       return;
     }
-    this._addConnection(mobileConnecting.fromWindowId, toWindowId, mobileConnecting.outputType, paramKey);
+    this._addConnection(mobileConnecting.fromWindowId, toWindowId, mobileConnecting.outputKey || mobileConnecting.outputType, paramKey, mobileConnecting.outputType);
     this.setState({ mobileConnecting: null });
   }
 
@@ -601,7 +612,7 @@ export class SandboxCanvas extends Component {
         const toWindowEl = inputAnchor.closest('.nw-root');
         if (toWindowEl && toWindowEl.id !== activeConnection.fromWindowId) {
           const toParam = inputAnchor.dataset.param;
-          this._addConnection(activeConnection.fromWindowId, toWindowEl.id, activeConnection.outputType, toParam);
+          this._addConnection(activeConnection.fromWindowId, toWindowEl.id, activeConnection.outputKey || activeConnection.outputType, toParam, activeConnection.outputType);
         }
         this.setState({ activeConnection: null });
       } else {
@@ -611,6 +622,7 @@ export class SandboxCanvas extends Component {
           activeConnection: null,
           pendingAnchorDrop: {
             fromWindowId: activeConnection.fromWindowId,
+            outputKey: activeConnection.outputKey || activeConnection.outputType,
             outputType: activeConnection.outputType,
             workspacePos,
             screenX: e.clientX,
@@ -673,14 +685,14 @@ export class SandboxCanvas extends Component {
     const { pendingAnchorDrop } = this.state;
     if (!pendingAnchorDrop) return;
 
-    const { fromWindowId, outputType, workspacePos } = pendingAnchorDrop;
+    const { fromWindowId, outputKey, outputType, workspacePos } = pendingAnchorDrop;
 
     // Offset slightly right of drop point so it doesn't overlap the source
     const pos = { x: workspacePos.x + 80, y: workspacePos.y };
     const newWindowId = this.addToolWindow(tool, pos);
 
     // Auto-connect: source output → new window's matching input
-    this._addConnection(fromWindowId, newWindowId, outputType, paramKey);
+    this._addConnection(fromWindowId, newWindowId, outputKey || outputType, paramKey, outputType);
 
     this.setState({ pendingAnchorDrop: null });
   }
@@ -711,17 +723,24 @@ export class SandboxCanvas extends Component {
         const mapping = mappings[key];
         if (mapping?.type === 'nodeOutput') {
           const sourceWin = this.state.windows.get(mapping.nodeId);
-          if (sourceWin?.output) {
+          // Batch anchor: direct execution not supported — use "Run as Batch" on the upload node
+          if (mapping.outputKey === 'batch') {
+            throw new Error(`This input is wired to a batch feed. Use "Run as Batch" on the upload node.`);
+          }
+          // Multi-output: find the specific slot by outputKey; fall back to single output
+          const slotOutput = sourceWin?.outputs?.find?.(o => o.key === mapping.outputKey);
+          const effectiveOutput = slotOutput || sourceWin?.output;
+          if (effectiveOutput) {
             let resolved;
-            if (sourceWin.output.type === 'image') resolved = sourceWin.output.url;
-            else if (sourceWin.output.type === 'text') {
+            if (effectiveOutput.type === 'image') resolved = effectiveOutput.url;
+            else if (effectiveOutput.type === 'text') {
               // Prefer top-level .text; fall back to nested .data.text (old adapter format)
-              resolved = sourceWin.output.text
-                ?? (Array.isArray(sourceWin.output.data?.text)
-                  ? sourceWin.output.data.text[0]
-                  : sourceWin.output.data?.text);
+              resolved = effectiveOutput.text
+                ?? (Array.isArray(effectiveOutput.data?.text)
+                  ? effectiveOutput.data.text[0]
+                  : effectiveOutput.data?.text);
             }
-            else resolved = sourceWin.output.value !== undefined ? sourceWin.output.value : sourceWin.output;
+            else resolved = effectiveOutput.value !== undefined ? effectiveOutput.value : effectiveOutput;
             if ((resolved === '' || resolved === null || resolved === undefined) && param.required) {
               const label = param.name || key;
               throw new Error(`'${label}' is connected but the source node has no value — enter text first`);
@@ -1316,6 +1335,16 @@ export class SandboxCanvas extends Component {
     this._persist();
   }
 
+  /** Set multiple named outputs on an upload node (one per uploaded file). */
+  updateWindowOutputs(windowId, outputs) {
+    const windows = new Map(this.state.windows);
+    const win = windows.get(windowId);
+    if (!win) return;
+    windows.set(windowId, { ...win, outputs, output: null, outputLoaded: true, outputVersions: [], currentVersionIndex: -1 });
+    this.setState({ windows });
+    this._persist();
+  }
+
   addEffectWindow(tool, position) {
     const toolPos   = { x: position?.x ?? 200, y: position?.y ?? 200 };
     const uploadPos = { x: toolPos.x - 380, y: toolPos.y };
@@ -1406,7 +1435,10 @@ export class SandboxCanvas extends Component {
 
     switch (win.type) {
       case 'spell':          return [h(SpellWindowBody,           { key: 'body', ...commonProps })];
-      case 'upload':         return [h(UploadWindowBody,          { key: 'body', win })];
+      case 'upload': {
+        const outConns = [...this.state.connections.values()].filter(c => c.fromWindowId === win.id);
+        return [h(UploadWindowBody, { key: 'body', win, connections: outConns })];
+      }
       case 'primitive':      return [h(PrimitiveWindowBody,       { key: 'body', win, onOutputChange: (wid, out) => this._onPrimitiveChange(wid, out) })];
       case 'collectionTest': return [h(CollectionTestWindowBody,  { key: 'body', win, compact, onRunTest: (wid, params) => this._executeCollectionTestWindow(wid, params) })];
       case 'tool':
@@ -1536,12 +1568,12 @@ export class SandboxCanvas extends Component {
             bodyContent: this._renderWindowBody(win, compact),
             onDragStart: (wid, ox, oy) => this._startWindowDrag(wid, ox, oy),
             onClose: (wid) => this._removeWindow(wid),
-            onAnchorDragStart: (wid, type, e) => this._startConnectionDrag(wid, type, e),
+            onAnchorDragStart: (wid, outputKey, dataType, e) => this._startConnectionDrag(wid, outputKey, dataType, e),
             onVersionChange: (wid, idx) => this._onVersionChange(wid, idx),
             onWindowClick: (wid, pos) => this._onWindowClick(wid, pos),
             onClone: (wid) => this._cloneWindow(wid),
             mobileConnecting,
-            onMobileConnectStart: (wid, type) => this._onMobileConnectStart(wid, type),
+            onMobileConnectStart: (wid, outputKey, dataType) => this._onMobileConnectStart(wid, outputKey, dataType),
             onMobileConnectComplete: (wid, pk) => this._onMobileConnectComplete(wid, pk),
             onMobileConnectCancel: () => this._onMobileConnectCancel(),
           })

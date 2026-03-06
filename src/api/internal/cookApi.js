@@ -1694,7 +1694,138 @@ function createCookApi(deps = {}) {
     }
   });
 
+  // --- Batch Mode Routes ---
+
+  // POST /internal/cook/batch/start
+  // Body: { mode: 'batch', userId, images, toolId?, spellId?, paramOverrides? }
+  router.post('/batch/start', async (req, res) => {
+    try {
+      const { userId, images, toolId, spellId, paramOverrides } = req.body || {};
+      if (!userId) return res.status(400).json({ error: 'userId required' });
+      if (!Array.isArray(images) || images.length === 0) {
+        return res.status(400).json({ error: 'images array required' });
+      }
+      if (!toolId && !spellId) {
+        return res.status(400).json({ error: 'toolId or spellId required' });
+      }
+
+      // Generate a collectionId for the batch run
+      const collectionId = `batch-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+      // Generate a cookId
+      if (!cooksDb) return res.status(503).json({ error: 'cooksDb-unavailable' });
+      const cook = await cooksDb.createCook({ collectionId, initiatorAccountId: userId, targetSupply: images.length, mode: 'batch' });
+      const cookId = cook._id;
+
+      const result = await CookOrchestratorService.startCook({
+        mode: 'batch',
+        collectionId,
+        userId,
+        cookId,
+        toolId: toolId || null,
+        spellId: spellId || null,
+        images,
+        paramOverrides: paramOverrides || {},
+      });
+
+      logger.info(`[CookAPI] Started batch cook. collectionId=${collectionId} userId=${userId} total=${result.total}`);
+      return res.json({ collectionId, cookId, total: result.total, queued: result.queued, mode: 'batch' });
+    } catch (err) {
+      logger.error('[CookAPI] batch start error', err);
+      return res.status(500).json({ error: 'batch-start-failed' });
+    }
+  });
+
+  // GET /internal/cook/batch/:id
+  router.get('/batch/:id', async (req, res) => {
+    try {
+      const batchId = req.params.id;
+      if (!cooksDb) return res.status(503).json({ error: 'cooksDb-unavailable' });
+
+      const client = await getCachedClient();
+      const dbName = process.env.MONGO_DB_NAME || 'noema';
+      const db = client.db(dbName);
+      const outputsCol = db.collection('generationOutputs');
+
+      const cooksCol = db.collection('cooks');
+      const [outputs, cookDoc] = await Promise.all([
+        outputsCol.find(
+          { 'metadata.collectionId': batchId, 'metadata.mode': 'batch' },
+          { projection: { status: 1, 'metadata.batchImageUrl': 1, 'metadata.pieceIndex': 1, outputs: 1, costUsd: 1, durationMs: 1, error: 1 } }
+        ).toArray(),
+        cooksCol.findOne({ collectionId: batchId }, { projection: { status: 1, targetSupply: 1 } }),
+      ]);
+
+      const formatted = outputs.map(o => ({
+        pieceIndex: o.metadata?.pieceIndex,
+        sourceUrl: o.metadata?.batchImageUrl,
+        status: o.status,
+        resultUrl: o.outputs?.image || o.outputs?.url || null,
+        costUsd: o.costUsd || null,
+        durationMs: o.durationMs || null,
+        error: o.error || null,
+      }));
+
+      return res.json({
+        collectionId: batchId,
+        cookStatus: cookDoc?.status || 'running',
+        total: cookDoc?.targetSupply || outputs.length,
+        outputs: formatted,
+      });
+    } catch (err) {
+      logger.error('[CookAPI] batch status error', err);
+      return res.status(500).json({ error: 'batch-status-failed' });
+    }
+  });
+
+  // POST /internal/cook/batch/:id/zip
+  router.post('/batch/:id/zip', async (req, res) => {
+    try {
+      const batchId = req.params.id;
+      const { userId } = req.body || {};
+
+      const client = await getCachedClient();
+      const dbName = process.env.MONGO_DB_NAME || 'noema';
+      const db = client.db(dbName);
+      const outputsCol = db.collection('generationOutputs');
+
+      const outputs = await outputsCol.find(
+        { 'metadata.collectionId': batchId, 'metadata.mode': 'batch', status: 'completed' },
+        { projection: { 'outputs': 1, 'metadata.pieceIndex': 1 } }
+      ).toArray();
+
+      if (!outputs.length) return res.status(404).json({ error: 'No completed outputs found' });
+
+      const formattedOutputs = outputs.map(o => ({
+        resultUrl: o.outputs?.image || o.outputs?.url,
+        pieceIndex: o.metadata?.pieceIndex,
+      })).filter(o => o.resultUrl);
+
+      // Lazy-load BatchZipService to avoid circular deps
+      const BatchZipService = require('../../core/services/batch/BatchZipService');
+      const { zipUrl, expiresAt } = await BatchZipService.buildZip({ batchId, outputs: formattedOutputs });
+      return res.json({ zipUrl, expiresAt });
+    } catch (err) {
+      logger.error('[CookAPI] batch zip error', err);
+      return res.status(500).json({ error: err.message || 'batch-zip-failed' });
+    }
+  });
+
+  // POST /internal/cook/batch/:id/promote
+  router.post('/batch/:id/promote', async (req, res) => {
+    try {
+      const batchId = req.params.id;
+      const { userId } = req.body || {};
+      if (!userId) return res.status(400).json({ error: 'userId required' });
+
+      const result = await CookOrchestratorService.promoteBatch(batchId, userId);
+      return res.json(result);
+    } catch (err) {
+      logger.error('[CookAPI] batch promote error', err);
+      return res.status(500).json({ error: err.message || 'batch-promote-failed' });
+    }
+  });
+
   return router;
 }
 
-module.exports = { createCookApi }; 
+module.exports = { createCookApi };

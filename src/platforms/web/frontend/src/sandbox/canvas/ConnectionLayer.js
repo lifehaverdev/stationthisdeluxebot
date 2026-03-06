@@ -28,10 +28,10 @@ export class ConnectionLayer extends Component {
 
   // Read anchor center from the live DOM, converted to workspace coords.
   // getAnchorPos(windowId, type, paramKey?) is passed from SandboxCanvas.
-  _getOutputAnchorPos(win, getAnchorPos) {
+  _getOutputAnchorPos(win, getAnchorPos, outputKey) {
     if (!win) return { x: 0, y: 0 };
     if (getAnchorPos) {
-      const pos = getAnchorPos(win.id, 'output');
+      const pos = getAnchorPos(win.id, 'output', outputKey);
       if (pos) return pos;
     }
     // Fallback: approximate from stored position + default size
@@ -128,7 +128,7 @@ export class ConnectionLayer extends Component {
       const toWin = windows.get(conn.toWindowId);
       if (!fromWin || !toWin) return [];
 
-      const from = this._getOutputAnchorPos(fromWin, getAnchorPos);
+      const from = this._getOutputAnchorPos(fromWin, getAnchorPos, conn.fromOutput);
       const to = this._getInputAnchorPos(toWin, conn.toInput, getAnchorPos);
       const d = this._bezier(from.x, from.y, to.x, to.y);
 
@@ -150,7 +150,7 @@ export class ConnectionLayer extends Component {
     if (activeConnection) {
       const fromWin = windows.get(activeConnection.fromWindowId);
       if (fromWin) {
-        const from = this._getOutputAnchorPos(fromWin, getAnchorPos);
+        const from = this._getOutputAnchorPos(fromWin, getAnchorPos, activeConnection.outputKey || activeConnection.outputType);
         const d = this._bezier(from.x, from.y, activeConnection.mouseX, activeConnection.mouseY);
         tempPath = h('path', { d, className: 'cl-path pending' });
       }

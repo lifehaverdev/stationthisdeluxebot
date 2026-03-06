@@ -204,7 +204,21 @@ class CookProjectionUpdater {
     if (existing) {
       await this.statusCol.replaceOne({ _id: existing._id }, newStatus);
     } else if (upsert) {
-      await this.statusCol.insertOne(newStatus);
+      try {
+        await this.statusCol.insertOne(newStatus);
+      } catch (err) {
+        if (err.code === 11000) {
+          // Race: another concurrent event already inserted — fall back to update.
+          // insertOne mutates newStatus with _id in-place; strip it before $set.
+          const { _id, ...statusFields } = newStatus;
+          await this.statusCol.updateOne(
+            { 'key.collectionId': evt.collectionId, 'key.userId': evt.userId },
+            { $set: { ...statusFields, updatedAt: new Date() } }
+          );
+        } else {
+          throw err;
+        }
+      }
     }
   }
 

@@ -121,17 +121,17 @@ export class WindowRenderer extends Component {
     this.props.onClone?.(this.props.win.id);
   }
 
-  _onOutputAnchorDown(e, outputType) {
+  _onOutputAnchorDown(e, outputKey, dataType) {
     e.stopPropagation();
     e.preventDefault();
-    this.props.onAnchorDragStart?.(this.props.win.id, outputType, e);
+    this.props.onAnchorDragStart?.(this.props.win.id, outputKey, dataType, e);
   }
 
-  _onOutputAnchorTap(e, outputType) {
+  _onOutputAnchorTap(e, outputKey, dataType) {
     e.preventDefault();
     e.stopPropagation();
-    this.setState({ tapLabel: 'output' });
-    this.props.onMobileConnectStart?.(this.props.win.id, outputType);
+    this.setState({ tapLabel: outputKey });
+    this.props.onMobileConnectStart?.(this.props.win.id, outputKey, dataType);
   }
 
   _onInputAnchorTap(e, paramKey) {
@@ -215,7 +215,48 @@ export class WindowRenderer extends Component {
         pointer-events: auto;
       }
 
-      /* ── Output anchor (right side) ─────────────── */
+      /* ── Output anchors (right side) ─────────────── */
+      /* Multi-output wrapper — stacks anchors vertically, evenly spaced */
+      .nw-anchors-output {
+        position: absolute;
+        right: -7px;
+        top: 0;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-around;
+        align-items: center;
+        pointer-events: none;
+        z-index: 5;
+      }
+      .nw-anchors-output .nw-anchor-output {
+        position: static;
+        transform: none;
+        pointer-events: auto;
+      }
+      /* When a batch anchor is present, push individual anchors to top and batch to bottom */
+      .nw-anchors-output--has-batch {
+        justify-content: flex-start;
+        gap: 4px;
+        padding: 6px 0;
+      }
+      .nw-anchors-output--has-batch .nw-anchor-output--batch {
+        margin-top: auto;
+      }
+      /* Batch anchor: circular, accent-tinted */
+      .nw-anchor-output--batch {
+        border-radius: 50%;
+        background: var(--surface-3);
+        border-color: var(--accent-border, #4a90d9);
+        width: 16px;
+        height: 16px;
+      }
+      .nw-anchor-output--batch:hover,
+      .nw-segment-group--anchor:hover .nw-anchor-output--batch {
+        background: var(--accent-dim);
+        border-color: var(--accent);
+      }
+
       .nw-anchor-output {
         position: absolute;
         right: -7px;
@@ -361,6 +402,26 @@ export class WindowRenderer extends Component {
       .nw-anchor--label-active .nw-anchor-label {
         opacity: 1;
       }
+
+      /* ── Batch-connected node indication ── */
+      .nw-batch-badge {
+        font-family: var(--ff-mono);
+        font-size: 8px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--accent, #90caf9);
+        border: 1px solid var(--accent-border, #4a90d9);
+        padding: 1px 4px;
+        border-radius: 2px;
+        opacity: 0.8;
+        flex-shrink: 0;
+      }
+      /* Disabled output anchor — batch-connected nodes can't chain downstream */
+      .nw-anchor-output--disabled {
+        opacity: 0.2;
+        cursor: not-allowed;
+        pointer-events: none;
+      }
     `;
   }
 
@@ -373,6 +434,16 @@ export class WindowRenderer extends Component {
     const outputType = this._getOutputType();
     const inputAnchors = this._getInputAnchors();
     const outputKey = 'output';
+    // Detect batch-connected: any input mapping comes from a batch anchor
+    const isBatchConnected = win.type !== 'upload' && Object.values(win.parameterMappings || {}).some(
+      m => m?.type === 'nodeOutput' && m?.outputKey === 'batch'
+    );
+    // Batch anchor: surfaces on upload nodes with 2+ same-type outputs
+    const regularOutputs = win.outputs || [];
+    const batchSlot = (win.type === 'upload' && regularOutputs.length > 1
+      && regularOutputs.every(o => o.type === regularOutputs[0].type))
+      ? { key: 'batch', type: regularOutputs[0].type }
+      : null;
 
     return h('div', { className: cls, style, id: win.id },
 
@@ -385,6 +456,7 @@ export class WindowRenderer extends Component {
       // Header (drag handle + click = select connected component)
       h('div', { className: 'nw-header', onmousedown: this.bind(this._onHeaderMouseDown), ontouchstart: this.bind(this._onHeaderTouchStart), onclick: this.bind(this._onHeaderClick), ondblclick: this.bind(this._onHeaderDblClick) },
         h('span', { className: 'nw-title' }, this._getTitle()),
+        isBatchConnected ? h('span', { className: 'nw-batch-badge' }, 'batch') : null,
         h(CostDisplay, { windowId: win.id, initialCost: win.totalCostUsd ? { usd: win.totalCostUsd, points: 0, ms2: 0, cult: 0 } : null }),
         win.outputVersions?.length > 0
           ? h(VersionSelector, {
@@ -395,15 +467,44 @@ export class WindowRenderer extends Component {
         h('button', { className: 'nw-close', onclick: () => onClose?.(win.id) }, '\u00D7')
       ),
 
-      // Output anchor (right side)
-      h('div', {
-        className: `nw-anchor-output${tapLabel === outputKey ? ' nw-anchor--label-active' : ''}${isConnectSource ? ' nw-anchor-output--connecting' : ''}`,
-        'data-type': outputType,
-        onmousedown: (e) => this._onOutputAnchorDown(e, outputType),
-        ontouchstart: (e) => this._onOutputAnchorTap(e, outputType),
-      },
-        anchorIcon(outputType),
-        h('span', { className: 'nw-anchor-label' }, `${outputType}: output`)
+      // Output anchors (right side) — multi-slot for upload nodes, single otherwise
+      ...(regularOutputs.length > 0
+        ? [h('div', { className: `nw-anchors-output${batchSlot ? ' nw-anchors-output--has-batch' : ''}` },
+            ...regularOutputs.map((slot, idx) =>
+              h('div', {
+                key: slot.key,
+                className: `nw-anchor-output${tapLabel === slot.key ? ' nw-anchor--label-active' : ''}${isConnectSource ? ' nw-anchor-output--connecting' : ''}`,
+                'data-type': slot.type,
+                'data-output-key': slot.key,
+                onmousedown: (e) => this._onOutputAnchorDown(e, slot.key, slot.type),
+                ontouchstart: (e) => this._onOutputAnchorTap(e, slot.key, slot.type),
+              },
+                anchorIcon(slot.type),
+                h('span', { className: 'nw-anchor-label' }, `${slot.type} ${idx + 1}`)
+              )
+            ),
+            batchSlot ? h('div', {
+              key: 'batch',
+              className: `nw-anchor-output nw-anchor-output--batch${tapLabel === 'batch' ? ' nw-anchor--label-active' : ''}${isConnectSource ? ' nw-anchor-output--connecting' : ''}`,
+              'data-type': batchSlot.type,
+              'data-output-key': 'batch',
+              onmousedown: (e) => this._onOutputAnchorDown(e, 'batch', batchSlot.type),
+              ontouchstart: (e) => this._onOutputAnchorTap(e, 'batch', batchSlot.type),
+            },
+              anchorIcon(batchSlot.type),
+              h('span', { className: 'nw-anchor-label' }, 'batch')
+            ) : null
+          )]
+        : [h('div', {
+            className: `nw-anchor-output${isBatchConnected ? ' nw-anchor-output--disabled' : ''}${tapLabel === outputKey ? ' nw-anchor--label-active' : ''}${isConnectSource ? ' nw-anchor-output--connecting' : ''}`,
+            'data-type': outputType,
+            onmousedown: (e) => this._onOutputAnchorDown(e, outputType, outputType),
+            ontouchstart: (e) => this._onOutputAnchorTap(e, outputType, outputType),
+            title: isBatchConnected ? 'Downstream chaining not yet supported for batch nodes' : undefined,
+          },
+            anchorIcon(outputType),
+            h('span', { className: 'nw-anchor-label' }, `${outputType}: output`)
+          )]
       ),
 
       // Input anchors (left side)

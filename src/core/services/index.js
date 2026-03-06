@@ -23,6 +23,7 @@ const { longRunningApiClient } = require('../../utils/internalApiClient'); // Im
 
 // Import new StorageService
 const StorageService = require('./storageService');
+const BatchZipService = require('./batch/BatchZipService');
 
 // Import new Alchemy/Ethereum services
 const EthereumService = require('./alchemy/ethereumService');
@@ -96,6 +97,7 @@ async function initializeServices(options = {}) {
     const openAIService = new OpenAIService({ logger });
     const huggingfaceService = new HuggingFaceService({ logger });
     const storageService = new StorageService(logger);
+    BatchZipService.setStorageService(storageService);
     const stringService = new StringService({ logger });
     _tick('misc services');
 
@@ -248,9 +250,15 @@ async function initializeServices(options = {}) {
             logger.debug('[initializeServices] TokenRiskEngine initialized.');
           }
 
+          const { getCreditVaultAddress, CREDIT_VAULT_ADDRESSES } = require('./alchemy/foundationConfig');
+          const vaultAddr = CREDIT_VAULT_ADDRESSES[String(chainId)];
+          if (!vaultAddr) {
+            logger.info(`[initializeServices] No CreditVault deployed for chain ${chainId}, skipping CreditService.`);
+            continue;
+          }
           const creditServiceConfig = {
-            foundationAddress: getFoundationAddress(chainId),
-            foundationAbi: contracts.foundation.abi,
+            foundationAddress: vaultAddr,
+            foundationAbi: contracts.creditVault.abi,
             disableWebhookActions: process.env.DISABLE_CREDIT_WEBHOOK_ACTIONS === '1',
           };
           const creditDeps = {
@@ -258,6 +266,7 @@ async function initializeServices(options = {}) {
             creditLedgerDb: initializedDbServices.data.creditLedger,
             systemStateDb: initializedDbServices.data.systemState,
             priceFeedService,
+            nftPriceService,
             tokenRiskEngine,
             internalApiClient,
             userCoreDb: initializedDbServices.data.userCore,
@@ -265,9 +274,9 @@ async function initializeServices(options = {}) {
             walletLinkingService,
             webSocketService,
             saltMiningService,
-            adminActivityService, // Add admin activity service for real-time monitoring
+            adminActivityService,
             spellPaymentService: null, // Will be injected after SpellPaymentService is created
-            spellsDb: initializedDbServices.data.spells, // Phase 7i: in-process spell metadata lookup
+            spellsDb: initializedDbServices.data.spells,
           };
           creditServices[chainId] = new CreditService(creditDeps, creditServiceConfig, logger);
         } catch (err) {

@@ -11,6 +11,7 @@ import { AuthWidget } from '../sandbox/components/AuthWidget.js';
 import { initStore } from '../sandbox/store.js';
 import { SandboxCanvas, loadCanvasState } from '../sandbox/canvas/SandboxCanvas.js';
 import { initializeTools } from '../sandbox/io.js';
+import { BatchPanel } from '../sandbox/components/BatchPanel.js';
 
 /**
  * Sandbox — top-level sandbox page.
@@ -39,6 +40,8 @@ export class Sandbox extends Component {
       resultOverlay: { visible: false, output: null, displayName: '', copied: false },
       checkpointPicker: { visible: false, windowId: null, paramKey: null, displayName: '', currentValue: '' },
       instructionPicker: { visible: false, windowId: null, paramKey: null, displayName: '', currentValue: '' },
+      batchFiles: null,
+      batchInitialTool: null,
     };
   }
 
@@ -105,6 +108,26 @@ export class Sandbox extends Component {
     };
     eventBus.on('sandbox:openResultOverlay', this._onOpenResultOverlay);
 
+    this._onOpenBatch = (e) => {
+      const { files, nodeId } = e.detail;
+      let connectedTool = null;
+      if (nodeId && window.sandboxCanvas) {
+        const canvas = window.sandboxCanvas;
+        const downstream = [...canvas.state.connections.values()].filter(c => c.fromWindowId === nodeId);
+        if (downstream.length > 0) {
+          const toolWin = canvas.state.windows.get(downstream[0].toWindowId);
+          if (toolWin?.tool) connectedTool = toolWin.tool;
+        }
+      }
+      this.setState({ batchFiles: files, batchInitialTool: connectedTool });
+    };
+    window.addEventListener('sandbox:openBatch', this._onOpenBatch);
+
+    this._onBatchPromoted = (e) => {
+      this.setState({ batchFiles: null, batchInitialTool: null });
+    };
+    window.addEventListener('batch:promoted', this._onBatchPromoted);
+
     this._escHandler = (e) => {
       if (e.key !== 'Escape') return;
       const { actionModal, resultOverlay, textEdit, checkpointPicker } = this.state;
@@ -134,6 +157,8 @@ export class Sandbox extends Component {
     if (this._onOpenResultOverlay)      eventBus.off('sandbox:openResultOverlay',      this._onOpenResultOverlay);
     if (this._onOpenCheckpointPicker)   eventBus.off('sandbox:openCheckpointPicker',   this._onOpenCheckpointPicker);
     if (this._onOpenInstructionPicker)  eventBus.off('sandbox:openInstructionPicker',  this._onOpenInstructionPicker);
+    if (this._onOpenBatch) window.removeEventListener('sandbox:openBatch', this._onOpenBatch);
+    if (this._onBatchPromoted) window.removeEventListener('batch:promoted', this._onBatchPromoted);
     document.body.style.overflow = '';
     document.documentElement.style.overflow = '';
     delete window.__SANDBOX_SPA_MANAGED__;
@@ -576,6 +601,13 @@ export class Sandbox extends Component {
             currentValue: cp.currentValue,
             onSelect: (name) => this._onCheckpointSelect(name),
             onClose: () => this._closeCheckpointPicker(),
+          })
+        : null,
+      this.state.batchFiles
+        ? h(BatchPanel, {
+            files: this.state.batchFiles,
+            initialTool: this.state.batchInitialTool,
+            onClose: () => this.setState({ batchFiles: null, batchInitialTool: null }),
           })
         : null,
     );

@@ -108,6 +108,13 @@ export class ActionModal extends Component {
     this._close();
   }
 
+  _addUploadNode(e) {
+    e.stopPropagation();
+    const canvas = window.sandboxCanvas;
+    if (canvas) canvas.addUploadWindow(null, this.props.workspacePosition);
+    this._close();
+  }
+
   _selectCategory(cat, e) {
     e.stopPropagation();
     this.setState({ view: 'tools', selectedCategory: cat });
@@ -204,6 +211,25 @@ export class ActionModal extends Component {
         text-anchor: middle;
       }
       .am-segment-group:hover .am-label { fill: var(--accent); }
+
+      /* Anchor (small inner-ring) segments */
+      .am-segment--anchor {
+        fill: var(--surface-3);
+        stroke: var(--border);
+        stroke-width: 1;
+      }
+      .am-segment-group--anchor:hover .am-segment--anchor {
+        fill: var(--accent-dim);
+        stroke: var(--accent-border);
+      }
+      .am-label--anchor {
+        font-size: 13px;
+        letter-spacing: 0;
+        text-transform: none;
+      }
+      .am-segment-group--anchor:hover .am-label--anchor { fill: var(--accent); }
+      .am-anchor-icon { color: var(--text-label); transition: color var(--dur-micro) var(--ease); }
+      .am-segment-group--anchor:hover .am-anchor-icon { color: var(--accent); }
 
       /* Center escape circle */
       .am-center {
@@ -352,14 +378,100 @@ export class ActionModal extends Component {
       );
     }
 
-    // Build items for radial segments — root and categories only
-    let items = [];
+    const polar = (r, a) => ({ x: Math.cos(a) * r, y: Math.sin(a) * r });
+    const size = 76 * 2;
+    const cv = 76;
+
+    // Root view: two-ring radial — outer ring for main actions, inner ring for quick anchors
     if (view === 'root') {
-      items = [
+      const MAIN_OUTER = 72, MAIN_INNER = 46;
+      const ANCH_OUTER = 42, ANCH_INNER = 26;
+      const ANCH_SPAN = Math.PI * 80 / 180; // 80°
+
+      const mainItems = [
         { label: 'effect', fn: (e) => this._showEffectCategories(e) },
         { label: 'create', fn: (e) => this._showCategories(e) },
       ];
-    } else if (view === 'categories') {
+      // Top = angle -π/2 (y negative in screen coords), bottom = π/2
+      // Upload uses an inline image-frame icon; text uses 'T'
+      const renderImageIcon = (cx, cy) => [
+        h('rect', { x: cx - 5, y: cy - 3.5, width: 10, height: 7.5, rx: 1,
+          fill: 'none', stroke: 'currentColor', 'stroke-width': 1.2, 'pointer-events': 'none' }),
+        h('polyline', { points: `${cx - 3.5},${cy + 3} ${cx - 0.5},${cy + 0.5} ${cx + 1.5},${cy + 2} ${cx + 3.5},${cy - 0.5}`,
+          fill: 'none', stroke: 'currentColor', 'stroke-width': 1.2, 'pointer-events': 'none' }),
+        h('circle', { cx: cx - 2, cy: cy - 1, r: 1.2,
+          fill: 'currentColor', stroke: 'none', 'pointer-events': 'none' }),
+      ];
+      const anchorItems = [
+        { title: 'upload', angle: -Math.PI / 2, fn: (e) => this._addUploadNode(e), renderIcon: renderImageIcon },
+        { icon: 'T', title: 'text', angle: Math.PI / 2, fn: (e) => this._createPrimitive('text', e) },
+      ];
+
+      const mainStart = Math.PI / 2; // effect on left, create on right
+      const mainStep = Math.PI;
+
+      const mainPath = (i) => {
+        const a0 = mainStart + i * mainStep + 0.03;
+        const a1 = mainStart + (i + 1) * mainStep - 0.03;
+        const o0 = polar(MAIN_OUTER, a0), o1 = polar(MAIN_OUTER, a1);
+        const i0 = polar(MAIN_INNER, a1), i1 = polar(MAIN_INNER, a0);
+        return `M ${o0.x} ${o0.y} A ${MAIN_OUTER} ${MAIN_OUTER} 0 0 1 ${o1.x} ${o1.y} L ${i0.x} ${i0.y} A ${MAIN_INNER} ${MAIN_INNER} 0 0 0 ${i1.x} ${i1.y} Z`;
+      };
+
+      const anchorPath = (centerAngle) => {
+        const a0 = centerAngle - ANCH_SPAN / 2 + 0.04;
+        const a1 = centerAngle + ANCH_SPAN / 2 - 0.04;
+        const o0 = polar(ANCH_OUTER, a0), o1 = polar(ANCH_OUTER, a1);
+        const i0 = polar(ANCH_INNER, a1), i1 = polar(ANCH_INNER, a0);
+        return `M ${o0.x} ${o0.y} A ${ANCH_OUTER} ${ANCH_OUTER} 0 0 1 ${o1.x} ${o1.y} L ${i0.x} ${i0.y} A ${ANCH_INNER} ${ANCH_INNER} 0 0 0 ${i1.x} ${i1.y} Z`;
+      };
+
+      return h('div', {
+        className: 'am-root active',
+        style: `left:${x}px;top:${y}px`,
+        onclick: (e) => e.stopPropagation(),
+      },
+        h('svg', { className: 'am-svg', width: size, height: size, viewBox: `${-cv} ${-cv} ${size} ${size}` },
+          // Outer ring: effect / create
+          ...mainItems.map((item, i) => {
+            const lp = polar((MAIN_OUTER + MAIN_INNER) / 2, mainStart + (i + 0.5) * mainStep);
+            return h('g', {
+              className: 'am-segment-group',
+              key: item.label,
+              onclick: this.bind((e) => { e.stopPropagation(); item.fn(e); }),
+            },
+              h('path', { className: 'am-segment', d: mainPath(i) }),
+              h('text', { className: 'am-label', x: lp.x, y: lp.y }, item.label),
+            );
+          }),
+          // Inner ring: image-frame icon (upload) / T (text)
+          ...anchorItems.map((item) => {
+            const lp = polar((ANCH_OUTER + ANCH_INNER) / 2, item.angle);
+            const iconEl = item.renderIcon
+              ? h('g', { className: 'am-anchor-icon', 'pointer-events': 'none' }, ...item.renderIcon(lp.x, lp.y))
+              : h('text', { className: 'am-label am-label--anchor', x: lp.x, y: lp.y }, item.icon);
+            return h('g', {
+              className: 'am-segment-group am-segment-group--anchor',
+              key: item.title,
+              title: item.title,
+              onclick: this.bind((e) => { e.stopPropagation(); item.fn(e); }),
+            },
+              h('path', { className: 'am-segment am-segment--anchor', d: anchorPath(item.angle) }),
+              iconEl,
+            );
+          }),
+          h('circle', {
+            className: 'am-center',
+            cx: 0, cy: 0, r: 12,
+            onclick: this.bind((e) => { e.stopPropagation(); this._close(); }),
+          }),
+        )
+      );
+    }
+
+    // Categories view: standard radial with back + category items
+    let items = [];
+    if (view === 'categories') {
       const catList = this.state.mode === 'effect'
         ? EFFECT_CATEGORIES.filter(c => tools.some(t => this._hasRequiredImageInput(t) && this._getToolOutputType(t) === c.outputType))
         : CATEGORIES.filter(c => c.type === 'text' || tools.some(t => t.category === c.category));
@@ -376,18 +488,11 @@ export class ActionModal extends Component {
     const angleStep = (2 * Math.PI) / n;
     const startAngle = n === 2 ? Math.PI / 2 : -Math.PI / 2 - angleStep / 2;
 
-    const polarToCartesian = (r, angle) => ({
-      x: Math.cos(angle) * r,
-      y: Math.sin(angle) * r,
-    });
-
     const segmentPath = (i) => {
       const a0 = startAngle + i * angleStep + 0.03;
       const a1 = startAngle + (i + 1) * angleStep - 0.03;
-      const o0 = polarToCartesian(outerR, a0);
-      const o1 = polarToCartesian(outerR, a1);
-      const i0 = polarToCartesian(innerR, a1);
-      const i1 = polarToCartesian(innerR, a0);
+      const o0 = polar(outerR, a0), o1 = polar(outerR, a1);
+      const i0 = polar(innerR, a1), i1 = polar(innerR, a0);
       const large = angleStep > Math.PI ? 1 : 0;
       return [
         `M ${o0.x} ${o0.y}`,
@@ -400,12 +505,8 @@ export class ActionModal extends Component {
 
     const labelPos = (i) => {
       const a = startAngle + (i + 0.5) * angleStep;
-      const r = (outerR + innerR) / 2;
-      return polarToCartesian(r, a);
+      return polar((outerR + innerR) / 2, a);
     };
-
-    const size = (outerR + 4) * 2;
-    const c = outerR + 4;
 
     return h('div', {
       className: 'am-root active',
@@ -416,7 +517,7 @@ export class ActionModal extends Component {
         className: 'am-svg',
         width: size,
         height: size,
-        viewBox: `${-c} ${-c} ${size} ${size}`,
+        viewBox: `${-cv} ${-cv} ${size} ${size}`,
       },
         ...items.slice(0, n).map((item, i) => {
           const lp = labelPos(i);
