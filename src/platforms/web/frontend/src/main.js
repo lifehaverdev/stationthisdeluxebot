@@ -43,6 +43,12 @@ if (isAppSubdomain) {
     const { SpellPage } = await import('./pages/SpellPage.js');
     renderPage(SpellPage);
   });
+
+  // Focus system demo (development)
+  route('/demo', async () => {
+    const { FocusDemo } = await import('./pages/FocusDemo.js');
+    renderSandbox(FocusDemo);
+  });
 } else {
   // Main domain: marketing site — full-screen, no Nav/Footer chrome
   route('/', () => renderSandbox(Landing));

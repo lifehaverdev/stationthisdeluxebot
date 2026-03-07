@@ -1,0 +1,133 @@
+/* ── Focus Demo ─────────────────────────── */
+.focus-demo {
+  position: fixed;
+  inset: 0;
+  background: var(--canvas-bg);
+  overflow: hidden;
+  font-family: var(--ff-sans);
+  color: var(--text-primary);
+}
+
+.fd-hud {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 1000;
+  display: flex;
+  gap: 16px;
+  font-family: var(--ff-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+  background: var(--surface-1);
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+}
+
+.fd-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.fd-viewport {
+  position: absolute;
+  transform-origin: 0 0;
+  will-change: transform;
+  background-image:
+    repeating-linear-gradient(90deg, rgba(255,255,255,0.03) 0 1px, transparent 1px 100%),
+    repeating-linear-gradient(0deg, rgba(255,255,255,0.03) 0 1px, transparent 1px 100%);
+  background-size: 32px 32px;
+}
+
+.fd-connections {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.fd-conn-path {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.18);
+  stroke-width: 2;
+}
+
+.fd-node {
+  position: absolute;
+  width: 200px;
+  height: 80px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  will-change: transform;
+}
+
+.fd-node.fd-grouped {
+  border-color: var(--accent-border);
+}
+
+.fd-node-label {
+  font-family: var(--ff-condensed);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--ls-wide);
+  text-transform: uppercase;
+}
+
+.fd-node-id {
+  font-family: var(--ff-mono);
+  font-size: 10px;
+  color: var(--text-label);
+}
+
+.fd-node.fd-pinned {
+  box-shadow: 0 0 0 2px var(--accent-dim), inset 0 0 12px rgba(0, 223, 200, 0.08);
+}
+
+.fd-node-meta {
+  display: flex;
+  gap: 6px;
+  font-family: var(--ff-mono);
+  font-size: 9px;
+}
+
+.fd-group-tag {
+  padding: 1px 5px;
+  color: var(--text-primary);
+}
+
+.fd-pin-tag {
+  padding: 1px 5px;
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.fd-controls {
+  position: fixed;
+  bottom: 12px;
+  left: 12px;
+  z-index: 1000;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fd-controls button {
+  font-family: var(--ff-condensed);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--ls-wide);
+  text-transform: uppercase;
+  background: var(--surface-2);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: border-color var(--dur-interact) var(--ease);
+}
+
+.fd-controls button:hover {
+  border-color: var(--border-hover);
+}
