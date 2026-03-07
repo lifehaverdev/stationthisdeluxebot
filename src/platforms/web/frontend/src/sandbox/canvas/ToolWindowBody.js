@@ -197,10 +197,21 @@ export class UploadWindowBody extends Component {
     this.setState({ uploading: true, uploadError: null });
     try {
       const url = await uploadToStorage(file);
+      this.setState({ uploading: false });
       window.sandboxCanvas?.updateWindowOutput(this.props.win.id, { type: 'image', url });
     } catch (err) {
       this.setState({ uploading: false, uploadError: err.message });
     }
+  }
+
+  _removeOutput(index) {
+    const outputs = this.props.win.outputs || [];
+    const next = outputs.filter((_, i) => i !== index);
+    window.sandboxCanvas?.updateWindowOutputs(this.props.win.id, next);
+  }
+
+  _clearOutput() {
+    window.sandboxCanvas?.clearWindowOutput(this.props.win.id);
   }
 
   async _handleFiles(files) {
@@ -208,6 +219,7 @@ export class UploadWindowBody extends Component {
     try {
       const urls = await Promise.all(files.map(f => uploadToStorage(f)));
       const outputs = urls.map((url, i) => ({ key: `image_${i}`, type: 'image', url }));
+      this.setState({ uploading: false });
       window.sandboxCanvas?.updateWindowOutputs(this.props.win.id, outputs);
     } catch (err) {
       this.setState({ uploading: false, uploadError: err.message });
@@ -390,26 +402,28 @@ export class UploadWindowBody extends Component {
           ...outputs.map((slot, i) =>
             h('div', { key: slot.key, className: 'nwb-upload-multi-thumb' },
               h('img', { src: slot.url, className: 'nwb-upload-multi-img', alt: `Image ${i + 1}` }),
-              h('span', { className: 'nwb-upload-multi-idx' }, `${i + 1}`)
+              h('span', { className: 'nwb-upload-multi-idx' }, `${i + 1}`),
+              h('button', {
+                className: 'nwb-upload-remove-btn',
+                onclick: (e) => { e.stopPropagation(); this._removeOutput(i); },
+                title: 'Remove',
+              }, '\u00D7'),
             )
           )
-        ),
-        h('label', { className: 'nwb-upload-replace' },
-          h('input', { type: 'file', accept: 'image/*', multiple: true, onchange: (e) => this._onFiles(e.target.files) }),
-          'Replace'
         ),
         isBatchReady ? this._renderBatchFooter(outputs) : null,
       );
     }
 
-    // State: single image uploaded — show preview + re-upload option
+    // State: single image uploaded — show preview + remove button
     if (url) {
       return h('div', { className: 'nwb-root nwb-upload nwb-upload--done' },
         h('img', { src: url, className: 'nwb-upload-img', alt: 'Uploaded image' }),
-        h('label', { className: 'nwb-upload-replace' },
-          h('input', { type: 'file', accept: 'image/*', multiple: true, onchange: (e) => this._onFiles(e.target.files) }),
-          'Replace'
-        )
+        h('button', {
+          className: 'nwb-upload-remove-btn',
+          onclick: () => this._clearOutput(),
+          title: 'Remove',
+        }, '\u00D7'),
       );
     }
 
@@ -453,14 +467,21 @@ export class UploadWindowBody extends Component {
         font-family: var(--ff-mono, monospace); line-height: 1.2;
       }
       .nwb-upload-img { display: block; width: 100%; max-height: 280px; object-fit: contain; background: #111; }
-      .nwb-upload-replace {
-        position: absolute; bottom: 6px; right: 6px;
-        background: rgba(0,0,0,0.7); color: var(--text-primary, #fff);
-        font-size: 11px; padding: 3px 8px; border-radius: 4px; cursor: pointer;
-        border: 1px solid rgba(255,255,255,0.15);
+
+      /* X button — appears on hover over the thumb or single image */
+      .nwb-upload-remove-btn {
+        position: absolute; top: 3px; right: 3px;
+        width: 18px; height: 18px;
+        background: rgba(0,0,0,0.72); color: #fff;
+        border: 1px solid rgba(255,255,255,0.18);
+        border-radius: 50%; font-size: 13px; line-height: 1;
+        display: flex; align-items: center; justify-content: center;
+        padding: 0; cursor: pointer;
+        opacity: 0; transition: opacity 0.1s, background 0.1s;
       }
-      .nwb-upload-replace input { display: none; }
-      .nwb-upload-replace:hover { background: rgba(0,0,0,0.9); }
+      .nwb-upload-multi-thumb:hover .nwb-upload-remove-btn,
+      .nwb-upload--done:hover .nwb-upload-remove-btn { opacity: 1; }
+      .nwb-upload-remove-btn:hover { background: rgba(200,40,40,0.85); border-color: rgba(255,100,100,0.4); }
 
       .nwb-upload-zone {
         display: flex; flex-direction: column; align-items: center; justify-content: center;

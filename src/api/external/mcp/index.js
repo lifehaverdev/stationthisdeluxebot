@@ -227,7 +227,7 @@ async function handleMethod(method, params, context) {
       }
       if (x402Enabled && x402PricingService) {
         throw buildPaymentRequiredError(params, x402PricingService, {
-          receiverAddress, x402Network, usdcAddress, baseUrl
+          receiverAddress, x402Network, usdcAddress, baseUrl, toolRegistry
         });
       }
       const noAuthErr = new Error('Authentication required. Include X-API-Key header or X-PAYMENT header for x402.');
@@ -335,7 +335,7 @@ async function handleMethod(method, params, context) {
         // Use a generic spell cost for the payment required response
         throw buildPaymentRequiredError(
           { name: `spell:${spellIdentifier}` }, x402PricingService,
-          { receiverAddress, x402Network, usdcAddress, baseUrl }
+          { receiverAddress, x402Network, usdcAddress, baseUrl, toolRegistry }
         );
       }
       const noAuthErr = new Error('Authentication required. Include X-API-Key header or X-PAYMENT header for x402.');
@@ -1036,12 +1036,14 @@ async function executeSpellCastX402(params, spellIdentifier, x402, services) {
  * Build a -32002 error with embedded PaymentRequired data
  */
 function buildPaymentRequiredError(params, pricingService, config) {
-  const { receiverAddress, x402Network, usdcAddress, baseUrl } = config;
+  const { receiverAddress, x402Network, usdcAddress, baseUrl, toolRegistry } = config;
   const toolName = params.name || 'unknown';
 
   let paymentRequired;
   try {
-    const resolvedToolId = toolName.startsWith('spell:') ? toolName : toolName;
+    const resolvedToolId = toolName.startsWith('spell:')
+      ? toolName
+      : (toolRegistry ? resolveToolName(toolName, toolRegistry) : toolName);
     paymentRequired = pricingService.generatePaymentRequired(resolvedToolId, params.arguments || {}, {
       receiverAddress,
       network: x402Network,

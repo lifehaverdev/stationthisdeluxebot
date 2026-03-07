@@ -11,6 +11,37 @@ const ResponsePayloadNormalizer = require('../notifications/ResponsePayloadNorma
 // Temporary in-memory cache for live progress (can be managed within this module)
 const activeJobProgress = new Map();
 
+/**
+ * Pure function to calculate costUsd from a costRate and optional timing data.
+ * Per-second tools require jobStartDetails with startTime to compute duration.
+ * Flat-rate tools (request, run, fixed, token) use costRate.amount directly.
+ *
+ * @param {{ costRate: { amount: number, unit: string }|null, jobStartDetails: { startTime: string }|null, finalEventTimestamp: string }} params
+ * @returns {{ costUsd: number|null, runDurationSeconds: number }}
+ */
+function calculateCostUsd({ costRate, jobStartDetails, finalEventTimestamp }) {
+  if (!costRate || typeof costRate.amount !== 'number' || typeof costRate.unit !== 'string') {
+    return { costUsd: null, runDurationSeconds: 0 };
+  }
+
+  const unit = costRate.unit.toLowerCase();
+
+  // Per-second: requires duration from job start/end times
+  if (unit === 'second' || unit === 'seconds') {
+    if (!jobStartDetails || !jobStartDetails.startTime) {
+      return { costUsd: null, runDurationSeconds: 0 };
+    }
+    const startTime = new Date(jobStartDetails.startTime);
+    const endTime = new Date(finalEventTimestamp);
+    let runDurationSeconds = (endTime.getTime() - startTime.getTime()) / 1000;
+    if (runDurationSeconds < 0) runDurationSeconds = 0;
+    return { costUsd: runDurationSeconds * costRate.amount, runDurationSeconds };
+  }
+
+  // Flat-rate units: cost is the rate amount per invocation
+  return { costUsd: costRate.amount, runDurationSeconds: 0 };
+}
+
 // Reusable wrapper that mirrors webhook processing for a given run payload
 async function processRunPayload(runPayload, deps){
   return processComfyDeployWebhook(runPayload, deps);
@@ -61,16 +92,23 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
       logger.debug(`[Webhook Processor] Captured startTime for RunID ${run_id}: ${jobState.startTime}`);
     }
 
-    activeJobProgress.set(run_id, { 
+    activeJobProgress.set(run_id, {
       ...jobState,
-      status, 
-      live_status, 
-      progress, 
-      last_updated: now 
+      status,
+      live_status,
+      progress,
+      last_updated: now
     });
 
     // Find the associated generation to get the user ID for real-time progress updates
     const generationRecordForProgress = await generationService.findByRunId(run_id).catch(() => null);
+
+    // Persist startTime on the generation record so it survives server restarts
+    if (status === 'running' && jobState.startTime && generationRecordForProgress) {
+      generationService.update(generationRecordForProgress._id, {
+        'metadata.jobStartTime': jobState.startTime,
+      }).catch(err => logger.warn(`[Webhook Processor] Failed to persist jobStartTime for ${run_id}: ${err.message}`));
+    }
 
     if (generationRecordForProgress && websocketServer) {
         const collectionId = generationRecordForProgress.metadata?.collectionId || generationRecordForProgress.collectionId || null;
@@ -94,7 +132,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
 
   if (status === 'success' || status === 'failed') {
     const finalEventTimestamp = new Date().toISOString();
-    const jobStartDetails = activeJobProgress.get(run_id);
+    let jobStartDetails = activeJobProgress.get(run_id) || null;
     activeJobProgress.delete(run_id);
 
     let generationRecord;
@@ -115,6 +153,12 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
             costRate = generationRecord.metadata.costRate;
             telegramChatId = generationRecord.metadata.telegramChatId; // Extracted for completeness of record info
             logger.debug(`[Webhook Processor] Extracted costRate from metadata: ${JSON.stringify(costRate)}`);
+
+            // Fallback: if in-memory jobStartDetails was lost (server restart), recover from persisted metadata
+            if (!jobStartDetails && generationRecord.metadata.jobStartTime) {
+              jobStartDetails = { startTime: generationRecord.metadata.jobStartTime };
+              logger.info(`[Webhook Processor] Recovered jobStartTime from generation record for run_id ${run_id}: ${jobStartDetails.startTime}`);
+            }
         } else {
             logger.error(`[Webhook Processor] Generation record for run_id ${run_id} is missing metadata.`);
             return { success: false, statusCode: 500, error: "Generation record metadata missing." };
@@ -131,37 +175,15 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
             let costUsd = null;
             let runDurationSeconds = 0;
 
-            if (jobStartDetails && jobStartDetails.startTime && 
-                costRate && typeof costRate.amount === 'number' && typeof costRate.unit === 'string' && 
-                status === 'success') {
-              
-              const startTime = new Date(jobStartDetails.startTime);
-              const endTime = new Date(finalEventTimestamp);
-              runDurationSeconds = (endTime.getTime() - startTime.getTime()) / 1000;
-              
-              if (runDurationSeconds < 0) {
-                logger.warn(`[Webhook Processor] Calculated negative run duration (${runDurationSeconds}s) for spell step ${generationId}. Clamping to 0. Start: ${jobStartDetails.startTime}, End: ${finalEventTimestamp}`);
-                runDurationSeconds = 0;
-              } 
+            if (status === 'success') {
+              const costResult = calculateCostUsd({ costRate, jobStartDetails, finalEventTimestamp });
+              costUsd = costResult.costUsd;
+              runDurationSeconds = costResult.runDurationSeconds;
 
-              if (costRate.unit.toLowerCase() === 'second' || costRate.unit.toLowerCase() === 'seconds') {
-                costUsd = runDurationSeconds * costRate.amount;
+              if (costUsd != null) {
                 logger.debug(`[Webhook Processor] Calculated costUsd for spell step: ${costUsd} for generation ${generationId} (Duration: ${runDurationSeconds.toFixed(2)}s, Rate: ${costRate.amount}/${costRate.unit})`);
               } else {
-                logger.warn(`[Webhook Processor] Cost calculation skipped for spell step ${generationId}: costRate.unit is '${costRate.unit}', expected 'second'.`);
-              }
-            } else if (status === 'success') {
-              if (!costRate || !costRate.amount) {
-                logger.warn(`[Webhook Processor] Could not calculate cost for successful spell step ${generationId}: Missing costRate information. 
-                             This may be because the tool doesn't have costing configured. 
-                             jobStartDetails: ${JSON.stringify(jobStartDetails)}, 
-                             costRate: ${JSON.stringify(costRate)}, 
-                             finalEventTimestamp: ${finalEventTimestamp}`);
-              } else {
-                logger.warn(`[Webhook Processor] Could not calculate cost for successful spell step ${generationId}: Missing or invalid jobStartDetails or startTime. 
-                             jobStartDetails: ${JSON.stringify(jobStartDetails)}, 
-                             costRate: ${JSON.stringify(costRate)}, 
-                             finalEventTimestamp: ${finalEventTimestamp}`);
+                logger.warn(`[Webhook Processor] Could not calculate cost for spell step ${generationId}: costRate=${JSON.stringify(costRate)}, jobStartDetails=${JSON.stringify(jobStartDetails)}`);
               }
             } else {
               logger.debug(`[Webhook Processor] Spell step ${generationId} ended with status ${status}. Cost calculation skipped.`);
@@ -208,30 +230,18 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
     let costUsd = null;
     let runDurationSeconds = 0;
 
-    if (jobStartDetails && jobStartDetails.startTime && 
-        costRate && typeof costRate.amount === 'number' && typeof costRate.unit === 'string' && 
-        status === 'success') {
-      
-      const startTime = new Date(jobStartDetails.startTime);
-      const endTime = new Date(finalEventTimestamp);
-      runDurationSeconds = (endTime.getTime() - startTime.getTime()) / 1000;
-      
-      if (runDurationSeconds < 0) {
-        logger.warn(`[Webhook Processor] Calculated negative run duration (${runDurationSeconds}s) for run_id ${run_id}. Clamping to 0. Start: ${jobStartDetails.startTime}, End: ${finalEventTimestamp}`);
-        runDurationSeconds = 0;
-      } 
+    if (status === 'success') {
+      const costResult = calculateCostUsd({ costRate, jobStartDetails, finalEventTimestamp });
+      costUsd = costResult.costUsd;
+      runDurationSeconds = costResult.runDurationSeconds;
 
-      if (costRate.unit.toLowerCase() === 'second' || costRate.unit.toLowerCase() === 'seconds') {
-        costUsd = runDurationSeconds * costRate.amount;
+      if (costUsd != null) {
         logger.debug(`[Webhook Processor] Calculated costUsd: ${costUsd} for run_id ${run_id} (Duration: ${runDurationSeconds.toFixed(2)}s, Rate: ${costRate.amount}/${costRate.unit})`);
+      } else if (costRate) {
+        logger.warn(`[Webhook Processor] Could not calculate cost for successful run_id ${run_id}: costRate=${JSON.stringify(costRate)}, jobStartDetails=${JSON.stringify(jobStartDetails)}`);
       } else {
-        logger.warn(`[Webhook Processor] Cost calculation skipped for run_id ${run_id}: costRate.unit is '${costRate.unit}', expected 'second'.`);
+        logger.warn(`[Webhook Processor] Could not calculate cost for successful run_id ${run_id}: Missing costRate. jobStartDetails: ${JSON.stringify(jobStartDetails)}, finalEventTimestamp: ${finalEventTimestamp}`);
       }
-    } else if (status === 'success') {
-      logger.warn(`[Webhook Processor] Could not calculate cost for successful run_id ${run_id}: Missing or invalid jobStartDetails, startTime, or costRate. 
-                   jobStartDetails: ${JSON.stringify(jobStartDetails)}, 
-                   costRate: ${JSON.stringify(costRate)}, 
-                   finalEventTimestamp: ${finalEventTimestamp}`);
     } else {
       logger.debug(`[Webhook Processor] Job ${run_id} ended with status ${status}. Cost calculation skipped.`);
     }
@@ -705,5 +715,6 @@ function _convertCostUsdForWebSocket(costUsd) {
 module.exports = {
   processComfyDeployWebhook,
   processRunPayload,
+  calculateCostUsd,
   getActiveJobProgress: () => activeJobProgress
 }; 

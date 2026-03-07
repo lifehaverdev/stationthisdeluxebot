@@ -445,7 +445,11 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
               const { code, message } = err.payload.error;
               switch (code) {
                 case 'INSUFFICIENT_FUNDS':
-                  userMessage = 'You do not have enough points to run this. Purchase more with /buypoints or view your balance with /account.';
+                  if (err.payload.error.details?.poolAvailable != null) {
+                    userMessage = `The group pool has ${err.payload.error.details.poolAvailable} points but this requires ${err.payload.error.details.required}. Fund the pool with /groupsettings or purchase personal points with /buypoints.`;
+                  } else {
+                    userMessage = 'You do not have enough points to run this. Purchase more with /buypoints or view your balance with /account.';
+                  }
                   break;
                 case 'WALLET_NOT_FOUND':
                   userMessage = 'You need to connect a wallet before running this. Link your wallet using /account, then purchase points with /buypoints.';

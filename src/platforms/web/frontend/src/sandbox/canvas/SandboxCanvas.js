@@ -1107,6 +1107,8 @@ export class SandboxCanvas extends Component {
         workspaceX: w.x,
         workspaceY: w.y,
         output: this._sanitiseOutput(w.output),
+        // Multi-image upload nodes store an array in outputs (plural)
+        ...(w.outputs?.length > 0 ? { outputs: w.outputs.filter(o => o?.url && !o.url.startsWith('data:')) } : {}),
         // outputVersions: new canvas stores versions as direct output objects (not {output:…} wrappers)
         outputVersions: (w.outputVersions || []).slice(-5).map(v => this._sanitiseOutput(v)),
         currentVersionIndex: w.currentVersionIndex ?? -1,
@@ -1162,10 +1164,11 @@ export class SandboxCanvas extends Component {
         x: w.workspaceX,
         y: w.workspaceY,
         output: w.output || null,
+        ...(w.outputs?.length > 0 ? { outputs: w.outputs } : {}),
         outputVersions: w.outputVersions || [],
         currentVersionIndex: w.currentVersionIndex ?? -1,
         parameterMappings: w.parameterMappings || {},
-        outputLoaded: !!w.output,
+        outputLoaded: !!(w.output || w.outputs?.length),
         totalCostUsd: w.totalCostUsd || localCost?.totalCostUsd || 0,
         costVersions: w.costVersions?.length ? w.costVersions : (localCost?.costVersions || []),
         // Restore the tool object if present (includes inputSchema for ParameterForm)
@@ -1340,7 +1343,23 @@ export class SandboxCanvas extends Component {
     const windows = new Map(this.state.windows);
     const win = windows.get(windowId);
     if (!win) return;
-    windows.set(windowId, { ...win, outputs, output: null, outputLoaded: true, outputVersions: [], currentVersionIndex: -1 });
+    windows.set(windowId, { ...win, outputs, output: null, outputLoaded: outputs.length > 0, outputVersions: [], currentVersionIndex: -1 });
+    this.setState({ windows });
+    this._persist();
+  }
+
+  /** Reset an upload node to empty without polluting outputVersions with null. */
+  clearWindowOutput(windowId) {
+    const windows = new Map(this.state.windows);
+    const win = windows.get(windowId);
+    if (!win) return;
+    windows.set(windowId, {
+      ...win,
+      output: null,
+      outputs: [],
+      outputLoaded: false,
+      // outputVersions preserved — history remains accessible
+    });
     this.setState({ windows });
     this._persist();
   }

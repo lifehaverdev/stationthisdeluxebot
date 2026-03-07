@@ -23,6 +23,7 @@ class GenerationExecutionService {
     webSocketService,
     adminActivityService,
     notificationEvents,
+    economyService,
     logger: injectedLogger,
   } = {}) {
     this.db = db;
@@ -34,6 +35,7 @@ class GenerationExecutionService {
     this.webSocketService = webSocketService;
     this.adminActivityService = adminActivityService;
     this.notificationEvents = notificationEvents;
+    this.economyService = economyService;
     this.logger = injectedLogger || logger;
   }
 
@@ -69,7 +71,41 @@ class GenerationExecutionService {
 
     if (groupPoolPoints < pointsRequired) {
       if (metadata.fallbackMasterAccountId) {
-        this.logger.debug(`[Execute] Group pool insufficient (${groupPoolPoints} < ${pointsRequired}), fallback user will be charged post-execution.`);
+        // Check if the fallback user has enough points before allowing execution
+        let fallbackPoints = 0;
+        try {
+          const fallbackUser = this.db.userCore
+            ? await this.db.userCore.findUserCoreById(metadata.fallbackMasterAccountId)
+            : null;
+          let fallbackWallet = null;
+          if (fallbackUser && Array.isArray(fallbackUser.wallets) && fallbackUser.wallets.length > 0) {
+            const primary = fallbackUser.wallets.find(w => w.isPrimary);
+            fallbackWallet = (primary ? primary.address : fallbackUser.wallets[0].address) || null;
+          }
+          if (fallbackWallet && this.db.creditLedger) {
+            fallbackPoints = (await this.db.creditLedger.sumPointsRemainingForWalletAddress(fallbackWallet)) || 0;
+          }
+        } catch (fbErr) {
+          this.logger.warn(`[Execute] Could not check fallback user balance for ${metadata.fallbackMasterAccountId}: ${fbErr.message}`);
+        }
+
+        if (fallbackPoints >= pointsRequired) {
+          this.logger.debug(`[Execute] Group pool insufficient (${groupPoolPoints} < ${pointsRequired}), fallback user has ${fallbackPoints} points — allowing execution.`);
+        } else {
+          this.logger.warn(`[Execute] Group pool insufficient (${groupPoolPoints}) AND fallback user insufficient (${fallbackPoints}). Required: ${pointsRequired}. Blocking execution.`);
+          return {
+            error: {
+              statusCode: 402,
+              body: {
+                error: {
+                  code: 'INSUFFICIENT_FUNDS',
+                  message: 'The group pool does not have enough points, and your personal balance is also insufficient. Fund the pool with /groupsettings or purchase points with /buypoints.',
+                  details: { required: pointsRequired, poolAvailable: groupPoolPoints, userAvailable: fallbackPoints, pricing: pricingResult.breakdown }
+                }
+              }
+            }
+          };
+        }
       } else {
         return {
           error: {
@@ -77,7 +113,7 @@ class GenerationExecutionService {
             body: {
               error: {
                 code: 'INSUFFICIENT_FUNDS',
-                message: 'The server pool does not have enough points to execute this workflow.',
+                message: 'The group pool does not have enough points to execute this workflow. Fund the pool with /groupsettings.',
                 details: { required: pointsRequired, available: groupPoolPoints, pricing: pricingResult.breakdown }
               }
             }
@@ -416,6 +452,23 @@ class GenerationExecutionService {
 
           const newGeneration = await this.db.generationOutputs.createGenerationOutput(generationParams);
 
+          // Deduct points from credit ledger for non-x402 executions
+          if (!isX402Execution && pointsRequired > 0 && this.economyService) {
+            try {
+              await this.economyService.spend(masterAccountId, {
+                pointsToSpend: pointsRequired,
+                spendContext: { generationId: newGeneration._id.toString(), toolId: tool.toolId }
+              });
+              this.logger.info(`[Execute] Immediate adapter spend: ${pointsRequired} points for generation ${newGeneration._id}, user ${masterAccountId}`);
+            } catch (spendErr) {
+              this.logger.error(`[Execute] Immediate adapter spend FAILED for generation ${newGeneration._id}: ${spendErr.message}`);
+              // Generation already completed — record payment failure but don't block delivery
+              await this.db.generationOutputs.updateGenerationOutput(newGeneration._id, {
+                'metadata.paymentError': spendErr.message,
+              }).catch(() => {});
+            }
+          }
+
           const recordToEmit = {
             ...newGeneration,
             ...(isSpellStep && { deliveryStrategy: 'spell_step' })
@@ -536,6 +589,23 @@ class GenerationExecutionService {
                     ...(pollRes.error ? { 'metadata.error': { message: pollRes.error, step: 'adapter_poll' } } : {}),
                   };
                   await this.db.generationOutputs.updateGenerationOutput(generationRecord._id, updatePayload);
+
+                  // Deduct points after successful async adapter completion
+                  if (!isX402Execution && pointsRequired > 0 && finalStatus === 'completed' && this.economyService) {
+                    try {
+                      await this.economyService.spend(user.masterAccountId, {
+                        pointsToSpend: pointsRequired,
+                        spendContext: { generationId: generationRecord._id.toString(), toolId: tool.toolId }
+                      });
+                      this.logger.info(`[Execute] Async adapter spend: ${pointsRequired} points for generation ${generationRecord._id}, user ${user.masterAccountId}`);
+                    } catch (spendErr) {
+                      this.logger.error(`[Execute] Async adapter spend FAILED for generation ${generationRecord._id}: ${spendErr.message}`);
+                      await this.db.generationOutputs.updateGenerationOutput(generationRecord._id, {
+                        'metadata.paymentError': spendErr.message,
+                      }).catch(() => {});
+                    }
+                  }
+
                   const updated = await this.db.generationOutputs.findGenerationById(generationRecord._id);
                   this.notificationEvents?.emit?.('generationUpdated', updated);
                   break;
