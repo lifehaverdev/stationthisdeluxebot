@@ -58,6 +58,7 @@ const { TrainingService } = require('./store/training/TrainingService');
 const VastAIService = require('./vastai/VastAIService');
 const { ModelService } = require('./store/models/ModelService');
 const { GenerationExecutionService } = require('./generationExecutionService');
+const { economyService } = require('./store/economy/EconomyService');
 const notificationEvents = require('../events/notificationEvents');
 
 /**
@@ -346,6 +347,7 @@ async function initializeServices(options = {}) {
       webSocketService,
       adminActivityService,
       notificationEvents,
+      economyService,
       logger,
     });
     logger.debug('GenerationExecutionService initialized.');

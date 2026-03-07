@@ -1,7 +1,7 @@
 const express = require('express');
 const { createLogger } = require('../../../utils/logger');
 const { createAdminVerificationMiddleware } = require('./middleware');
-const { getCustodyKey, splitCustodyAmount } = require('../../../core/services/alchemy/contractUtils');
+// contractUtils (getCustodyKey, splitCustodyAmount) removed — CreditVault has no onchain custody model
 const { contracts: contractRegistry } = require('../../../core/contracts');
 const { USD_PER_POINT } = require('../../../core/constants/economy');
 const { createWalletRateLimitMiddleware } = require('../../../utils/rateLimiter');
@@ -157,23 +157,9 @@ function createAdminApi(dependencies) {
             }
           }
 
-          // Get on-chain escrow balance
-          let onChainEscrow = 0n;
-          let onChainUserOwned = 0n;
-          try {
-            const custodyKey = getCustodyKey(account.depositorAddress, account.tokenAddress);
-            const packedAmount = await ethereumService.read(
-              contractConfig.address,
-              contractConfig.abi,
-              'custody',
-              custodyKey
-            );
-            const split = splitCustodyAmount(packedAmount);
-            onChainEscrow = split.escrow;
-            onChainUserOwned = split.userOwned;
-          } catch (error) {
-            // If custody key doesn't exist, balances are 0
-          }
+          // CreditVault has no onchain custody model — tokens held directly
+          const onChainEscrow = 0n;
+          const onChainUserOwned = 0n;
 
           // Calculate protocol owned (not seized)
           // Protocol owns the difference between what was deposited and what the user actually owns
@@ -515,27 +501,8 @@ function createAdminApi(dependencies) {
               depositorsByAddress[depositor].push(deposit);
             }
 
-            // Query on-chain escrow balances for each unique depositor
-            const { ethereumService } = getChainServices(chainId);
-            const contractConfig = creditService.contractConfig;
-            
-            for (const [depositorAddress, deposits] of Object.entries(depositorsByAddress)) {
-              try {
-                const custodyKey = getCustodyKey(depositorAddress, tokenAddress);
-                const packedAmount = await ethereumService.read(
-                  contractConfig.address,
-                  contractConfig.abi,
-                  'custody',
-                  custodyKey
-                );
-                const { userOwned, escrow } = splitCustodyAmount(packedAmount);
-                // User escrow is what's in their escrow bucket
-                totalUserEscrowOnChain += escrow;
-              } catch (error) {
-                logger.warn(`[AdminApi] Could not read escrow balance for depositor ${depositorAddress}:`, error.message);
-                // If custody key doesn't exist, escrow is 0
-              }
-            }
+            // CreditVault has no onchain custody model — tokens held directly
+            // totalUserEscrowOnChain stays 0n
 
             // Protocol-owned (not yet seized) = total deposited - real user-owned
             // This represents what the protocol has earned from point spends but hasn't seized yet
@@ -598,7 +565,6 @@ function createAdminApi(dependencies) {
       logger.info(`[AdminApi] Found ${charteredVaults.length} active chartered vaults`);
 
       // Get balances for each chartered vault
-      const charterFundAbi = contractRegistry.charteredFund.abi;
       const charteredVaultsWithBalances = await Promise.all(
         charteredVaults.map(async (vault) => {
           const vaultAddress = vault.vault_address;
@@ -620,61 +586,15 @@ function createAdminApi(dependencies) {
                 } catch (e) { /* ignore */ }
               }
 
-              try {
-                // Read vault's own protocol escrow bucket from the CharterFund contract itself.
-                // custody[keccak(vaultAddress, token)].escrow = accumulated protocol fees
-                // (these are what sweepProtocolFees moves to Foundation).
-                const vaultProtocolKey = getCustodyKey(vaultAddress, tokenAddress);
-                const packedAmount = await ethereumService.read(
-                  vaultAddress,       // CharterFund contract, NOT Foundation
-                  charterFundAbi,
-                  'custody',
-                  vaultProtocolKey
-                );
-                const { escrow } = splitCustodyAmount(packedAmount);
-
-                // Calculate pending seizure: what the ledger says this vault owes protocol
-                // minus what's already accumulated in the vault's protocol escrow bucket.
-                const vaultDeposits = allDeposits.filter(d =>
-                  d.token_address && d.token_address.toLowerCase() === tokenAddress.toLowerCase() &&
-                  d.points_credited && d.points_credited > 0 &&
-                  d.deposit_amount_wei &&
-                  d.depositor_address &&
-                  d.vault_account && d.vault_account.toLowerCase() === vaultAddrLower
-                );
-
-                let ledgerProtocolClaimWei = 0n;
-                for (const d of vaultDeposits) {
-                  const depositAmount = BigInt(d.deposit_amount_wei || '0');
-                  const pointsCredited = BigInt(d.points_credited || '0');
-                  const pointsRemaining = BigInt(d.points_remaining || '0');
-                  if (pointsCredited > 0n && pointsRemaining < pointsCredited) {
-                    ledgerProtocolClaimWei += ((pointsCredited - pointsRemaining) * depositAmount) / pointsCredited;
-                  }
-                }
-
-                const pendingSeizureWei = ledgerProtocolClaimWei > escrow
-                  ? ledgerProtocolClaimWei - escrow
-                  : 0n;
-
-                return {
-                  tokenAddress,
-                  symbol,
-                  decimals,
-                  name,
-                  escrow: escrow.toString(),
-                  pendingSeizureWei: pendingSeizureWei.toString(),
-                };
-              } catch (error) {
-                return {
-                  tokenAddress,
-                  symbol,
-                  decimals,
-                  name,
-                  escrow: '0',
-                  pendingSeizureWei: '0',
-                };
-              }
+              // CreditVault has no onchain custody/escrow model
+              return {
+                tokenAddress,
+                symbol,
+                decimals,
+                name,
+                escrow: '0',
+                pendingSeizureWei: '0',
+              };
             })
           );
 

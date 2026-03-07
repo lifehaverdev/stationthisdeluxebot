@@ -65,8 +65,7 @@ function createAdminVerificationMiddleware(dependencies) {
     logger.debug(`[AdminMiddleware] Getting ethereumService for chainId ${chainId}:`, {
       found: !!service,
       hasReadMethod: service && typeof service.read === 'function',
-      fromServices: !!ethereumServices[String(chainId)],
-      fromLegacy: !!legacyEth && !ethereumServices[String(chainId)],
+      fromMap: !!ethereumServiceMap[String(chainId)],
       fromCreditService: service && service === (creditServices[String(chainId)] || legacyCredit)?.ethereumService
     });
     return service;
@@ -92,7 +91,7 @@ function createAdminVerificationMiddleware(dependencies) {
       const ethereumService = getEthereumService(chainId);
       
       if (!ethereumService) {
-        logger.error(`[AdminMiddleware] No ethereumService available for chainId ${chainId}. Available services:`, Object.keys(ethereumServices || {}));
+        logger.error(`[AdminMiddleware] No ethereumService available for chainId ${chainId}. Available services:`, Object.keys(ethereumServiceMap || {}));
         return res.status(503).json({ 
           error: { 
             code: 'SERVICE_UNAVAILABLE', 
