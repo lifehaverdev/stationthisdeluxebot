@@ -27,14 +27,14 @@ class DexService {
     const quoteNetwork = 'mainnet';
     let mainnetRpcUrl = process.env.ETHEREUM_MAINNET_RPC_URL;
     
-    // If the specific mainnet RPC URL isn't set, try to construct it from the Alchemy secret.
-    if (!mainnetRpcUrl && process.env.ALCHEMY_SECRET) {
-      mainnetRpcUrl = `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_SECRET}`;
-      this.logger.debug('[DexService] Constructed mainnet RPC URL from ALCHEMY_SECRET.');
+    // Fallback: construct from ALCHEMY_API_KEY if explicit RPC URL isn't set
+    if (!mainnetRpcUrl && process.env.ALCHEMY_API_KEY) {
+      mainnetRpcUrl = `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`;
+      this.logger.debug('[DexService] Constructed mainnet RPC URL from ALCHEMY_API_KEY.');
     }
 
     if (!mainnetRpcUrl) {
-      this.logger.error('[DexService] ETHEREUM_MAINNET_RPC_URL or ALCHEMY_SECRET is not set in .env. Quoting will be disabled.');
+      this.logger.error('[DexService] ETHEREUM_MAINNET_RPC_URL or ALCHEMY_API_KEY is not set in .env. Quoting will be disabled.');
       // Allow the service to start but log that it can't quote.
       this.quoterContract = null; 
       return;

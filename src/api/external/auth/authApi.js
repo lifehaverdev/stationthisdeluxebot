@@ -500,7 +500,7 @@ function createAuthApi(dependencies) {
                 // Use ETHEREUM_RPC_URL (mainnet) - same as foundationConfig expects
                 const rpcUrl = process.env.ETHEREUM_RPC_URL || 
                               process.env.ETHEREUM_MAINNET_RPC_URL || 
-                              (process.env.ALCHEMY_SECRET ? `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_SECRET}` : null) ||
+                              (process.env.ALCHEMY_API_KEY ? `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}` : null) ||
                               'https://eth.llamarpc.com'; // Public fallback
                 
                 if (rpcUrl) {

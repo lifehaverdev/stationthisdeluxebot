@@ -215,8 +215,15 @@ async function initializeServices(options = {}) {
         })
         .filter(cid => cid !== null);
 
-      priceFeedService = new PriceFeedService({ alchemyApiKey: process.env.ALCHEMY_SECRET }, logger);
-      nftPriceService = new NftPriceService({ alchemyApiKey: process.env.ALCHEMY_SECRET }, { priceFeedService }, logger);
+      // Extract Alchemy API key from RPC URL (e.g. https://eth-mainnet.g.alchemy.com/v2/<key>)
+      const alchemyApiKey = process.env.ALCHEMY_API_KEY
+        || (process.env.ETHEREUM_RPC_URL && process.env.ETHEREUM_RPC_URL.match(/alchemy\.com\/(?:v2|nft\/v3|v1)\/([a-zA-Z0-9_-]+)/)?.[1])
+        || process.env.ALCHEMY_SECRET; // legacy fallback
+      if (!alchemyApiKey) {
+        logger.warn('[initializeServices] No Alchemy API key found. PriceFeedService/NftPriceService will use placeholder data.');
+      }
+      priceFeedService = new PriceFeedService({ alchemyApiKey }, logger);
+      nftPriceService = new NftPriceService({ alchemyApiKey }, { priceFeedService }, logger);
       dexService = null; // Will be instantiated when mainnet EthereumService is ready
       tokenRiskEngine = null; // Defer until dexService ready
 
