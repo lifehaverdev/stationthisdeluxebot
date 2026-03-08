@@ -82,6 +82,48 @@ describe('FocusStateMachine', () => {
     });
   });
 
+  describe('CONNECTION_MODE transitions', () => {
+    beforeEach(() => {
+      sm.doubleTapNode('n1'); // go to NODE_MODE
+    });
+
+    it('enterConnectionMode → CONNECTION_MODE with source', () => {
+      sm.enterConnectionMode('n1');
+      expect(sm.state).toBe('CONNECTION_MODE');
+      expect(sm.sourceNodeId).toBe('n1');
+      expect(sm.focusedNodeId).toBe('n1');
+    });
+
+    it('enterConnectionMode ignored outside NODE_MODE', () => {
+      sm.zoomOut(); // back to Z1
+      sm.enterConnectionMode('n1');
+      expect(sm.state).toBe('CANVAS_Z1');
+    });
+
+    it('completeConnection → NODE_MODE on source', () => {
+      sm.enterConnectionMode('n1');
+      sm.completeConnection();
+      expect(sm.state).toBe('NODE_MODE');
+      expect(sm.focusedNodeId).toBe('n1');
+      expect(sm.sourceNodeId).toBe(null);
+    });
+
+    it('cancelConnection → NODE_MODE on source', () => {
+      sm.enterConnectionMode('n1');
+      sm.cancelConnection();
+      expect(sm.state).toBe('NODE_MODE');
+      expect(sm.focusedNodeId).toBe('n1');
+      expect(sm.sourceNodeId).toBe(null);
+    });
+
+    it('zoomOut in CONNECTION_MODE cancels', () => {
+      sm.enterConnectionMode('n1');
+      sm.zoomOut();
+      expect(sm.state).toBe('NODE_MODE');
+      expect(sm.sourceNodeId).toBe(null);
+    });
+  });
+
   describe('transition callbacks', () => {
     it('fires onChange when state changes', () => {
       const changes = [];
