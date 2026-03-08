@@ -1028,9 +1028,12 @@ export class FocusDemo extends Component {
         h('span', null, `Energy: ${energy.toFixed(2)}`),
         h('span', null, `Step: ${avgMs.toFixed(2)}ms`),
         h('span', null, `Nodes: ${nodes.size}`),
+        fsmState === STATES.MULTI_SELECT ? h('span', null, `Selected: ${this._fsm.selectedNodeIds.size}`) : null,
+        fsmState === STATES.CONNECTION_MODE ? h('span', null, `Source: ${this._fsm.sourceNodeId}`) : null,
+        this._clipboard ? h('span', null, `Clipboard: ${this._clipboard.nodes.length}`) : null,
       ),
-      // Control panel (hidden in Node Mode)
-      fsmState !== STATES.NODE_MODE ? h('div', { className: 'fd-controls' },
+      // Control panel (only on canvas states)
+      (fsmState === STATES.CANVAS_Z1 || fsmState === STATES.CANVAS_Z2) ? h('div', { className: 'fd-controls' },
         h('button', { onclick: () => this._addRandomNode() }, '+ Node'),
         h('button', { onclick: () => this._addConnectedNode() }, '+ Connected'),
         h('button', { onclick: () => this._addGroupCluster() }, '+ Group'),
