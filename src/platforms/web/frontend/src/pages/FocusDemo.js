@@ -589,11 +589,146 @@ export class FocusDemo extends Component {
     );
   }
 
-  _batchGroup() {}
-  _batchClone() {}
-  _batchCut() {}
-  _batchPaste() {}
-  _batchDelete() {}
+  _getBaseId(nodeId) {
+    const match = nodeId.match(/^(.+)-v\d+$/);
+    return match ? match[1] : nodeId;
+  }
+
+  _getNextCloneId(nodeId) {
+    const base = this._getBaseId(nodeId);
+    const current = this._cloneCounters.get(base) || 0;
+    const next = current + 1;
+    this._cloneCounters.set(base, next);
+    return `${base}-v${next}`;
+  }
+
+  _cloneNodes(nodeIds) {
+    const idMap = new Map();
+    for (const id of nodeIds) {
+      idMap.set(id, this._getNextCloneId(id));
+    }
+
+    const nodes = new Map(this.state.nodes);
+    const newConnections = [];
+
+    for (const oldId of nodeIds) {
+      const newId = idMap.get(oldId);
+      const sourceNode = this.state.nodes.get(oldId);
+      const engineNode = this._engine.getNode(oldId);
+      if (!sourceNode || !engineNode) continue;
+
+      const pos = createPosition(
+        engineNode.position.x + 150,
+        engineNode.position.y + 50,
+      );
+      this._engine.addNode(newId, pos);
+      nodes.set(newId, { id: newId, label: sourceNode.label, group: sourceNode.group });
+      if (sourceNode.group) {
+        this._engine.setGroup(newId, sourceNode.group);
+      }
+    }
+
+    for (const conn of this.state.connections) {
+      if (idMap.has(conn.from) && idMap.has(conn.to)) {
+        const connId = 'c' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+        const newFrom = idMap.get(conn.from);
+        const newTo = idMap.get(conn.to);
+        this._engine.addConnection(connId, newFrom, newTo);
+        newConnections.push({ id: connId, from: newFrom, to: newTo });
+      }
+    }
+
+    return { nodes, newConnections, idMap };
+  }
+
+  _batchDelete() {
+    const ids = [...this._fsm.selectedNodeIds];
+    for (const id of ids) {
+      this._engine.removeNode(id);
+    }
+    const nodes = new Map(this.state.nodes);
+    for (const id of ids) nodes.delete(id);
+    const connections = this.state.connections.filter(
+      c => !this._fsm.selectedNodeIds.has(c.from) && !this._fsm.selectedNodeIds.has(c.to)
+    );
+    this._fsm.exitMultiSelect();
+    this.setState({ nodes, connections });
+  }
+
+  _batchGroup() {
+    this._groupCounter++;
+    const groupId = `group-${this._groupCounter}`;
+    const ids = [...this._fsm.selectedNodeIds];
+    const nodes = new Map(this.state.nodes);
+    for (const id of ids) {
+      this._engine.setGroup(id, groupId);
+      const node = nodes.get(id);
+      if (node) nodes.set(id, { ...node, group: groupId });
+    }
+    this._fsm.exitMultiSelect();
+    this.setState({ nodes });
+  }
+
+  _batchClone() {
+    const ids = [...this._fsm.selectedNodeIds];
+    const { nodes, newConnections } = this._cloneNodes(ids);
+    const connections = [...this.state.connections, ...newConnections];
+    this._fsm.exitMultiSelect();
+    this.setState({ nodes, connections });
+  }
+
+  _batchCut() {
+    const ids = [...this._fsm.selectedNodeIds];
+    const clipNodes = ids.map(id => {
+      const node = this.state.nodes.get(id);
+      const engineNode = this._engine.getNode(id);
+      return { ...node, position: engineNode ? { ...engineNode.position } : null };
+    }).filter(Boolean);
+    const clipConns = this.state.connections.filter(
+      c => this._fsm.selectedNodeIds.has(c.from) && this._fsm.selectedNodeIds.has(c.to)
+    );
+    this._clipboard = { nodes: clipNodes, connections: clipConns };
+    this._batchDelete();
+  }
+
+  _batchPaste() {
+    if (!this._clipboard) return;
+    const idMap = new Map();
+    const nodes = new Map(this.state.nodes);
+    const newConnections = [];
+
+    const cx = (window.innerWidth / 2 - this.state.viewport.panX) / this.state.viewport.scale;
+    const cy = (window.innerHeight / 2 - this.state.viewport.panY) / this.state.viewport.scale;
+
+    let sumX = 0, sumY = 0;
+    for (const cn of this._clipboard.nodes) {
+      if (cn.position) { sumX += cn.position.x; sumY += cn.position.y; }
+    }
+    const avgX = sumX / this._clipboard.nodes.length;
+    const avgY = sumY / this._clipboard.nodes.length;
+
+    for (const cn of this._clipboard.nodes) {
+      const newId = this._getNextCloneId(cn.id);
+      idMap.set(cn.id, newId);
+      const pos = cn.position
+        ? createPosition(cx + (cn.position.x - avgX), cy + (cn.position.y - avgY))
+        : createPosition(cx, cy);
+      this._engine.addNode(newId, pos);
+      nodes.set(newId, { id: newId, label: cn.label, group: cn.group });
+      if (cn.group) this._engine.setGroup(newId, cn.group);
+    }
+
+    for (const conn of this._clipboard.connections) {
+      if (idMap.has(conn.from) && idMap.has(conn.to)) {
+        const connId = 'c' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+        this._engine.addConnection(connId, idMap.get(conn.from), idMap.get(conn.to));
+        newConnections.push({ id: connId, from: idMap.get(conn.from), to: idMap.get(conn.to) });
+      }
+    }
+
+    this._fsm.exitMultiSelect();
+    this.setState({ nodes, connections: [...this.state.connections, ...newConnections] });
+  }
 
   _completeConnection(targetNodeId, anchorName) {
     const sourceId = this._fsm.sourceNodeId;
@@ -690,6 +825,17 @@ export class FocusDemo extends Component {
               className: 'fd-card-btn',
               onclick: (e) => { e.stopPropagation(); this._startConnection(focusedNodeId); },
             }, 'Connect'),
+            h('button', {
+              className: 'fd-card-btn',
+              onclick: (e) => {
+                e.stopPropagation();
+                const { nodes, newConnections } = this._cloneNodes([focusedNodeId]);
+                this.setState({
+                  nodes,
+                  connections: [...this.state.connections, ...newConnections],
+                });
+              },
+            }, 'Clone'),
             h('button', {
               className: 'fd-card-btn fd-card-btn-danger',
               onclick: (e) => {
