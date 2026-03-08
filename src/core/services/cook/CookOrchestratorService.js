@@ -455,7 +455,7 @@ class CookOrchestratorService {
    * Start cook with immediate submission of the first piece and orchestration-managed scheduling.
    * ✅ MODIFIED: Now accepts batchSize (explicit number to generate) instead of totalSupply (auto-calculate from target)
    */
-  async startCook({ collectionId, userId, cookId, spellId, toolId, traitTypes = [], paramsTemplate = {}, traitTree = [], paramOverrides = {}, batchSize = 1, mode = 'collection', images = null }) {
+  async startCook({ collectionId, userId, cookId, spellId, toolId, traitTypes = [], paramsTemplate = {}, traitTree = [], paramOverrides = {}, batchSize = 1, mode = 'collection', images = null, imageParamKey = 'input_image' }) {
     this.logger.debug(`[CookOrchestrator] startCook called for collection ${collectionId}, userId: ${userId}, cookId: ${cookId}, spellId: ${spellId}, toolId: ${toolId}, batchSize: ${batchSize}, mode: ${mode}`);
     try {
       this.logger.debug(`[CookOrchestrator] Calling _init()...`);
@@ -478,6 +478,7 @@ class CookOrchestratorService {
           toolId,
           spellId,
           paramOverrides,
+          imageParamKey,
           userId,
           cookId,
           collectionId,
@@ -861,7 +862,7 @@ class CookOrchestratorService {
   /**
    * Build batch submission objects for each image URL, bypassing TraitEngine.
    */
-  _buildBatchSubmissions({ images, toolId, spellId, paramOverrides, userId, cookId, collectionId }) {
+  _buildBatchSubmissions({ images, toolId, spellId, paramOverrides, userId, cookId, collectionId, imageParamKey = 'input_image' }) {
     return images.map((imageUrl, index) => {
       const jobId = `batch-${cookId}-${index}`;
       return {
@@ -870,7 +871,7 @@ class CookOrchestratorService {
         spellId: spellId || null,
         submission: {
           toolId: toolId || undefined,
-          inputs: { ...paramOverrides, input_image: imageUrl },
+          inputs: { ...paramOverrides, [imageParamKey]: imageUrl },
           user: { masterAccountId: userId, platform: 'cook' },
           metadata: {
             source: 'cook',

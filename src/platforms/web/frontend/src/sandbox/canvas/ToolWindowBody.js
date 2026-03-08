@@ -244,6 +244,12 @@ export class UploadWindowBody extends Component {
     if (!images.length) return;
 
     const toolId = toolWin.tool.toolId || toolWin.tool.id || toolWin.tool._id;
+    // Use the actual connected input key — not a hardcoded guess
+    const imageParamKey = batchConn.toInput || 'input_image';
+    // Pass through all manually-set tool params (prompt, seed, etc.), minus the image slot
+    const paramOverrides = { ...(toolWin.parameterMappings || {}) };
+    delete paramOverrides[imageParamKey];
+
     this._processedResults = new Set();
     this.setState({
       batchStatus: 'running',
@@ -254,7 +260,7 @@ export class UploadWindowBody extends Component {
     });
 
     try {
-      const res = await postWithCsrf('/api/v1/batch/start', { images, toolId });
+      const res = await postWithCsrf('/api/v1/batch/start', { images, toolId, imageParamKey, paramOverrides });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Batch start failed');
       const batchId = data.collectionId || data.batchId;

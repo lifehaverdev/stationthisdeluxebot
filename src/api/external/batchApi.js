@@ -28,7 +28,7 @@ function createBatchApiRouter(deps = {}) {
       const userId = req.user?.userId || req.user?.id;
       if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
-      const { images, toolId, spellId, paramOverrides } = req.body;
+      const { images, toolId, spellId, paramOverrides, imageParamKey } = req.body;
       if (!Array.isArray(images) || images.length === 0) {
         return res.status(400).json({ error: 'images array required' });
       }
@@ -43,6 +43,7 @@ function createBatchApiRouter(deps = {}) {
         toolId,
         spellId,
         paramOverrides: paramOverrides || {},
+        imageParamKey: imageParamKey || 'input_image',
       });
       return res.json(data);
     } catch (err) {

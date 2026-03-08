@@ -181,8 +181,12 @@ class X402PricingService {
 
     // Prefer actual historical cost from billing data when available
     if (metadata?.avgHistoricalCost && metadata.avgHistoricalCost > 0) {
-      this.logger.debug(`[x402] Using historical cost for ${tool.toolId}: $${metadata.avgHistoricalCost}`);
-      return metadata.avgHistoricalCost;
+      // Ensure plain number (MongoDB Decimal128 → Number conversion)
+      const cost = Number(metadata.avgHistoricalCost);
+      if (!isNaN(cost) && cost > 0) {
+        this.logger.debug(`[x402] Using historical cost for ${tool.toolId}: $${cost}`);
+        return cost;
+      }
     }
 
     // Fallback: estimate from GPU rate × duration

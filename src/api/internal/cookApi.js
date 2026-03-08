@@ -1700,7 +1700,7 @@ function createCookApi(deps = {}) {
   // Body: { mode: 'batch', userId, images, toolId?, spellId?, paramOverrides? }
   router.post('/batch/start', async (req, res) => {
     try {
-      const { userId, images, toolId, spellId, paramOverrides } = req.body || {};
+      const { userId, images, toolId, spellId, paramOverrides, imageParamKey } = req.body || {};
       if (!userId) return res.status(400).json({ error: 'userId required' });
       if (!Array.isArray(images) || images.length === 0) {
         return res.status(400).json({ error: 'images array required' });
@@ -1725,6 +1725,7 @@ function createCookApi(deps = {}) {
         spellId: spellId || null,
         images,
         paramOverrides: paramOverrides || {},
+        imageParamKey: imageParamKey || 'input_image',
       });
 
       logger.info(`[CookAPI] Started batch cook. collectionId=${collectionId} userId=${userId} total=${result.total}`);

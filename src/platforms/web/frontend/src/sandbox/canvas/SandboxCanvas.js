@@ -966,6 +966,15 @@ export class SandboxCanvas extends Component {
         output = { type: 'text', text: outputs.response, generationId };
       } else if (outputs.text) {
         output = { type: 'text', text: outputs.text, generationId };
+      } else if (Array.isArray(outputs.files) && outputs.files.length) {
+        const vidFile = outputs.files.find(f => /\.(mp4|webm|mov)$/i.test(f.url || f.filename || ''));
+        if (vidFile) {
+          output = { type: 'video', url: vidFile.url, generationId };
+        } else {
+          output = { type: 'file', files: outputs.files, generationId };
+        }
+      } else if (outputs.videoUrl || outputs.video) {
+        output = { type: 'video', url: outputs.videoUrl || outputs.video, generationId };
       } else {
         output = { type: 'unknown', generationId, ...outputs };
       }

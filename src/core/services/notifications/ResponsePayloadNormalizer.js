@@ -226,21 +226,36 @@ class ResponsePayloadNormalizer {
       }
 
       // Format 11: ComfyDeploy node output format - object with node IDs as keys and node result objects
-      // Example: { "20": { "node_meta": { "node_id": "20" }, "id": "...", "data": { "images": [...] } } }
+      // Example (images): { "20": { "node_meta": { "node_id": "20" }, "data": { "images": [...] } } }
+      // Example (videos):  { "0": { "data": { "files": [{ "url": "...mp4", "subfolder": "video" }] } } }
       else if (typeof responsePayload === 'object' && !Array.isArray(responsePayload) &&
-               Object.values(responsePayload).some(v => v && typeof v === 'object' && v.data && v.node_meta)) {
-        logger.debug('[ResponsePayloadNormalizer] Detected ComfyDeploy node output format, extracting images');
+               Object.values(responsePayload).some(v => v && typeof v === 'object' && v.data &&
+                 (v.node_meta || Array.isArray(v.data.files) || Array.isArray(v.data.images)))) {
+        logger.debug('[ResponsePayloadNormalizer] Detected ComfyDeploy node output format, extracting media');
         const images = [];
+        const files = [];
         for (const node of Object.values(responsePayload)) {
-          if (node && node.data && Array.isArray(node.data.images)) {
-            for (const img of node.data.images) {
-              if (img && img.url) images.push(img);
-              else if (typeof img === 'string') images.push({ url: img });
+          if (node && node.data) {
+            if (Array.isArray(node.data.images)) {
+              for (const img of node.data.images) {
+                if (img && img.url) images.push(img);
+                else if (typeof img === 'string') images.push({ url: img });
+              }
+            }
+            if (Array.isArray(node.data.files)) {
+              for (const file of node.data.files) {
+                if (file && file.url) files.push(file);
+              }
             }
           }
         }
         if (images.length > 0) {
           normalized.push({ type: 'image', data: { images } });
+        }
+        if (files.length > 0) {
+          normalized.push({ type: 'file', data: { files } });
+        }
+        if (normalized.length > 0) {
           return normalized;
         }
       }
