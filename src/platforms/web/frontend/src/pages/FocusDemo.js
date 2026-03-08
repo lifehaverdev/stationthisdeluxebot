@@ -482,6 +482,13 @@ export class FocusDemo extends Component {
     this.setState({ nodes, connections });
   }
 
+  _startConnection(sourceNodeId) {
+    if (this.state.fsmState !== STATES.NODE_MODE) {
+      this._fsm.doubleTapNode(sourceNodeId);
+    }
+    this._fsm.enterConnectionMode(sourceNodeId);
+  }
+
   _renderNodeMode() {
     const { focusedNodeId, nodes } = this.state;
     const node = nodes.get(focusedNodeId);
@@ -755,6 +762,23 @@ export class FocusDemo extends Component {
                 node.group ? h('span', { className: 'fd-group-tag', style: { background: groupColor } }, node.group.slice(0, 8)) : null,
                 isPinned ? h('span', { className: 'fd-pin-tag' }, 'pinned') : null,
               ),
+              h('div', {
+                className: 'fd-anchor fd-anchor-input',
+                'data-anchor': 'input',
+                'data-node-id': node.id,
+                onclick: (e) => e.stopPropagation(),
+              }, h('span', { className: 'fd-anchor-icon' })),
+              h('div', {
+                className: 'fd-anchor fd-anchor-output',
+                'data-anchor': 'output',
+                'data-node-id': node.id,
+                onclick: (e) => {
+                  e.stopPropagation();
+                  if (this.state.fsmState === STATES.NODE_MODE || this.state.fsmState === STATES.CANVAS_Z1 || this.state.fsmState === STATES.CANVAS_Z2) {
+                    this._startConnection(node.id);
+                  }
+                },
+              }, h('span', { className: 'fd-anchor-icon' })),
             );
           })),
         ),

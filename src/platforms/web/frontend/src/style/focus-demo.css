@@ -427,3 +427,44 @@
 .fd-nodemode.fd-slide-right { animation: fd-slide-right 250ms var(--ease) both; }
 .fd-nodemode.fd-slide-up { animation: fd-slide-up 250ms var(--ease) both; }
 .fd-nodemode.fd-slide-down { animation: fd-slide-down 250ms var(--ease) both; }
+
+/* ── Anchor Squares ──────────────────── */
+.fd-anchor {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 2;
+  transition: border-color var(--dur-interact) var(--ease), background var(--dur-interact) var(--ease);
+}
+
+.fd-anchor:hover {
+  border-color: var(--accent-border);
+  background: var(--accent-dim);
+}
+
+.fd-anchor-input {
+  left: -9px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.fd-anchor-output {
+  right: -9px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.fd-anchor-icon {
+  font-size: 10px;
+  line-height: 1;
+  color: var(--text-secondary);
+}
+
+.fd-anchor-input .fd-anchor-icon::before { content: '\2190'; }
+.fd-anchor-output .fd-anchor-icon::before { content: '\2192'; }
