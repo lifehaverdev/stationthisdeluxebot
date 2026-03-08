@@ -540,3 +540,64 @@
   border: 1px solid var(--border);
   padding: 8px 16px;
 }
+
+/* ── Multi-Select ────────────────────── */
+.fd-node.fd-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+  transform-origin: center center;
+}
+
+.fd-action-bar {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  gap: 6px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  animation: fd-slide-up 200ms var(--ease) both;
+}
+
+.fd-action-bar-count {
+  font-family: var(--ff-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  padding-right: 8px;
+  border-right: 1px solid var(--border);
+  margin-right: 2px;
+}
+
+.fd-action-btn {
+  font-family: var(--ff-condensed);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--ls-wide);
+  text-transform: uppercase;
+  background: var(--surface-2);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.fd-action-btn:hover {
+  border-color: var(--border-hover);
+}
+
+.fd-action-btn-danger {
+  color: var(--danger);
+  border-color: var(--danger-dim);
+}
+
+.fd-action-btn-danger:hover {
+  background: var(--danger-dim);
+}
+
+.fd-action-btn-cancel {
+  color: var(--text-secondary);
+}

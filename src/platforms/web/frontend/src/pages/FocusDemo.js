@@ -39,6 +39,10 @@ export class FocusDemo extends Component {
     this._gestureStart = null; // { x, y, time, target }
     this._lastTap = null;     // { time, target }
     this._tapTimeout = null;
+    this._longPressTimeout = null;
+    this._clipboard = null;
+    this._cloneCounters = new Map();
+    this._groupCounter = 0;
 
     this._fsm.onChange((from, to, nodeId) => {
       this._onStateChange(from, to, nodeId);
@@ -183,7 +187,29 @@ export class FocusDemo extends Component {
     if (e.button !== 0) return;
     if (this.state.fsmState === STATES.NODE_MODE) return;
     this._panStart = { x: e.clientX - this.state.viewport.panX, y: e.clientY - this.state.viewport.panY };
+    const startX = e.clientX;
+    const startY = e.clientY;
+    // Long-press detection (desktop)
+    if (this.state.fsmState === STATES.CANVAS_Z1 || this.state.fsmState === STATES.CANVAS_Z2) {
+      const target = e.target;
+      this._longPressTimeout = setTimeout(() => {
+        this._longPressTimeout = null;
+        const nodeEl = target.closest && target.closest('.fd-node');
+        const nodeId = nodeEl && nodeEl.dataset.nodeId;
+        if (nodeId) {
+          this._fsm.enterMultiSelect(nodeId);
+          this.setState({});
+        }
+      }, 500);
+    }
     const onMove = (ev) => {
+      if (this._longPressTimeout) {
+        const dist = Math.hypot(ev.clientX - startX, ev.clientY - startY);
+        if (dist > 10) {
+          clearTimeout(this._longPressTimeout);
+          this._longPressTimeout = null;
+        }
+      }
       this.setState({
         viewport: {
           ...this.state.viewport,
@@ -193,6 +219,10 @@ export class FocusDemo extends Component {
       });
     };
     const onUp = () => {
+      if (this._longPressTimeout) {
+        clearTimeout(this._longPressTimeout);
+        this._longPressTimeout = null;
+      }
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
     };
@@ -208,6 +238,20 @@ export class FocusDemo extends Component {
       // Set up pan tracking for canvas modes (not NODE_MODE)
       if (this.state.fsmState !== STATES.NODE_MODE) {
         this._panStart = { x: t.clientX - this.state.viewport.panX, y: t.clientY - this.state.viewport.panY };
+      }
+      // Long-press detection for multi-select
+      if (this.state.fsmState === STATES.CANVAS_Z1 || this.state.fsmState === STATES.CANVAS_Z2) {
+        const target = e.target;
+        this._longPressTimeout = setTimeout(() => {
+          this._longPressTimeout = null;
+          const nodeEl = target.closest && target.closest('.fd-node');
+          const nodeId = nodeEl && nodeEl.dataset.nodeId;
+          if (nodeId) {
+            this._fsm.enterMultiSelect(nodeId);
+            this.setState({});
+            this._gestureStart = null;
+          }
+        }, 500);
       }
     } else if (e.touches.length === 2) {
       e.preventDefault();
@@ -226,6 +270,15 @@ export class FocusDemo extends Component {
   }
 
   _onTouchMove(e) {
+    // Cancel long-press if finger moved
+    if (this._longPressTimeout && this._gestureStart) {
+      const t = e.touches[0];
+      const dist = Math.hypot(t.clientX - this._gestureStart.x, t.clientY - this._gestureStart.y);
+      if (dist > 10) {
+        clearTimeout(this._longPressTimeout);
+        this._longPressTimeout = null;
+      }
+    }
     // In NODE_MODE: track movement for swipe detection but don't pan
     if (this.state.fsmState === STATES.NODE_MODE) {
       if (e.touches.length === 1) e.preventDefault();
@@ -259,6 +312,10 @@ export class FocusDemo extends Component {
   }
 
   _onTouchEnd(e) {
+    if (this._longPressTimeout) {
+      clearTimeout(this._longPressTimeout);
+      this._longPressTimeout = null;
+    }
     this._panStart = null;
     this._pinchStart = null;
 
@@ -518,6 +575,25 @@ export class FocusDemo extends Component {
     const connections = this.state.connections.filter(c => c.from !== nodeId && c.to !== nodeId);
     this.setState({ nodes, connections });
   }
+
+  _renderActionBar() {
+    const count = this._fsm.selectedNodeIds.size;
+    return h('div', { className: 'fd-action-bar' },
+      h('span', { className: 'fd-action-bar-count' }, `${count} selected`),
+      h('button', { className: 'fd-action-btn', onclick: () => this._batchGroup() }, 'Group'),
+      h('button', { className: 'fd-action-btn', onclick: () => this._batchClone() }, 'Clone'),
+      h('button', { className: 'fd-action-btn', onclick: () => this._batchCut() }, 'Cut'),
+      this._clipboard ? h('button', { className: 'fd-action-btn', onclick: () => this._batchPaste() }, 'Paste') : null,
+      h('button', { className: 'fd-action-btn fd-action-btn-danger', onclick: () => this._batchDelete() }, 'Delete'),
+      h('button', { className: 'fd-action-btn fd-action-btn-cancel', onclick: () => this._fsm.exitMultiSelect() }, '\u2715'),
+    );
+  }
+
+  _batchGroup() {}
+  _batchClone() {}
+  _batchCut() {}
+  _batchPaste() {}
+  _batchDelete() {}
 
   _completeConnection(targetNodeId, anchorName) {
     const sourceId = this._fsm.sourceNodeId;
@@ -848,6 +924,8 @@ export class FocusDemo extends Component {
       fsmState === STATES.CONNECTION_MODE ? h('div', { className: 'fd-conn-hint' },
         `Connecting from ${this._fsm.sourceNodeId} \u2014 tap a target node`,
       ) : null,
+      // Multi-select action bar
+      fsmState === STATES.MULTI_SELECT ? this._renderActionBar() : null,
       // Node Mode overlay
       fsmState === STATES.NODE_MODE ? this._renderNodeMode() : null,
     );
