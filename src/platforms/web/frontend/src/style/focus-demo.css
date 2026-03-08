@@ -53,10 +53,15 @@
   stroke-width: 2;
 }
 
+.fd-conn-path[data-type="image"] { stroke: rgba(147, 130, 255, 0.35); }
+.fd-conn-path[data-type="text"]  { stroke: rgba(100, 200, 180, 0.35); }
+.fd-conn-path[data-type="video"] { stroke: rgba(255, 160, 100, 0.35); }
+
 .fd-node {
   position: absolute;
   width: 200px;
-  height: 80px;
+  min-height: 80px;
+  padding: 8px 0;
   background: var(--surface-2);
   border: 1px solid var(--border);
   display: flex;
@@ -90,6 +95,10 @@
   font-weight: var(--fw-medium);
   letter-spacing: var(--ls-wide);
   text-transform: uppercase;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .fd-node-id {
@@ -107,6 +116,15 @@
   gap: 6px;
   font-family: var(--ff-mono);
   font-size: 9px;
+}
+
+.fd-node-type {
+  font-family: var(--ff-mono);
+  font-size: 8px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-label);
+  opacity: 0.6;
 }
 
 .fd-group-tag {
@@ -265,6 +283,69 @@
 
 .fd-card-link:hover {
   background: var(--accent-dim);
+}
+
+.fd-card-type-badge {
+  font-family: var(--ff-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-dim);
+  border: 1px solid var(--accent-border);
+  padding: 2px 8px;
+  align-self: flex-start;
+}
+
+.fd-card-conn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.fd-card-conn-param {
+  font-family: var(--ff-mono);
+  font-size: 10px;
+  color: var(--text-label);
+}
+
+.fd-card-conn-type {
+  font-family: var(--ff-mono);
+  font-size: 9px;
+  color: var(--text-label);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  padding: 1px 5px;
+}
+
+.fd-card-param {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.fd-card-param:last-child {
+  border-bottom: none;
+}
+
+.fd-card-param-key {
+  font-family: var(--ff-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-label);
+  flex-shrink: 0;
+}
+
+.fd-card-param-val {
+  font-family: var(--ff-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-primary);
+  text-align: right;
+  word-break: break-all;
+  max-width: 60%;
 }
 
 .fd-card-mono {

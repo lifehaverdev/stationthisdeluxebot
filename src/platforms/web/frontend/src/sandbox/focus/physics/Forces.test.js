@@ -10,19 +10,27 @@ import { createPosition } from '../spatial/SphericalGrid.js';
 
 describe('Forces', () => {
   describe('connectedAttraction', () => {
-    it('pulls connected nodes toward each other', () => {
+    it('pulls connected nodes toward each other when beyond rest length', () => {
       const a = createPosition(0, 0);
-      const b = createPosition(200, 0);
+      const b = createPosition(400, 0);
       const force = connectedAttraction(a, b);
-      // Force on a should point toward b (positive x)
+      // Force on a should point toward b (positive x) when beyond rest length
       expect(force.fx).toBeGreaterThan(0);
       expect(force.fy).toBeCloseTo(0);
     });
 
-    it('force increases with distance', () => {
+    it('pushes apart when closer than rest length', () => {
       const a = createPosition(0, 0);
-      const near = connectedAttraction(a, createPosition(50, 0));
-      const far = connectedAttraction(a, createPosition(300, 0));
+      const b = createPosition(100, 0);
+      const force = connectedAttraction(a, b);
+      // Force on a should point away from b (negative x) when too close
+      expect(force.fx).toBeLessThan(0);
+    });
+
+    it('force increases with distance from rest length', () => {
+      const a = createPosition(0, 0);
+      const near = connectedAttraction(a, createPosition(300, 0));
+      const far = connectedAttraction(a, createPosition(500, 0));
       expect(Math.abs(far.fx)).toBeGreaterThan(Math.abs(near.fx));
     });
   });

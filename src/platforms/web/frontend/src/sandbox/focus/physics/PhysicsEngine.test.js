@@ -87,13 +87,13 @@ describe('PhysicsEngine', () => {
     });
 
     it('enforces left-right polarity on connections', () => {
-      // Target LEFT of source (wrong order)
-      engine.addNode('src', createPosition(200, 0));
-      engine.addNode('tgt', createPosition(50, 0));
+      // Target LEFT of source (wrong order), far enough apart for polarity to dominate
+      engine.addNode('src', createPosition(300, 0));
+      engine.addNode('tgt', createPosition(0, 0));
       engine.addConnection('c1', 'src', 'tgt');
 
-      // Run enough steps for polarity to overcome symmetric forces
-      for (let i = 0; i < 500; i++) engine.step(16);
+      // Run enough steps for polarity to reorder nodes
+      for (let i = 0; i < 2000; i++) engine.step(16);
 
       const src = engine.getNode('src');
       const tgt = engine.getNode('tgt');

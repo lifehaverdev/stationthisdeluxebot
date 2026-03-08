@@ -2,12 +2,13 @@ import { flatDistance } from '../spatial/SphericalGrid.js';
 
 // Tunable constants
 const ATTRACTION_STRENGTH = 0.01;
+const ATTRACTION_REST_LENGTH = 250; // Connected nodes settle ~250px apart (NODE_WIDTH + gap)
 const CONNECTION_LINE_REPULSION_STRENGTH = 5000;
 const CONNECTION_LINE_REPULSION_RANGE = 100;
 const GROUP_REPULSION_RANGE = 150;
 const GROUP_REPULSION_STRENGTH = 2000;
 const GROUP_ATTRACTION_STRENGTH = 0.002;
-const POLARITY_STRENGTH = 0.2;
+const POLARITY_STRENGTH = 0.5;
 const POLARITY_MIN_GAP = 80;
 const PIN_SPRING_K = 0.1;
 
@@ -18,9 +19,16 @@ const PIN_SPRING_K = 0.1;
 export function connectedAttraction(posA, posB) {
   const dx = posB.x - posA.x;
   const dy = posB.y - posA.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist < 0.01) return { fx: 0, fy: 0 };
+
+  // Spring with rest length — no force when at rest distance, pull when far, push when too close
+  const displacement = dist - ATTRACTION_REST_LENGTH;
+  const nx = dx / dist;
+  const ny = dy / dist;
   return {
-    fx: dx * ATTRACTION_STRENGTH,
-    fy: dy * ATTRACTION_STRENGTH,
+    fx: nx * displacement * ATTRACTION_STRENGTH,
+    fy: ny * displacement * ATTRACTION_STRENGTH,
   };
 }
 

@@ -7,7 +7,7 @@ import { getNeighbors } from '../sandbox/focus/spatial/Proximity.js';
 import '../style/focus-demo.css';
 
 const NODE_WIDTH = 200;
-const NODE_HEIGHT = 80;
+const NODE_HEIGHT = 90;
 
 const ZOOM_LEVELS = {
   CANVAS_Z2: 0.45,
@@ -441,28 +441,38 @@ export class FocusDemo extends Component {
 
   _seedDemo() {
     const seed = [
-      { id: 'n1', label: 'Text Prompt', x: 0, y: 0, group: 'spell1' },
-      { id: 'n2', label: 'Image Gen', x: 300, y: 0, group: 'spell1' },
-      { id: 'n3', label: 'Upscaler', x: 600, y: 0, group: 'spell1' },
-      { id: 'n4', label: 'Style Transfer', x: 300, y: 200, group: 'spell1' },
-      { id: 'n5', label: 'Loose Node A', x: -200, y: 300 },
-      { id: 'n6', label: 'Loose Node B', x: -100, y: 400 },
-      { id: 'n7', label: 'LLM Chat', x: 100, y: -300, group: 'spell2' },
-      { id: 'n8', label: 'Summarizer', x: 400, y: -300, group: 'spell2' },
+      // Spell 1: Portrait Generator
+      { id: 'chatgpt',    label: 'ChatGPT',      type: 'text-to-text',  group: 'portrait-gen', x: 0,    y: 0,
+        params: { prompt: 'A cinematic portrait of a cyberpunk woman...', instructions: 'You refine image prompts for maximum detail', temperature: 0.7 } },
+      { id: 'flux-gen',   label: 'Flux Gen',      type: 'text-to-image', group: 'portrait-gen', x: 300,  y: 0,
+        params: { width: 1024, height: 1024, steps: 4, baseModel: 'flux-schnell' } },
+      { id: 'joycaption', label: 'JoyCaption',    type: 'image-to-text', group: 'portrait-gen', x: 600,  y: 0 },
+      { id: 'upscaler',   label: 'Upscaler 4\u00D7', type: 'img2img',   group: 'portrait-gen', x: 600,  y: 200 },
+
+      // Spell 2: Video from Still
+      { id: 'static-img', label: 'Static Image',  type: 'upload',        group: 'vid-from-still', x: 100,  y: -300 },
+      { id: 'ltx-video',  label: 'LTX Video',     type: 'video',         group: 'vid-from-still', x: 400,  y: -300,
+        params: { frames: 97, fps: 24, width: 768, height: 512 } },
+
+      // Loose experimentation nodes
+      { id: 'dalle3',     label: 'DALL\u00B7E 3',  type: 'text-to-image', x: -200, y: 300 },
+      { id: 'qwen',       label: 'Qwen Layered',   type: 'text-to-text',  x: -100, y: 450 },
     ];
 
     const connections = [
-      { id: 'c1', from: 'n1', to: 'n2' },
-      { id: 'c2', from: 'n2', to: 'n3' },
-      { id: 'c3', from: 'n2', to: 'n4' },
-      { id: 'c4', from: 'n7', to: 'n8' },
+      // Portrait Generator pipeline
+      { id: 'c1', from: 'chatgpt',    to: 'flux-gen',   fromOutput: 'response',  toInput: 'prompt',   dataType: 'text' },
+      { id: 'c2', from: 'flux-gen',   to: 'joycaption', fromOutput: 'image',     toInput: 'imageUrl', dataType: 'image' },
+      { id: 'c3', from: 'flux-gen',   to: 'upscaler',   fromOutput: 'image',     toInput: 'imageUrl', dataType: 'image' },
+      // Video from Still pipeline
+      { id: 'c4', from: 'static-img', to: 'ltx-video',  fromOutput: 'imageUrl',  toInput: 'imageUrl', dataType: 'image' },
     ];
 
     const nodeMap = new Map();
     for (const n of seed) {
       this._engine.addNode(n.id, createPosition(n.x, n.y));
       if (n.group) this._engine.setGroup(n.id, n.group);
-      nodeMap.set(n.id, { id: n.id, label: n.label, group: n.group || null });
+      nodeMap.set(n.id, { id: n.id, label: n.label, type: n.type || null, group: n.group || null, params: n.params || null });
     }
 
     for (const c of connections) {
@@ -507,7 +517,7 @@ export class FocusDemo extends Component {
     const y = (Math.random() - 0.5) * 600;
     this._engine.addNode(id, createPosition(x, y));
     const nodes = new Map(this.state.nodes);
-    nodes.set(id, { id, label: 'New Node', group: null });
+    nodes.set(id, { id, label: 'New Node', type: null, group: null, params: null });
     this.setState({ nodes });
   }
 
@@ -526,7 +536,7 @@ export class FocusDemo extends Component {
     this._engine.addConnection(connId, targetId, id);
 
     const nodes = new Map(this.state.nodes);
-    nodes.set(id, { id, label: 'Connected', group: null });
+    nodes.set(id, { id, label: 'Connected', type: null, group: null, params: null });
     const connections = [...this.state.connections, { id: connId, from: targetId, to: id }];
     this.setState({ nodes, connections });
   }
@@ -545,7 +555,7 @@ export class FocusDemo extends Component {
       const y = baseY + (Math.random() - 0.5) * 100;
       this._engine.addNode(id, createPosition(x, y));
       this._engine.setGroup(id, groupId);
-      nodes.set(id, { id, label: `Group ${i}`, group: groupId });
+      nodes.set(id, { id, label: `Group ${i}`, type: null, group: groupId, params: null });
 
       if (prevId) {
         const connId = `c-${groupId}-${i}`;
@@ -604,7 +614,7 @@ export class FocusDemo extends Component {
       const x = (Math.random() - 0.5) * 1500;
       const y = (Math.random() - 0.5) * 1500;
       this._engine.addNode(id, createPosition(x, y));
-      nodes.set(id, { id, label: `S${existingIds.length + i}`, group: null });
+      nodes.set(id, { id, label: `S${existingIds.length + i}`, type: null, group: null, params: null });
 
       if (existingIds.length > 0 && Math.random() < 0.4) {
         const target = existingIds[Math.floor(Math.random() * existingIds.length)];
@@ -675,7 +685,7 @@ export class FocusDemo extends Component {
         engineNode.position.y + 50,
       );
       this._engine.addNode(newId, pos);
-      nodes.set(newId, { id: newId, label: sourceNode.label, group: sourceNode.group });
+      nodes.set(newId, { id: newId, label: sourceNode.label, type: sourceNode.type, group: sourceNode.group, params: sourceNode.params });
       if (sourceNode.group) {
         this._engine.setGroup(newId, sourceNode.group);
       }
@@ -769,7 +779,7 @@ export class FocusDemo extends Component {
         ? createPosition(cx + (cn.position.x - avgX), cy + (cn.position.y - avgY))
         : createPosition(cx, cy);
       this._engine.addNode(newId, pos);
-      nodes.set(newId, { id: newId, label: cn.label, group: cn.group });
+      nodes.set(newId, { id: newId, label: cn.label, type: cn.type, group: cn.group, params: cn.params });
       if (cn.group) this._engine.setGroup(newId, cn.group);
     }
 
@@ -844,6 +854,7 @@ export class FocusDemo extends Component {
             node.group ? h('span', { className: 'fd-group-tag', style: { background: this._getGroupColor(node.group) } }, node.group) : null,
             isPinned ? h('span', { className: 'fd-pin-tag' }, 'pinned') : null,
           ),
+          node.type ? h('div', { className: 'fd-card-type-badge' }, node.type) : null,
         ),
 
         // Card 2: Connections
@@ -853,25 +864,50 @@ export class FocusDemo extends Component {
             h('span', { className: 'fd-card-label' }, 'Inputs'),
             ...inputConns.map(c => {
               const fromNode = nodes.get(c.from);
-              return h('button', {
-                className: 'fd-card-link',
-                onclick: (e) => { e.stopPropagation(); this._fsm.navigateToNode(c.from); },
-              }, fromNode ? fromNode.label : c.from);
+              const label = fromNode ? fromNode.label : c.from;
+              const detail = c.toInput ? `\u2192 ${c.toInput}` : '';
+              const typeTag = c.dataType || '';
+              return h('div', { className: 'fd-card-conn' },
+                h('button', {
+                  className: 'fd-card-link',
+                  onclick: (e) => { e.stopPropagation(); this._fsm.navigateToNode(c.from); },
+                }, label),
+                detail ? h('span', { className: 'fd-card-conn-param' }, detail) : null,
+                typeTag ? h('span', { className: 'fd-card-conn-type' }, typeTag) : null,
+              );
             }),
           ) : null,
           outputConns.length ? h('div', { className: 'fd-card-row' },
             h('span', { className: 'fd-card-label' }, 'Outputs'),
             ...outputConns.map(c => {
               const toNode = nodes.get(c.to);
-              return h('button', {
-                className: 'fd-card-link',
-                onclick: (e) => { e.stopPropagation(); this._fsm.navigateToNode(c.to); },
-              }, toNode ? toNode.label : c.to);
+              const label = toNode ? toNode.label : c.to;
+              const detail = c.fromOutput ? `${c.fromOutput} \u2192` : '';
+              const typeTag = c.dataType || '';
+              return h('div', { className: 'fd-card-conn' },
+                h('button', {
+                  className: 'fd-card-link',
+                  onclick: (e) => { e.stopPropagation(); this._fsm.navigateToNode(c.to); },
+                }, label),
+                detail ? h('span', { className: 'fd-card-conn-param' }, detail) : null,
+                typeTag ? h('span', { className: 'fd-card-conn-type' }, typeTag) : null,
+              );
             }),
           ) : null,
         ) : null,
 
-        // Card 3: Position
+        // Card 3: Parameters (only if node has params)
+        node.params ? h('div', { className: 'fd-card' },
+          h('div', { className: 'fd-card-section' }, 'Parameters'),
+          ...Object.entries(node.params).map(([key, val]) =>
+            h('div', { className: 'fd-card-param' },
+              h('span', { className: 'fd-card-param-key' }, key),
+              h('span', { className: 'fd-card-param-val' }, String(val)),
+            ),
+          ),
+        ) : null,
+
+        // Card 4: Position
         h('div', { className: 'fd-card' },
           h('div', { className: 'fd-card-section' }, 'Position'),
           engineNode ? h('div', { className: 'fd-card-mono' },
@@ -1038,9 +1074,12 @@ export class FocusDemo extends Component {
 
   _getGroupColor(groupId) {
     if (!groupId) return null;
-    let hash = 0;
-    for (let i = 0; i < groupId.length; i++) hash = groupId.charCodeAt(i) + ((hash << 5) - hash);
-    const hue = Math.abs(hash) % 360;
+    let hash = 2166136261; // FNV offset basis
+    for (let i = 0; i < groupId.length; i++) {
+      hash ^= groupId.charCodeAt(i);
+      hash = Math.imul(hash, 16777619); // FNV prime
+    }
+    const hue = ((hash >>> 0) % 360);
     return `hsla(${hue}, 70%, 50%, 0.28)`;
   }
 
@@ -1088,7 +1127,7 @@ export class FocusDemo extends Component {
               const isRelevant = !z1Visible || (z1Visible.has(c.from) && z1Visible.has(c.to));
               const offset = Math.max(50, Math.abs(to.x - from.x) * 0.4);
               const d = `M ${from.x + NODE_WIDTH} ${from.y + NODE_HEIGHT / 2} C ${from.x + NODE_WIDTH + offset} ${from.y + NODE_HEIGHT / 2} ${to.x - offset} ${to.y + NODE_HEIGHT / 2} ${to.x} ${to.y + NODE_HEIGHT / 2}`;
-              return h('path', { key: c.id, d, className: `fd-conn-path${isRelevant ? '' : ' fd-conn-dimmed'}` });
+              return h('path', { key: c.id, d, className: `fd-conn-path${isRelevant ? '' : ' fd-conn-dimmed'}`, 'data-type': c.dataType || '' });
             }),
           ),
           // Nodes
@@ -1115,9 +1154,10 @@ export class FocusDemo extends Component {
             },
               h('div', { className: 'fd-node-label' }, node.label),
               h('div', { className: 'fd-node-meta' },
-                node.group ? h('span', { className: 'fd-group-tag', style: { background: groupColor } }, node.group.slice(0, 8)) : null,
+                node.group ? h('span', { className: 'fd-group-tag', style: { background: groupColor } }, node.group.slice(0, 12)) : null,
                 isPinned ? h('span', { className: 'fd-pin-tag' }, 'pinned') : null,
               ),
+              node.type ? h('div', { className: 'fd-node-type' }, node.type) : null,
               h('div', {
                 className: 'fd-anchor fd-anchor-input',
                 'data-anchor': 'input',

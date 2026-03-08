@@ -9,8 +9,8 @@ import {
 
 const DAMPING = 0.92;
 const MAX_VELOCITY = 50;
-const NODE_REPULSION_STRENGTH = 3000;
-const NODE_REPULSION_RANGE = 200;
+const NODE_REPULSION_STRENGTH = 8000;
+const NODE_REPULSION_RANGE = 350;
 
 export class PhysicsEngine {
   constructor() {

@@ -5,6 +5,7 @@ import { ParameterForm } from '../components/windows/ParameterForm.js';
 import { ResultDisplay } from '../components/windows/ResultDisplay.js';
 import { AsyncButton } from '../components/ModalKit.js';
 import { Loader } from '../components/Modal.js';
+import { websocketClient } from '../ws.js';
 
 /**
  * ErrorBlock — clickable error message that copies its text to the clipboard.
@@ -174,13 +175,17 @@ export class UploadWindowBody extends Component {
       batchZipUrl: null,
       batchZipBuilding: false,
       batchResults: [],
+      piecesVersion: 0, // bumped to trigger re-render on pieceProgress changes
     };
     this._processedResults = new Set();
+    this._pieceProgress = new Map(); // generationId → { progress, liveStatus, status }
     this._batchPieceHandler = this._handleBatchPiece.bind(this);
+    this._progressHandler = this._handleGenerationProgress.bind(this);
   }
 
   willUnmount() {
     eventBus.off('batchPieceComplete', this._batchPieceHandler);
+    websocketClient.off('generationProgress', this._progressHandler);
   }
 
   _onFiles(rawFiles) {
@@ -236,8 +241,17 @@ export class UploadWindowBody extends Component {
     return window.sandboxCanvas?.state.windows.get(batchConn.toWindowId) || null;
   }
 
+  _handleGenerationProgress({ collectionId, generationId, progress, liveStatus, status }) {
+    if (collectionId !== this.state.batchId || !generationId) return;
+    this._pieceProgress.set(generationId, { progress, liveStatus, status });
+    this.setState({ piecesVersion: this.state.piecesVersion + 1 });
+  }
+
   _handleBatchPiece({ collectionId, generationId, status, payload }) {
     if (collectionId !== this.state.batchId) return;
+
+    // Remove from active progress tracking
+    if (generationId) this._pieceProgress.delete(generationId);
 
     // Webhook-path payloads nest outputs under `outputs: { images: [{ url }] }`;
     // immediate-path payloads spread images to top-level. Check both.
@@ -263,6 +277,8 @@ export class UploadWindowBody extends Component {
 
     if (total > 0 && (newCompleted + newFailed) >= total) {
       eventBus.off('batchPieceComplete', this._batchPieceHandler);
+      websocketClient.off('generationProgress', this._progressHandler);
+      this._pieceProgress.clear();
       newState.batchStatus = newCompleted > 0 ? 'complete' : 'error';
     }
     this.setState(newState);
@@ -303,6 +319,7 @@ export class UploadWindowBody extends Component {
     delete paramOverrides[imageParamKey];
 
     this._processedResults = new Set();
+    this._pieceProgress = new Map();
     this.setState({
       batchStatus: 'running',
       batchTotal: images.length,
@@ -310,6 +327,7 @@ export class UploadWindowBody extends Component {
       batchFailed: 0,
       batchZipUrl: null,
       batchResults: [],
+      piecesVersion: 0,
     });
 
     try {
@@ -319,6 +337,7 @@ export class UploadWindowBody extends Component {
       const batchId = data.collectionId || data.batchId;
       this.setState({ batchId });
       eventBus.on('batchPieceComplete', this._batchPieceHandler);
+      websocketClient.on('generationProgress', this._progressHandler);
     } catch (err) {
       this.setState({ batchStatus: 'error' });
       console.error('[UploadWindowBody] batch start error:', err);
@@ -340,6 +359,10 @@ export class UploadWindowBody extends Component {
     }
   }
 
+  _openGalleryImage(url, i) {
+    eventBus.emit('sandbox:openResultOverlay', { output: { type: 'image', url }, displayName: `Result ${i + 1}` });
+  }
+
   _renderBatchFooter(outputs) {
     const { batchStatus, batchCompleted, batchFailed, batchTotal, batchZipUrl, batchZipBuilding, batchResults } = this.state;
     const batchConn = this._getBatchConn();
@@ -347,71 +370,108 @@ export class UploadWindowBody extends Component {
     const isRunning = batchStatus === 'running';
     const isComplete = batchStatus === 'complete';
 
+    // Active piece rows from _pieceProgress map
+    const activePieces = isRunning ? [...this._pieceProgress.entries()] : [];
+
+    // Overall completion percentage (completed pieces, not intra-piece)
+    const overallPct = batchTotal > 0 ? Math.round((batchCompleted / batchTotal) * 100) : 0;
+
     return h('div', { className: 'nwb-batch-footer' },
+
+      // ── Header ──────────────────────────────────────────────
       h('div', { className: 'nwb-batch-footer-top' },
         h('span', { className: 'nwb-batch-label' }, 'batch'),
         h('span', {
           className: 'nwb-batch-info',
-          title: 'Connect the batch anchor (circular dot, right side) to a tool\'s image input. Then click Run to process each image through that tool. Results appear as versions on the tool node.',
+          title: 'Connect the batch anchor (circular dot, right side) to a tool\'s image input. Then click Run to process each image through that tool.',
         }, '?'),
         toolWin
           ? h('span', { className: 'nwb-batch-connected' }, `\u2192 ${toolWin.tool?.displayName || 'tool'}`)
           : h('span', { className: 'nwb-batch-unconnected' }, 'connect to a tool'),
+        (isRunning || isComplete)
+          ? h('span', { className: 'nwb-batch-counter' }, `${batchCompleted + batchFailed}/${batchTotal}`)
+          : null,
       ),
 
-      // Progress bar
-      isRunning
+      // ── Overall progress bar ─────────────────────────────────
+      (isRunning || isComplete)
         ? h('div', { className: 'nwb-batch-progress' },
             h('div', { className: 'nwb-batch-bar-track' },
               h('div', {
-                className: 'nwb-batch-bar-fill',
-                style: `width:${batchTotal > 0 ? Math.round((batchCompleted / batchTotal) * 100) : 0}%`,
+                className: `nwb-batch-bar-fill${isComplete ? ' nwb-batch-bar-fill--done' : ''}`,
+                style: `width:${isComplete ? 100 : overallPct}%`,
               })
             ),
-            h('span', { className: 'nwb-batch-progress-text' }, `${batchCompleted}/${batchTotal}`)
+            h('span', { className: 'nwb-batch-progress-text' },
+              isComplete
+                ? `${batchCompleted} done${batchFailed > 0 ? ` · ${batchFailed} failed` : ''}`
+                : `${overallPct}%`
+            ),
           )
         : null,
 
-      // Results gallery — builds up as pieces arrive
+      // ── Active piece rows (generationProgress ticks) ─────────
+      activePieces.length > 0
+        ? h('div', { className: 'nwb-batch-pieces' },
+            ...activePieces.map(([gid, piece]) => {
+              const pct = typeof piece.progress === 'number' ? Math.round(piece.progress * 100) : null;
+              const label = piece.liveStatus || (piece.status === 'queued' ? 'Queued' : 'Running');
+              return h('div', { key: gid, className: 'nwb-batch-piece-row' },
+                h('span', { className: 'nwb-batch-piece-dot' }, '\u25cf'),
+                h('span', { className: 'nwb-batch-piece-status' }, label),
+                pct !== null
+                  ? h('span', { className: 'nwb-batch-piece-pct' }, `${pct}%`)
+                  : null,
+                pct !== null
+                  ? h('div', { className: 'nwb-batch-piece-track' },
+                      h('div', { className: 'nwb-batch-piece-fill', style: `width:${pct}%` })
+                    )
+                  : null,
+              );
+            })
+          )
+        : null,
+
+      // ── Results gallery — builds up as pieces arrive ─────────
       (isRunning || isComplete) && batchResults.length > 0
         ? h('div', { className: 'nwb-batch-gallery' },
             ...batchResults.map((url, i) =>
-              h('a', { key: url, href: url, target: '_blank', className: 'nwb-batch-gallery-thumb' },
+              h('div', {
+                key: url,
+                className: 'nwb-batch-gallery-thumb',
+                onclick: (e) => { e.stopPropagation(); this._openGalleryImage(url, i); },
+                title: `Result ${i + 1} — click to expand`,
+              },
                 h('img', { src: url, alt: `Result ${i + 1}` })
               )
             )
           )
         : null,
 
+      // ── Complete: ZIP button ─────────────────────────────────
       isComplete
-        ? h('div', { className: 'nwb-batch-results' },
-            h('span', { className: 'nwb-batch-done-text' },
-              `${batchCompleted} done${batchFailed > 0 ? `, ${batchFailed} failed` : ''}`
-            ),
+        ? h('div', { className: 'nwb-batch-actions' },
             batchZipUrl
-              ? h('a', { href: batchZipUrl, className: 'nwb-batch-zip-link', download: true }, 'ZIP')
+              ? h('a', { href: batchZipUrl, className: 'nwb-batch-zip-link', download: true }, 'Download ZIP')
               : h('button', {
                   className: 'nwb-batch-zip-btn',
                   disabled: batchZipBuilding,
                   onclick: () => this._buildZip(),
-                }, batchZipBuilding ? '\u22ef' : 'ZIP'),
+                }, batchZipBuilding ? 'Building\u2026' : 'Build ZIP'),
+            h('button', {
+              className: 'nwb-batch-run-btn nwb-batch-run-btn--rerun',
+              onclick: () => this._runBatch(),
+            }, 'Re-run'),
           )
         : null,
 
-      // Run button
+      // ── Run button (idle) ────────────────────────────────────
       !isRunning && !isComplete
         ? h('button', {
             className: 'nwb-batch-run-btn',
             disabled: !toolWin || !outputs.length,
             onclick: () => this._runBatch(),
           }, 'Run as Batch')
-        : null,
-
-      isComplete
-        ? h('button', {
-            className: 'nwb-batch-run-btn nwb-batch-run-btn--rerun',
-            onclick: () => this._runBatch(),
-          }, 'Re-run')
         : null,
     );
   }
@@ -564,11 +624,15 @@ export class UploadWindowBody extends Component {
       .nwb-batch-connected {
         font-family: var(--ff-mono, monospace); font-size: 10px;
         color: var(--accent, #90caf9);
-        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;
       }
       .nwb-batch-unconnected {
         font-family: var(--ff-mono, monospace); font-size: 10px;
-        color: var(--text-label, #666);
+        color: var(--text-label, #666); flex: 1;
+      }
+      .nwb-batch-counter {
+        font-family: var(--ff-mono, monospace); font-size: 9px;
+        color: var(--text-label, #888); flex-shrink: 0;
       }
       .nwb-batch-run-btn {
         width: 100%; padding: 4px 0;
@@ -582,7 +646,11 @@ export class UploadWindowBody extends Component {
       }
       .nwb-batch-run-btn:hover:not(:disabled) { background: rgba(144,202,249,0.18); }
       .nwb-batch-run-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-      .nwb-batch-run-btn--rerun { border-color: var(--border, #444); color: var(--text-label, #888); background: none; }
+      .nwb-batch-run-btn--rerun {
+        border-color: var(--border, #444); color: var(--text-label, #888); background: none;
+      }
+
+      /* Overall progress bar */
       .nwb-batch-progress { display: flex; align-items: center; gap: 6px; }
       .nwb-batch-bar-track {
         flex: 1; height: 3px; background: var(--surface-3, #2a2a2a);
@@ -592,45 +660,82 @@ export class UploadWindowBody extends Component {
         height: 100%; background: var(--accent, #90caf9);
         transition: width 0.3s ease; border-radius: 2px;
       }
+      .nwb-batch-bar-fill--done { background: var(--success, #4caf84); }
       .nwb-batch-progress-text {
         font-family: var(--ff-mono, monospace); font-size: 9px;
-        color: var(--text-label, #888); flex-shrink: 0;
+        color: var(--text-label, #888); flex-shrink: 0; min-width: 28px; text-align: right;
       }
-      .nwb-batch-results { display: flex; align-items: center; gap: 6px; }
-      .nwb-batch-done-text {
-        font-family: var(--ff-mono, monospace); font-size: 10px;
-        color: var(--text-label, #888); flex: 1;
+
+      /* Per-piece progress rows */
+      .nwb-batch-pieces { display: flex; flex-direction: column; gap: 3px; }
+      .nwb-batch-piece-row {
+        display: flex; align-items: center; gap: 4px;
       }
+      .nwb-batch-piece-dot {
+        font-size: 6px; color: var(--accent, #90caf9);
+        flex-shrink: 0; line-height: 1;
+        animation: nwb-pulse 1.4s ease-in-out infinite;
+      }
+      @keyframes nwb-pulse {
+        0%, 100% { opacity: 1; } 50% { opacity: 0.4; }
+      }
+      .nwb-batch-piece-status {
+        font-family: var(--ff-mono, monospace); font-size: 9px;
+        color: var(--text-secondary, #aaa); white-space: nowrap;
+      }
+      .nwb-batch-piece-pct {
+        font-family: var(--ff-mono, monospace); font-size: 9px;
+        color: var(--accent, #90caf9); flex-shrink: 0; min-width: 28px; text-align: right;
+      }
+      .nwb-batch-piece-track {
+        flex: 1; height: 2px; background: var(--surface-3, #2a2a2a);
+        border-radius: 1px; overflow: hidden;
+      }
+      .nwb-batch-piece-fill {
+        height: 100%; background: var(--accent, #90caf9);
+        transition: width 0.2s ease; border-radius: 1px; opacity: 0.6;
+      }
+
+      /* Complete actions row */
+      .nwb-batch-actions { display: flex; gap: 5px; }
+      .nwb-batch-actions .nwb-batch-run-btn--rerun { flex: 1; }
       .nwb-batch-zip-btn {
-        padding: 2px 8px; background: none;
+        padding: 3px 10px; background: none;
         border: 1px solid var(--border, #444); color: var(--text-label, #888);
-        font-size: 10px; cursor: pointer; border-radius: 3px;
+        font-family: var(--ff-mono, monospace); font-size: 9px;
+        text-transform: uppercase; letter-spacing: 0.06em;
+        cursor: pointer; border-radius: 3px; flex-shrink: 0;
+        transition: color 0.15s, border-color 0.15s;
       }
-      .nwb-batch-zip-btn:hover { color: var(--text-primary); border-color: var(--border-hover); }
+      .nwb-batch-zip-btn:hover:not(:disabled) { color: var(--text-primary, #eee); border-color: var(--border-hover, #666); }
+      .nwb-batch-zip-btn:disabled { opacity: 0.5; cursor: not-allowed; }
       .nwb-batch-zip-link {
-        padding: 2px 8px; background: var(--accent-dim);
+        padding: 3px 10px; background: var(--accent-dim, rgba(144,202,249,0.1));
         border: 1px solid var(--accent-border, #4a90d9);
-        color: var(--accent); font-size: 10px;
-        text-decoration: none; border-radius: 3px;
+        color: var(--accent, #90caf9);
+        font-family: var(--ff-mono, monospace); font-size: 9px;
+        text-transform: uppercase; letter-spacing: 0.06em;
+        text-decoration: none; border-radius: 3px; flex-shrink: 0;
       }
+      .nwb-batch-zip-link:hover { background: rgba(144,202,249,0.18); }
+
+      /* Gallery */
       .nwb-batch-gallery {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
         gap: 2px;
-        margin-top: 2px;
       }
       .nwb-batch-gallery-thumb {
-        display: block;
-        aspect-ratio: 1;
-        overflow: hidden;
-        border-radius: 2px;
-        background: #111;
+        display: block; aspect-ratio: 1;
+        overflow: hidden; border-radius: 2px; background: #111;
+        cursor: pointer; transition: opacity 0.15s, outline 0.1s;
+        outline: 1px solid transparent;
       }
+      .nwb-batch-gallery-thumb:hover { outline-color: var(--accent, #90caf9); }
       .nwb-batch-gallery-thumb img {
         width: 100%; height: 100%; object-fit: cover;
-        transition: opacity 0.2s;
+        pointer-events: none;
       }
-      .nwb-batch-gallery-thumb:hover img { opacity: 0.85; }
     `;
   }
 }

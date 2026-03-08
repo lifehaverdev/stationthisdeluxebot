@@ -9,7 +9,7 @@ import { DepositsTable } from '../components/admin/DepositsTable.js';
 import { CostManager } from '../components/admin/CostManager.js';
 import { UserSearch } from '../components/admin/UserSearch.js';
 
-const MILADY_STATION_ADDRESS = '0xB24BaB1732D34cAD0A7c7035C3539aEC553bF3a0';
+const MILADY_STATION_ADDRESS = '0xB24BaB1732D34cAD0A7C7035C3539aEC553bF3a0';
 const ERC721A_ABI = ['function ownerOf(uint256 tokenId) view returns (address)'];
 const ADMIN_TOKEN_ID = 598;
 const MAINNET_CHAIN_ID = 1;
