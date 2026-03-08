@@ -3,6 +3,7 @@ export const STATES = {
   CANVAS_Z1: 'CANVAS_Z1',
   NODE_MODE: 'NODE_MODE',
   CONNECTION_MODE: 'CONNECTION_MODE',
+  MULTI_SELECT: 'MULTI_SELECT',
 };
 
 export class FocusStateMachine {
@@ -10,6 +11,8 @@ export class FocusStateMachine {
     this.state = STATES.CANVAS_Z2;
     this.focusedNodeId = null;
     this.sourceNodeId = null;
+    this.selectedNodeIds = new Set();
+    this._preMultiSelectState = null;
     this.previousState = null;
     this._listeners = [];
   }
@@ -60,6 +63,13 @@ export class FocusStateMachine {
         this.sourceNodeId = null;
         this._transition(STATES.NODE_MODE);
         break;
+      case STATES.MULTI_SELECT: {
+        this.selectedNodeIds = new Set();
+        const returnTo = this._preMultiSelectState || STATES.CANVAS_Z2;
+        this._preMultiSelectState = null;
+        this._transition(returnTo);
+        break;
+      }
     }
   }
 
@@ -81,6 +91,30 @@ export class FocusStateMachine {
     const src = this.sourceNodeId;
     this.sourceNodeId = null;
     this._transition(STATES.NODE_MODE, src);
+  }
+
+  enterMultiSelect(nodeId) {
+    if (this.state !== STATES.CANVAS_Z1 && this.state !== STATES.CANVAS_Z2) return;
+    this._preMultiSelectState = this.state;
+    this.selectedNodeIds = new Set([nodeId]);
+    this._transition(STATES.MULTI_SELECT);
+  }
+
+  toggleSelection(nodeId) {
+    if (this.state !== STATES.MULTI_SELECT) return;
+    if (this.selectedNodeIds.has(nodeId)) {
+      this.selectedNodeIds.delete(nodeId);
+    } else {
+      this.selectedNodeIds.add(nodeId);
+    }
+  }
+
+  exitMultiSelect() {
+    if (this.state !== STATES.MULTI_SELECT) return;
+    this.selectedNodeIds = new Set();
+    const returnTo = this._preMultiSelectState || STATES.CANVAS_Z2;
+    this._preMultiSelectState = null;
+    this._transition(returnTo);
   }
 
   navigateToNode(nodeId) {

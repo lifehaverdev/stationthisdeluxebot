@@ -124,6 +124,57 @@ describe('FocusStateMachine', () => {
     });
   });
 
+  describe('MULTI_SELECT transitions', () => {
+    it('enterMultiSelect from Z1 → MULTI_SELECT with first node', () => {
+      sm.tapNode('n1'); // go to Z1
+      sm.enterMultiSelect('n1');
+      expect(sm.state).toBe('MULTI_SELECT');
+      expect(sm.selectedNodeIds).toEqual(new Set(['n1']));
+    });
+
+    it('enterMultiSelect from Z2 → MULTI_SELECT', () => {
+      sm.enterMultiSelect('n1');
+      expect(sm.state).toBe('MULTI_SELECT');
+      expect(sm.selectedNodeIds).toEqual(new Set(['n1']));
+    });
+
+    it('enterMultiSelect ignored in NODE_MODE', () => {
+      sm.doubleTapNode('n1');
+      sm.enterMultiSelect('n1');
+      expect(sm.state).toBe('NODE_MODE');
+    });
+
+    it('toggleSelection adds and removes nodes', () => {
+      sm.enterMultiSelect('n1');
+      sm.toggleSelection('n2');
+      expect(sm.selectedNodeIds).toEqual(new Set(['n1', 'n2']));
+      sm.toggleSelection('n1');
+      expect(sm.selectedNodeIds).toEqual(new Set(['n2']));
+    });
+
+    it('exitMultiSelect returns to previous canvas state', () => {
+      sm.tapNode('n1'); // Z1
+      sm.enterMultiSelect('n1');
+      sm.exitMultiSelect();
+      expect(sm.state).toBe('CANVAS_Z1');
+      expect(sm.selectedNodeIds).toEqual(new Set());
+    });
+
+    it('exitMultiSelect from Z2 returns to Z2', () => {
+      sm.enterMultiSelect('n1');
+      sm.exitMultiSelect();
+      expect(sm.state).toBe('CANVAS_Z2');
+      expect(sm.selectedNodeIds).toEqual(new Set());
+    });
+
+    it('zoomOut in MULTI_SELECT exits', () => {
+      sm.enterMultiSelect('n1');
+      sm.zoomOut();
+      expect(sm.state).toBe('CANVAS_Z2');
+      expect(sm.selectedNodeIds).toEqual(new Set());
+    });
+  });
+
   describe('transition callbacks', () => {
     it('fires onChange when state changes', () => {
       const changes = [];
