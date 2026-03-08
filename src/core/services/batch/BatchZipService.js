@@ -35,12 +35,13 @@ class BatchZipService {
     const zipStream = await this._buildZipStream(completed);
     const expiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
 
-    const zipUrl = await this.storageService.uploadFromStream(
+    const uploadResult = await this.storageService.uploadFromStream(
       zipStream,
       `exports/${zipFileName}`,
       'application/zip',
       'exports'
     );
+    const zipUrl = uploadResult?.permanentUrl || uploadResult;
 
     this.logger.info(`[BatchZip] Uploaded zip for ${batchId}: ${zipUrl}`);
     return { zipUrl, expiresAt };

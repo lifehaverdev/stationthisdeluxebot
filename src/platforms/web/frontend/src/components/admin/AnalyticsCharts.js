@@ -3,31 +3,39 @@ import { Chart, registerables } from 'chart.js';
 
 Chart.register(...registerables);
 
-const COLORS = {
-  primary: '#90caf9',
-  secondary: '#4caf50',
-  warning: '#ff9800',
-  error: '#d32f2f',
-  text: '#e0e0e0',
-  grid: '#444'
-};
+// Read CSS variables at render time for chart colors
+function getCssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
 
-const BASE_OPTS = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: {
-    legend: { labels: { color: COLORS.text } },
-    tooltip: { backgroundColor: '#23272f', titleColor: COLORS.text, bodyColor: COLORS.text, borderColor: COLORS.grid, borderWidth: 1 }
-  },
-  scales: {
-    x: { ticks: { color: COLORS.text }, grid: { color: COLORS.grid } },
-    y: { ticks: { color: COLORS.text }, grid: { color: COLORS.grid } }
-  }
-};
+function getChartColors() {
+  return {
+    primary: getCssVar('--accent') || '#00DFC8',
+    warning: getCssVar('--danger') || '#d32f2f',
+    text: getCssVar('--text-primary') || '#e0e0e0',
+    grid: getCssVar('--border') || '#444',
+    surface: getCssVar('--surface-1') || '#1a1a1a',
+  };
+}
+
+function makeBaseOpts(colors) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { labels: { color: colors.text } },
+      tooltip: { backgroundColor: colors.surface, titleColor: colors.text, bodyColor: colors.text, borderColor: colors.grid, borderWidth: 1 }
+    },
+    scales: {
+      x: { ticks: { color: colors.text }, grid: { color: colors.grid } },
+      y: { ticks: { color: colors.text }, grid: { color: colors.grid } }
+    }
+  };
+}
 
 /**
- * Analytics charts section.
- * Props: { analytics, withdrawalAnalytics }
+ * Analytics charts section (usage, deposits, active users).
+ * Props: { analytics }
  */
 export class AnalyticsCharts extends Component {
   constructor(props) {
@@ -45,17 +53,17 @@ export class AnalyticsCharts extends Component {
   }
 
   _scheduleRender() {
-    // Defer to next microtask so DOM is fully settled after microact patch
     Promise.resolve().then(() => this.renderCharts());
   }
 
   renderCharts() {
-    // Destroy existing
     Object.values(this.charts).forEach(c => c?.destroy());
     this.charts = {};
 
     if (!this._containerRef) return;
-    const { analytics, withdrawalAnalytics } = this.props;
+    const { analytics } = this.props;
+    const colors = getChartColors();
+    const BASE_OPTS = makeBaseOpts(colors);
 
     const getCanvas = (name) => this._containerRef.querySelector(`canvas[data-chart="${name}"]`);
 
@@ -66,17 +74,17 @@ export class AnalyticsCharts extends Component {
         data: {
           labels: analytics.pointUsage.map(d => d.date),
           datasets: [
-            { label: 'Points Spent', data: analytics.pointUsage.map(d => Number(d.value)), borderColor: COLORS.primary, backgroundColor: COLORS.primary + '40', tension: 0.4, fill: true, yAxisID: 'y' },
-            { label: 'Cost (USD)', data: analytics.pointUsage.map(d => parseFloat(d.costUsd || '0')), borderColor: COLORS.warning, backgroundColor: COLORS.warning + '40', tension: 0.4, fill: false, yAxisID: 'y1' }
+            { label: 'Points Spent', data: analytics.pointUsage.map(d => Number(d.value)), borderColor: colors.primary, backgroundColor: colors.primary + '40', tension: 0.4, fill: true, yAxisID: 'y' },
+            { label: 'Cost (USD)', data: analytics.pointUsage.map(d => parseFloat(d.costUsd || '0')), borderColor: colors.warning, backgroundColor: colors.warning + '40', tension: 0.4, fill: false, yAxisID: 'y1' }
           ]
         },
         options: {
           ...BASE_OPTS,
-          plugins: { ...BASE_OPTS.plugins, title: { display: true, text: 'Points Spent & Cost Over Time', color: COLORS.primary } },
+          plugins: { ...BASE_OPTS.plugins, title: { display: true, text: 'Points Spent & Cost Over Time', color: colors.primary } },
           scales: {
             ...BASE_OPTS.scales,
-            y: { ...BASE_OPTS.scales.y, position: 'left', title: { display: true, text: 'Points', color: COLORS.primary } },
-            y1: { type: 'linear', display: true, position: 'right', ticks: { color: COLORS.warning }, grid: { drawOnChartArea: false }, title: { display: true, text: 'USD', color: COLORS.warning } }
+            y: { ...BASE_OPTS.scales.y, position: 'left', title: { display: true, text: 'Points', color: colors.primary } },
+            y1: { type: 'linear', display: true, position: 'right', ticks: { color: colors.warning }, grid: { drawOnChartArea: false }, title: { display: true, text: 'USD', color: colors.warning } }
           }
         }
       });
@@ -88,9 +96,9 @@ export class AnalyticsCharts extends Component {
         type: 'bar',
         data: {
           labels: analytics.deposits.map(d => d.date),
-          datasets: [{ label: 'Deposits', data: analytics.deposits.map(d => d.count), backgroundColor: COLORS.secondary + '80', borderColor: COLORS.secondary, borderWidth: 1 }]
+          datasets: [{ label: 'Deposits', data: analytics.deposits.map(d => d.count), backgroundColor: colors.primary + '80', borderColor: colors.primary, borderWidth: 1 }]
         },
-        options: { ...BASE_OPTS, plugins: { ...BASE_OPTS.plugins, title: { display: true, text: 'Deposits Over Time', color: COLORS.primary } } }
+        options: { ...BASE_OPTS, plugins: { ...BASE_OPTS.plugins, title: { display: true, text: 'Deposits Over Time', color: colors.primary } } }
       });
     }
 
@@ -100,21 +108,9 @@ export class AnalyticsCharts extends Component {
         type: 'line',
         data: {
           labels: analytics.activeUsers.map(d => d.date),
-          datasets: [{ label: 'Active Users', data: analytics.activeUsers.map(d => d.value), borderColor: COLORS.warning, backgroundColor: COLORS.warning + '40', tension: 0.4, fill: true }]
+          datasets: [{ label: 'Active Users', data: analytics.activeUsers.map(d => d.value), borderColor: colors.primary, backgroundColor: colors.primary + '40', tension: 0.4, fill: true }]
         },
-        options: { ...BASE_OPTS, plugins: { ...BASE_OPTS.plugins, title: { display: true, text: 'Active Users Over Time', color: COLORS.primary } } }
-      });
-    }
-
-    const withdrawalsCanvas = getCanvas('withdrawals');
-    if (withdrawalAnalytics?.withdrawals?.length && withdrawalsCanvas) {
-      this.charts.withdrawals = new Chart(withdrawalsCanvas, {
-        type: 'bar',
-        data: {
-          labels: withdrawalAnalytics.withdrawals.map(d => d.date),
-          datasets: [{ label: 'Withdrawals', data: withdrawalAnalytics.withdrawals.map(d => Number(d.value || 0)), backgroundColor: COLORS.error + '80', borderColor: COLORS.error, borderWidth: 1 }]
-        },
-        options: { ...BASE_OPTS, plugins: { ...BASE_OPTS.plugins, title: { display: true, text: 'Withdrawals Over Time', color: COLORS.primary } } }
+        options: { ...BASE_OPTS, plugins: { ...BASE_OPTS.plugins, title: { display: true, text: 'Active Users Over Time', color: colors.primary } } }
       });
     }
   }
@@ -122,16 +118,18 @@ export class AnalyticsCharts extends Component {
   static get styles() {
     return `
       .analytics-section {
-        background: #1a1f2b;
-        border: 1px solid #2a2f3a;
-        border-radius: 8px;
+        background: var(--surface-2);
+        border: var(--border-width) solid var(--border);
         padding: 1.5rem;
         margin-bottom: 1.5rem;
       }
       .analytics-section h2 {
         margin-top: 0;
-        color: #90caf9;
-        font-size: 1.2rem;
+        color: var(--text-label);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wider);
+        text-transform: uppercase;
         margin-bottom: 1rem;
       }
       .chart-grid {
@@ -143,8 +141,7 @@ export class AnalyticsCharts extends Component {
         .chart-grid { grid-template-columns: 1fr; }
       }
       .chart-box {
-        background: #1a1a1a;
-        border-radius: 4px;
+        background: var(--surface-1);
         padding: 0.75rem;
         height: 280px;
         position: relative;
@@ -153,10 +150,10 @@ export class AnalyticsCharts extends Component {
   }
 
   render() {
-    const { analytics, withdrawalAnalytics } = this.props;
+    const { analytics } = this.props;
     if (!analytics) return null;
 
-    return h('section', { className: 'analytics-section', ref: el => { this._containerRef = el; } },
+    return h('section', { id: 'activity', className: 'analytics-section', ref: el => { this._containerRef = el; } },
       h('h2', null, 'Analytics'),
       h('div', { className: 'chart-grid' },
         h('div', { className: 'chart-box' },
@@ -168,11 +165,6 @@ export class AnalyticsCharts extends Component {
         h('div', { className: 'chart-box' },
           h('canvas', { 'data-chart': 'activeUsers' })
         ),
-        withdrawalAnalytics?.withdrawals?.length
-          ? h('div', { className: 'chart-box' },
-              h('canvas', { 'data-chart': 'withdrawals' })
-            )
-          : null
       )
     );
   }

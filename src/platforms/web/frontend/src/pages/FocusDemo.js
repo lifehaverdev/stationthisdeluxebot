@@ -232,13 +232,17 @@ export class FocusDemo extends Component {
 
   _onTouchStart(e) {
     if (e.touches.length === 1) {
-      e.preventDefault();
       const t = e.touches[0];
       this._gestureStart = { x: t.clientX, y: t.clientY, time: performance.now(), target: e.target };
-      // Set up pan tracking for canvas modes (not NODE_MODE)
-      if (this.state.fsmState !== STATES.NODE_MODE) {
-        this._panStart = { x: t.clientX - this.state.viewport.panX, y: t.clientY - this.state.viewport.panY };
+
+      if (this.state.fsmState === STATES.NODE_MODE) {
+        // Don't preventDefault — allow native clicks and card scrolling
+        return;
       }
+
+      e.preventDefault();
+      // Set up pan tracking for canvas modes
+      this._panStart = { x: t.clientX - this.state.viewport.panX, y: t.clientY - this.state.viewport.panY };
       // Long-press detection for multi-select
       if (this.state.fsmState === STATES.CANVAS_Z1 || this.state.fsmState === STATES.CANVAS_Z2) {
         const target = e.target;
@@ -279,9 +283,9 @@ export class FocusDemo extends Component {
         this._longPressTimeout = null;
       }
     }
-    // In NODE_MODE: track movement for swipe detection but don't pan
+    // In NODE_MODE: don't preventDefault — allow native card scrolling
+    // We still detect swipe-down-to-exit in touchend via _gestureStart
     if (this.state.fsmState === STATES.NODE_MODE) {
-      if (e.touches.length === 1) e.preventDefault();
       return;
     }
     if (e.touches.length === 1 && this._panStart) {
@@ -348,6 +352,12 @@ export class FocusDemo extends Component {
           this._fsm.tapNode(this.state.focusedNodeId);
         }
       }
+      return;
+    }
+
+    // In NODE_MODE, let native clicks handle button taps
+    if (this.state.fsmState === STATES.NODE_MODE) {
+      this._gestureStart = null;
       return;
     }
 
@@ -875,7 +885,17 @@ export class FocusDemo extends Component {
           h('div', { className: 'fd-card-actions' },
             h('button', {
               className: 'fd-card-btn',
-              onclick: (e) => { e.stopPropagation(); this._togglePin(); },
+              onclick: (e) => {
+                e.stopPropagation();
+                const node = this._engine.getNode(focusedNodeId);
+                if (!node) return;
+                if (node.pinned) {
+                  this._engine.unpinNode(focusedNodeId);
+                } else {
+                  this._engine.pinNode(focusedNodeId, { ...node.position });
+                }
+                this.setState({});
+              },
             }, isPinned ? 'Unpin' : 'Pin'),
             h('button', {
               className: 'fd-card-btn',

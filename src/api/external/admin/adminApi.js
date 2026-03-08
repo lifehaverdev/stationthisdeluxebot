@@ -2436,6 +2436,101 @@ function createAdminApi(dependencies) {
     }
   });
 
+  // ── Creator Analytics ─────────────────────────────────────────────────────
+  router.get('/analytics/creators', adminMiddleware, async (req, res) => {
+    const requestId = require('uuid').v4();
+    logger.info(`[AdminApi] GET /analytics/creators, requestId=${requestId}`);
+
+    try {
+      // Fetch data in parallel from internal APIs
+      const [spellsRes, lorasRes, generationsRes] = await Promise.all([
+        internalApiClient.get('/internal/v1/data/spells').catch(() => ({ data: { spells: [] } })),
+        internalApiClient.get('/internal/v1/data/loras/list', { params: { limit: 1000 } }).catch(() => ({ data: { loras: [] } })),
+        internalApiClient.get('/internal/v1/data/generations', { params: { limit: 200, sort: 'requestTimestamp:-1' } }).catch(() => ({ data: { generations: [] } })),
+      ]);
+
+      const spells = spellsRes.data?.spells || [];
+      const loras = lorasRes.data?.loras || [];
+      const generations = generationsRes.data?.generations || [];
+
+      // Aggregate summary
+      const publicSpells = spells.filter(s => s.visibility === 'public' || s.isPublic);
+      const totalCasts = spells.reduce((sum, s) => sum + (s.castCount || s.totalCasts || 0), 0);
+
+      const completedLoras = loras.filter(l => l.status === 'completed' || l.status === 'ready');
+      const successRate = loras.length > 0 ? Math.round((completedLoras.length / loras.length) * 100) : 0;
+
+      const summary = {
+        spells: { total: spells.length, public: publicSpells.length, totalCasts },
+        models: { total: loras.length, completed: completedLoras.length, successRate },
+        collections: { total: 0, activeCooks: 0, totalGenerated: generations.length },
+      };
+
+      // Build per-creator stats from generations (most reliable source of activity)
+      const creatorMap = new Map();
+      for (const gen of generations) {
+        const id = gen.masterAccountId || gen.userId;
+        if (!id) continue;
+        if (!creatorMap.has(id)) {
+          creatorMap.set(id, {
+            masterAccountId: id,
+            address: gen.walletAddress || '',
+            username: gen.username || '',
+            spells: 0, casts: 0, models: 0, collections: 0,
+            totalPointsSpent: 0,
+            lastActive: gen.requestTimestamp || gen.createdAt,
+          });
+        }
+        const c = creatorMap.get(id);
+        c.totalPointsSpent += gen.pointsCost || gen.cost || 0;
+        if (gen.requestTimestamp && (!c.lastActive || new Date(gen.requestTimestamp) > new Date(c.lastActive))) {
+          c.lastActive = gen.requestTimestamp;
+        }
+      }
+
+      // Enrich with spell ownership
+      for (const spell of spells) {
+        const id = spell.ownedBy || spell.masterAccountId;
+        if (!id) continue;
+        if (!creatorMap.has(id)) {
+          creatorMap.set(id, {
+            masterAccountId: id, address: '', username: '',
+            spells: 0, casts: 0, models: 0, collections: 0,
+            totalPointsSpent: 0, lastActive: spell.updatedAt || spell.createdAt,
+          });
+        }
+        const c = creatorMap.get(id);
+        c.spells++;
+        c.casts += spell.castCount || spell.totalCasts || 0;
+      }
+
+      // Enrich with lora ownership
+      for (const lora of loras) {
+        const id = lora.ownedBy || lora.masterAccountId;
+        if (!id) continue;
+        if (creatorMap.has(id)) {
+          creatorMap.get(id).models++;
+        }
+      }
+
+      const topCreators = Array.from(creatorMap.values())
+        .sort((a, b) => b.totalPointsSpent - a.totalPointsSpent)
+        .slice(0, 50);
+
+      res.json({ summary, topCreators, requestId });
+    } catch (error) {
+      logger.error(`[AdminApi] Error fetching creator stats:`, error);
+      res.status(500).json({
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'Failed to fetch creator analytics',
+          details: error.message,
+          requestId
+        }
+      });
+    }
+  });
+
   return router;
 }
 

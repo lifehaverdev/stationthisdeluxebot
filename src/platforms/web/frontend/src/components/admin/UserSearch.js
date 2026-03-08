@@ -63,16 +63,18 @@ export class UserSearch extends Component {
   static get styles() {
     return `
       .user-search-section {
-        background: #1a1f2b;
-        border: 1px solid #2a2f3a;
-        border-radius: 8px;
+        background: var(--surface-2);
+        border: var(--border-width) solid var(--border);
         padding: 1.5rem;
         margin-bottom: 1.5rem;
       }
       .user-search-section h2 {
         margin-top: 0;
-        color: #90caf9;
-        font-size: 1.2rem;
+        color: var(--text-label);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wider);
+        text-transform: uppercase;
         margin-bottom: 1rem;
       }
       .search-bar {
@@ -82,37 +84,45 @@ export class UserSearch extends Component {
       }
       .search-bar input, .search-bar select {
         padding: 0.5rem;
-        background: #1a1a1a;
-        border: 1px solid #444;
-        border-radius: 4px;
-        color: #e0e0e0;
-        font-size: 0.9rem;
+        background: var(--surface-1);
+        border: var(--border-width) solid var(--border);
+        color: var(--text-primary);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
       }
       .search-bar input { flex: 1; }
+      .search-bar input:focus, .search-bar select:focus { border-color: var(--accent); outline: none; }
       .search-bar button {
         padding: 0.5rem 1rem;
-        background: #3f51b5;
-        color: #fff;
-        border: none;
-        border-radius: 4px;
+        background: none;
+        border: var(--border-width) solid var(--border);
+        color: var(--text-label);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wide);
+        text-transform: uppercase;
         cursor: pointer;
+        transition: color var(--dur-micro) var(--ease), border-color var(--dur-micro) var(--ease);
       }
+      .search-bar button:hover { color: var(--accent); border-color: var(--accent); }
+      .search-bar button:disabled { opacity: 0.4; cursor: default; }
       .search-result {
         padding: 0.5rem 0.75rem;
-        background: #2a2f3a;
-        border-radius: 4px;
+        background: var(--surface-3, var(--surface-2));
         margin-bottom: 0.35rem;
         cursor: pointer;
         display: flex;
         justify-content: space-between;
         align-items: center;
+        border: var(--border-width) solid transparent;
+        transition: border-color var(--dur-micro) var(--ease);
       }
-      .search-result:hover { background: #353a47; }
+      .search-result:hover { border-color: var(--border); }
       .user-detail-section {
-        background: #1a1a1a;
-        border-radius: 6px;
+        background: var(--surface-1);
         padding: 1rem;
         margin-top: 1rem;
+        border: var(--border-width) solid var(--border);
       }
       .user-detail-grid {
         display: grid;
@@ -121,18 +131,22 @@ export class UserSearch extends Component {
         margin-bottom: 1rem;
       }
       .user-detail-card {
-        background: #2a2f3a;
-        border-radius: 4px;
+        background: var(--surface-2);
         padding: 0.75rem;
+        border: var(--border-width) solid var(--border);
       }
       .user-detail-card strong {
-        color: #90caf9;
-        font-size: 0.8rem;
+        color: var(--text-label);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wider);
+        text-transform: uppercase;
         display: block;
         margin-bottom: 0.25rem;
       }
       .user-detail-card span {
-        color: #e0e0e0;
+        color: var(--text-primary);
+        font-family: var(--ff-mono);
         font-size: 1.1rem;
       }
       .adjust-form {
@@ -144,19 +158,26 @@ export class UserSearch extends Component {
       }
       .adjust-form input {
         padding: 0.4rem;
-        background: #1a1a1a;
-        border: 1px solid #444;
-        border-radius: 4px;
-        color: #e0e0e0;
+        background: var(--surface-1);
+        border: var(--border-width) solid var(--border);
+        color: var(--text-primary);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
       }
+      .adjust-form input:focus { border-color: var(--accent); outline: none; }
       .adjust-form button {
         padding: 0.4rem 0.75rem;
-        background: #4caf50;
-        color: #fff;
-        border: none;
-        border-radius: 4px;
+        background: none;
+        border: var(--border-width) solid var(--border);
+        color: var(--text-label);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wide);
+        text-transform: uppercase;
         cursor: pointer;
+        transition: color var(--dur-micro) var(--ease), border-color var(--dur-micro) var(--ease);
       }
+      .adjust-form button:hover { color: var(--accent); border-color: var(--accent); }
     `;
   }
 
@@ -168,11 +189,11 @@ export class UserSearch extends Component {
     const balance = user.balance || {};
 
     return h('div', { className: 'user-detail-section' },
-      h('h3', { style: { color: '#fff', marginTop: 0 } }, `User: ${shortHash(u._id || '')}`),
+      h('h3', { style: { color: 'var(--text-primary)', marginTop: 0, fontFamily: 'var(--ff-mono)', fontSize: 'var(--fs-xs)', letterSpacing: 'var(--ls-wider)', textTransform: 'uppercase' } }, `User: ${shortHash(u._id || '')}`),
       h('div', { className: 'user-detail-grid' },
         h('div', { className: 'user-detail-card' },
           h('strong', null, 'Points Balance'),
-          h('span', { style: { color: '#4caf50' } }, (balance.points || 0).toLocaleString())
+          h('span', { style: { color: 'var(--accent)' } }, (balance.points || 0).toLocaleString())
         ),
         h('div', { className: 'user-detail-card' },
           h('strong', null, 'Total Spent'),
@@ -198,7 +219,7 @@ export class UserSearch extends Component {
   render() {
     const { results, loading, error } = this.state;
 
-    return h('section', { className: 'user-search-section' },
+    return h('section', { id: 'users', className: 'user-search-section' },
       h('h2', null, 'User Search'),
       h('div', { className: 'search-bar' },
         h('input', {
@@ -219,7 +240,7 @@ export class UserSearch extends Component {
         ),
         h('button', { onClick: this.bind(this.search), disabled: loading }, loading ? 'Searching...' : 'Search')
       ),
-      error ? h('p', { style: { color: '#f88' } }, error) : null,
+      error ? h('p', { style: { color: 'var(--danger)', fontFamily: 'var(--ff-mono)', fontSize: 'var(--fs-xs)' } }, error) : null,
       results.length > 0
         ? h('div', null,
             ...results.map(u =>
@@ -228,8 +249,8 @@ export class UserSearch extends Component {
                 key: u._id,
                 onClick: () => this.selectUser(u._id)
               },
-                h('span', { style: { color: '#e0e0e0' } }, u.profile?.username || shortHash(u._id)),
-                h('span', { style: { color: '#888', fontSize: '0.8rem' } }, u.platform || 'web')
+                h('span', { style: { color: 'var(--text-primary)', fontFamily: 'var(--ff-mono)', fontSize: 'var(--fs-xs)' } }, u.profile?.username || shortHash(u._id)),
+                h('span', { style: { color: 'var(--text-secondary)', fontFamily: 'var(--ff-mono)', fontSize: 'var(--fs-xs)' } }, u.platform || 'web')
               )
             )
           )

@@ -173,6 +173,7 @@ export class UploadWindowBody extends Component {
       batchTotal: 0,
       batchZipUrl: null,
       batchZipBuilding: false,
+      batchResults: [],
     };
     this._processedResults = new Set();
     this._batchPieceHandler = this._handleBatchPiece.bind(this);
@@ -257,7 +258,8 @@ export class UploadWindowBody extends Component {
     const newCompleted = this.state.batchCompleted + (wasCompleted ? 1 : 0);
     const newFailed = this.state.batchFailed + (wasFailed ? 1 : 0);
     const total = this.state.batchTotal;
-    const newState = { batchCompleted: newCompleted, batchFailed: newFailed };
+    const newResults = wasCompleted ? [...this.state.batchResults, url] : this.state.batchResults;
+    const newState = { batchCompleted: newCompleted, batchFailed: newFailed, batchResults: newResults };
 
     if (total > 0 && (newCompleted + newFailed) >= total) {
       eventBus.off('batchPieceComplete', this._batchPieceHandler);
@@ -307,6 +309,7 @@ export class UploadWindowBody extends Component {
       batchCompleted: 0,
       batchFailed: 0,
       batchZipUrl: null,
+      batchResults: [],
     });
 
     try {
@@ -338,7 +341,7 @@ export class UploadWindowBody extends Component {
   }
 
   _renderBatchFooter(outputs) {
-    const { batchStatus, batchCompleted, batchFailed, batchTotal, batchZipUrl, batchZipBuilding } = this.state;
+    const { batchStatus, batchCompleted, batchFailed, batchTotal, batchZipUrl, batchZipBuilding, batchResults } = this.state;
     const batchConn = this._getBatchConn();
     const toolWin = this._getBatchToolWin(batchConn);
     const isRunning = batchStatus === 'running';
@@ -356,7 +359,7 @@ export class UploadWindowBody extends Component {
           : h('span', { className: 'nwb-batch-unconnected' }, 'connect to a tool'),
       ),
 
-      // Progress / status
+      // Progress bar
       isRunning
         ? h('div', { className: 'nwb-batch-progress' },
             h('div', { className: 'nwb-batch-bar-track' },
@@ -366,6 +369,17 @@ export class UploadWindowBody extends Component {
               })
             ),
             h('span', { className: 'nwb-batch-progress-text' }, `${batchCompleted}/${batchTotal}`)
+          )
+        : null,
+
+      // Results gallery — builds up as pieces arrive
+      (isRunning || isComplete) && batchResults.length > 0
+        ? h('div', { className: 'nwb-batch-gallery' },
+            ...batchResults.map((url, i) =>
+              h('a', { key: url, href: url, target: '_blank', className: 'nwb-batch-gallery-thumb' },
+                h('img', { src: url, alt: `Result ${i + 1}` })
+              )
+            )
           )
         : null,
 
@@ -599,6 +613,24 @@ export class UploadWindowBody extends Component {
         color: var(--accent); font-size: 10px;
         text-decoration: none; border-radius: 3px;
       }
+      .nwb-batch-gallery {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+        gap: 2px;
+        margin-top: 2px;
+      }
+      .nwb-batch-gallery-thumb {
+        display: block;
+        aspect-ratio: 1;
+        overflow: hidden;
+        border-radius: 2px;
+        background: #111;
+      }
+      .nwb-batch-gallery-thumb img {
+        width: 100%; height: 100%; object-fit: cover;
+        transition: opacity 0.2s;
+      }
+      .nwb-batch-gallery-thumb:hover img { opacity: 0.85; }
     `;
   }
 }

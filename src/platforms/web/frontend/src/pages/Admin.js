@@ -2,22 +2,26 @@ import { Component, h, eventBus } from '@monygroupcorp/microact';
 import { ethers } from 'ethers';
 import { FloatingWalletButton, WalletService } from '@monygroupcorp/micro-web3';
 import * as adminApi from '../lib/adminApi.js';
-import { VaultBalances } from '../components/admin/VaultBalances.js';
-import { AccountsTable } from '../components/admin/AccountsTable.js';
+import { PLHero } from '../components/admin/PLHero.js';
 import { AnalyticsCharts } from '../components/admin/AnalyticsCharts.js';
+import { CreatorActivity } from '../components/admin/CreatorActivity.js';
+import { DepositsTable } from '../components/admin/DepositsTable.js';
+import { CostManager } from '../components/admin/CostManager.js';
 import { UserSearch } from '../components/admin/UserSearch.js';
-import { DepositRecovery } from '../components/admin/DepositRecovery.js';
 
-const FOUNDATION_ADDRESS = '0x01152530028bd834EDbA9744885A882D025D84F6';
-const FOUNDATION_ABI = [
-  'function requestRescission(address token) external',
-  'function withdrawProtocolOwned(address token, uint256 amount) external',
-];
-const CHARTERED_FUND_ABI = ['function requestRescission(address token) external'];
-const MILADY_STATION_ADDRESS = '0xB24BaB1732D34cAD0A7C7035C3539aEC553bF3a0';
+const MILADY_STATION_ADDRESS = '0xB24BaB1732D34cAD0A7c7035C3539aEC553bF3a0';
 const ERC721A_ABI = ['function ownerOf(uint256 tokenId) view returns (address)'];
 const ADMIN_TOKEN_ID = 598;
 const MAINNET_CHAIN_ID = 1;
+
+const NAV_ITEMS = [
+  { href: '#pl', label: 'P&L' },
+  { href: '#activity', label: 'Activity' },
+  { href: '#creators', label: 'Creators' },
+  { href: '#deposits', label: 'Deposits' },
+  { href: '#costs', label: 'Costs' },
+  { href: '#users', label: 'Users' },
+];
 
 export class Admin extends Component {
   constructor(props) {
@@ -33,27 +37,21 @@ export class Admin extends Component {
       loading: false,
       error: null,
       // Data
-      balances: null,
-      accounts: null,
-      freePoints: null,
+      accounting: null,
       analytics: null,
-      withdrawalAnalytics: null,
+      creatorStats: null,
+      expenditure: null,
+      accounts: null,
       costs: null,
       costTotals: null,
-      depositRecovery: { deposits: [], metrics: null, loading: false, error: null },
+      freePoints: null,
+      vaultBalance: null,
+      period: 'mtd',
       dateRange: {
         period: 'daily',
         startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
         endDate: new Date()
       },
-      // Withdrawal: confirmation → in-flight tracking
-      pendingWithdrawal: null, // { tokenAddress, vaultAddress, amount, symbol, decimals }
-      withdrawalTx: null,      // { status: 'submitting'|'mining'|'done'|'error', hash, error }
-      // Protocol owned withdrawal (owner-only, direct wallet tx)
-      pendingProtocolWithdraw: null, // { tokenAddress, amount, symbol, decimals }
-      protocolWithdrawTx: null,      // { status, hash, error }
-      // Inline points adjustment panel
-      adjustPoints: null,      // { masterAccountId, address, points, description, submitting, error }
     };
   }
 
@@ -88,139 +86,104 @@ export class Admin extends Component {
       }
       const resolvedSigner = signer || await provider.getSigner();
       this.setState({ verified: true, verifying: false, verifyError: null, wallet: address, provider, signer: resolvedSigner, loading: true });
-      await this.loadDashboard(address, provider, resolvedSigner);
+      await this.loadDashboard(address);
     } catch (e) {
       this.setState({ verifying: false, verifyError: 'Error verifying admin: ' + e.message });
     }
   }
 
-  async loadDashboard(wallet, provider, signer) {
+  _getDateRangeForPeriod(period) {
+    const now = new Date();
+    let startDate;
+    switch (period) {
+      case 'today':
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        break;
+      case '7d':
+        startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case 'mtd':
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        break;
+      default:
+        startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    }
+    return { period: 'daily', startDate, endDate: now };
+  }
+
+  async loadDashboard(wallet) {
     wallet = wallet || this.state.wallet;
     if (!wallet) return;
 
     this.setState({ loading: true, error: null });
+    const dateRange = this._getDateRangeForPeriod(this.state.period);
 
     try {
-      const [balances, requestsData, accountsData, freePoints, analytics, withdrawalAnalytics, costsData, costTotals] = await Promise.all([
-        adminApi.fetchVaultBalances(wallet),
-        adminApi.fetchWithdrawalRequests(wallet),
+      const [
+        accounting,
+        analytics,
+        creatorStats,
+        expenditure,
+        accountsData,
+        costsData,
+        costTotals,
+        freePoints,
+        balances,
+      ] = await Promise.all([
+        adminApi.fetchAccounting(wallet, this.state.period, dateRange),
+        adminApi.fetchAnalytics(wallet, dateRange),
+        adminApi.fetchCreatorStats(wallet),
+        adminApi.fetchExpenditure(wallet, dateRange),
         adminApi.fetchAccounts(wallet),
-        adminApi.fetchFreePoints(wallet),
-        adminApi.fetchAnalytics(wallet, this.state.dateRange),
-        adminApi.fetchWithdrawalAnalytics(wallet, this.state.dateRange),
         adminApi.fetchCosts(wallet),
         adminApi.fetchCostTotals(wallet),
+        adminApi.fetchFreePoints(wallet),
+        adminApi.fetchVaultBalances(wallet).catch(() => null),
       ]);
 
+      // Extract vault balance from balances response
+      let vaultBalance = null;
+      if (balances?.vaults) {
+        // Sum all vault balances in USD
+        vaultBalance = 0;
+        for (const vault of Object.values(balances.vaults)) {
+          for (const token of Object.values(vault.tokens || {})) {
+            vaultBalance += parseFloat(token.usdValue || 0);
+          }
+        }
+      }
+
       this.setState({
-        balances,
-        accounts: accountsData?.accounts || [],
-        freePoints,
+        accounting,
         analytics,
-        withdrawalAnalytics,
+        creatorStats,
+        expenditure,
+        accounts: accountsData?.accounts || [],
         costs: costsData?.costs || [],
         costTotals: costTotals?.totals || [],
-        loading: false
+        freePoints,
+        vaultBalance,
+        loading: false,
+        dateRange,
       });
-
-      this.loadDepositRecovery(wallet);
     } catch (err) {
       this.setState({ error: err.message, loading: false });
     }
   }
 
-  async loadDepositRecovery(wallet) {
-    wallet = wallet || this.state.wallet;
-    this.setState({ depositRecovery: { ...this.state.depositRecovery, loading: true, error: null } });
+  async handlePeriodChange(period) {
+    this.setState({ period });
+    const dateRange = this._getDateRangeForPeriod(period);
+    const wallet = this.state.wallet;
+
     try {
-      const data = await adminApi.fetchPendingDeposits(wallet);
-      this.setState({
-        depositRecovery: {
-          deposits: data.deposits || [],
-          metrics: data.metrics || null,
-          loading: false,
-          error: null
-        }
-      });
+      const [accounting, analytics] = await Promise.all([
+        adminApi.fetchAccounting(wallet, period, dateRange),
+        adminApi.fetchAnalytics(wallet, dateRange),
+      ]);
+      this.setState({ accounting, analytics, dateRange });
     } catch (err) {
-      this.setState({
-        depositRecovery: { ...this.state.depositRecovery, loading: false, error: err.message }
-      });
-    }
-  }
-
-
-  // ── Withdrawal ────────────────────────────────────────────────────────────
-
-  handleWithdraw(tokenAddress, vaultAddress, amount, symbol, decimals) {
-    this.setState({ pendingWithdrawal: { tokenAddress, vaultAddress, amount, symbol, decimals } });
-  }
-
-  async _confirmWithdraw() {
-    const { signer, pendingWithdrawal: w } = this.state;
-    if (!signer || !w) return;
-    this.setState({ pendingWithdrawal: null, withdrawalTx: { status: 'submitting', hash: null, error: null } });
-    try {
-      const contract = w.vaultAddress.toLowerCase() === FOUNDATION_ADDRESS.toLowerCase()
-        ? new ethers.Contract(FOUNDATION_ADDRESS, FOUNDATION_ABI, signer)
-        : new ethers.Contract(w.vaultAddress, CHARTERED_FUND_ABI, signer);
-
-      const tx = await contract.requestRescission(w.tokenAddress);
-      this.setState({ withdrawalTx: { status: 'mining', hash: tx.hash, error: null } });
-      await tx.wait();
-      this.setState({ withdrawalTx: { status: 'done', hash: tx.hash, error: null } });
-      await this.loadDashboard();
-      setTimeout(() => this.setState({ withdrawalTx: null }), 10000);
-    } catch (err) {
-      this.setState({ withdrawalTx: { status: 'error', hash: null, error: err.message } });
-    }
-  }
-
-  // ── Protocol Owned Withdrawal ─────────────────────────────────────────────
-
-  handleWithdrawProtocolOwned(tokenAddress, amount, symbol, decimals) {
-    this.setState({ pendingProtocolWithdraw: { tokenAddress, amount, symbol, decimals } });
-  }
-
-  async _confirmProtocolWithdraw() {
-    const { signer, pendingProtocolWithdraw: w } = this.state;
-    if (!signer || !w) return;
-    this.setState({ pendingProtocolWithdraw: null, protocolWithdrawTx: { status: 'submitting', hash: null, error: null } });
-    try {
-      const contract = new ethers.Contract(FOUNDATION_ADDRESS, FOUNDATION_ABI, signer);
-      const tx = await contract.withdrawProtocolOwned(w.tokenAddress, w.amount);
-      this.setState({ protocolWithdrawTx: { status: 'mining', hash: tx.hash, error: null } });
-      await tx.wait();
-      this.setState({ protocolWithdrawTx: { status: 'done', hash: tx.hash, error: null } });
-      await this.loadDashboard();
-      setTimeout(() => this.setState({ protocolWithdrawTx: null }), 10000);
-    } catch (err) {
-      this.setState({ protocolWithdrawTx: { status: 'error', hash: null, error: err.message } });
-    }
-  }
-
-  // ── Points adjustment ─────────────────────────────────────────────────────
-
-  handleAdjustPoints(masterAccountId, address) {
-    this.setState({ adjustPoints: { masterAccountId, address, points: '', description: '', submitting: false, error: null } });
-  }
-
-  async _submitAdjustPoints() {
-    const { wallet, adjustPoints: ap } = this.state;
-    if (!ap) return;
-    const pts = parseInt(ap.points, 10);
-    if (isNaN(pts) || !ap.description.trim()) return;
-    this.setState({ adjustPoints: { ...ap, submitting: true, error: null } });
-    try {
-      await adminApi.adjustUserPoints(wallet, ap.masterAccountId, {
-        points: pts,
-        description: ap.description.trim(),
-        walletAddress: ap.address
-      });
-      this.setState({ adjustPoints: null });
-      await this.loadDashboard();
-    } catch (err) {
-      this.setState({ adjustPoints: { ...this.state.adjustPoints, submitting: false, error: err.message } });
+      this.setState({ error: err.message });
     }
   }
 
@@ -279,7 +242,29 @@ export class Admin extends Component {
         color: var(--accent);
         font-weight: 600;
       }
-      /* Shared banner style for confirmations + tx status */
+      .admin-nav {
+        display: flex;
+        gap: 1rem;
+        padding: 0.5rem 0;
+        margin-bottom: 1rem;
+        position: sticky;
+        top: 0;
+        background: var(--surface-1);
+        z-index: 10;
+        border-bottom: var(--border-width) solid var(--border);
+      }
+      .admin-nav a {
+        color: var(--text-label);
+        font-family: var(--ff-mono);
+        font-size: var(--fs-xs);
+        letter-spacing: var(--ls-wider);
+        text-transform: uppercase;
+        text-decoration: none;
+        padding: 4px 8px;
+        transition: color var(--dur-micro) var(--ease);
+      }
+      .admin-nav a:hover { color: var(--accent); }
+      /* Shared banner style for confirmations */
       .admin-banner {
         display: flex;
         align-items: center;
@@ -290,22 +275,11 @@ export class Admin extends Component {
         font-size: var(--fs-xs);
         color: var(--text-secondary);
       }
-      .admin-banner.danger {
-        background: rgba(255,75,75,0.08);
-        border: var(--border-width) solid rgba(255,75,75,0.35);
-      }
       .admin-banner.info {
         background: rgba(144,202,249,0.06);
         border: var(--border-width) solid rgba(144,202,249,0.25);
-        color: #90caf9;
+        color: var(--accent);
       }
-      .admin-banner.success {
-        background: rgba(76,175,80,0.08);
-        border: var(--border-width) solid rgba(76,175,80,0.3);
-        color: #4caf50;
-      }
-      .admin-banner a { color: inherit; opacity: 0.75; }
-      .admin-banner a:hover { opacity: 1; }
       .admin-banner button {
         background: none;
         border: var(--border-width) solid var(--border);
@@ -320,176 +294,7 @@ export class Admin extends Component {
         flex-shrink: 0;
       }
       .admin-banner button:hover { color: var(--text-secondary); border-color: var(--border-hover); }
-      .admin-banner button:disabled { opacity: 0.4; cursor: default; }
-      .admin-banner button.danger { color: var(--danger); border-color: rgba(255,75,75,0.35); }
-      .admin-banner button.danger:hover { border-color: var(--danger); }
-      /* Inline points adjustment panel */
-      .admin-adjust-panel {
-        padding: 12px 14px;
-        background: var(--surface-2);
-        border: var(--border-width) solid var(--border);
-        margin-bottom: 1rem;
-        font-family: var(--ff-mono);
-        font-size: var(--fs-xs);
-      }
-      .admin-adjust-panel .panel-title {
-        color: var(--text-label);
-        letter-spacing: var(--ls-wider);
-        text-transform: uppercase;
-        margin-bottom: 10px;
-      }
-      .admin-adjust-panel .panel-addr {
-        color: var(--accent);
-        margin-bottom: 10px;
-      }
-      .admin-adjust-panel .panel-row {
-        display: flex;
-        gap: 8px;
-        align-items: center;
-        margin-bottom: 8px;
-      }
-      .admin-adjust-panel label {
-        color: var(--text-label);
-        min-width: 80px;
-        flex-shrink: 0;
-      }
-      .admin-adjust-panel input, .admin-adjust-panel textarea {
-        background: var(--surface-1);
-        border: var(--border-width) solid var(--border);
-        color: var(--text-primary);
-        font-family: var(--ff-mono);
-        font-size: var(--fs-xs);
-        padding: 4px 8px;
-        flex: 1;
-        outline: none;
-      }
-      .admin-adjust-panel input:focus, .admin-adjust-panel textarea:focus {
-        border-color: var(--accent);
-      }
-      .admin-adjust-panel textarea { resize: vertical; min-height: 48px; }
-      .admin-adjust-panel .panel-actions { display: flex; gap: 8px; margin-top: 4px; }
-      .admin-adjust-panel .panel-error { color: var(--danger); margin-top: 6px; }
     `;
-  }
-
-  // ── Render helpers ────────────────────────────────────────────────────────
-
-  _renderWithdrawalConfirm() {
-    const { pendingWithdrawal: w } = this.state;
-    if (!w) return null;
-    return h('div', { className: 'admin-banner danger' },
-      h('span', null, `Withdraw ${w.symbol} from ${w.vaultAddress.toLowerCase() === FOUNDATION_ADDRESS.toLowerCase() ? 'Foundation' : 'vault'}? This sends requestRescission on-chain.`),
-      h('button', { className: 'danger', onClick: this.bind(this._confirmWithdraw) }, 'Confirm'),
-      h('button', { onClick: () => this.setState({ pendingWithdrawal: null }) }, 'Cancel'),
-    );
-  }
-
-  _renderWithdrawalTx() {
-    const { withdrawalTx: tx } = this.state;
-    if (!tx) return null;
-    const etherscanBase = 'https://etherscan.io/tx/';
-    if (tx.status === 'submitting') {
-      return h('div', { className: 'admin-banner info' }, 'Waiting for wallet signature...');
-    }
-    if (tx.status === 'mining') {
-      return h('div', { className: 'admin-banner info' },
-        'Mining — ',
-        h('a', { href: etherscanBase + tx.hash, target: '_blank' }, tx.hash.slice(0, 18) + '...')
-      );
-    }
-    if (tx.status === 'done') {
-      return h('div', { className: 'admin-banner success' },
-        'Rescission requested — ',
-        h('a', { href: etherscanBase + tx.hash, target: '_blank' }, tx.hash.slice(0, 18) + '...'),
-        h('span', null, ' · Server will execute shortly'),
-        h('button', { onClick: () => this.setState({ withdrawalTx: null }) }, 'Dismiss'),
-      );
-    }
-    if (tx.status === 'error') {
-      return h('div', { className: 'admin-banner danger' },
-        'Withdrawal failed: ' + tx.error,
-        h('button', { onClick: () => this.setState({ withdrawalTx: null }) }, 'Dismiss'),
-      );
-    }
-    return null;
-  }
-
-  _renderProtocolWithdrawConfirm() {
-    const { pendingProtocolWithdraw: w } = this.state;
-    if (!w) return null;
-    const fmtAmount = ethers.formatUnits(w.amount, w.decimals);
-    return h('div', { className: 'admin-banner danger' },
-      h('span', null, `Withdraw ${fmtAmount} ${w.symbol} protocol-owned from Foundation? This calls withdrawProtocolOwned as contract owner.`),
-      h('button', { className: 'danger', onClick: this.bind(this._confirmProtocolWithdraw) }, 'Confirm'),
-      h('button', { onClick: () => this.setState({ pendingProtocolWithdraw: null }) }, 'Cancel'),
-    );
-  }
-
-  _renderProtocolWithdrawTx() {
-    const { protocolWithdrawTx: tx } = this.state;
-    if (!tx) return null;
-    const etherscanBase = 'https://etherscan.io/tx/';
-    if (tx.status === 'submitting') {
-      return h('div', { className: 'admin-banner info' }, 'Waiting for wallet signature...');
-    }
-    if (tx.status === 'mining') {
-      return h('div', { className: 'admin-banner info' },
-        'Mining — ',
-        h('a', { href: etherscanBase + tx.hash, target: '_blank' }, tx.hash.slice(0, 18) + '...')
-      );
-    }
-    if (tx.status === 'done') {
-      return h('div', { className: 'admin-banner success' },
-        'Protocol owned withdrawn — ',
-        h('a', { href: etherscanBase + tx.hash, target: '_blank' }, tx.hash.slice(0, 18) + '...'),
-        h('button', { onClick: () => this.setState({ protocolWithdrawTx: null }) }, 'Dismiss'),
-      );
-    }
-    if (tx.status === 'error') {
-      return h('div', { className: 'admin-banner danger' },
-        'Protocol withdrawal failed: ' + tx.error,
-        h('button', { onClick: () => this.setState({ protocolWithdrawTx: null }) }, 'Dismiss'),
-      );
-    }
-    return null;
-  }
-
-  _renderAdjustPanel() {
-    const { adjustPoints: ap } = this.state;
-    if (!ap) return null;
-    return h('div', { className: 'admin-adjust-panel' },
-      h('div', { className: 'panel-title' }, 'Adjust Points'),
-      h('div', { className: 'panel-addr' }, ap.address),
-      h('div', { className: 'panel-row' },
-        h('label', null, 'Points'),
-        h('input', {
-          type: 'number',
-          placeholder: '+100 or -50',
-          value: ap.points,
-          onInput: e => this.setState({ adjustPoints: { ...ap, points: e.target.value } }),
-          disabled: ap.submitting,
-          autofocus: true,
-        }),
-      ),
-      h('div', { className: 'panel-row' },
-        h('label', null, 'Reason'),
-        h('textarea', {
-          placeholder: 'Brief description...',
-          value: ap.description,
-          onInput: e => this.setState({ adjustPoints: { ...ap, description: e.target.value } }),
-          disabled: ap.submitting,
-        }),
-      ),
-      h('div', { className: 'panel-actions' },
-        h('button', {
-          className: 'danger',
-          onClick: this.bind(this._submitAdjustPoints),
-          disabled: ap.submitting || !ap.points || !ap.description.trim(),
-        }, ap.submitting ? 'Submitting...' : 'Apply'),
-        h('button', { onClick: () => this.setState({ adjustPoints: null }), disabled: ap.submitting }, 'Cancel'),
-      ),
-      ap.error ? h('div', { className: 'panel-error' }, ap.error) : null,
-    );
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -498,9 +303,8 @@ export class Admin extends Component {
     const {
       verified, verifying, verifyError,
       wallet, loading, error,
-      balances, accounts, freePoints,
-      analytics, withdrawalAnalytics,
-      depositRecovery,
+      accounting, analytics, creatorStats, expenditure,
+      accounts, costs, costTotals, freePoints, vaultBalance, period,
     } = this.state;
 
     return h('div', { className: 'admin-page' },
@@ -515,15 +319,25 @@ export class Admin extends Component {
       verified ? h('div', null,
         error ? h('div', { className: 'admin-error' }, error) : null,
 
-        this._renderWithdrawalConfirm(),
-        this._renderWithdrawalTx(),
-        this._renderProtocolWithdrawConfirm(),
-        this._renderProtocolWithdrawTx(),
-        this._renderAdjustPanel(),
+        // Section nav
+        h('nav', { className: 'admin-nav' },
+          ...NAV_ITEMS.map(item =>
+            h('a', {
+              href: item.href,
+              key: item.href,
+              onClick: e => {
+                e.preventDefault();
+                const el = document.querySelector(item.href);
+                if (el) el.scrollIntoView({ behavior: 'smooth' });
+              },
+            }, item.label)
+          )
+        ),
 
         loading
           ? h('div', { className: 'admin-loading' }, 'Loading dashboard...')
           : h('div', null,
+              // Free points summary
               freePoints != null
                 ? h('div', { className: 'admin-free-points' },
                     h('span', null, 'Circulating free points:'),
@@ -535,30 +349,33 @@ export class Admin extends Component {
                   )
                 : null,
 
-              h(DepositRecovery, {
-                deposits: depositRecovery.deposits,
-                metrics: depositRecovery.metrics,
-                loading: depositRecovery.loading,
-                error: depositRecovery.error,
-                onRefresh: () => this.loadDepositRecovery()
+              // 1. P&L Hero
+              h(PLHero, {
+                accounting,
+                period,
+                onPeriodChange: this.bind(this.handlePeriodChange),
+                vaultBalance,
               }),
 
-              h(VaultBalances, {
-                balances,
-                onWithdraw: this.bind(this.handleWithdraw),
-                onWithdrawProtocolOwned: this.bind(this.handleWithdrawProtocolOwned),
+              // 2. Analytics Charts
+              h(AnalyticsCharts, { analytics }),
+
+              // 3. Creator Activity
+              h(CreatorActivity, { creatorStats }),
+
+              // 4. Deposits Table
+              h(DepositsTable, { deposits: accounts }),
+
+              // 5. Cost Manager
+              h(CostManager, {
+                costs,
+                costTotals,
+                expenditure,
+                wallet,
+                onCostAdded: () => this.loadDashboard(),
               }),
 
-              h(AccountsTable, {
-                accounts,
-                onAdjustPoints: this.bind(this.handleAdjustPoints)
-              }),
-
-              h(AnalyticsCharts, {
-                analytics,
-                withdrawalAnalytics
-              }),
-
+              // 6. User Search
               h(UserSearch, { wallet }),
             )
       ) : null

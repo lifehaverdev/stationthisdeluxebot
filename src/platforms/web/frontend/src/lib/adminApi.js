@@ -150,6 +150,23 @@ export async function adjustUserPoints(wallet, masterAccountId, data) {
   return res.json();
 }
 
+export async function fetchCreatorStats(wallet) {
+  const res = await fetch(`/api/v1/admin/vaults/analytics/creators?wallet=${wallet}`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function fetchExpenditure(wallet, dateRange, groupBy = 'tool') {
+  const params = new URLSearchParams({ wallet, chainId: '1', groupBy });
+  if (dateRange) {
+    params.append('startDate', dateRange.startDate.toISOString());
+    params.append('endDate', dateRange.endDate.toISOString());
+  }
+  const res = await fetch(`/api/v1/admin/vaults/analytics/expenditure?${params}`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
 export async function saveUserNotes(wallet, masterAccountId, data) {
   const res = await fetch(`/api/v1/admin/vaults/users/${masterAccountId}/notes?wallet=${wallet}`, {
     method: 'POST',

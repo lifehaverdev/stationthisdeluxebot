@@ -1791,15 +1791,23 @@ function createCookApi(deps = {}) {
 
       const outputs = await outputsCol.find(
         { 'metadata.collectionId': batchId, 'metadata.mode': 'batch', status: 'completed' },
-        { projection: { 'outputs': 1, 'metadata.pieceIndex': 1 } }
+        { projection: { 'responsePayload': 1, 'metadata.pieceIndex': 1 } }
       ).toArray();
 
       if (!outputs.length) return res.status(404).json({ error: 'No completed outputs found' });
 
-      const formattedOutputs = outputs.map(o => ({
-        resultUrl: o.outputs?.image || o.outputs?.url,
-        pieceIndex: o.metadata?.pieceIndex,
-      })).filter(o => o.resultUrl);
+      const ResponsePayloadNormalizer = require('../../core/services/notifications/ResponsePayloadNormalizer');
+      const formattedOutputs = outputs.map(o => {
+        let resultUrl = null;
+        if (o.responsePayload) {
+          try {
+            const normalized = ResponsePayloadNormalizer.normalize(o.responsePayload, { logger });
+            const web = ResponsePayloadNormalizer.toWebFormat(normalized);
+            resultUrl = web?.images?.[0]?.url || web?.imageUrl || null;
+          } catch { /* skip unparseable records */ }
+        }
+        return { resultUrl, pieceIndex: o.metadata?.pieceIndex };
+      }).filter(o => o.resultUrl);
 
       // Lazy-load BatchZipService to avoid circular deps
       const BatchZipService = require('../../core/services/batch/BatchZipService');

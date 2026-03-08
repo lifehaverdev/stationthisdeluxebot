@@ -256,7 +256,10 @@
   background: var(--surface-2);
   color: var(--accent);
   border: 1px solid var(--accent-border);
-  padding: 4px 10px;
+  padding: 6px 12px;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
   cursor: pointer;
 }
 
@@ -273,6 +276,7 @@
 .fd-card-actions {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .fd-card-btn {
@@ -284,6 +288,7 @@
   color: var(--text-primary);
   border: 1px solid var(--border);
   padding: 8px 16px;
+  min-height: 44px;
   cursor: pointer;
 }
 
@@ -471,6 +476,7 @@
 /* Anchors inside Node Mode header card */
 .fd-card-header {
   position: relative;
+  border-left: 3px solid var(--accent);
 }
 
 .fd-anchor-nodemode {
@@ -492,6 +498,15 @@
 
 .fd-anchor-nodemode .fd-anchor-icon {
   font-size: 14px;
+}
+
+.fd-anchor-nodemode.fd-anchor-output {
+  border-color: var(--accent-border);
+  background: var(--accent-dim);
+}
+
+.fd-anchor-nodemode.fd-anchor-output:hover {
+  border-color: var(--accent);
 }
 
 .fd-anchor-input .fd-anchor-icon::before { content: '\2190'; }
