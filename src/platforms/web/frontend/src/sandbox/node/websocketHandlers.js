@@ -1,3 +1,4 @@
+import { eventBus } from '@monygroupcorp/microact';
 import { websocketClient } from '../ws.js';
 import { untrackPendingGeneration } from '../state.js';
 import { debugLog } from '../config/debugConfig.js';
@@ -67,8 +68,12 @@ export { castCompletionTracker };
 export function handleGenerationUpdate(payload) {
     const { generationId, outputs, status, castId, cookId, costUsd } = payload;
 
-    // Ignore cook-driven tool updates (cookId present but no castId — backend only)
-    if (cookId && !castId) return;
+    // Batch cook pieces (cookId present, no castId) — route to UploadWindowBody via eventBus
+    if (cookId && !castId) {
+        eventBus.emit('batchPieceComplete', { cookId, collectionId: payload.collectionId, generationId, status, payload });
+        if (generationId) untrackPendingGeneration(generationId);
+        return;
+    }
 
     debugLog('WEBSOCKET_UPDATE', '[WS] generationUpdate received', { generationId, status, costUsd });
 

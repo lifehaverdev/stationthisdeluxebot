@@ -1,6 +1,6 @@
 import { Component, h, eventBus } from '@monygroupcorp/microact';
 import { uploadToStorage } from '../io.js';
-import { postWithCsrf, fetchJson } from '../../lib/api.js';
+import { postWithCsrf } from '../../lib/api.js';
 import { ParameterForm } from '../components/windows/ParameterForm.js';
 import { ResultDisplay } from '../components/windows/ResultDisplay.js';
 import { AsyncButton } from '../components/ModalKit.js';
@@ -174,12 +174,12 @@ export class UploadWindowBody extends Component {
       batchZipUrl: null,
       batchZipBuilding: false,
     };
-    this._pollInterval = null;
     this._processedResults = new Set();
+    this._batchPieceHandler = this._handleBatchPiece.bind(this);
   }
 
   willUnmount() {
-    if (this._pollInterval) clearInterval(this._pollInterval);
+    eventBus.off('batchPieceComplete', this._batchPieceHandler);
   }
 
   _onFiles(rawFiles) {
@@ -235,6 +235,35 @@ export class UploadWindowBody extends Component {
     return window.sandboxCanvas?.state.windows.get(batchConn.toWindowId) || null;
   }
 
+  _handleBatchPiece({ collectionId, generationId, status, payload }) {
+    if (collectionId !== this.state.batchId) return;
+
+    const images = payload?.images;
+    const url = Array.isArray(images) ? images[0]?.url : null;
+    const batchConn = this._getBatchConn();
+    const toolWindowId = batchConn?.toWindowId;
+
+    if (status === 'completed' && url && toolWindowId && !this._processedResults.has(url)) {
+      this._processedResults.add(url);
+      window.sandboxCanvas?.updateWindowOutput(toolWindowId, { type: 'image', url });
+    }
+
+    const wasCompleted = status === 'completed' && !!url;
+    const wasFailed = status === 'failed' || (status === 'completed' && !url);
+    if (!wasCompleted && !wasFailed) return;
+
+    const newCompleted = this.state.batchCompleted + (wasCompleted ? 1 : 0);
+    const newFailed = this.state.batchFailed + (wasFailed ? 1 : 0);
+    const total = this.state.batchTotal;
+    const newState = { batchCompleted: newCompleted, batchFailed: newFailed };
+
+    if (total > 0 && (newCompleted + newFailed) >= total) {
+      eventBus.off('batchPieceComplete', this._batchPieceHandler);
+      newState.batchStatus = newCompleted > 0 ? 'complete' : 'error';
+    }
+    this.setState(newState);
+  }
+
   async _runBatch() {
     const batchConn = this._getBatchConn();
     const toolWin = this._getBatchToolWin(batchConn);
@@ -246,8 +275,26 @@ export class UploadWindowBody extends Component {
     const toolId = toolWin.tool.toolId || toolWin.tool.id || toolWin.tool._id;
     // Use the actual connected input key — not a hardcoded guess
     const imageParamKey = batchConn.toInput || 'input_image';
-    // Pass through all manually-set tool params (prompt, seed, etc.), minus the image slot
-    const paramOverrides = { ...(toolWin.parameterMappings || {}) };
+
+    // Resolve parameterMappings: nodeOutput refs (connected nodes) → actual values.
+    // Raw nodeOutput objects would be rejected by ComfyDeploy with a 422.
+    const paramOverrides = {};
+    const canvas = window.sandboxCanvas;
+    for (const [key, val] of Object.entries(toolWin.parameterMappings || {})) {
+      if (val && typeof val === 'object' && val.type === 'nodeOutput') {
+        // Resolve to the actual current output of the referenced window
+        const refWin = canvas?.state.windows.get(val.nodeId);
+        const out = refWin?.output;
+        if (out) {
+          const resolved = out.text ?? out.url ?? (out.value !== undefined ? out.value : undefined);
+          if (resolved !== undefined) paramOverrides[key] = resolved;
+        }
+        // If unresolvable, omit — don't send the ref object
+      } else {
+        paramOverrides[key] = val;
+      }
+    }
+    // The image slot is provided per-image by the batch loop — don't include it in overrides
     delete paramOverrides[imageParamKey];
 
     this._processedResults = new Set();
@@ -265,53 +312,11 @@ export class UploadWindowBody extends Component {
       if (!res.ok) throw new Error(data.error || 'Batch start failed');
       const batchId = data.collectionId || data.batchId;
       this.setState({ batchId });
-      this._startPolling(batchId, batchConn.toWindowId, images.length);
+      eventBus.on('batchPieceComplete', this._batchPieceHandler);
     } catch (err) {
       this.setState({ batchStatus: 'error' });
       console.error('[UploadWindowBody] batch start error:', err);
     }
-  }
-
-  _startPolling(batchId, toolWindowId, total) {
-    const MAX_POLLS = 60; // ~10 min at 10s — safety stop
-    const TERMINAL = new Set(['completed', 'failed', 'stopped', 'error']);
-    let pollCount = 0;
-
-    const stop = (status) => {
-      clearInterval(this._pollInterval);
-      this._pollInterval = null;
-      this.setState({ batchStatus: status });
-    };
-
-    this._pollInterval = setInterval(async () => {
-      pollCount++;
-      try {
-        const data = await fetchJson(`/api/v1/batch/${batchId}`);
-        const outputs = data.outputs || [];
-        const effectiveTotal = data.total || total;
-        let completedCount = 0, failedCount = 0;
-
-        for (const output of outputs) {
-          const url = output.resultUrl || output.imageUrl;
-          if (url && !this._processedResults.has(url)) {
-            this._processedResults.add(url);
-            window.sandboxCanvas?.updateWindowOutput(toolWindowId, { type: 'image', url });
-          }
-          if (url) completedCount++;
-          if (output.error) failedCount++;
-        }
-
-        this.setState({ batchCompleted: completedCount, batchFailed: failedCount });
-
-        const serverDone = data.cookStatus && TERMINAL.has(data.cookStatus);
-        const countDone  = (completedCount + failedCount) >= effectiveTotal;
-        if (serverDone || countDone || pollCount >= MAX_POLLS) {
-          stop(completedCount > 0 ? 'complete' : 'error');
-        }
-      } catch (e) {
-        console.warn('[UploadWindowBody] poll error:', e);
-      }
-    }, 10000);
   }
 
   async _buildZip() {

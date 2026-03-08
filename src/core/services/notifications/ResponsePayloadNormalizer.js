@@ -41,14 +41,16 @@ class ResponsePayloadNormalizer {
     // Already in array format - validate and return
     if (Array.isArray(responsePayload)) {
       // Check if this is ComfyUI array format: [{ data: { images: [...] } }, ...]
-      // This format needs special handling to extract images properly
-      const hasNestedImages = responsePayload.some(item => 
-        item && typeof item === 'object' && item.data && Array.isArray(item.data.images)
+      // or video format: [{ data: { files: [...] } }, ...]
+      // This format needs special handling to extract media properly
+      const hasNestedMedia = responsePayload.some(item =>
+        item && typeof item === 'object' && item.data &&
+        (Array.isArray(item.data.images) || Array.isArray(item.data.files))
       );
-      
-      logger.debug(`[ResponsePayloadNormalizer] Array format detected. hasNestedImages=${hasNestedImages}, array length=${responsePayload.length}`);
-      if (hasNestedImages) {
-        logger.debug('[ResponsePayloadNormalizer] Detected ComfyUI array format with nested data.images, extracting images');
+
+      logger.debug(`[ResponsePayloadNormalizer] Array format detected. hasNestedMedia=${hasNestedMedia}, array length=${responsePayload.length}`);
+      if (hasNestedMedia) {
+        logger.debug('[ResponsePayloadNormalizer] Detected ComfyUI array format with nested data.images/files, extracting media');
         const normalized = [];
         responsePayload.forEach((item, index) => {
           if (item && typeof item === 'object' && item.data) {

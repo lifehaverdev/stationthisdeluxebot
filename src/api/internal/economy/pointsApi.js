@@ -634,9 +634,11 @@ module.exports = function pointsApi(dependencies) {
                 requestId
             });
         } catch (error) {
+            console.error(`[pointsApi] ❌ PURCHASE FAILED (${requestId}):`, error.message);
+            console.error(`[pointsApi] Stack:`, error.stack);
             logger.error('[pointsApi] /purchase error', { requestId, error: error.message, stack: error.stack });
             res.status(500).json(createErrorResponse(
-                'An error occurred while preparing the purchase. Please try again.',
+                `Purchase failed: ${error.message}`,
                 'PURCHASE_ERROR',
                 requestId
             ));

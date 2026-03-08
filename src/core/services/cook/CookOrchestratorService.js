@@ -1012,6 +1012,28 @@ class CookOrchestratorService {
       return;
     }
 
+    // Batch exhaustion: all submissions attempted, nothing still running, but target not reached.
+    // (Happens when all or some pieces fail — generatedCount never reached batchTarget.)
+    if (state.mode === 'batch' && !state.stopped && state.running.size === 0 &&
+        state.nextIndex >= (state.submissions || []).length) {
+      const finalStatus = state.generatedCount > 0 ? 'completed' : 'failed';
+      this.logger.info(`[CookOrchestrator] Batch exhausted: ${state.generatedCount}/${state.batchTarget} succeeded. Marking ${finalStatus}.`);
+      await this.appendEvent('CookCompleted', { collectionId, userId, cookId: state.cookId, batchSize: state.generatedCount });
+      if (state.cookId) {
+        try {
+          if (this.cookService) {
+            await this.cookService.updateCook(state.cookId, { status: finalStatus });
+          } else {
+            await internalApiClient.put(`/internal/v1/data/cook/cooks/${state.cookId}`, { status: finalStatus });
+          }
+        } catch(err) {
+          this.logger.error(`[CookOrchestrator] Failed to finalize cook ${state.cookId}:`, err.message);
+        }
+      }
+      this.runningByCollection.delete(key);
+      return;
+    }
+
     // Fill available slots up to maxConcurrent, without exceeding batch target
     if (state.paused) {
       this.logger.debug(`[CookOrchestrator] Cook ${key} is paused – skipping queueing new pieces`);
