@@ -725,6 +725,10 @@ module.exports = function pointsApi(dependencies) {
                         pointsCredited,
                         userCreditedUsd,
                         gasCostUsd,
+                        // snake_case aliases for frontend compatibility
+                        points_credited: pointsCredited,
+                        user_credited_usd: userCreditedUsd,
+                        gas_cost_usd: gasCostUsd,
                         asset: {
                             symbol: assetSymbol,
                             amount: assetAmount

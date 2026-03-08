@@ -71,20 +71,17 @@ function createAdminApi(dependencies) {
       const creditLedgerDb = creditService.creditLedgerDb;
       const contractConfig = creditService.contractConfig;
 
-      // Get all confirmed deposits
+      // Get confirmed deposits for the current CreditVault only
+      const vaultAddress = contractConfig.address;
       const allDeposits = await creditLedgerDb.findMany({
         status: 'CONFIRMED',
         token_address: { $exists: true, $ne: null },
         depositor_address: { $exists: true, $ne: null },
-        points_credited: { $exists: true, $gt: 0 }
+        points_credited: { $exists: true, $gt: 0 },
+        vault_account: vaultAddress,
       });
 
-      logger.info(`[AdminApi] Found ${allDeposits.length} confirmed deposits with points`);
-      if (allDeposits.length > 0) {
-        logger.info(`[AdminApi] Deposit IDs: ${allDeposits.map(d => d._id).join(', ')}`);
-        logger.info(`[AdminApi] Deposit vault_accounts: ${[...new Set(allDeposits.map(d => d.vault_account))].join(', ')}`);
-        logger.info(`[AdminApi] Deposit statuses: ${[...new Set(allDeposits.map(d => d.status))].join(', ')}`);
-      }
+      logger.info(`[AdminApi] Found ${allDeposits.length} confirmed deposits for vault ${vaultAddress}`);
 
       // Group deposits by (depositor_address, token_address) to get account summaries
       const accountMap = new Map();
@@ -414,16 +411,15 @@ function createAdminApi(dependencies) {
         });
       }
 
-      // Get all confirmed deposits (deposits don't have a 'type' field, they're just ledger entries)
+      // Get confirmed deposits for the current CreditVault only
+      const vaultAddress = contractConfig.address;
       const allDeposits = await creditLedgerDb.findMany({
         status: 'CONFIRMED',
-        token_address: { $exists: true, $ne: null }
+        token_address: { $exists: true, $ne: null },
+        vault_account: vaultAddress,
       });
 
-      logger.info(`[AdminApi] Found ${allDeposits.length} confirmed deposits for vault-balances`);
-      if (allDeposits.length > 0) {
-        logger.info(`[AdminApi] vault-balances vault_accounts: ${[...new Set(allDeposits.map(d => d.vault_account))].join(', ')}`);
-      }
+      logger.info(`[AdminApi] Found ${allDeposits.length} confirmed deposits for vault ${vaultAddress}`);
 
       // Get unique token addresses from deposits
       let tokenAddresses = [...new Set(allDeposits.map(d => d.token_address).filter(Boolean))];
@@ -1709,11 +1705,13 @@ function createAdminApi(dependencies) {
 
       const creditLedgerDb = creditService.creditLedgerDb;
 
-      // Get all deposits (revenue)
+      // Get deposits for the current CreditVault only (revenue)
+      const vaultAddress = creditService.contractConfig.address;
       const allDeposits = await creditLedgerDb.findMany({
         status: 'CONFIRMED',
         token_address: { $exists: true, $ne: null },
-        deposit_tx_hash: { $exists: true }
+        deposit_tx_hash: { $exists: true },
+        vault_account: vaultAddress,
       });
 
       // Filter deposits by period

@@ -507,11 +507,15 @@ class CookOrchestratorService {
 
         const state = this.runningByCollection.get(key);
         const toSubmit = submissions.slice(0, maxConcurrent);
+        this.logger.info(`[Batch] Submitting ${toSubmit.length}/${submissions.length} pieces. toolId=${toolId} collectionId=${collectionId}`);
         for (const piece of toSubmit) {
           state.running.add(piece.jobId);
           state.nextIndex++;
-          submitPiece({ spellId: piece.spellId, submission: piece.submission }, this).catch(err => {
-            this.logger.error(`[Batch] Failed to submit piece ${piece.pieceIndex}:`, err.message);
+          const pieceIdx = piece.pieceIndex;
+          submitPiece({ spellId: piece.spellId, submission: piece.submission }, this).then(result => {
+            this.logger.info(`[Batch] Piece ${pieceIdx} submit result: statusCode=${result?.statusCode} status=${result?.body?.status}`);
+          }).catch(err => {
+            this.logger.error(`[Batch] Failed to submit piece ${pieceIdx}:`, err.message);
           });
         }
 

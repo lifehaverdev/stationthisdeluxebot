@@ -877,6 +877,7 @@ export class FocusDemo extends Component {
                   nodes,
                   connections: [...this.state.connections, ...newConnections],
                 });
+                this._fsm.zoomOut();
               },
             }, 'Clone'),
             h('button', {
