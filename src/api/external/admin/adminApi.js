@@ -17,11 +17,9 @@ function createAdminApi(dependencies) {
     creditService: legacyCredit,
   } = dependencies;
 
-  // dependencies.ethereumService is the multi-chain map { chainId: EthereumService }
-  // dependencies.creditService is also the multi-chain map { chainId: CreditService }
-  // (see core/services/index.js lines 505-582)
-  const ethereumServiceMap = dependencies.ethereumService || {};
-  const creditServiceMap = dependencies.creditService || {};
+  // Multi-chain service maps { chainId: ServiceInstance }
+  const ethereumServiceMap = dependencies.ethereumServices || {};
+  const creditServiceMap = dependencies.creditServices || {};
 
   const getChainServices = (chainId = '1') => ({
     creditService: creditServices[String(chainId)] || creditServiceMap[String(chainId)] || legacyCredit,
@@ -56,7 +54,7 @@ function createAdminApi(dependencies) {
     const requestId = require('uuid').v4();
     const chainId = req.query.chainId || '1';
     
-    logger.debug(`[AdminApi] GET /accounts for chainId=${chainId}, requestId=${requestId}`);
+    logger.info(`[AdminApi] GET /accounts for chainId=${chainId}, requestId=${requestId}`);
 
     try {
       const { creditService, ethereumService } = getChainServices(chainId);
@@ -81,7 +79,12 @@ function createAdminApi(dependencies) {
         points_credited: { $exists: true, $gt: 0 }
       });
 
-      logger.debug(`[AdminApi] Found ${allDeposits.length} confirmed deposits with points`);
+      logger.info(`[AdminApi] Found ${allDeposits.length} confirmed deposits with points`);
+      if (allDeposits.length > 0) {
+        logger.info(`[AdminApi] Deposit IDs: ${allDeposits.map(d => d._id).join(', ')}`);
+        logger.info(`[AdminApi] Deposit vault_accounts: ${[...new Set(allDeposits.map(d => d.vault_account))].join(', ')}`);
+        logger.info(`[AdminApi] Deposit statuses: ${[...new Set(allDeposits.map(d => d.status))].join(', ')}`);
+      }
 
       // Group deposits by (depositor_address, token_address) to get account summaries
       const accountMap = new Map();
@@ -417,7 +420,10 @@ function createAdminApi(dependencies) {
         token_address: { $exists: true, $ne: null }
       });
 
-      logger.info(`[AdminApi] Found ${allDeposits.length} confirmed deposits`);
+      logger.info(`[AdminApi] Found ${allDeposits.length} confirmed deposits for vault-balances`);
+      if (allDeposits.length > 0) {
+        logger.info(`[AdminApi] vault-balances vault_accounts: ${[...new Set(allDeposits.map(d => d.vault_account))].join(', ')}`);
+      }
 
       // Get unique token addresses from deposits
       let tokenAddresses = [...new Set(allDeposits.map(d => d.token_address).filter(Boolean))];

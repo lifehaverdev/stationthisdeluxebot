@@ -291,7 +291,8 @@ export class UploadWindowBody extends Component {
         }
         // If unresolvable, omit — don't send the ref object
       } else {
-        paramOverrides[key] = val;
+        // Static mapping: extract the raw value, not the { type, value } wrapper
+        paramOverrides[key] = (val && typeof val === 'object' && val.type === 'static') ? val.value : val;
       }
     }
     // The image slot is provided per-image by the batch loop — don't include it in overrides

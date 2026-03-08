@@ -524,7 +524,8 @@ async function initializeServices(options = {}) {
       priceFeedService,
       creditServices: creditServices, // map
       creditService: creditServices['1'] || null, // legacy singleton for mainnet
-      ethereumService: ethereumServices, // Pass the multi-chain ethereum services
+      ethereumService: ethereumServices['1'] || null, // legacy singleton for mainnet
+      ethereumServices: ethereumServices, // keyed map for multichain support
       nftPriceService,
       saltMiningService,
       spellsService, // Inject spellsService so internal API can use it
@@ -597,8 +598,10 @@ async function initializeServices(options = {}) {
       trainingService, // Training domain service (Phase 6f)
       workflowExecutionService, // Added workflowExecutionService
       storageService, // Add new service
-      ethereumService: ethereumServices, // Add new service
-      creditService: creditServices, // Add new service
+      ethereumService: ethereumServices['1'] || null, // legacy singleton for mainnet
+      ethereumServices: ethereumServices, // keyed map for multichain support
+      creditService: creditServices['1'] || null, // legacy singleton for mainnet
+      creditServices: creditServices, // keyed map for multichain support
       priceFeedService,
       nftPriceService,
       dexService,

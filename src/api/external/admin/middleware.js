@@ -45,9 +45,8 @@ function createAdminVerificationMiddleware(dependencies) {
     creditService: legacyCredit
   } = dependencies;
 
-  // dependencies.ethereumService is the multi-chain map { chainId: EthereumService }
-  // (see core/services/index.js lines 505-582)
-  const ethereumServiceMap = dependencies.ethereumService || {};
+  // Multi-chain service map { chainId: EthereumService }
+  const ethereumServiceMap = dependencies.ethereumServices || {};
 
   const getEthereumService = (chainId = '1') => {
     // Get from the map directly
