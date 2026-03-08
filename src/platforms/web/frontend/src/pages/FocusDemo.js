@@ -334,8 +334,14 @@ export class FocusDemo extends Component {
       this._gestureStart = null;
       this._clearTapTimeout();
       if (dy > 0) {
-        // Swipe down → zoom out
-        this._fsm.zoomOut();
+        // Swipe down → zoom out / cancel
+        if (this.state.fsmState === STATES.CONNECTION_MODE) {
+          this._fsm.cancelConnection();
+        } else if (this.state.fsmState === STATES.MULTI_SELECT) {
+          this._fsm.exitMultiSelect();
+        } else {
+          this._fsm.zoomOut();
+        }
       } else {
         // Swipe up → zoom in (enter node mode if Z1 + focused node)
         if (this.state.fsmState === STATES.CANVAS_Z1 && this.state.focusedNodeId) {
@@ -351,6 +357,43 @@ export class FocusDemo extends Component {
       const nodeEl = target.closest && target.closest('.fd-node');
       const nodeId = nodeEl && nodeEl.dataset.nodeId;
       const now = performance.now();
+
+      // Check for anchor tap
+      const anchorEl = target.closest && target.closest('.fd-anchor');
+      if (anchorEl) {
+        const anchorType = anchorEl.dataset.anchor;
+        const anchorNodeId = anchorEl.dataset.nodeId;
+        if (anchorType === 'output' && anchorNodeId) {
+          this._startConnection(anchorNodeId);
+        }
+        this._gestureStart = null;
+        return;
+      }
+
+      // Connection mode: tap node to show picker, tap empty to cancel
+      if (this.state.fsmState === STATES.CONNECTION_MODE) {
+        if (nodeId && nodeId !== this._fsm.sourceNodeId) {
+          this.setState({ connectionPickerNodeId: nodeId });
+        } else if (!nodeId) {
+          if (this.state.connectionPickerNodeId) {
+            this.setState({ connectionPickerNodeId: null });
+          } else {
+            this._fsm.cancelConnection();
+          }
+        }
+        this._gestureStart = null;
+        return;
+      }
+
+      // Multi-select: tap to toggle
+      if (this.state.fsmState === STATES.MULTI_SELECT) {
+        if (nodeId) {
+          this._fsm.toggleSelection(nodeId);
+          this.setState({});
+        }
+        this._gestureStart = null;
+        return;
+      }
 
       // Double-tap check
       if (this._lastTap && nodeId && this._lastTap.nodeId === nodeId && (now - this._lastTap.time) < 300) {
