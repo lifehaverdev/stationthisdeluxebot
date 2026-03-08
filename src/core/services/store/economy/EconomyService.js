@@ -238,7 +238,17 @@ class EconomyService {
     const result = await this.userEconomy.updateExperience(oid, expChangeInt);
 
     if (!result || result.matchedCount === 0) {
-      this.logger.warn(`[EconomyService] updateExp: Economy record not found for ${oid.toString()}`);
+      this.logger.info(`[EconomyService] updateExp: No economy record for ${oid.toString()}, creating one.`);
+      try {
+        await this.userEconomy.createUserEconomyRecord(oid, 0, expChangeInt);
+      } catch (createErr) {
+        // Race condition: another request may have created it between our check and insert
+        if (createErr.code === 11000) {
+          await this.userEconomy.updateExperience(oid, expChangeInt);
+        } else {
+          throw createErr;
+        }
+      }
     }
   }
 }

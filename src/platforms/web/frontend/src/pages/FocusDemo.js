@@ -714,10 +714,12 @@ export class FocusDemo extends Component {
 
   _batchClone() {
     const ids = [...this._fsm.selectedNodeIds];
-    const { nodes, newConnections } = this._cloneNodes(ids);
-    const connections = [...this.state.connections, ...newConnections];
     this._fsm.exitMultiSelect();
-    this.setState({ nodes, connections });
+    const { nodes, newConnections } = this._cloneNodes(ids);
+    this.setState({
+      nodes,
+      connections: [...this.state.connections, ...newConnections],
+    });
   }
 
   _batchCut() {
@@ -813,8 +815,19 @@ export class FocusDemo extends Component {
       }, 'Back to Canvas'),
 
       h('div', { className: 'fd-nodemode-cards' },
-        // Card 1: Header
-        h('div', { className: 'fd-card' },
+        // Card 1: Header with anchors
+        h('div', { className: 'fd-card fd-card-header' },
+          h('div', {
+            className: 'fd-anchor fd-anchor-input fd-anchor-nodemode',
+            onclick: (e) => e.stopPropagation(),
+          }, h('span', { className: 'fd-anchor-icon' })),
+          h('div', {
+            className: 'fd-anchor fd-anchor-output fd-anchor-nodemode',
+            onclick: (e) => {
+              e.stopPropagation();
+              this._startConnection(focusedNodeId);
+            },
+          }, h('span', { className: 'fd-anchor-icon' })),
           h('div', { className: 'fd-card-title' }, node.label),
           h('div', { className: 'fd-card-meta' },
             h('span', null, node.id),
@@ -872,12 +885,12 @@ export class FocusDemo extends Component {
               className: 'fd-card-btn',
               onclick: (e) => {
                 e.stopPropagation();
+                this._fsm.zoomOut();
                 const { nodes, newConnections } = this._cloneNodes([focusedNodeId]);
                 this.setState({
                   nodes,
                   connections: [...this.state.connections, ...newConnections],
                 });
-                this._fsm.zoomOut();
               },
             }, 'Clone'),
             h('button', {

@@ -468,6 +468,32 @@
   color: var(--text-secondary);
 }
 
+/* Anchors inside Node Mode header card */
+.fd-card-header {
+  position: relative;
+}
+
+.fd-anchor-nodemode {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 5;
+}
+
+.fd-anchor-nodemode.fd-anchor-input {
+  left: -15px;
+}
+
+.fd-anchor-nodemode.fd-anchor-output {
+  right: -15px;
+}
+
+.fd-anchor-nodemode .fd-anchor-icon {
+  font-size: 14px;
+}
+
 .fd-anchor-input .fd-anchor-icon::before { content: '\2190'; }
 .fd-anchor-output .fd-anchor-icon::before { content: '\2192'; }
 

@@ -27,17 +27,19 @@ async function showGroupSettingsMenu(bot, msg, deps) {
 
     // Fetch pool balance if sponsored
     let poolBalance = 0;
+    let poolExp = 0;
     if (isSponsored) {
       try {
         const balanceRes = await api.get(`/internal/v1/data/groups/${chatId}/balance`);
         poolBalance = balanceRes.data?.balance || 0;
+        poolExp = balanceRes.data?.exp || 0;
       } catch (balErr) {
         logger.warn(`[GroupMenu] Failed to fetch pool balance for group ${chatId}: ${balErr.message}`);
       }
     }
 
     const text = isSponsored
-      ? `Group Sponsorship\nThis chat is sponsored\n\nGroup Pool: ${poolBalance.toLocaleString()} points`
+      ? `Group Sponsorship\nThis chat is sponsored\n\nGroup Pool: ${poolBalance.toLocaleString()} points\nGroup EXP: ${poolExp.toLocaleString()}`
       : 'Group Sponsorship\nNo sponsor set';
 
     const keyboard = [];

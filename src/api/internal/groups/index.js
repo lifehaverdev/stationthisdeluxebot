@@ -108,7 +108,15 @@ function createGroupsApi(deps = {}) {
       const activeDeposits = await creditLedgerDb.findActiveDepositsForUser(groupDoc._id);
       const balance = activeDeposits.reduce((sum, d) => sum + (d.points_remaining || 0), 0);
 
-      res.json({ balance });
+      let exp = 0;
+      if (deps.db.userEconomy) {
+        const economyRecord = await deps.db.userEconomy.findByMasterAccountId(groupDoc._id);
+        if (economyRecord && economyRecord.exp != null) {
+          exp = Number(economyRecord.exp);
+        }
+      }
+
+      res.json({ balance, exp });
     } catch (err) {
       logger.error(`[GroupsApi] GET /groups/${chatId}/balance failed: ${err.message}`);
       res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: err.message } });

@@ -238,7 +238,9 @@ export class UploadWindowBody extends Component {
   _handleBatchPiece({ collectionId, generationId, status, payload }) {
     if (collectionId !== this.state.batchId) return;
 
-    const images = payload?.images;
+    // Webhook-path payloads nest outputs under `outputs: { images: [{ url }] }`;
+    // immediate-path payloads spread images to top-level. Check both.
+    const images = payload?.outputs?.images ?? payload?.images;
     const url = Array.isArray(images) ? images[0]?.url : null;
     const batchConn = this._getBatchConn();
     const toolWindowId = batchConn?.toWindowId;

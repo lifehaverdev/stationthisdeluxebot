@@ -36,17 +36,19 @@ async function buildGroupMenu(guildId, guildName, currentMasterAccountId, depend
 
     // Fetch pool balance if sponsored
     let poolBalance = 0;
+    let poolExp = 0;
     if (isSponsored) {
         try {
             const balanceRes = await apiClient.get(`/internal/v1/data/groups/${guildId}/balance?platform=${PLATFORM_KEY}`);
             poolBalance = balanceRes.data?.balance || 0;
+            poolExp = balanceRes.data?.exp || 0;
         } catch (balErr) {
             logger.warn(`[GroupMenu] Failed to fetch pool balance for guild ${guildId}: ${balErr.message}`);
         }
     }
 
     const description = isSponsored
-        ? `This server is sponsored. Admins use the server pool when running commands.\n\n**Server Pool: ${poolBalance.toLocaleString()} points**`
+        ? `This server is sponsored. Admins use the server pool when running commands.\n\n**Server Pool: ${poolBalance.toLocaleString()} points**\n**Server EXP: ${poolExp.toLocaleString()}**`
         : 'No sponsor set. Commands use each user\'s own account.';
 
     const embed = new EmbedBuilder()
