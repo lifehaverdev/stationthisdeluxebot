@@ -27,6 +27,7 @@ export class FocusDemo extends Component {
       positions: new Map(),
       nodes: new Map(),
       connections: [],
+      connectionPickerNodeId: null,
     };
     this._engine = new PhysicsEngine();
     this._rafId = null;
@@ -65,7 +66,11 @@ export class FocusDemo extends Component {
 
   _onKeyDown(e) {
     if (e.key === 'Escape') {
-      if (this.state.activatedGlowId) {
+      if (this.state.fsmState === STATES.CONNECTION_MODE) {
+        this._fsm.cancelConnection();
+      } else if (this.state.fsmState === STATES.MULTI_SELECT) {
+        this._fsm.exitMultiSelect();
+      } else if (this.state.activatedGlowId) {
         this.setState({ activatedGlowId: null });
       } else {
         this._fsm.zoomOut();
@@ -114,11 +119,35 @@ export class FocusDemo extends Component {
       }
     }
 
+    if (to === STATES.CONNECTION_MODE) {
+      const pos = this.state.positions.get(nodeId);
+      if (pos) {
+        const cx = window.innerWidth / 2;
+        const cy = window.innerHeight / 2;
+        update.viewport = {
+          scale: ZOOM_LEVELS.CANVAS_Z1,
+          panX: cx - pos.x * ZOOM_LEVELS.CANVAS_Z1,
+          panY: cy - pos.y * ZOOM_LEVELS.CANVAS_Z1,
+        };
+      }
+      update.connectionPickerNodeId = null;
+    }
+
     this.setState(update);
   }
 
   _onNodeClick(nodeId, e) {
     e.stopPropagation();
+    if (this.state.fsmState === STATES.CONNECTION_MODE) {
+      if (nodeId === this._fsm.sourceNodeId) return;
+      this.setState({ connectionPickerNodeId: nodeId });
+      return;
+    }
+    if (this.state.fsmState === STATES.MULTI_SELECT) {
+      this._fsm.toggleSelection(nodeId);
+      this.setState({});
+      return;
+    }
     this._fsm.tapNode(nodeId);
   }
 
@@ -129,6 +158,14 @@ export class FocusDemo extends Component {
 
   _onCanvasClick(e) {
     if (e.target === e.currentTarget || e.target.classList.contains('fd-viewport')) {
+      if (this.state.fsmState === STATES.CONNECTION_MODE) {
+        if (this.state.connectionPickerNodeId) {
+          this.setState({ connectionPickerNodeId: null });
+        } else {
+          this._fsm.cancelConnection();
+        }
+        return;
+      }
       if (this.state.fsmState === STATES.CANVAS_Z1) {
         this._fsm.zoomOut();
       }
@@ -482,6 +519,16 @@ export class FocusDemo extends Component {
     this.setState({ nodes, connections });
   }
 
+  _completeConnection(targetNodeId, anchorName) {
+    const sourceId = this._fsm.sourceNodeId;
+    if (!sourceId || sourceId === targetNodeId) return;
+    const connId = 'c' + Date.now();
+    this._engine.addConnection(connId, sourceId, targetNodeId);
+    const connections = [...this.state.connections, { id: connId, from: sourceId, to: targetNodeId }];
+    this.setState({ connections, connectionPickerNodeId: null });
+    this._fsm.completeConnection();
+  }
+
   _startConnection(sourceNodeId) {
     if (this.state.fsmState !== STATES.NODE_MODE) {
       this._fsm.doubleTapNode(sourceNodeId);
@@ -563,6 +610,10 @@ export class FocusDemo extends Component {
               className: 'fd-card-btn',
               onclick: (e) => { e.stopPropagation(); this._togglePin(); },
             }, isPinned ? 'Unpin' : 'Pin'),
+            h('button', {
+              className: 'fd-card-btn',
+              onclick: (e) => { e.stopPropagation(); this._startConnection(focusedNodeId); },
+            }, 'Connect'),
             h('button', {
               className: 'fd-card-btn fd-card-btn-danger',
               onclick: (e) => {
@@ -746,9 +797,12 @@ export class FocusDemo extends Component {
             const isPinned = engineNode && engineNode.pinned;
             const groupColor = this._getGroupColor(node.group);
             const isDimmed = z1Visible && !z1Visible.has(node.id);
+            const isConnSource = fsmState === STATES.CONNECTION_MODE && node.id === this._fsm.sourceNodeId;
+            const isConnTarget = fsmState === STATES.CONNECTION_MODE && node.id !== this._fsm.sourceNodeId;
+            const isSelected = fsmState === STATES.MULTI_SELECT && this._fsm.selectedNodeIds.has(node.id);
             return h('div', {
               key: node.id,
-              className: `fd-node${node.group ? ' fd-grouped' : ''}${isPinned ? ' fd-pinned' : ''}${node.id === focusedNodeId ? ' fd-focused' : ''}${isDimmed ? ' fd-dimmed' : ''}`,
+              className: `fd-node${node.group ? ' fd-grouped' : ''}${isPinned ? ' fd-pinned' : ''}${node.id === focusedNodeId ? ' fd-focused' : ''}${isDimmed ? ' fd-dimmed' : ''}${isConnSource ? ' fd-conn-source' : ''}${isConnTarget ? ' fd-conn-target' : ''}${isSelected ? ' fd-selected' : ''}`,
               'data-node-id': node.id,
               style: {
                 transform: `translate(${pos.x}px, ${pos.y}px)`,
@@ -779,10 +833,21 @@ export class FocusDemo extends Component {
                   }
                 },
               }, h('span', { className: 'fd-anchor-icon' })),
+              // Anchor picker (shown when this node is picked as target in connection mode)
+              (this.state.connectionPickerNodeId === node.id) ? h('div', { className: 'fd-anchor-picker' },
+                h('button', {
+                  className: 'fd-anchor-pill',
+                  onclick: (e) => { e.stopPropagation(); this._completeConnection(node.id, 'input'); },
+                }, '\u2190 Input'),
+              ) : null,
             );
           })),
         ),
       ),
+      // Connection hint banner
+      fsmState === STATES.CONNECTION_MODE ? h('div', { className: 'fd-conn-hint' },
+        `Connecting from ${this._fsm.sourceNodeId} \u2014 tap a target node`,
+      ) : null,
       // Node Mode overlay
       fsmState === STATES.NODE_MODE ? this._renderNodeMode() : null,
     );
