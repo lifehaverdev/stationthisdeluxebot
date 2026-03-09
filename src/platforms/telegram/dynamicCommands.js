@@ -3,6 +3,7 @@ const { getTelegramFileUrl, setReaction } = require('./utils/telegramUtils');
 // Using internal API client directly instead of making HTTP requests
 const InputCollector = require('./components/inputCollector');
 const { ExecutionError } = require('../../utils/ExecutionClient');
+const { createBatchCommandHandler } = require('./commands/batchCommand');
 
 /**
  * A registry to hold dynamic command definitions and their handlers.
@@ -477,6 +478,13 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
     }
 
     logger.debug(`[Telegram] Successfully registered ${registeredCommandsList.length} dynamic commands in the registry.`);
+
+    // Register /batch command — handles photo albums sent with /batch <tool> <prompt> as caption
+    const batchHandler = createBatchCommandHandler();
+    const batchRegex = /^\/batch(?:@\w+)?\s+\S/i;
+    commandRegistry.register('batch', batchRegex, batchHandler);
+    logger.info('[Telegram] Registered /batch command.');
+
     return registeredCommandsList;
 
   } catch (error) {

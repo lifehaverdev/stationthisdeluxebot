@@ -37,6 +37,7 @@ const rerunManager = require('./components/deliveryMenu/rerunManager');
 const tweakManager = require('./components/deliveryMenu/tweakManager');
 // Simple Command Handlers
 const createStatusCommandHandler = require('./commands/statusCommand');
+const { handleBatchMediaSync } = require('./commands/batchCommand');
 
 /**
  * Create and configure the Telegram bot
@@ -134,12 +135,16 @@ function createTelegramBot(dependencies, token, options = {}) {
 
   bot.on('photo', async (message) => {
     try {
+      // Synchronously accumulate batch album photos BEFORE any async work.
+      // This must run even for captionless photos so all album members are captured.
+      if (message.media_group_id) handleBatchMediaSync(message);
+
       if (!message.caption) return;
 
       // Filter out old messages (older than 2 minutes from bot startup)
       const messageTime = message.date * 1000; // Convert Telegram timestamp to milliseconds
       const messageAge = Date.now() - messageTime;
-      
+
       if (messageAge > MESSAGE_AGE_LIMIT_MS) {
         logger.debug(`[Bot] Ignoring old photo message (age: ${Math.round(messageAge / 1000)}s, limit: ${MESSAGE_AGE_LIMIT_MS / 1000}s)`);
         return;
@@ -175,6 +180,34 @@ function createTelegramBot(dependencies, token, options = {}) {
     } catch (error) {
         logger.error(`[Bot] Error processing message: ${error.stack}`);
         await bot.sendMessage(message.chat.id, "Sorry, an unexpected error occurred.", { reply_to_message_id: message.message_id });
+    }
+  });
+
+  // Handle image files (documents) sent as albums with /batch caption
+  bot.on('document', async (message) => {
+    try {
+      // Synchronously accumulate batch album documents BEFORE any async work.
+      // Runs even for captionless docs so all album members are captured.
+      if (message.media_group_id && message.document?.mime_type?.startsWith('image/')) {
+        handleBatchMediaSync(message);
+      }
+
+      if (!message.caption) return;
+
+      const messageTime = message.date * 1000;
+      if (Date.now() - messageTime > MESSAGE_AGE_LIMIT_MS) return;
+
+      const fullDependencies = { ...dependencies, replyContextManager };
+
+      if (message.caption.startsWith('/')) {
+        const handled = await commandDispatcher.handle(bot, message, fullDependencies);
+        if (handled) return;
+      }
+
+      const dynamicHandled = await dynamicCommandDispatcher.handle(bot, message, fullDependencies);
+      if (dynamicHandled) return;
+    } catch (error) {
+      logger.error(`[Bot] Error processing document message: ${error.stack}`);
     }
   });
 

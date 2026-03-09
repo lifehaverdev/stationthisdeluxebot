@@ -71,10 +71,10 @@ export class PLHero extends Component {
   render() {
     const { accounting, period, onPeriodChange, vaultBalance } = this.props;
 
-    const revenue = accounting?.revenue?.totalDeposits || 0;
-    const costs = accounting?.expenses?.totalExpenses || 0;
-    const grossProfit = accounting?.profitLoss?.grossProfit ?? (revenue - costs);
-    const margin = accounting?.profitLoss?.operatingMargin ?? (revenue > 0 ? ((grossProfit / revenue) * 100) : 0);
+    const revenue = Number(accounting?.revenue?.totalDeposits) || 0;
+    const costs = Number(accounting?.expenses?.totalExpenses) || 0;
+    const grossProfit = Number(accounting?.profitLoss?.grossProfit ?? (revenue - costs));
+    const margin = Number(accounting?.profitLoss?.operatingMargin ?? (revenue > 0 ? ((grossProfit / revenue) * 100) : 0));
 
     const cards = [
       { label: 'Vault Balance', value: vaultBalance != null ? formatUsd(vaultBalance) : '—' },
