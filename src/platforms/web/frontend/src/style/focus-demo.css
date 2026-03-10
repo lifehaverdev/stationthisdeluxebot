@@ -725,3 +725,132 @@
 .fd-action-btn-cancel {
   color: var(--text-secondary);
 }
+
+/* ── Tweaker Drawer ──────────────────────────────────── */
+
+.fd-tweaker {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100%;
+  z-index: var(--z-sidebar, 400);
+  display: flex;
+  align-items: flex-start;
+  pointer-events: none;
+}
+
+.fd-tweaker-tab {
+  position: fixed;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 56px;
+  background: var(--surface-2, #1a1a1a);
+  border: 1px solid var(--border, #333);
+  border-left: none;
+  border-radius: 0 6px 6px 0;
+  color: var(--text-2, #888);
+  font-size: 14px;
+  cursor: pointer;
+  pointer-events: all;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+
+.fd-tweaker-tab:hover {
+  color: var(--text-1, #eee);
+  background: var(--surface-3, #222);
+}
+
+.fd-tweaker-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 260px;
+  background: var(--surface-1, #141414);
+  border-right: 1px solid var(--border, #333);
+  overflow-y: auto;
+  transform: translateX(-260px);
+  transition: transform 0.2s ease;
+  pointer-events: all;
+  padding: 16px 12px;
+  box-sizing: border-box;
+}
+
+.fd-tweaker--open .fd-tweaker-panel {
+  transform: translateX(0);
+}
+
+.fd-tweaker-header {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-2, #888);
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border, #333);
+  margin-bottom: 12px;
+}
+
+.fd-tweaker-section {
+  margin-bottom: 20px;
+}
+
+.fd-tweaker-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent, #7c6af7);
+  margin-bottom: 10px;
+}
+
+.fd-tweaker-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.fd-tweaker-label {
+  font-size: 11px;
+  color: var(--text-2, #888);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fd-tweaker-slider {
+  width: 90px;
+  accent-color: var(--accent, #7c6af7);
+  cursor: pointer;
+}
+
+.fd-tweaker-val {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-1, #eee);
+  width: 36px;
+  text-align: right;
+}
+
+.fd-tweaker-reset {
+  margin-top: 6px;
+  font-size: 10px;
+  padding: 3px 8px;
+  background: transparent;
+  border: 1px solid var(--border, #333);
+  border-radius: 3px;
+  color: var(--text-2, #888);
+  cursor: pointer;
+}
+
+.fd-tweaker-reset:hover {
+  color: var(--text-1, #eee);
+  border-color: var(--text-2, #888);
+}

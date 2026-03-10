@@ -16,7 +16,7 @@ const ZOOM_LEVELS = {
 
 const TWEAK_DEFAULTS = {
   // Gestures
-  friction:             { value: 0.92,  min: 0.80, max: 0.99,  step: 0.01, label: 'Momentum friction',           tweakable: true },
+  friction:             { value: 0.97,  min: 0.80, max: 0.99,  step: 0.01, label: 'Momentum friction',           tweakable: true },
   minVelocity:          { value: 0.5,   min: 0.1,  max: 3.0,   step: 0.1,  label: 'Min velocity (px/ms)',        tweakable: true },
   zoneBottom:           { value: 0.15,  min: 0.05, max: 0.40,  step: 0.01, label: 'Zoom zone bottom %',          tweakable: true },
   zoneWidth:            { value: 0.30,  min: 0.10, max: 0.80,  step: 0.01, label: 'Zoom zone width %',           tweakable: true },
@@ -103,40 +103,56 @@ export class FocusDemo extends Component {
 
   _startMomentum() {
     if (this._momentum.rafId) cancelAnimationFrame(this._momentum.rafId);
-
-    // Average velocity from ring buffer
     if (this._velBuffer.length === 0) return;
-    let sumVx = 0, sumVy = 0;
+
+    // Total displacement / total time = stable average velocity (px/ms)
+    // avoids clustering artifacts from rapid events near lift-off
+    let totalDt = 0, sumDx = 0, sumDy = 0;
     for (const { dx, dy, dt } of this._velBuffer) {
-      sumVx += dx / dt;
-      sumVy += dy / dt;
+      totalDt += dt;
+      sumDx += dx;
+      sumDy += dy;
     }
-    const n = this._velBuffer.length;
-    this._momentum.vx = sumVx / n;
-    this._momentum.vy = sumVy / n;
     this._velBuffer = [];
 
-    const speed = Math.hypot(this._momentum.vx, this._momentum.vy);
-    if (speed < this._tweaks.minVelocity) return;
+    const vxMs = totalDt > 0 ? sumDx / totalDt : 0;
+    const vyMs = totalDt > 0 ? sumDy / totalDt : 0;
+    if (Math.hypot(vxMs, vyMs) < this._tweaks.minVelocity) return;
 
-    const friction = this._tweaks.friction;
-    const tick = () => {
-      this._momentum.vx *= friction;
-      this._momentum.vy *= friction;
-      if (Math.hypot(this._momentum.vx, this._momentum.vy) < 0.1) {
+    this._momentum.vx = vxMs;
+    this._momentum.vy = vyMs;
+
+    let lastTs = performance.now();
+    const tick = (ts) => {
+      const elapsed = Math.min(ts - lastTs, 64); // cap to avoid jumps after tab switch
+      lastTs = ts;
+      // Frame-rate-independent friction (normalised to 16.67ms reference frame)
+      const decay = Math.pow(this._tweaks.friction, elapsed / 16.67);
+      this._momentum.vx *= decay;
+      this._momentum.vy *= decay;
+      if (Math.hypot(this._momentum.vx, this._momentum.vy) < 0.01) {
         this._momentum.rafId = null;
         return;
       }
       this.setState({
         viewport: {
           ...this.state.viewport,
-          panX: this.state.viewport.panX + this._momentum.vx,
-          panY: this.state.viewport.panY + this._momentum.vy,
+          panX: this.state.viewport.panX + this._momentum.vx * elapsed,
+          panY: this.state.viewport.panY + this._momentum.vy * elapsed,
         },
       });
       this._momentum.rafId = requestAnimationFrame(tick);
     };
     this._momentum.rafId = requestAnimationFrame(tick);
+  }
+
+  _isInZoomZone(x, y) {
+    const { zoneBottom, zoneWidth } = this._tweaks;
+    const h = window.innerHeight;
+    const w = window.innerWidth;
+    return y > h * (1 - zoneBottom)
+      && x > w * (0.5 - zoneWidth / 2)
+      && x < w * (0.5 + zoneWidth / 2);
   }
 
   _onKeyDown(e) {
@@ -429,21 +445,26 @@ export class FocusDemo extends Component {
 
     // 1. Swipe detection: vertical > 50px, velocity > 0.3px/ms, more vertical than horizontal
     if (absDy > 50 && velocity > 0.3 && absDy > absDx) {
+      const startX = this._gestureStart.x;
+      const startY = this._gestureStart.y;
       this._gestureStart = null;
       this._clearTapTimeout();
-      if (dy > 0) {
-        // Swipe down → zoom out / cancel
-        if (this.state.fsmState === STATES.CONNECTION_MODE) {
-          this._fsm.cancelConnection();
-        } else if (this.state.fsmState === STATES.MULTI_SELECT) {
-          this._fsm.exitMultiSelect();
+      // Only zoom from the bottom-center zone
+      if (this._isInZoomZone(startX, startY)) {
+        if (dy > 0) {
+          // Swipe down from zone → zoom out / cancel
+          if (this.state.fsmState === STATES.CONNECTION_MODE) {
+            this._fsm.cancelConnection();
+          } else if (this.state.fsmState === STATES.MULTI_SELECT) {
+            this._fsm.exitMultiSelect();
+          } else {
+            this._fsm.zoomOut();
+          }
         } else {
-          this._fsm.zoomOut();
-        }
-      } else {
-        // Swipe up → zoom in (enter node mode if Z1 + focused node)
-        if (this.state.fsmState === STATES.CANVAS_Z1 && this.state.focusedNodeId) {
-          this._fsm.tapNode(this.state.focusedNodeId);
+          // Swipe up from zone → zoom in to Z1
+          if (this.state.fsmState === STATES.CANVAS_Z2) {
+            this._fsm.zoomIn();
+          }
         }
       }
       return;
@@ -1177,6 +1198,54 @@ export class FocusDemo extends Component {
     return `hsla(${hue}, 70%, 50%, 0.28)`;
   }
 
+  _renderTweaker() {
+    const sections = [
+      { label: 'Gestures', keys: ['friction', 'minVelocity', 'zoneBottom', 'zoneWidth'] },
+      { label: 'Physics',  keys: ['repulsionStrength', 'repulsionRange', 'attractionRestLength', 'polarityStrength'] },
+      { label: 'Zoom',     keys: ['scaleZ1', 'scaleZ2'] },
+    ];
+
+    return h('div', { className: `fd-tweaker ${this.state.tweakerOpen ? 'fd-tweaker--open' : ''}` },
+      h('button', {
+        className: 'fd-tweaker-tab',
+        onclick: () => this.setState({ tweakerOpen: !this.state.tweakerOpen }),
+      }, '\u2699'),
+      h('div', { className: 'fd-tweaker-panel' },
+        h('div', { className: 'fd-tweaker-header' }, 'Tweaker'),
+        ...sections.map(({ label, keys }) =>
+          h('div', { className: 'fd-tweaker-section' },
+            h('div', { className: 'fd-tweaker-section-label' }, label),
+            ...keys
+              .filter(k => TWEAK_DEFAULTS[k].tweakable)
+              .map(k => {
+                const def = TWEAK_DEFAULTS[k];
+                const val = this._tweaks[k];
+                return h('div', { className: 'fd-tweaker-row' },
+                  h('label', { className: 'fd-tweaker-label' }, def.label),
+                  h('input', {
+                    type: 'range',
+                    className: 'fd-tweaker-slider',
+                    min: def.min,
+                    max: def.max,
+                    step: def.step,
+                    value: val,
+                    oninput: (e) => this._setTweak(k, parseFloat(e.target.value)),
+                  }),
+                  h('span', { className: 'fd-tweaker-val' }, val.toFixed(2)),
+                );
+              }),
+            h('button', {
+              className: 'fd-tweaker-reset',
+              onclick: () => {
+                keys.forEach(k => this._setTweak(k, TWEAK_DEFAULTS[k].value));
+              },
+            }, 'Reset'),
+          )
+        ),
+      ),
+    );
+  }
+
   render() {
     const { viewport, positions, nodes, connections, fsmState, focusedNodeId } = this.state;
     const transform = `translate(${viewport.panX}px, ${viewport.panY}px) scale(${viewport.scale})`;
@@ -1188,6 +1257,7 @@ export class FocusDemo extends Component {
     const z1Visible = (fsmState === STATES.CANVAS_Z1 && focusedNodeId) ? this._computeZ1Visible() : null;
 
     return h('div', { className: 'focus-demo', ref: el => (this._rootEl = el) },
+      this._renderTweaker(),
       // HUD
       h('div', { className: 'fd-hud' },
         h('span', null, `State: ${fsmState}`),

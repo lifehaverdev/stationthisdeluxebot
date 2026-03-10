@@ -51,6 +51,12 @@ export class FocusStateMachine {
     }
   }
 
+  zoomIn() {
+    if (this.state === STATES.CANVAS_Z2) {
+      this._transition(STATES.CANVAS_Z1, null);
+    }
+  }
+
   zoomOut() {
     switch (this.state) {
       case STATES.CANVAS_Z1:

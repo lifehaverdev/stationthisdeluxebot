@@ -56,6 +56,23 @@ describe('FocusStateMachine', () => {
     });
   });
 
+  describe('zoomIn', () => {
+    it('zoomIn transitions CANVAS_Z2 → CANVAS_Z1', () => {
+      const fsm = new FocusStateMachine();
+      expect(fsm.state).toBe('CANVAS_Z2');
+      fsm.zoomIn();
+      expect(fsm.state).toBe('CANVAS_Z1');
+    });
+
+    it('zoomIn ignored outside CANVAS_Z2', () => {
+      sm.zoomOut(); // Z1 → Z2
+      sm.tapNode('n1'); // Z2 → Z1
+      expect(sm.state).toBe('CANVAS_Z1');
+      sm.zoomIn(); // should do nothing from Z1
+      expect(sm.state).toBe('CANVAS_Z1');
+    });
+  });
+
   describe('NODE_MODE transitions', () => {
     beforeEach(() => {
       sm.doubleTapNode('n1'); // go to NODE_MODE
