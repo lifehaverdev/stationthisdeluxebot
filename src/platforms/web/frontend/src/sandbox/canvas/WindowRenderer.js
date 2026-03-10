@@ -149,7 +149,7 @@ export class WindowRenderer extends Component {
   _getTitle() {
     const { win } = this.props;
     if (win.type === 'spell') return win.spell?.name || 'Spell';
-    if (win.type === 'upload') return 'Upload';
+    if (win.type === 'upload') return 'Media';
     if (win.type === 'collection') return win.collection?.name || 'Collection';
     return win.tool?.displayName || 'Tool';
   }
@@ -176,6 +176,12 @@ export class WindowRenderer extends Component {
 
   _getInputAnchors() {
     const { win } = this.props;
+
+    // Upload windows: single multi-connection batchInput anchor
+    if (win.type === 'upload') {
+      const connected = (win.outputs || []).some(o => o.sourceWindowId);
+      return [{ key: 'batchInput', label: 'batch in', type: 'image', connected }];
+    }
 
     // Spell windows: anchors from exposedInputs
     if (win.type === 'spell') {

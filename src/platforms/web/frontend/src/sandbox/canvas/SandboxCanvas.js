@@ -154,7 +154,21 @@ export class SandboxCanvas extends Component {
     const windows = new Map(this.state.windows);
     const existing = windows.get(id);
     if (!existing) return;
-    windows.set(id, { ...existing, ...updates });
+    const updated = { ...existing, ...updates };
+    windows.set(id, updated);
+
+    // Propagate live output to any Upload aggregator nodes with a batchInput connection from this window
+    for (const conn of this.state.connections.values()) {
+      if (conn.fromWindowId !== id || conn.toInput !== 'batchInput') continue;
+      const aggregator = windows.get(conn.toWindowId);
+      if (!aggregator) continue;
+      const url = updated.outputVersions?.[updated.currentVersionIndex]?.url ?? updated.output?.url;
+      const nextOutputs = (aggregator.outputs || []).map(o =>
+        o.sourceWindowId === id ? { ...o, url } : o
+      );
+      windows.set(conn.toWindowId, { ...aggregator, outputs: nextOutputs, outputLoaded: nextOutputs.some(o => !!o.url) });
+    }
+
     this.setState({ windows });
   }
 
@@ -172,10 +186,13 @@ export class SandboxCanvas extends Component {
     const connections = new Map(this.state.connections);
     for (const [cid, conn] of connections) {
       if (conn.fromWindowId === id || conn.toWindowId === id) {
-        // Clean up parameterMappings on the downstream node when the upstream is deleted
+        // Clean up downstream node when the upstream is deleted
         if (conn.fromWindowId === id) {
           const toWin = windows.get(conn.toWindowId);
-          if (toWin?.parameterMappings?.[conn.toInput]) {
+          if (conn.toInput === 'batchInput' && toWin) {
+            const nextOutputs = (toWin.outputs || []).filter(o => o.sourceWindowId !== id);
+            windows.set(conn.toWindowId, { ...toWin, outputs: nextOutputs, outputLoaded: nextOutputs.some(o => !!o.url) });
+          } else if (toWin?.parameterMappings?.[conn.toInput]) {
             const mappings = { ...toWin.parameterMappings };
             delete mappings[conn.toInput];
             windows.set(conn.toWindowId, { ...toWin, parameterMappings: mappings });
@@ -208,9 +225,18 @@ export class SandboxCanvas extends Component {
     const windows = new Map(this.state.windows);
     const toWin = windows.get(toWindowId);
     if (toWin) {
-      const mappings = { ...(toWin.parameterMappings || {}) };
-      mappings[toParam] = { type: 'nodeOutput', nodeId: fromWindowId, outputKey };
-      windows.set(toWindowId, { ...toWin, parameterMappings: mappings });
+      if (toParam === 'batchInput') {
+        // Multi-connection aggregator: inject a slot keyed by sourceWindowId into outputs[]
+        const fromWin = windows.get(fromWindowId);
+        const url = fromWin?.outputVersions?.[fromWin?.currentVersionIndex]?.url ?? fromWin?.output?.url;
+        const slot = { key: `conn_${fromWindowId}`, type: 'image', url, sourceWindowId: fromWindowId };
+        const nextOutputs = [...(toWin.outputs || []).filter(o => o.sourceWindowId !== fromWindowId), slot];
+        windows.set(toWindowId, { ...toWin, outputs: nextOutputs, outputLoaded: nextOutputs.some(o => !!o.url) });
+      } else {
+        const mappings = { ...(toWin.parameterMappings || {}) };
+        mappings[toParam] = { type: 'nodeOutput', nodeId: fromWindowId, outputKey };
+        windows.set(toWindowId, { ...toWin, parameterMappings: mappings });
+      }
     }
 
     this.setState({ windows, connections });
@@ -224,7 +250,12 @@ export class SandboxCanvas extends Component {
 
     const windows = new Map(this.state.windows);
     const toWin = windows.get(conn.toWindowId);
-    if (toWin?.parameterMappings?.[conn.toInput]) {
+    if (conn.toInput === 'batchInput') {
+      if (toWin) {
+        const nextOutputs = (toWin.outputs || []).filter(o => o.sourceWindowId !== conn.fromWindowId);
+        windows.set(conn.toWindowId, { ...toWin, outputs: nextOutputs, outputLoaded: nextOutputs.some(o => !!o.url) });
+      }
+    } else if (toWin?.parameterMappings?.[conn.toInput]) {
       const mappings = { ...toWin.parameterMappings };
       delete mappings[conn.toInput];
       windows.set(conn.toWindowId, { ...toWin, parameterMappings: mappings });
@@ -1321,7 +1352,7 @@ export class SandboxCanvas extends Component {
     const hasUrl = !!url;
     return this._addWindow({
       type: 'upload',
-      tool: { displayName: 'Upload', toolId: null, metadata: { outputType: 'image' } },
+      tool: { displayName: 'Media', toolId: null, metadata: { outputType: 'image' } },
       x: position?.x ?? 200, y: position?.y ?? 200,
       parameterMappings: {},
       output: hasUrl ? { type: 'image', url } : null,

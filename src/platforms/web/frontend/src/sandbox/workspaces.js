@@ -165,6 +165,8 @@ async function retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000) {
       return await fn();
     } catch (error) {
       lastError = error;
+      // Don't retry client errors (4xx) — they won't resolve with retries
+      if (error.status >= 400 && error.status < 500) break;
       if (attempt < maxRetries) {
         const delay = baseDelay * Math.pow(2, attempt);
         await new Promise(resolve => setTimeout(resolve, delay));
@@ -259,6 +261,10 @@ async function getErrorMessage(res) {
   try {
     const data = await res.json();
     if (data.error) {
+      // CSRF middleware (and others) may return error as an object: { code, message }
+      if (typeof data.error === 'object') {
+        return data.error.message || 'Request failed. Please refresh the page and try again.';
+      }
       const errorMessages = {
         'forbidden': 'You do not have permission to update this workspace.',
         'not-found': 'Workspace not found. It may have been deleted.',
@@ -266,7 +272,7 @@ async function getErrorMessage(res) {
         'snapshot required': 'Invalid workspace data. Please try again.',
         'service-unavailable': 'Workspace service is temporarily unavailable.'
       };
-      return errorMessages[data.error] || `Error: ${data.error}`;
+      return errorMessages[data.error] || `Server error: ${data.error}`;
     }
   } catch (e) {
     // If response isn't JSON, use status text
@@ -339,7 +345,9 @@ export async function saveWorkspace(existingSlug = null, { silent = false, walle
         }
 
         if (res.status !== 403) {
-          throw new Error(await getErrorMessage(res));
+          const err = new Error(await getErrorMessage(res));
+          err.status = res.status;
+          throw err;
         }
 
         // 403 — not our workspace, fork it
@@ -364,7 +372,11 @@ export async function saveWorkspace(existingSlug = null, { silent = false, walle
           headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrf },
           body: JSON.stringify(body)
         });
-        if (!res.ok) throw new Error(await getErrorMessage(res));
+        if (!res.ok) {
+          const err = new Error(await getErrorMessage(res));
+          err.status = res.status;
+          throw err;
+        }
         return await res.json();
       }, 3, 1000);
 

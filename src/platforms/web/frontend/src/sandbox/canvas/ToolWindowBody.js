@@ -469,7 +469,7 @@ export class UploadWindowBody extends Component {
       !isRunning && !isComplete
         ? h('button', {
             className: 'nwb-batch-run-btn',
-            disabled: !toolWin || !outputs.length,
+            disabled: !toolWin || !outputs.length || outputs.some(o => !o.url),
             onclick: () => this._runBatch(),
           }, 'Run as Batch')
         : null,
@@ -488,7 +488,11 @@ export class UploadWindowBody extends Component {
       return h('div', { className: 'nwb-root nwb-upload nwb-upload--multi' },
         h('div', { className: 'nwb-upload-multi-grid' },
           ...outputs.map((slot, i) =>
-            h('div', { key: slot.key, className: 'nwb-upload-multi-thumb' },
+            h('div', {
+              key: slot.key,
+              className: 'nwb-upload-multi-thumb',
+              style: slot.sourceWindowId ? 'outline: 1px solid var(--accent, #90caf9)' : '',
+            },
               h('img', { src: slot.url, className: 'nwb-upload-multi-img', alt: `Image ${i + 1}` }),
               h('span', { className: 'nwb-upload-multi-idx' }, `${i + 1}`),
               h('button', {

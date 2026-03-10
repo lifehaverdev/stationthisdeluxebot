@@ -177,11 +177,16 @@ export class WorkspaceTabs extends Component {
       // If the save fails because the session expired, the user needs to know —
       // their work is still in sandbox_canvas_state locally, but they should log back in
       const msg = e?.message || '';
-      const isAuthFailure = msg.includes('401')
+      const isAuthFailure = e?.status === 401
+        || e?.status === 403
+        || msg.includes('401')
         || msg.toLowerCase().includes('unauthorized')
         || msg.toLowerCase().includes('no token')
         || msg.toLowerCase().includes('json'); // redirect to login page returned HTML, not JSON
       if (isAuthFailure) {
+        // Stop autosaving — pointless until user signs back in
+        clearInterval(this._autosaveInterval);
+        this._autosaveInterval = null;
         showNotification('Session expired. Work saved locally — log in to sync.', 'warning', 8000);
       }
       // All other failures: silently skip, canvas state still lives in localStorage
