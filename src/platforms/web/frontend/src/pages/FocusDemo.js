@@ -101,6 +101,44 @@ export class FocusDemo extends Component {
     this.setState({});
   }
 
+  _startMomentum() {
+    if (this._momentum.rafId) cancelAnimationFrame(this._momentum.rafId);
+
+    // Average velocity from ring buffer
+    if (this._velBuffer.length === 0) return;
+    let sumVx = 0, sumVy = 0;
+    for (const { dx, dy, dt } of this._velBuffer) {
+      sumVx += dx / dt;
+      sumVy += dy / dt;
+    }
+    const n = this._velBuffer.length;
+    this._momentum.vx = sumVx / n;
+    this._momentum.vy = sumVy / n;
+    this._velBuffer = [];
+
+    const speed = Math.hypot(this._momentum.vx, this._momentum.vy);
+    if (speed < this._tweaks.minVelocity) return;
+
+    const friction = this._tweaks.friction;
+    const tick = () => {
+      this._momentum.vx *= friction;
+      this._momentum.vy *= friction;
+      if (Math.hypot(this._momentum.vx, this._momentum.vy) < 0.1) {
+        this._momentum.rafId = null;
+        return;
+      }
+      this.setState({
+        viewport: {
+          ...this.state.viewport,
+          panX: this.state.viewport.panX + this._momentum.vx,
+          panY: this.state.viewport.panY + this._momentum.vy,
+        },
+      });
+      this._momentum.rafId = requestAnimationFrame(tick);
+    };
+    this._momentum.rafId = requestAnimationFrame(tick);
+  }
+
   _onKeyDown(e) {
     if (e.key === 'Escape') {
       if (this.state.fsmState === STATES.CONNECTION_MODE) {
@@ -264,6 +302,15 @@ export class FocusDemo extends Component {
   }
 
   _onTouchStart(e) {
+    if (this._momentum.rafId) {
+      cancelAnimationFrame(this._momentum.rafId);
+      this._momentum.rafId = null;
+      this._velBuffer = [];
+      this._momentumKilled = true;
+      e.preventDefault();
+      return; // consume the touch — do nothing else
+    }
+    this._momentumKilled = false;
     if (e.touches.length === 1) {
       const t = e.touches[0];
       this._gestureStart = { x: t.clientX, y: t.clientY, time: performance.now(), target: e.target };
@@ -324,12 +371,24 @@ export class FocusDemo extends Component {
     if (e.touches.length === 1 && this._panStart) {
       e.preventDefault();
       const t = e.touches[0];
+      const now = performance.now();
+
+      // Track velocity for momentum
+      const newPanX = t.clientX - this._panStart.x;
+      const newPanY = t.clientY - this._panStart.y;
+      const prevVp = this.state.viewport;
+      const dx = newPanX - prevVp.panX;
+      const dy = newPanY - prevVp.panY;
+      const dt = now - (this._lastMoveTime || now);
+      this._lastMoveTime = now;
+
+      if (dt > 0) {
+        this._velBuffer.push({ dx, dy, dt });
+        if (this._velBuffer.length > 3) this._velBuffer.shift();
+      }
+
       this.setState({
-        viewport: {
-          ...this.state.viewport,
-          panX: t.clientX - this._panStart.x,
-          panY: t.clientY - this._panStart.y,
-        },
+        viewport: { ...this.state.viewport, panX: newPanX, panY: newPanY },
       });
     } else if (e.touches.length === 2 && this._pinchStart) {
       e.preventDefault();
@@ -355,6 +414,8 @@ export class FocusDemo extends Component {
     }
     this._panStart = null;
     this._pinchStart = null;
+    this._lastMoveTime = null;
+    this._startMomentum();
 
     if (!this._gestureStart) return;
     const touch = e.changedTouches[0];
