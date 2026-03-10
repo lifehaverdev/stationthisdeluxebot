@@ -82,9 +82,11 @@ export class PhysicsEngine {
    * @param {number} dt — delta time in ms
    * @returns {Map<string, {x, y, z}>} — current positions
    */
-  step(dt) {
+  step(dt, tweaks = {}) {
     const dtSec = dt / 1000;
     const forces = new Map();
+    const repulsionStrength = tweaks.repulsionStrength ?? NODE_REPULSION_STRENGTH;
+    const repulsionRange    = tweaks.repulsionRange    ?? NODE_REPULSION_RANGE;
 
     // Initialize forces
     for (const [id] of this._nodes) {
@@ -99,9 +101,9 @@ export class PhysicsEngine {
         const a = this._nodes.get(nodeIds[i]);
         const b = this._nodes.get(nodeIds[j]);
         const dist = flatDistance(a.position, b.position);
-        if (dist > NODE_REPULSION_RANGE || dist < 0.01) continue;
+        if (dist > repulsionRange || dist < 0.01) continue;
 
-        const strength = NODE_REPULSION_STRENGTH / (dist * dist);
+        const strength = repulsionStrength / (dist * dist);
         const dx = b.position.x - a.position.x;
         const dy = b.position.y - a.position.y;
         const nx = dx / dist;
@@ -123,8 +125,8 @@ export class PhysicsEngine {
       if (!a || !b) continue;
 
       // Attraction
-      const attrA = connectedAttraction(a.position, b.position);
-      const attrB = connectedAttraction(b.position, a.position);
+      const attrA = connectedAttraction(a.position, b.position, tweaks.attractionRestLength);
+      const attrB = connectedAttraction(b.position, a.position, tweaks.attractionRestLength);
       const fa = forces.get(conn.from);
       const fb = forces.get(conn.to);
       fa.fx += attrA.fx;
@@ -133,7 +135,7 @@ export class PhysicsEngine {
       fb.fy += attrB.fy;
 
       // Left-right polarity (source should be left of target)
-      const pol = leftRightPolarity(a.position, b.position);
+      const pol = leftRightPolarity(a.position, b.position, tweaks.polarityStrength);
       fa.fx += pol.sourceFx;
       fb.fx += pol.targetFx;
     }

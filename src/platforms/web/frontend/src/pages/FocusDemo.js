@@ -526,7 +526,7 @@ export class FocusDemo extends Component {
       lastTime = now;
 
       const t0 = performance.now();
-      const positions = this._engine.step(dt);
+      const positions = this._engine.step(dt, this._tweaks);
       const stepMs = performance.now() - t0;
 
       this._perfSamples.push(stepMs);

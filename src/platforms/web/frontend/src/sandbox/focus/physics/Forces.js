@@ -16,14 +16,14 @@ const PIN_SPRING_K = 0.1;
  * Attraction force between connected nodes.
  * Returns force to apply to node at posA toward posB.
  */
-export function connectedAttraction(posA, posB) {
+export function connectedAttraction(posA, posB, restLength = ATTRACTION_REST_LENGTH) {
   const dx = posB.x - posA.x;
   const dy = posB.y - posA.y;
   const dist = Math.sqrt(dx * dx + dy * dy);
   if (dist < 0.01) return { fx: 0, fy: 0 };
 
   // Spring with rest length — no force when at rest distance, pull when far, push when too close
-  const displacement = dist - ATTRACTION_REST_LENGTH;
+  const displacement = dist - restLength;
   const nx = dx / dist;
   const ny = dy / dist;
   return {
@@ -92,14 +92,14 @@ export function groupForce(posA, posB) {
  * Source (output) should be LEFT of target (input).
  * Returns forces for both source and target.
  */
-export function leftRightPolarity(sourcePos, targetPos) {
+export function leftRightPolarity(sourcePos, targetPos, strength = POLARITY_STRENGTH) {
   const gap = targetPos.x - sourcePos.x;
 
   if (gap >= POLARITY_MIN_GAP) {
     return { sourceFx: 0, targetFx: 0 };
   }
 
-  const correction = (POLARITY_MIN_GAP - gap) * POLARITY_STRENGTH;
+  const correction = (POLARITY_MIN_GAP - gap) * strength;
   return {
     sourceFx: -correction, // push source left
     targetFx: correction,  // push target right
