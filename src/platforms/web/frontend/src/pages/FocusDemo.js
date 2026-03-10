@@ -139,12 +139,11 @@ export class FocusDemo extends Component {
       this._momentum.vx *= decay;
       this._momentum.vy *= decay;
       if (Math.hypot(this._momentum.vx, this._momentum.vy) < 0.01) {
-        // Natural stop: sync mutable vars back into state
+        // Natural stop: sync into state. Keep _momentumPanX/Y non-null until next pan
+        // so render holds the stopped position while the async setState is pending.
         this.setState({
           viewport: { ...this.state.viewport, panX: this._momentumPanX, panY: this._momentumPanY },
         });
-        this._momentumPanX = null;
-        this._momentumPanY = null;
         this._momentum.rafId = null;
         return;
       }
@@ -181,6 +180,9 @@ export class FocusDemo extends Component {
   }
 
   _onStateChange(from, to, nodeId) {
+    // Any FSM transition that changes the viewport overrides momentum position
+    this._momentumPanX = null;
+    this._momentumPanY = null;
     const update = { fsmState: to, focusedNodeId: nodeId, activatedGlowId: null };
 
     // Compute transition direction
@@ -337,14 +339,14 @@ export class FocusDemo extends Component {
       this._momentum.vy = 0;
       this._velBuffer = [];
       this._momentumKilled = true;
-      // Sync the live pan position into state so future renders use the stopped position.
-      // No pending setState from the tick can race here — tick never calls setState.
+      // Sync stopped position into state. Keep _momentumPanX/Y non-null until the next
+      // pan gesture — that way render keeps showing the stopped position even while the
+      // async setState is still pending (avoids snap back to stale state.viewport).
       if (this._momentumPanX !== null) {
         this.setState({
           viewport: { ...this.state.viewport, panX: this._momentumPanX, panY: this._momentumPanY },
         });
-        this._momentumPanX = null;
-        this._momentumPanY = null;
+        // Do NOT clear _momentumPanX here — cleared in the next pan's touchstart
       }
       e.preventDefault();
       return; // consume the touch — do nothing else
@@ -365,8 +367,13 @@ export class FocusDemo extends Component {
       }
 
       e.preventDefault();
-      // Set up pan tracking for canvas modes
-      this._panStart = { x: t.clientX - this.state.viewport.panX, y: t.clientY - this.state.viewport.panY };
+      // Set up pan tracking. If momentum just ended and state hasn't caught up yet,
+      // use the live momentum position as the base so pan starts from the right place.
+      const basePanX = this._momentumPanX !== null ? this._momentumPanX : this.state.viewport.panX;
+      const basePanY = this._momentumPanY !== null ? this._momentumPanY : this.state.viewport.panY;
+      this._momentumPanX = null;
+      this._momentumPanY = null;
+      this._panStart = { x: t.clientX - basePanX, y: t.clientY - basePanY };
       // Long-press detection for multi-select
       if (this.state.fsmState === STATES.CANVAS_Z1 || this.state.fsmState === STATES.CANVAS_Z2) {
         const target = e.target;
