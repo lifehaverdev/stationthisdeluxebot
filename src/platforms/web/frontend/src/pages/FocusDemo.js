@@ -14,6 +14,29 @@ const ZOOM_LEVELS = {
   CANVAS_Z1: 1.0,
 };
 
+const TWEAK_DEFAULTS = {
+  // Gestures
+  friction:             { value: 0.92,  min: 0.80, max: 0.99,  step: 0.01, label: 'Momentum friction',           tweakable: true },
+  minVelocity:          { value: 0.5,   min: 0.1,  max: 3.0,   step: 0.1,  label: 'Min velocity (px/ms)',        tweakable: true },
+  zoneBottom:           { value: 0.15,  min: 0.05, max: 0.40,  step: 0.01, label: 'Zoom zone bottom %',          tweakable: true },
+  zoneWidth:            { value: 0.30,  min: 0.10, max: 0.80,  step: 0.01, label: 'Zoom zone width %',           tweakable: true },
+  // Physics
+  repulsionStrength:    { value: 8000,  min: 500,  max: 20000, step: 500,  label: 'Repulsion strength',          tweakable: true },
+  repulsionRange:       { value: 350,   min: 100,  max: 800,   step: 10,   label: 'Repulsion range (px)',         tweakable: true },
+  attractionRestLength: { value: 250,   min: 50,   max: 600,   step: 10,   label: 'Connection rest length (px)', tweakable: true },
+  polarityStrength:     { value: 0.5,   min: 0.0,  max: 2.0,   step: 0.1,  label: 'Polarity strength',           tweakable: true },
+  // Zoom
+  scaleZ1:              { value: 1.0,   min: 0.5,  max: 2.0,   step: 0.05, label: 'Z1 scale',                    tweakable: true },
+  scaleZ2:              { value: 0.45,  min: 0.2,  max: 1.0,   step: 0.05, label: 'Z2 scale',                    tweakable: true },
+};
+
+// Helper: extract just the values for runtime use
+function defaultTweakValues() {
+  const out = {};
+  for (const [k, v] of Object.entries(TWEAK_DEFAULTS)) out[k] = v.value;
+  return out;
+}
+
 export class FocusDemo extends Component {
   constructor(props) {
     super(props);
@@ -28,6 +51,7 @@ export class FocusDemo extends Component {
       nodes: new Map(),
       connections: [],
       connectionPickerNodeId: null,
+      tweakerOpen: false,
     };
     this._engine = new PhysicsEngine();
     this._rafId = null;
@@ -43,6 +67,9 @@ export class FocusDemo extends Component {
     this._clipboard = null;
     this._cloneCounters = new Map();
     this._groupCounter = 0;
+    this._tweaks = defaultTweakValues();
+    this._momentum = { vx: 0, vy: 0, rafId: null };
+    this._velBuffer = []; // ring buffer: [{dx, dy, dt}] last 3 frames
 
     this._fsm.onChange((from, to, nodeId) => {
       this._onStateChange(from, to, nodeId);
@@ -64,8 +91,14 @@ export class FocusDemo extends Component {
 
   willUnmount() {
     if (this._rafId) cancelAnimationFrame(this._rafId);
+    if (this._momentum.rafId) cancelAnimationFrame(this._momentum.rafId);
     document.removeEventListener('keydown', this._boundKeyDown);
     window.focusDemo = null;
+  }
+
+  _setTweak(key, val) {
+    this._tweaks[key] = val;
+    this.setState({});
   }
 
   _onKeyDown(e) {
@@ -107,19 +140,19 @@ export class FocusDemo extends Component {
     }
 
     if (to === STATES.CANVAS_Z2) {
-      update.viewport = { ...this.state.viewport, scale: ZOOM_LEVELS.CANVAS_Z2 };
+      update.viewport = { ...this.state.viewport, scale: this._tweaks.scaleZ2 };
     } else if (to === STATES.CANVAS_Z1 && nodeId) {
       const pos = this.state.positions.get(nodeId);
       if (pos) {
         const cx = window.innerWidth / 2;
         const cy = window.innerHeight / 2;
         update.viewport = {
-          scale: ZOOM_LEVELS.CANVAS_Z1,
-          panX: cx - pos.x * ZOOM_LEVELS.CANVAS_Z1,
-          panY: cy - pos.y * ZOOM_LEVELS.CANVAS_Z1,
+          scale: this._tweaks.scaleZ1,
+          panX: cx - pos.x * this._tweaks.scaleZ1,
+          panY: cy - pos.y * this._tweaks.scaleZ1,
         };
       } else {
-        update.viewport = { ...this.state.viewport, scale: ZOOM_LEVELS.CANVAS_Z1 };
+        update.viewport = { ...this.state.viewport, scale: this._tweaks.scaleZ1 };
       }
     }
 
@@ -129,9 +162,9 @@ export class FocusDemo extends Component {
         const cx = window.innerWidth / 2;
         const cy = window.innerHeight / 2;
         update.viewport = {
-          scale: ZOOM_LEVELS.CANVAS_Z1,
-          panX: cx - pos.x * ZOOM_LEVELS.CANVAS_Z1,
-          panY: cy - pos.y * ZOOM_LEVELS.CANVAS_Z1,
+          scale: this._tweaks.scaleZ1,
+          panX: cx - pos.x * this._tweaks.scaleZ1,
+          panY: cy - pos.y * this._tweaks.scaleZ1,
         };
       }
       update.connectionPickerNodeId = null;
