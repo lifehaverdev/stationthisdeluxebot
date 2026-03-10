@@ -70,6 +70,8 @@ export class FocusDemo extends Component {
     this._tweaks = defaultTweakValues();
     this._momentum = { vx: 0, vy: 0, rafId: null, gen: 0 };
     this._velBuffer = []; // ring buffer: [{dx, dy, dt}] last 3 frames
+    this._momentumPanX = null; // mutable live pan during momentum (null = not active)
+    this._momentumPanY = null;
 
     this._fsm.onChange((from, to, nodeId) => {
       this._onStateChange(from, to, nodeId);
@@ -121,28 +123,35 @@ export class FocusDemo extends Component {
 
     this._momentum.vx = vxMs;
     this._momentum.vy = vyMs;
-    const gen = ++this._momentum.gen; // generation token — invalidates stale tick closures
+    const gen = ++this._momentum.gen;
+
+    // Seed live pan from current state — these mutable vars are read by render()
+    // instead of state.viewport so no setState is needed during the tick loop.
+    this._momentumPanX = this.state.viewport.panX;
+    this._momentumPanY = this.state.viewport.panY;
 
     let lastTs = performance.now();
     const tick = (ts) => {
-      if (this._momentum.gen !== gen) return; // killed externally — discard
+      if (this._momentum.gen !== gen) return; // killed externally
       const elapsed = Math.min(ts - lastTs, 64);
       lastTs = ts;
-      // Frame-rate-independent friction (normalised to 16.67ms reference frame)
       const decay = Math.pow(this._tweaks.friction, elapsed / 16.67);
       this._momentum.vx *= decay;
       this._momentum.vy *= decay;
       if (Math.hypot(this._momentum.vx, this._momentum.vy) < 0.01) {
+        // Natural stop: sync mutable vars back into state
+        this.setState({
+          viewport: { ...this.state.viewport, panX: this._momentumPanX, panY: this._momentumPanY },
+        });
+        this._momentumPanX = null;
+        this._momentumPanY = null;
         this._momentum.rafId = null;
         return;
       }
-      this.setState({
-        viewport: {
-          ...this.state.viewport,
-          panX: this.state.viewport.panX + this._momentum.vx * elapsed,
-          panY: this.state.viewport.panY + this._momentum.vy * elapsed,
-        },
-      });
+      // Update mutable vars — the physics loop's setState re-renders every frame,
+      // so render() will pick these up without us needing to call setState here.
+      this._momentumPanX += this._momentum.vx * elapsed;
+      this._momentumPanY += this._momentum.vy * elapsed;
       this._momentum.rafId = requestAnimationFrame(tick);
     };
     this._momentum.rafId = requestAnimationFrame(tick);
@@ -321,13 +330,22 @@ export class FocusDemo extends Component {
 
   _onTouchStart(e) {
     if (this._momentum.rafId) {
-      this._momentum.gen++; // invalidate any in-flight tick closure
+      this._momentum.gen++; // invalidate tick closure
       cancelAnimationFrame(this._momentum.rafId);
       this._momentum.rafId = null;
       this._momentum.vx = 0;
       this._momentum.vy = 0;
       this._velBuffer = [];
       this._momentumKilled = true;
+      // Sync the live pan position into state so future renders use the stopped position.
+      // No pending setState from the tick can race here — tick never calls setState.
+      if (this._momentumPanX !== null) {
+        this.setState({
+          viewport: { ...this.state.viewport, panX: this._momentumPanX, panY: this._momentumPanY },
+        });
+        this._momentumPanX = null;
+        this._momentumPanY = null;
+      }
       e.preventDefault();
       return; // consume the touch — do nothing else
     }
@@ -1258,7 +1276,10 @@ export class FocusDemo extends Component {
 
   render() {
     const { viewport, positions, nodes, connections, fsmState, focusedNodeId } = this.state;
-    const transform = `translate(${viewport.panX}px, ${viewport.panY}px) scale(${viewport.scale})`;
+    // During momentum, read from mutable live vars (no setState in tick loop = no async race)
+    const panX = this._momentumPanX !== null ? this._momentumPanX : viewport.panX;
+    const panY = this._momentumPanY !== null ? this._momentumPanY : viewport.panY;
+    const transform = `translate(${panX}px, ${panY}px) scale(${viewport.scale})`;
 
     const energy = this._engine.getEnergy();
     const avgMs = this.getAvgStepMs();
