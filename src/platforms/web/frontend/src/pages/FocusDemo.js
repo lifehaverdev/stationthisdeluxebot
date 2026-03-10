@@ -122,9 +122,10 @@ export class FocusDemo extends Component {
     this._momentum.vx = vxMs;
     this._momentum.vy = vyMs;
 
-    let lastTs = performance.now();
+    let lastTs = -1; // -1 signals "first frame — use zero elapsed"
     const tick = (ts) => {
-      const elapsed = Math.min(ts - lastTs, 64); // cap to avoid jumps after tab switch
+      if (lastTs < 0) lastTs = ts;
+      const elapsed = Math.min(ts - lastTs, 16); // cap to one frame — prevents overroll snap
       lastTs = ts;
       // Frame-rate-independent friction (normalised to 16.67ms reference frame)
       const decay = Math.pow(this._tweaks.friction, elapsed / 16.67);
@@ -333,6 +334,11 @@ export class FocusDemo extends Component {
 
       if (this.state.fsmState === STATES.NODE_MODE) {
         // Don't preventDefault — allow native clicks and card scrolling
+        return;
+      }
+
+      // Don't preventDefault on tweaker UI — allow button clicks and sliders
+      if (e.target.closest && e.target.closest('.fd-tweaker')) {
         return;
       }
 
