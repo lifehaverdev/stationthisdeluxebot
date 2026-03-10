@@ -139,7 +139,7 @@ async function resolveLoraTriggers(promptString, masterAccountId, toolBaseModel,
   // Split by spaces and punctuation, keeping them as separate tokens
   const segments = currentPromptText.split(SPLIT_KEEP_DELIMITERS_REGEX).filter(s => s && s.length > 0);
 
-  // Merge decimal weight tokens broken by the split (e.g., "trigger:.4" or "trigger:0.4")
+  // Merge tokens broken by the split
   const mergedSegments = [];
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i];
@@ -152,6 +152,17 @@ async function resolveLoraTriggers(promptString, masterAccountId, toolBaseModel,
       // Combine into a single token to preserve decimal weights: "trigger:"+"."+"4" => "trigger:.4"
       mergedSegments.push(seg + '.' + next2);
       i += 2; // Skip the next two tokens we've merged
+      continue;
+    }
+
+    // Merge dot/exclamation weight modifiers with the preceding word token so they
+    // are parsed together: "milady" + ".." → "milady.."  |  "milady" + "!!!" → "milady!!!"
+    const isPlainWordToken = /^[a-zA-Z0-9_][a-zA-Z0-9_-]*$/.test(seg);
+    const nextIsDotModifier = next && /^\.+$/.test(next);
+    const nextIsExclModifier = next && /^!+$/.test(next);
+    if (isPlainWordToken && (nextIsDotModifier || nextIsExclModifier)) {
+      mergedSegments.push(seg + next);
+      i += 1;
       continue;
     }
 
@@ -190,6 +201,25 @@ async function resolveLoraTriggers(promptString, masterAccountId, toolBaseModel,
     } else { // Not a word[:weight] pattern, likely just a word or unmatchable segment
         baseToken = segment.toLowerCase().replace(/[.,!?()[\]{}\'\"]+$/, ''); // Clean trailing punctuation for map lookup
         originalSegmentForPush = segment; // Keep original for re-adding
+    }
+
+    // Extract dot/exclamation weight modifiers (only when no explicit :weight given).
+    // Dots are captured inside the word match (since '.' is in the char class), exclamations in trailingPunctuation.
+    // Each '.' decrements the default weight by 0.2; each '!' increments it by 0.2.
+    // The modifier characters are consumed and do NOT appear in the output prompt.
+    let dotExclWeightOffset = 0;
+    if (userSpecifiedWeight === null) {
+        const trailingDots = baseToken.match(/\.+$/);
+        if (trailingDots) {
+            dotExclWeightOffset = -0.2 * trailingDots[0].length;
+            baseToken = baseToken.slice(0, -trailingDots[0].length);
+        } else {
+            const leadingExclamations = trailingPunctuation.match(/^!+/);
+            if (leadingExclamations) {
+                dotExclWeightOffset = 0.2 * leadingExclamations[0].length;
+                trailingPunctuation = trailingPunctuation.slice(leadingExclamations[0].length);
+            }
+        }
     }
     
     if (triggerMap.has(baseToken)) {
@@ -268,7 +298,10 @@ async function resolveLoraTriggers(promptString, masterAccountId, toolBaseModel,
           continue;
         }
 
-        const weight = userSpecifiedWeight !== null ? userSpecifiedWeight : (selectedLora.defaultWeight || 1.0);
+        const baseWeight = selectedLora.defaultWeight || 1.0;
+        const weight = userSpecifiedWeight !== null
+          ? userSpecifiedWeight
+          : Math.round((baseWeight + dotExclWeightOffset) * 100) / 100;
         const loraTag = `<lora:${selectedLora.slug}:${weight}>`;
 
         appliedLoras.push({
@@ -319,7 +352,23 @@ function refreshTriggerMapCache(masterAccountId) {
   }
 }
 
+/**
+ * Updates the weight of a specific LoRA tag in an existing prompt string.
+ * Operates on the backend prompt (which already contains <lora:...> tags).
+ *
+ * @param {string} promptString - The backend prompt containing <lora:slug:weight> tags.
+ * @param {string} slug - The LoRA slug whose weight should be updated.
+ * @param {number} newWeight - The new weight value.
+ * @returns {string} - The prompt with the updated weight, or unchanged if slug not found.
+ */
+function setLoraStrength(promptString, slug, newWeight) {
+  const escapedSlug = slug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`(<lora:${escapedSlug}:)[^>]+(>)`);
+  return promptString.replace(regex, `$1${newWeight}$2`);
+}
+
 module.exports = {
   resolveLoraTriggers,
   refreshTriggerMapCache,
-}; 
+  setLoraStrength,
+};
