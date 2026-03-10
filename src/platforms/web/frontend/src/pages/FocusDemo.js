@@ -68,7 +68,7 @@ export class FocusDemo extends Component {
     this._cloneCounters = new Map();
     this._groupCounter = 0;
     this._tweaks = defaultTweakValues();
-    this._momentum = { vx: 0, vy: 0, rafId: null };
+    this._momentum = { vx: 0, vy: 0, rafId: null, gen: 0 };
     this._velBuffer = []; // ring buffer: [{dx, dy, dt}] last 3 frames
 
     this._fsm.onChange((from, to, nodeId) => {
@@ -121,11 +121,12 @@ export class FocusDemo extends Component {
 
     this._momentum.vx = vxMs;
     this._momentum.vy = vyMs;
+    const gen = ++this._momentum.gen; // generation token — invalidates stale tick closures
 
-    let lastTs = -1; // -1 signals "first frame — use zero elapsed"
+    let lastTs = performance.now();
     const tick = (ts) => {
-      if (lastTs < 0) lastTs = ts;
-      const elapsed = Math.min(ts - lastTs, 16); // cap to one frame — prevents overroll snap
+      if (this._momentum.gen !== gen) return; // killed externally — discard
+      const elapsed = Math.min(ts - lastTs, 64);
       lastTs = ts;
       // Frame-rate-independent friction (normalised to 16.67ms reference frame)
       const decay = Math.pow(this._tweaks.friction, elapsed / 16.67);
@@ -320,8 +321,11 @@ export class FocusDemo extends Component {
 
   _onTouchStart(e) {
     if (this._momentum.rafId) {
+      this._momentum.gen++; // invalidate any in-flight tick closure
       cancelAnimationFrame(this._momentum.rafId);
       this._momentum.rafId = null;
+      this._momentum.vx = 0;
+      this._momentum.vy = 0;
       this._velBuffer = [];
       this._momentumKilled = true;
       e.preventDefault();
