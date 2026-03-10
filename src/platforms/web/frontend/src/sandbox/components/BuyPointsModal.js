@@ -1,4 +1,5 @@
-import { Component, h } from '@monygroupcorp/microact';
+import { Component, h, eventBus } from '@monygroupcorp/microact';
+import { WalletService } from '@monygroupcorp/micro-web3';
 import { Modal, Loader, ModalError } from './Modal.js';
 import { CopyButton, AsyncButton } from './ModalKit.js';
 import { fetchJson, postWithCsrf } from '../../lib/api.js';
@@ -114,11 +115,23 @@ export class BuyPointsModal extends Component {
     this._wsPointsHandler = null;
     this._wsTxHandler = null;
     this._progressInterval = null;
+    this._walletService = new WalletService(eventBus);
+  }
+
+  // Returns the active provider — prefers the EIP-6963 provider WalletService
+  // resolved (same wallet the user connected with in AuthWidget), then falls
+  // back to raw window.ethereum so the modal still works for legacy wallets.
+  get _provider() {
+    return this._walletService.provider || window.ethereum || null;
   }
 
   // ── Lifecycle ───────────────────────────────────────────────
 
-  didMount() {
+  async didMount() {
+    // Initialize WalletService so it auto-reconnects to whichever EIP-6963
+    // provider the user already connected with (stored in ms2fun_lastWallet).
+    await this._walletService.initialize();
+
     this._init();
     this._wsPointsHandler = (evt) => this._onPointsDeposit(evt);
     this._wsTxHandler = (evt) => this._onTxStatusUpdate(evt);
@@ -130,19 +143,19 @@ export class BuyPointsModal extends Component {
       clearTimeout(this._quoteDebounce);
       clearInterval(this._progressInterval);
       if (this._quoteAbort) this._quoteAbort.abort();
+      this._walletService.destroy();
     });
 
-    // Chain change listener
-    if (window.ethereum && window.ethereum.on) {
+    // Chain change listener — attach to the resolved provider
+    const p = this._provider;
+    if (p && p.on) {
       this._chainListener = async () => {
         await this._refreshWallet();
         await this._fetchAssets();
       };
-      window.ethereum.on('chainChanged', this._chainListener);
+      p.on('chainChanged', this._chainListener);
       this.registerCleanup(() => {
-        if (window.ethereum && window.ethereum.removeListener) {
-          window.ethereum.removeListener('chainChanged', this._chainListener);
-        }
+        if (p && p.removeListener) p.removeListener('chainChanged', this._chainListener);
       });
     }
   }
@@ -171,9 +184,10 @@ export class BuyPointsModal extends Component {
   }
 
   async _getCurrentChainId() {
-    if (!window.ethereum) return null;
+    const p = this._provider;
+    if (!p) return null;
     try {
-      const hexId = await window.ethereum.request({ method: 'eth_chainId' });
+      const hexId = await p.request({ method: 'eth_chainId' });
       return parseInt(hexId, 16).toString();
     } catch { return null; }
   }
@@ -188,9 +202,10 @@ export class BuyPointsModal extends Component {
   // ── Wallet ──────────────────────────────────────────────────
 
   async _connectWallet() {
-    if (!window.ethereum) throw new Error('No Ethereum wallet detected. Please install MetaMask.');
+    const p = this._provider;
+    if (!p) throw new Error('No Ethereum wallet detected. Please install MetaMask.');
     try {
-      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      const accounts = await p.request({ method: 'eth_requestAccounts' });
       return accounts[0];
     } catch {
       throw new Error('Wallet connection rejected.');
@@ -198,12 +213,13 @@ export class BuyPointsModal extends Component {
   }
 
   async _refreshWallet() {
-    if (!window.ethereum) {
+    const p = this._provider;
+    if (!p) {
       this.setState({ walletAddress: null, walletBalances: null, balancesLoading: false });
       return;
     }
     try {
-      const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+      const accounts = await p.request({ method: 'eth_accounts' });
       if (!accounts || !accounts.length) {
         this.setState({ walletAddress: null, walletBalances: null, balancesLoading: false });
         return;
@@ -216,14 +232,15 @@ export class BuyPointsModal extends Component {
 
   async _fetchBalances() {
     const { walletAddress, supportedAssets } = this.state;
-    if (!window.ethereum || !walletAddress || !supportedAssets) return;
+    const p = this._provider;
+    if (!p || !walletAddress || !supportedAssets) return;
 
     this.setState({ balancesLoading: true });
     const balances = { tokens: {} };
 
     // Native ETH
     try {
-      const ethHex = await window.ethereum.request({ method: 'eth_getBalance', params: [walletAddress, 'latest'] });
+      const ethHex = await p.request({ method: 'eth_getBalance', params: [walletAddress, 'latest'] });
       const raw = BigInt(ethHex || '0x0');
       balances.tokens[normalizeAddress(ZERO_ADDRESS)] = { raw, decimals: 18, formatted: formatBigIntBalance(raw, 18) };
     } catch (err) {
@@ -241,7 +258,7 @@ export class BuyPointsModal extends Component {
       if (!isValidAddress(token.address)) continue;
       try {
         const data = `${balanceOfSel}${addrParam}`;
-        const hex = await window.ethereum.request({ method: 'eth_call', params: [{ to: token.address, data }, 'latest'] });
+        const hex = await p.request({ method: 'eth_call', params: [{ to: token.address, data }, 'latest'] });
         const raw = hexToBigInt(hex);
         balances.tokens[tokenAddr] = { raw, decimals: token.decimals || 18, formatted: formatBigIntBalance(raw, token.decimals || 18) };
       } catch (err) {
@@ -256,7 +273,7 @@ export class BuyPointsModal extends Component {
       if (!nftAddr || !isValidAddress(nft.address)) continue;
       try {
         const data = `${balanceOfSel}${addrParam}`;
-        const hex = await window.ethereum.request({ method: 'eth_call', params: [{ to: nft.address, data }, 'latest'] });
+        const hex = await p.request({ method: 'eth_call', params: [{ to: nft.address, data }, 'latest'] });
         const raw = hexToBigInt(hex);
         balances.tokens[nftAddr] = { raw, decimals: 0, formatted: formatBigIntBalance(raw, 0) };
       } catch (err) {
@@ -350,20 +367,23 @@ export class BuyPointsModal extends Component {
   // ── Purchase flow ───────────────────────────────────────────
 
   async _sendTransaction(tx) {
+    const p = this._provider;
+    if (!p) throw new Error('No wallet provider available.');
     const params = [{
       from: tx.from,
       to: tx.to,
       value: tx.value && tx.value !== '0' ? '0x' + BigInt(tx.value).toString(16) : '0x0',
       data: tx.data,
     }];
-    return window.ethereum.request({ method: 'eth_sendTransaction', params });
+    return p.request({ method: 'eth_sendTransaction', params });
   }
 
   async _waitForConfirmation(txHash, maxMs = 120000, pollMs = 2000) {
+    const p = this._provider;
     const start = Date.now();
     while (Date.now() - start < maxMs) {
       try {
-        const receipt = await window.ethereum.request({ method: 'eth_getTransactionReceipt', params: [txHash] });
+        const receipt = await p.request({ method: 'eth_getTransactionReceipt', params: [txHash] });
         if (receipt && receipt.blockNumber) {
           if (parseInt(receipt.status, 16) === 0) throw new Error('Transaction reverted on-chain');
           return receipt;
