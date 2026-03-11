@@ -580,6 +580,26 @@ export class FocusDemo extends Component {
       const nodeId = nodeEl && nodeEl.dataset.nodeId;
       const now = performance.now();
 
+      // Check for result zone tap (image / text block) — open overlay, skip node navigation
+      if (target.closest && target.closest('.fd-node-result--image')) {
+        const n = nodeId && this.state.nodes.get(nodeId);
+        const out = n?.output;
+        if (out) {
+          const url = out.type === 'image' ? out.url
+            : out.type === 'spell-steps' ? [...(out.steps || [])].reverse().find(s => s.type === 'image')?.url
+            : null;
+          if (url) this.setState({ imageOverlay: { url, label: n.label } });
+        }
+        this._gestureStart = null;
+        return;
+      }
+      if (target.closest && target.closest('.fd-node-result--text')) {
+        const n = nodeId && this.state.nodes.get(nodeId);
+        if (n) this.setState({ textOverlayNodeId: n.id });
+        this._gestureStart = null;
+        return;
+      }
+
       // Check for anchor tap
       const anchorEl = target.closest && target.closest('.fd-anchor');
       if (anchorEl) {
