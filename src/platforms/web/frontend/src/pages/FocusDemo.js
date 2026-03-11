@@ -107,7 +107,7 @@ export class FocusDemo extends Component {
   }
 
   didMount() {
-    this._loadTools();
+    this._seedDemo();
     this._startSimulation();
     window.focusDemo = this;
 
