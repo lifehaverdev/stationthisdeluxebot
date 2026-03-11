@@ -48,9 +48,9 @@ function angleToEdgePercent(angle, edge) {
       return (adjusted + Math.PI / 4) / (Math.PI / 2);
     }
     case 'bottom':
-      return (a - Math.PI / 4) / (Math.PI / 2);
+      return 1 - (a - Math.PI / 4) / (Math.PI / 2);
     case 'left':
-      return (a - 3 * Math.PI / 4) / (Math.PI / 2);
+      return 1 - (a - 3 * Math.PI / 4) / (Math.PI / 2);
     case 'top':
       return (a - 5 * Math.PI / 4) / (Math.PI / 2);
     default:

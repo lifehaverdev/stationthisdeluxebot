@@ -42,46 +42,21 @@ function createSkillRouter(dependencies) {
     }
   });
 
-  /**
-   * GET /.well-known/ai-skill/api-reference.md
-   */
-  router.get('/ai-skill/api-reference.md', async (req, res) => {
-    try {
-      const content = await fs.readFile(path.join(SKILL_DOCS_PATH, 'API-REFERENCE.md'), 'utf-8');
-      res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
-      res.setHeader('Cache-Control', 'public, max-age=3600');
-      res.send(content);
-    } catch (error) {
-      res.status(404).send('File not found');
-    }
-  });
+  // Sub-skill files served from skills/ subdirectory
+  const SUB_SKILLS = ['generation', 'loras', 'spells', 'collections', 'training'];
 
-  /**
-   * GET /.well-known/ai-skill/tools.md
-   */
-  router.get('/ai-skill/tools.md', async (req, res) => {
-    try {
-      const content = await fs.readFile(path.join(SKILL_DOCS_PATH, 'TOOLS.md'), 'utf-8');
-      res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
-      res.setHeader('Cache-Control', 'public, max-age=3600');
-      res.send(content);
-    } catch (error) {
-      res.status(404).send('File not found');
-    }
-  });
-
-  /**
-   * GET /.well-known/ai-skill/trigger-words.md
-   */
-  router.get('/ai-skill/trigger-words.md', async (req, res) => {
-    try {
-      const content = await fs.readFile(path.join(SKILL_DOCS_PATH, 'TRIGGER-WORDS.md'), 'utf-8');
-      res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
-      res.setHeader('Cache-Control', 'public, max-age=3600');
-      res.send(content);
-    } catch (error) {
-      res.status(404).send('File not found');
-    }
+  SUB_SKILLS.forEach(name => {
+    router.get(`/ai-skill/${name}.md`, async (req, res) => {
+      try {
+        const content = await fs.readFile(path.join(SKILL_DOCS_PATH, 'skills', `${name}.md`), 'utf-8');
+        res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+        res.send(content);
+        logger.debug(`[SkillRouter] Served ai-skill/${name}.md`);
+      } catch (error) {
+        res.status(404).send('File not found');
+      }
+    });
   });
 
   /**
