@@ -133,8 +133,12 @@ export class ActionModal extends Component {
 
   _selectTool(tool, e) {
     e.stopPropagation();
-    const canvas = window.sandboxCanvas;
-    if (canvas) canvas.addToolWindow(tool, this.props.workspacePosition);
+    if (this.props.onToolSelect) {
+      this.props.onToolSelect(tool, this.props.workspacePosition);
+    } else {
+      const canvas = window.sandboxCanvas;
+      if (canvas) canvas.addToolWindow(tool, this.props.workspacePosition);
+    }
     this._close();
   }
 

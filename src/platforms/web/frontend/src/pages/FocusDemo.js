@@ -4,6 +4,7 @@ import { createPosition } from '../sandbox/focus/spatial/SphericalGrid.js';
 import { FocusStateMachine, STATES } from '../sandbox/focus/state/FocusStateMachine.js';
 import { computeGlows } from '../sandbox/focus/state/PeripheryGlows.js';
 import { getNeighbors } from '../sandbox/focus/spatial/Proximity.js';
+import { ActionModal } from '../sandbox/components/ActionModal.js';
 import '../style/focus-demo.css';
 
 // ── Type helpers (mirrored from WindowRenderer) ───────────────────────────────
@@ -78,6 +79,7 @@ export class FocusDemo extends Component {
       tweakerOpen: false,
       descriptionExpanded: false,
       nodeModeShowOptional: false,
+      actionModalOpen: false,
     };
     this._engine = new PhysicsEngine();
     this._rafId = null;
@@ -134,6 +136,34 @@ export class FocusDemo extends Component {
     if (!n) return;
     nodes.set(nodeId, { ...n, ...patch });
     this.setState({ nodes });
+  }
+
+  _addToolNode(tool, _workspacePos) {
+    const cx = window.innerWidth / 2;
+    const cy = window.innerHeight / 2;
+    const scale = this.state.viewport.scale || 1;
+    const canvasX = (cx - this._panX) / scale + (Math.random() - 0.5) * 200;
+    const canvasY = (cy - this._panY) / scale + (Math.random() - 0.5) * 200;
+
+    const id = tool.toolId || `tool-${Date.now()}`;
+    this._engine.addNode(id, createPosition(canvasX, canvasY));
+    if (tool.service) this._engine.setGroup(id, tool.service);
+
+    const nodes = new Map(this.state.nodes);
+    nodes.set(id, {
+      id,
+      label: tool.displayName,
+      type: tool.service || null,
+      group: tool.service || null,
+      toolData: tool,
+      executing: false, progress: null, error: null, censored: false,
+      output: null, outputVersions: [], currentVersionIndex: 0,
+      paramValues: {},
+    });
+    this.setState({ nodes, actionModalOpen: false });
+
+    this._fsm.tapNode(id);
+    setTimeout(() => this._fsm.tapNode(id), 50);
   }
 
   _startMomentum() {
@@ -1978,6 +2008,21 @@ export class FocusDemo extends Component {
       fsmState === STATES.MULTI_SELECT ? this._renderActionBar() : null,
       // Node Mode overlay
       fsmState === STATES.NODE_MODE ? this._renderNodeMode() : null,
+      // + FAB
+      h('button', {
+        className: 'fd-fab',
+        onclick: (e) => { e.stopPropagation(); this.setState({ actionModalOpen: true }); },
+        title: 'Add node',
+      }, '+'),
+      // ActionModal
+      h(ActionModal, {
+        visible: this.state.actionModalOpen,
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+        workspacePosition: { x: 0, y: 0 },
+        onToolSelect: (tool, pos) => this._addToolNode(tool, pos),
+        onClose: () => this.setState({ actionModalOpen: false }),
+      }),
     );
   }
 }

@@ -1422,3 +1422,34 @@
   color: var(--text-label);
   padding: 4px 12px;
 }
+
+/* ── + FAB ───────────────────────────────────────────── */
+
+.fd-fab {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 100;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: var(--border-width) solid var(--border);
+  color: var(--text-secondary);
+  font-family: var(--ff-mono);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background var(--dur-micro) var(--ease),
+    color var(--dur-micro) var(--ease),
+    border-color var(--dur-micro) var(--ease);
+}
+.fd-fab:hover {
+  background: var(--accent-dim);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
