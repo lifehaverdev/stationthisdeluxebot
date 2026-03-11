@@ -341,7 +341,7 @@ async function startApp() {
         // --- Credit Service Startup ---
         // This is now started AFTER the web platform is running to ensure
         // the internal API is ready to receive requests from the service.
-        const creditServices = services.creditService;
+        const creditServices = services.creditServices;
         if (creditServices && typeof creditServices === 'object') {
             const chainIds = Object.keys(creditServices);
             if (chainIds.length === 0) {
@@ -419,8 +419,8 @@ let _services = null;
 async function shutdownApp() {
   logger.info('[App] Graceful shutdown initiated...');
 
-  if (_services && _services.creditService) {
-    const creditServices = _services.creditService;
+  if (_services && _services.creditServices) {
+    const creditServices = _services.creditServices;
     const chainIds = Object.keys(creditServices);
 
     for (const chainId of chainIds) {

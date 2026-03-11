@@ -352,6 +352,7 @@ export class ActionModal extends Component {
         className: 'am-tools-panel',
         style: `left:${x}px;top:${y}px`,
         onclick: (e) => e.stopPropagation(),
+        ontouchstart: (e) => e.stopPropagation(),
       },
         h('div', { className: 'am-tools-header' },
           h('button', { className: 'am-tools-back', onclick: (e) => this._back(e) }, '←'),
@@ -434,6 +435,7 @@ export class ActionModal extends Component {
         className: 'am-root active',
         style: `left:${x}px;top:${y}px`,
         onclick: (e) => e.stopPropagation(),
+        ontouchstart: (e) => e.stopPropagation(),
       },
         h('svg', { className: 'am-svg', width: size, height: size, viewBox: `${-cv} ${-cv} ${size} ${size}` },
           // Outer ring: effect / create
@@ -516,6 +518,7 @@ export class ActionModal extends Component {
       className: 'am-root active',
       style: `left:${x}px;top:${y}px`,
       onclick: (e) => e.stopPropagation(),
+      ontouchstart: (e) => e.stopPropagation(),
     },
       h('svg', {
         className: 'am-svg',

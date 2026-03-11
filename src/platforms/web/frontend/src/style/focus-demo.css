@@ -1,4 +1,5 @@
 /* ── Focus Demo ─────────────────────────── */
+.focus-demo { --z-radial: 1200; }
 .focus-demo {
   position: fixed;
   inset: 0;
