@@ -9,7 +9,7 @@ const dalleImageTool = {
   inputSchema: {
     prompt: {
       name: 'prompt',
-      type: 'string',
+      type: 'text',
       required: true,
       description: 'The text prompt describing the desired image.'
     },
@@ -48,8 +48,8 @@ const dalleImageTool = {
   outputSchema: {
     image: {
       name: 'image',
-      type: 'string',
-      description: 'The URL or base64 string of the generated image.'
+      type: 'image',
+      description: 'The generated image (delivered as URL or base64 string).'
     }
   },
   costingModel: {
