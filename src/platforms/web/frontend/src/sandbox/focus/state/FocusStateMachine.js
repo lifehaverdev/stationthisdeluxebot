@@ -2,7 +2,6 @@ export const STATES = {
   CANVAS_Z2: 'CANVAS_Z2',
   CANVAS_Z1: 'CANVAS_Z1',
   NODE_MODE: 'NODE_MODE',
-  CONNECTION_MODE: 'CONNECTION_MODE',
   MULTI_SELECT: 'MULTI_SELECT',
 };
 
@@ -10,7 +9,7 @@ export class FocusStateMachine {
   constructor() {
     this.state = STATES.CANVAS_Z2;
     this.focusedNodeId = null;
-    this.sourceNodeId = null;
+    this.connection = null; // { sourceNodeId, sourcePort, sourceType } or null
     this.selectedNodeIds = new Set();
     this._preMultiSelectState = null;
     this.previousState = null;
@@ -65,10 +64,6 @@ export class FocusStateMachine {
       case STATES.NODE_MODE:
         this._transition(STATES.CANVAS_Z1);
         break;
-      case STATES.CONNECTION_MODE:
-        this.sourceNodeId = null;
-        this._transition(STATES.NODE_MODE);
-        break;
       case STATES.MULTI_SELECT: {
         this.selectedNodeIds = new Set();
         const returnTo = this._preMultiSelectState || STATES.CANVAS_Z2;
@@ -79,24 +74,16 @@ export class FocusStateMachine {
     }
   }
 
-  enterConnectionMode(sourceNodeId) {
-    if (this.state !== STATES.NODE_MODE) return;
-    this.sourceNodeId = sourceNodeId;
-    this._transition(STATES.CONNECTION_MODE, sourceNodeId);
+  get isConnecting() {
+    return this.connection !== null;
   }
 
-  completeConnection() {
-    if (this.state !== STATES.CONNECTION_MODE) return;
-    const src = this.sourceNodeId;
-    this.sourceNodeId = null;
-    this._transition(STATES.NODE_MODE, src);
+  startConnection(sourceNodeId, sourcePort, sourceType) {
+    this.connection = { sourceNodeId, sourcePort, sourceType };
   }
 
-  cancelConnection() {
-    if (this.state !== STATES.CONNECTION_MODE) return;
-    const src = this.sourceNodeId;
-    this.sourceNodeId = null;
-    this._transition(STATES.NODE_MODE, src);
+  clearConnection() {
+    this.connection = null;
   }
 
   enterMultiSelect(nodeId) {
