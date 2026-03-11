@@ -95,7 +95,10 @@ function createMcpRouter(dependencies) {
         discovery: ['tools/list', 'resources/list', 'resources/read', 'prompts/list', 'spells/list'],
         execution: ['tools/call', 'spells/cast', 'spells/status'],
         collections: ['collections/list', 'collections/get', 'collections/create', 'collections/update', 'collections/delete', 'collections/cook/start', 'collections/cook/pause', 'collections/cook/resume', 'collections/cook/stop', 'collections/export'],
-        trainings: ['trainings/list', 'trainings/get', 'trainings/create', 'trainings/calculate-cost', 'trainings/delete', 'trainings/retry']
+        trainings: ['trainings/list', 'trainings/get', 'trainings/create', 'trainings/calculate-cost', 'trainings/delete', 'trainings/retry'],
+        user: ['user/profile'],
+        referralVault: ['referral-vault/check-name', 'referral-vault/create', 'referral-vault/list'],
+        points: ['points/supported-assets', 'points/quote', 'points/prepare-purchase', 'points/tx-status']
       },
       authentication: {
         required: 'Execution methods require X-API-Key header',
@@ -487,6 +490,133 @@ async function handleMethod(method, params, context) {
     case 'trainings/retry':
       requireApiKey(apiKey);
       return await forwardToApi('POST', `/api/v1/trainings/${params.id}/retry`, null, apiKey, internalApiClient);
+
+    // ============================================
+    // User Profile
+    // ============================================
+    case 'user/profile': {
+      requireApiKey(apiKey);
+      const profileUserInfo = await resolveUserFromApiKey(apiKey, internalApiClient);
+      try {
+        const response = await internalApiClient.get(`/internal/v1/data/users/${profileUserInfo.masterAccountId}`);
+        const user = response.data;
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              masterAccountId: profileUserInfo.masterAccountId,
+              wallets: user.wallets || [],
+              primaryWallet: user.wallets?.find(w => w.isPrimary) || user.wallets?.[0] || null
+            })
+          }]
+        };
+      } catch (error) {
+        const err = new Error(error.response?.data?.error?.message || error.message);
+        err.code = error.response?.status === 404 ? -32004 : -32603;
+        throw err;
+      }
+    }
+
+    // ============================================
+    // Referral Vault Management
+    // ============================================
+    case 'referral-vault/check-name': {
+      requireApiKey(apiKey);
+      const { name } = params || {};
+      if (!name || name.length < 4 || !/^[a-zA-Z0-9_-]+$/.test(name)) {
+        const err = new Error('Name must be at least 4 characters and contain only letters, numbers, underscores, or dashes.');
+        err.code = -32602;
+        throw err;
+      }
+      try {
+        await internalApiClient.get(`/internal/v1/data/ledger/vaults/by-name/${encodeURIComponent(name)}`);
+        return { content: [{ type: 'text', text: JSON.stringify({ isAvailable: false, name }) }] };
+      } catch (error) {
+        if (error.response?.status === 404) {
+          return { content: [{ type: 'text', text: JSON.stringify({ isAvailable: true, name }) }] };
+        }
+        const err = new Error(error.response?.data?.error?.message || error.message);
+        err.code = -32603;
+        throw err;
+      }
+    }
+
+    case 'referral-vault/create': {
+      requireApiKey(apiKey);
+      const { name: vaultName } = params || {};
+      if (!vaultName || vaultName.length < 4 || !/^[a-zA-Z0-9_-]+$/.test(vaultName)) {
+        const err = new Error('Name must be at least 4 characters and contain only letters, numbers, underscores, or dashes.');
+        err.code = -32602;
+        throw err;
+      }
+      const vaultUserInfo = await resolveUserFromApiKey(apiKey, internalApiClient);
+      try {
+        const response = await internalApiClient.post('/internal/v1/data/actions/create-referral-vault', {
+          masterAccountId: vaultUserInfo.masterAccountId,
+          vaultName
+        });
+        return { content: [{ type: 'text', text: JSON.stringify(response.data) }] };
+      } catch (error) {
+        const status = error.response?.status;
+        const msg = error.response?.data?.error?.message || error.response?.data?.message || error.message;
+        let code = -32603;
+        if (status === 409) code = -32005; // conflict / already exists
+        if (status === 400) code = -32602;
+        const err = new Error(msg);
+        err.code = code;
+        throw err;
+      }
+    }
+
+    case 'referral-vault/list': {
+      requireApiKey(apiKey);
+      const listUserInfo = await resolveUserFromApiKey(apiKey, internalApiClient);
+      try {
+        const response = await internalApiClient.get(`/internal/v1/data/ledger/vaults/by-master-account/${listUserInfo.masterAccountId}`);
+        return { content: [{ type: 'text', text: JSON.stringify({ vaults: response.data.vaults || [] }) }] };
+      } catch (error) {
+        if (error.response?.status === 404) {
+          return { content: [{ type: 'text', text: JSON.stringify({ vaults: [] }) }] };
+        }
+        const err = new Error(error.response?.data?.error?.message || error.message);
+        err.code = -32603;
+        throw err;
+      }
+    }
+
+    // ============================================
+    // Points / Credits
+    // ============================================
+    case 'points/quote':
+      requireApiKey(apiKey);
+      return await forwardToApi('POST', '/api/v1/points/quote', params, apiKey, internalApiClient);
+
+    case 'points/prepare-purchase': {
+      requireApiKey(apiKey);
+      // params may include: quoteId, type, assetAddress, amount, tokenId,
+      // userWalletAddress, referralCode, chainId, mode
+      // referralCode is passed directly here (no cookie lookup needed for agents)
+      return await forwardToApi('POST', '/api/v1/points/purchase', params, apiKey, internalApiClient);
+    }
+
+    case 'points/tx-status': {
+      requireApiKey(apiKey);
+      const { txHash, chainId: txChainId } = params || {};
+      if (!txHash) {
+        const err = new Error('Missing required parameter: txHash');
+        err.code = -32602;
+        throw err;
+      }
+      const txStatusPath = `/api/v1/points/tx-status?txHash=${encodeURIComponent(txHash)}${txChainId ? `&chainId=${encodeURIComponent(txChainId)}` : ''}`;
+      return await forwardToApi('GET', txStatusPath, null, apiKey, internalApiClient);
+    }
+
+    case 'points/supported-assets': {
+      requireApiKey(apiKey);
+      const { chainId: saChainId } = params || {};
+      const saPath = saChainId ? `/api/v1/points/supported-assets?chainId=${encodeURIComponent(saChainId)}` : '/api/v1/points/supported-assets';
+      return await forwardToApi('GET', saPath, null, apiKey, internalApiClient);
+    }
 
     default:
       const error = new Error(`Method not found: ${method}`);

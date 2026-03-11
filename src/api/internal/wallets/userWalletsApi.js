@@ -77,6 +77,7 @@ module.exports = function userWalletsApi(dependencies) {
         logger.info(`[userWalletsApi] Successfully created magic amount request for user ${masterAccountIdStr}. Amount: ${magicAmountWei}, requestId: ${requestId}`);
         res.status(201).json({
             message: 'Wallet linking request created successfully.',
+            requestId: newRequest._id?.toString() || newRequest.insertedId?.toString(),
             magicAmountWei: newRequest.magic_amount_wei,
             tokenAddress: newRequest.token_address,
             expiresAt: newRequest.expires_at,

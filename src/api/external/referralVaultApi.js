@@ -90,17 +90,9 @@ function createReferralVaultApi(dependencies) {
     }
     
     try {
-        // Check if longRunningApiClient is available
-        if (!longRunningApiClient) {
-            logger.error('[ReferralVaultApi] longRunningApiClient is not available in dependencies');
-            return res.status(500).json({ error: { code: 'SERVICE_UNAVAILABLE', message: 'Salt mining service is not available.' } });
-        }
+        logger.debug(`[ReferralVaultApi] Creating referral code "${name}" for user ${userId}`);
 
-        logger.debug(`[ReferralVaultApi] Creating vault "${name}" for user ${userId} using long-running client`);
-        
-        // This internal endpoint will orchestrate the creation.
-        // Use long-running client for salt mining operations which can take time
-        const response = await longRunningApiClient.post(`/internal/v1/data/actions/create-referral-vault`, {
+        const response = await internalApiClient.post(`/internal/v1/data/actions/create-referral-vault`, {
             masterAccountId: userId,
             vaultName: name
         });

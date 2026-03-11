@@ -411,6 +411,11 @@ export class FocusDemo extends Component {
         return;
       }
 
+      // Don't preventDefault when an overlay is open — allow native button taps
+      if (this.state.imageOverlay || this.state.textOverlayNodeId) {
+        return;
+      }
+
       // Don't preventDefault on tweaker UI — allow button clicks and sliders
       if (e.target.closest && e.target.closest('.fd-tweaker')) {
         return;
@@ -787,12 +792,23 @@ export class FocusDemo extends Component {
       // 2. Running — executing, progress bar animating
       {
         id: 'node-running',
-        label: 'Flux Gen',
-        type: 'text-to-image',
-        group: 'comfyui',
+        label: 'ChatGPT Stream',
+        type: 'text-to-text',
+        group: 'openai',
         x: 350, y: 0,
         executing: true,
-        progress: 'Executing...',
+        progress: 'Streaming...',
+      },
+      // 2b. Running — webhook/comfyui with real percentage
+      {
+        id: 'node-running-pct',
+        label: 'Flux Dev',
+        type: 'text-to-image',
+        group: 'comfyui',
+        x: 525, y: 0,
+        executing: true,
+        progress: 'Sampling step 14 / 30',
+        progressPercent: 47,
       },
       // 3. Complete — image output (thumbnail extends below node)
       {
@@ -869,7 +885,7 @@ export class FocusDemo extends Component {
       if (group) this._engine.setGroup(id, group);
       nodeMap.set(id, {
         id, label, type: type || null, group: group || null, toolData: null,
-        executing: false, progress: null, error: null, censored: false,
+        executing: false, progress: null, progressPercent: null, error: null, censored: false,
         output: null, outputVersions: [], currentVersionIndex: 0,
         ...execState,
       });
@@ -1786,11 +1802,21 @@ export class FocusDemo extends Component {
 
     // Running
     if (executing) {
+      const { progressPercent } = node;
+      const hasPct = progressPercent != null;
       return h('div', { className: 'fd-card' },
         h('div', { className: 'fd-card-section' }, 'Output'),
         h('div', { className: 'fd-result-progress' },
-          h('div', { className: 'fd-result-spinner' }),
+          hasPct
+            ? h('div', { className: 'fd-result-progress-pct' }, `${Math.round(progressPercent)}%`)
+            : h('div', { className: 'fd-result-spinner' }),
           h('span', { className: 'fd-result-progress-label' }, progress || 'Executing...'),
+        ),
+        h('div', { className: 'fd-result-bar-wrap' },
+          h('div', {
+            className: `fd-result-bar${hasPct ? ' fd-result-bar--det' : ''}`,
+            style: hasPct ? { width: `${progressPercent}%` } : null,
+          }),
         ),
       );
     }
@@ -2044,10 +2070,18 @@ export class FocusDemo extends Component {
               ),
               node.type ? h('div', { className: 'fd-node-type' }, node.type) : null,
               ...this._renderNodeAnchors(node),
-              // Running: progress bar
+              // Running: status text + progress bar
               node.executing
-                ? h('div', { className: 'fd-node-progress' },
-                    h('div', { className: 'fd-node-progress-bar' })
+                ? h('div', { className: 'fd-node-running-wrap' },
+                    node.progress && node.progressPercent != null
+                      ? h('div', { className: 'fd-node-progress-status' }, node.progress)
+                      : null,
+                    h('div', { className: 'fd-node-progress' },
+                      h('div', {
+                        className: `fd-node-progress-bar${node.progressPercent != null ? ' fd-node-progress-bar--det' : ''}`,
+                        style: node.progressPercent != null ? { width: `${node.progressPercent}%` } : null,
+                      })
+                    ),
                   )
                 : null,
               // Error / censored indicator
@@ -2085,14 +2119,12 @@ export class FocusDemo extends Component {
         className: 'fd-image-overlay',
         onclick: () => this.setState({ imageOverlay: null }),
       },
-        h('div', { className: 'fd-image-overlay-bar', onclick: (e) => e.stopPropagation() },
-          h('span', { className: 'fd-image-overlay-label' }, this.state.imageOverlay.label || ''),
+        h('div', { className: 'fd-image-overlay-wrap', onclick: (e) => e.stopPropagation() },
           h('button', {
             className: 'fd-image-overlay-close',
             onclick: () => this.setState({ imageOverlay: null }),
           }, '\u00d7'),
-        ),
-        h('div', { className: 'fd-image-overlay-body' },
+          h('div', { className: 'fd-image-overlay-skeleton' }),
           h('img', {
             src: this.state.imageOverlay.url,
             className: 'fd-image-overlay-img',

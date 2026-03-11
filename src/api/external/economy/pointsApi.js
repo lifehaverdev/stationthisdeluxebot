@@ -175,6 +175,15 @@ function createPointsApi(dependencies) {
                 }
             }
 
+            // Fall back to explicit referralCode in request body (for API/agent use cases with no cookies)
+            if (!referralCode && req.body.referralCode) {
+                referralCode = req.body.referralCode;
+                logger.debug('[pointsApi-external] Used referral code from request body', {
+                    userId: req.user?.userId,
+                    referralCode
+                });
+            }
+
             const payload = {
                 ...req.body,
                 userId: req.user.id,

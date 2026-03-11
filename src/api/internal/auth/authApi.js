@@ -20,13 +20,13 @@ function createAuthApi(dependencies) {
    */
   router.post('/validate-key', async (req, res) => {
     const { apiKey } = req.body;
-    if (!apiKey || !apiKey.startsWith('st_') || apiKey.length < 9) {
+    if (!apiKey || !apiKey.startsWith('ms2_') || apiKey.length < 12) {
       return res.status(400).json({ error: { code: 'INVALID_FORMAT', message: 'API key is missing or has an invalid format.' } });
     }
 
     try {
-      // Key prefix is "st_" + first 6 chars of the secret (9 chars total)
-      const keyPrefix = apiKey.substring(0, 9);
+      // Key prefix is first 12 chars: 'ms2_' (4) + 8 random hex chars
+      const keyPrefix = apiKey.substring(0, 12);
       const user = await userCore.findUserByApiKeyPrefix(keyPrefix);
 
       if (!user) {

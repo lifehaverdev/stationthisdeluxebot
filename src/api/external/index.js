@@ -275,6 +275,7 @@ function initializeExternalApi(dependencies) {
   const mcpRouter = createMcpRouter({
     toolRegistry: dependencies.toolRegistry,
     internalApiClient: dependencies.internalApiClient || internalApiClient,
+    longRunningApiClient: dependencies.longRunningApiClient,
     loraService: dependencies.loraService,
     trainingService: dependencies.trainingService,
     // x402 support for pay-per-request via MCP

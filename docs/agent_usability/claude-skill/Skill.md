@@ -39,9 +39,18 @@ Response:
 GET https://noema.art/api/v1/wallets/connect/status/{requestId}
 ```
 - `202` → still waiting
-- `200` → `{ "status": "COMPLETED", "apiKey": "sat_..." }` — **save this immediately, shown once**
+- `200` → `{ "status": "COMPLETED", "apiKey": "ms2_..." }` — **save this immediately, shown once**
 - `410` → already claimed
 - `202 { "status": "EXPIRED" }` → restart from initiate
+
+**Already have an account but need a new key?** Use `/relink` instead of `/initiate`:
+```
+POST https://noema.art/api/v1/wallets/connect/relink
+Content-Type: application/json
+
+{"walletAddress": "0xYourWallet"}
+```
+Returns the same shape as `/initiate`. Send the magic amount from that wallet, poll `/status/{requestId}` the same way.
 
 ---
 
@@ -52,7 +61,7 @@ Verify your key works by generating a test image with the default tool:
 ```
 POST https://noema.art/api/v1/mcp
 Content-Type: application/json
-X-API-Key: sat_...
+X-API-Key: ms2_...
 
 {"jsonrpc":"2.0","method":"tools/call","params":{
   "name": "make",
@@ -63,7 +72,7 @@ X-API-Key: sat_...
 Response contains a `generationId`. Poll for result:
 ```
 GET https://noema.art/api/v1/generation/status/{generationId}
-X-API-Key: sat_...
+X-API-Key: ms2_...
 ```
 Poll every 2-5s. `status: "completed"` → image URL in `result.image`.
 

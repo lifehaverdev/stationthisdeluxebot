@@ -3,33 +3,34 @@ const { createLogger } = require('../../utils/logger');
 
 const logger = createLogger('ApiKeyService');
 
-const API_KEY_PREFIX = 'sat_';
-const TOKEN_LENGTH = 32; // The length of the random part of the key
+const API_KEY_PREFIX = 'ms2_';
+const TOKEN_LENGTH = 32; // 32 random bytes → 64 hex chars
+const KEY_PREFIX_LENGTH = 12; // 'ms2_' (4) + 8 random hex chars for DB lookup
 
 /**
  * Generates a secure API key and its SHA-256 hash.
- * The key consists of a prefix, a random token, and is base64 encoded.
+ * Format: ms2_<64 hex chars>
  *
  * @returns {{apiKey: string, keyHash: string, keyPrefix: string}}
- *          An object containing the full API key (to be shown to the user once),
- *          its SHA-256 hash (to be stored in the database), and the key prefix
- *          (for quick lookups).
+ *          apiKey    — full key shown to user once (ms2_<64 hex>)
+ *          keyHash   — SHA-256 of full key, stored in DB
+ *          keyPrefix — first 12 chars (ms2_ + 8 hex), stored for fast lookup
  */
 function generateApiKey() {
   const token = crypto.randomBytes(TOKEN_LENGTH).toString('hex');
   const apiKey = `${API_KEY_PREFIX}${token}`;
-  
+
   const keyHash = crypto.createHash('sha256').update(apiKey).digest('hex');
-  
-  // The prefix is the part of the key before the first underscore, plus the underscore itself.
-  const keyPrefix = apiKey.substring(0, apiKey.indexOf('_') + 1);
+
+  // Include random chars in the prefix so DB lookup is a meaningful discriminator
+  const keyPrefix = apiKey.substring(0, KEY_PREFIX_LENGTH);
 
   logger.debug(`Generated new API key with prefix: ${keyPrefix}`);
-  
+
   return {
-    apiKey, // e.g., 'sat_...xyz'
-    keyHash, // The SHA-256 hash of the full apiKey
-    keyPrefix, // 'sat_'
+    apiKey,     // e.g., 'ms2_a1b2c3d4...xyz'
+    keyHash,    // SHA-256 hash stored in DB (never the raw key)
+    keyPrefix,  // e.g., 'ms2_a1b2c3d4' — stored for fast lookup
   };
 }
 
