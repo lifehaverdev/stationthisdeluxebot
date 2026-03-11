@@ -6,6 +6,31 @@ import { computeGlows } from '../sandbox/focus/state/PeripheryGlows.js';
 import { getNeighbors } from '../sandbox/focus/spatial/Proximity.js';
 import '../style/focus-demo.css';
 
+// ── Type helpers (mirrored from WindowRenderer) ───────────────────────────────
+function normalizeType(t) {
+  if (!t) return null;
+  if (Array.isArray(t)) return normalizeType(t[0]);
+  if (t === 'string' || t === 'textany') return 'text';
+  if (t === 'integer') return 'int';
+  if (t === 'number' || t === 'decimal') return 'float';
+  return t;
+}
+
+// Minimal SVG glyphs — 10×10 viewBox, currentColor
+function anchorIcon(type) {
+  const s = { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' };
+  const p = { viewBox: '0 0 10 10', style: 'width:8px;height:8px;flex-shrink:0;display:block' };
+  switch (type) {
+    case 'text':  return h('svg', p, h('path', { ...s, d: 'M2 3h6M5 3v4' }));
+    case 'image': return h('svg', p, h('rect', { x:'1', y:'1', width:'8', height:'8', rx:'1', ...s }), h('path', { ...s, d: 'M1.5 7.5L3.5 5L5.5 7L7 5.5L8.5 7.5' }));
+    case 'video': return h('svg', p, h('path', { fill: 'currentColor', stroke: 'none', d: 'M2.5 2L8 5L2.5 8Z' }));
+    case 'audio': return h('svg', p, h('path', { ...s, d: 'M2 8V5M4.5 8V2.5M7.5 8V4M9.5 8V6' }));
+    case 'int':   return h('svg', p, h('path', { ...s, d: 'M3.5 2v6M6.5 2v6M1.5 4.5h7M1.5 6.5h7' }));
+    case 'float': return h('svg', p, h('path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5', 'stroke-linecap': 'round', d: 'M1 5C2 2.5 4 7.5 5 5S8 2.5 9 5' }));
+    default:      return h('svg', p, h('circle', { cx: '5', cy: '5', r: '2.5', fill: 'currentColor', stroke: 'none' }));
+  }
+}
+
 const NODE_WIDTH = 200;
 const NODE_HEIGHT = 90;
 
@@ -52,6 +77,7 @@ export class FocusDemo extends Component {
       connections: [],
       tweakerOpen: false,
       descriptionExpanded: false,
+      nodeModeShowOptional: false,
     };
     this._engine = new PhysicsEngine();
     this._rafId = null;
@@ -192,6 +218,7 @@ export class FocusDemo extends Component {
     if (to === STATES.NODE_MODE && nodeId) {
       this._loadToolDetail(nodeId);
       update.descriptionExpanded = false;
+      update.nodeModeShowOptional = false;
     }
 
     if (to === STATES.CANVAS_Z1 && nodeId) {
@@ -1224,38 +1251,32 @@ export class FocusDemo extends Component {
 
         // Card 2: Parameters — inputs left, outputs right
         node.toolData ? h('div', { className: 'fd-card fd-card-params' },
-          node.toolData.inputSchema ? h('div', { className: 'fd-params-col fd-params-inputs' },
-            h('div', { className: 'fd-params-col-label' }, 'Inputs'),
-            ...Object.entries(node.toolData.inputSchema).map(([key, field]) => {
+          node.toolData.inputSchema ? (() => {
+            const conn = this._fsm.connection;
+            const isConnecting = this._fsm.isConnecting;
+            const isIncomingTarget = isConnecting && conn.sourceNodeId !== focusedNodeId;
+            const showOptional = this.state.nodeModeShowOptional;
+
+            const renderParamRow = (key, field) => {
               const connectedFrom = this.state.connections.find(c => c.to === focusedNodeId && c.toInput === key);
-              return h('div', { className: 'fd-param-row fd-param-row-input' },
-                (() => {
-                  const conn = this._fsm.connection;
-                  const isConnecting = this._fsm.isConnecting;
-                  const isIncomingTarget = isConnecting && conn.sourceNodeId !== focusedNodeId;
-                  const typeMatch = isIncomingTarget && (!conn.sourceType || !field.type || conn.sourceType === field.type);
-                  return h('button', {
-                    className: [
-                      'fd-param-anchor',
-                      connectedFrom ? 'fd-param-anchor-connected' : '',
-                      typeMatch ? 'fd-param-anchor--matching' : '',
-                    ].filter(Boolean).join(' '),
-                    title: connectedFrom
-                      ? `Wired from ${nodes.get(connectedFrom.from)?.label || connectedFrom.from}`
-                      : isConnecting ? (typeMatch ? 'Connect here' : 'Type mismatch') : 'Wire input',
-                    onclick: (e) => {
-                      e.stopPropagation();
-                      if (typeMatch) {
-                        this._completeConnection(focusedNodeId, key, field.type);
-                      }
-                    },
-                  }, h('span', { className: 'fd-anchor-icon' }));
-                })(),
+              const typeMatch = isIncomingTarget && (!conn.sourceType || !field.type || conn.sourceType === field.type);
+              return h('div', { key, className: 'fd-param-row fd-param-row-input' },
+                h('button', {
+                  className: [
+                    'fd-param-anchor',
+                    connectedFrom ? 'fd-param-anchor-connected' : '',
+                    typeMatch ? 'fd-param-anchor--matching' : '',
+                  ].filter(Boolean).join(' '),
+                  title: connectedFrom
+                    ? `Wired from ${nodes.get(connectedFrom.from)?.label || connectedFrom.from}`
+                    : isConnecting ? (typeMatch ? 'Connect here' : 'Type mismatch') : 'Wire input',
+                  onclick: (e) => {
+                    e.stopPropagation();
+                    if (typeMatch) this._completeConnection(focusedNodeId, key, field.type);
+                  },
+                }, anchorIcon(normalizeType(field.type))),
                 h('div', { className: 'fd-param-body' },
-                  h('label', { className: 'fd-param-label' },
-                    field.name || key,
-                    field.required ? h('span', { className: 'fd-param-required' }, '*') : null,
-                  ),
+                  h('label', { className: 'fd-param-label' }, field.name || key),
                   connectedFrom
                     ? h('div', { className: 'fd-param-wired' },
                         h('button', {
@@ -1266,8 +1287,22 @@ export class FocusDemo extends Component {
                     : this._renderParamInput(focusedNodeId, key, field),
                 ),
               );
-            }),
-          ) : h('div', { className: 'fd-params-loading' }, 'Loading…'),
+            };
+
+            const entries = Object.entries(node.toolData.inputSchema);
+            const required = entries.filter(([, f]) => f.required);
+            const optional = entries.filter(([, f]) => !f.required);
+
+            return h('div', { className: 'fd-params-col fd-params-inputs' },
+              h('div', { className: 'fd-params-col-label' }, 'Inputs'),
+              ...required.map(([k, f]) => renderParamRow(k, f)),
+              optional.length > 0 ? h('button', {
+                className: `fd-params-toggle${showOptional ? ' fd-params-toggle--active' : ''}`,
+                onclick: (e) => { e.stopPropagation(); this.setState({ nodeModeShowOptional: !showOptional }); },
+              }, showOptional ? '− fewer options' : `+ ${optional.length} more`) : null,
+              ...(showOptional ? optional.map(([k, f]) => renderParamRow(k, f)) : []),
+            );
+          })() : h('div', { className: 'fd-params-loading' }, 'Loading\u2026'),
           node.toolData.outputSchema ? h('div', { className: 'fd-params-col fd-params-outputs' },
             h('div', { className: 'fd-params-col-label' }, 'Outputs'),
             ...Object.entries(node.toolData.outputSchema).map(([key, field]) => {
@@ -1290,7 +1325,7 @@ export class FocusDemo extends Component {
                     e.stopPropagation();
                     this._startConnection(focusedNodeId, key, field.type || null);
                   },
-                }, h('span', { className: 'fd-anchor-icon' })),
+                }, anchorIcon(normalizeType(field.type))),
               );
             }),
           ) : null,
@@ -1541,7 +1576,7 @@ export class FocusDemo extends Component {
             this._completeConnection(node.id, key, field.type);
           }
         },
-      }, h('span', { className: 'fd-anchor-icon' })));
+      }, anchorIcon(normalizeType(field.type))));
     });
 
     // Output anchors (right side)
@@ -1581,7 +1616,7 @@ export class FocusDemo extends Component {
             this._startConnection(node.id, originalKey, field.type || null);
           }
         },
-      }, h('span', { className: 'fd-anchor-icon' })));
+      }, anchorIcon(normalizeType(field.type))));
     });
 
     return anchors;

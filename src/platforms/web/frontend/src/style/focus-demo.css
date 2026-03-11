@@ -598,9 +598,19 @@
 }
 
 .fd-anchor-icon {
-  font-size: 10px;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--text-secondary);
+}
+
+.fd-anchor svg {
+  pointer-events: none;
+}
+.fd-anchor:hover svg,
+.fd-anchor--matching svg,
+.fd-anchor--active-source svg {
+  color: var(--accent);
 }
 
 /* Anchors inside Node Mode header card */
@@ -626,21 +636,6 @@
   right: -15px;
 }
 
-.fd-anchor-nodemode .fd-anchor-icon {
-  font-size: 14px;
-}
-
-.fd-anchor-nodemode.fd-anchor-output {
-  border-color: var(--accent-border);
-  background: var(--accent-dim);
-}
-
-.fd-anchor-nodemode.fd-anchor-output:hover {
-  border-color: var(--accent);
-}
-
-.fd-anchor-input .fd-anchor-icon::before { content: '\2190'; }
-.fd-anchor-output .fd-anchor-icon::before { content: '\2192'; }
 
 /* ── Connection Mode ─────────────────── */
 .fd-node.fd-conn-source {
@@ -1089,9 +1084,34 @@
   border-color: var(--accent);
   background: var(--accent-dim);
 }
-.fd-param-anchor .fd-anchor-icon {
-  font-size: 10px;
+.fd-param-anchor svg {
+  color: var(--text-secondary);
+  pointer-events: none;
 }
+.fd-param-anchor:hover svg,
+.fd-param-anchor-connected svg,
+.fd-param-anchor--matching svg {
+  color: var(--accent);
+}
+
+/* Optional params toggle */
+.fd-params-toggle {
+  width: 100%;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-family: var(--ff-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--ls-wide);
+  text-transform: uppercase;
+  padding: 6px 0;
+  cursor: pointer;
+  text-align: left;
+  transition: color var(--dur-micro) var(--ease);
+}
+.fd-params-toggle:hover { color: var(--text-primary); }
+.fd-params-toggle--active { color: var(--accent); }
 
 .fd-param-body {
   flex: 1;
