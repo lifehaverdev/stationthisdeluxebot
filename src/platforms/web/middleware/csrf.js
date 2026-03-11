@@ -32,6 +32,7 @@ const csrfExcluded = [
   '/api/v1/points/supported-assets',
   '/api/v1/upload/', // Upload API endpoints for training datasets
   '/api/v1/payments/', // Public payment endpoints for spell execution
+  '/api/v1/wallets/connect/', // Wallet linking onboarding - public, no session available
   '/api/v1/mcp', // MCP protocol - discovery is public, execution uses API key auth
   '/api/v1/x402/', // x402 payment protocol - uses payment header auth, not session
   '/.well-known/', // Agent discovery files - all public

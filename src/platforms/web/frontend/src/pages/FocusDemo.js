@@ -1444,6 +1444,9 @@ export class FocusDemo extends Component {
           ) : null,
         ) : null,
 
+        // Card 3: Result
+        this._renderResultCard(node),
+
         // Card 4: Actions
         h('div', { className: 'fd-card' },
           h('div', { className: 'fd-card-section' }, 'Actions'),
@@ -1653,6 +1656,119 @@ export class FocusDemo extends Component {
     );
   }
 
+  _renderNodeResult(node) {
+    if (!node.output || node.executing) return null;
+    const { output } = node;
+
+    if (output.type === 'image') {
+      return h('div', { className: 'fd-node-result fd-node-result--image' },
+        h('img', {
+          src: output.url,
+          className: 'fd-node-result-img',
+          alt: '',
+          draggable: false,
+        })
+      );
+    }
+
+    if (output.type === 'text') {
+      const preview = (output.text || '').slice(0, 80);
+      return h('div', { className: 'fd-node-result fd-node-result--text' }, preview);
+    }
+
+    if (output.type === 'video') {
+      return h('div', { className: 'fd-node-result fd-node-result--video' },
+        h('span', { className: 'fd-node-result-play' }, '\u25b6'),
+        h('span', { className: 'fd-node-result-label' }, 'video')
+      );
+    }
+
+    if (output.type === 'spell-steps') {
+      const count = output.steps?.length || 0;
+      return h('div', { className: 'fd-node-result fd-node-result--spell' },
+        h('span', { className: 'fd-node-result-label' }, `${count} steps`)
+      );
+    }
+
+    return null;
+  }
+
+  _renderResultCard(node) {
+    const { executing, progress, error, censored, output } = node;
+
+    // Running
+    if (executing) {
+      return h('div', { className: 'fd-card' },
+        h('div', { className: 'fd-card-section' }, 'Output'),
+        h('div', { className: 'fd-result-progress' },
+          h('div', { className: 'fd-result-spinner' }),
+          h('span', { className: 'fd-result-progress-label' }, progress || 'Executing...'),
+        ),
+      );
+    }
+
+    // Error / censored
+    if (error) {
+      return h('div', { className: 'fd-card' },
+        h('div', { className: 'fd-card-section' }, censored ? 'Rejected' : 'Error'),
+        h('div', { className: `fd-result-error${censored ? ' fd-result-error--censored' : ''}` },
+          censored ? '\u2298 ' : '\u26a0 ',
+          error,
+        ),
+      );
+    }
+
+    // No output yet
+    if (!output) {
+      return h('div', { className: 'fd-card' },
+        h('div', { className: 'fd-card-section' }, 'Output'),
+        h('div', { className: 'fd-result-empty' }, 'No output yet'),
+      );
+    }
+
+    // Image
+    if (output.type === 'image') {
+      return h('div', { className: 'fd-card fd-card--result' },
+        h('div', { className: 'fd-card-section' }, 'Output'),
+        h('img', { src: output.url, className: 'fd-result-img', alt: '', draggable: false }),
+      );
+    }
+
+    // Text
+    if (output.type === 'text') {
+      return h('div', { className: 'fd-card fd-card--result' },
+        h('div', { className: 'fd-card-section' }, 'Output'),
+        h('div', { className: 'fd-result-text' }, output.text),
+      );
+    }
+
+    // Video
+    if (output.type === 'video') {
+      return h('div', { className: 'fd-card fd-card--result' },
+        h('div', { className: 'fd-card-section' }, 'Output'),
+        h('div', { className: 'fd-result-video-placeholder' }, '\u25b6 video'),
+      );
+    }
+
+    // Spell steps
+    if (output.type === 'spell-steps') {
+      const steps = output.steps || [];
+      return h('div', { className: 'fd-card fd-card--result' },
+        h('div', { className: 'fd-card-section' }, `Output \u2014 ${steps.length} steps`),
+        ...steps.map((step, i) =>
+          h('div', { className: 'fd-result-spell-step', key: i },
+            h('div', { className: 'fd-result-spell-step-label' }, `Step ${i + 1}`),
+            step.type === 'image'
+              ? h('img', { src: step.url, className: 'fd-result-img', alt: '', draggable: false })
+              : h('div', { className: 'fd-result-text' }, step.text),
+          )
+        ),
+      );
+    }
+
+    return null;
+  }
+
   _renderNodeAnchors(node) {
     const conn = this._fsm.connection;
     const isConnecting = this._fsm.isConnecting;
@@ -1838,6 +1954,7 @@ export class FocusDemo extends Component {
                     node.censored ? '\u2298 censored' : '\u26a0 error'
                   )
                 : null,
+              this._renderNodeResult(node),
             );
           })),
         ),
