@@ -63,8 +63,10 @@ class CreditService {
       webSocketService,
       adminActivityService,
       nftPriceService,
-      spellsDb
+      spellsDb,
+      walletLinkingService,
     } = services;
+    this.walletLinkingService = walletLinkingService || null;
 
     if (!ethereumService || !creditLedgerDb || !systemStateDb || !priceFeedService || !tokenRiskEngine || !internalApiClient || !userCoreDb || !saltMiningService || !webSocketService) {
       throw new Error('CreditService: Missing one or more required services.');
@@ -132,7 +134,8 @@ class CreditService {
       this.contractConfig,
       this.logger,
       this.userCoreDb,
-      this.internalApiClient
+      this.internalApiClient,
+      this.walletLinkingService
     );
 
     // 6. Referral Vault Service

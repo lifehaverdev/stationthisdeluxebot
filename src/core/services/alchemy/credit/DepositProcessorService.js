@@ -24,7 +24,8 @@ class DepositProcessorService {
     contractConfig,
     logger,
     userCoreDb = null,
-    internalApiClient = null
+    internalApiClient = null,
+    walletLinkingService = null
   ) {
     this.ethereumService = ethereumService;
     this.creditLedgerDb = creditLedgerDb;
@@ -36,6 +37,7 @@ class DepositProcessorService {
     this.logger = logger || console;
     this.userCoreDb = userCoreDb;
     this.internalApiClient = internalApiClient;
+    this.walletLinkingService = walletLinkingService;
   }
 
   /**
@@ -67,6 +69,23 @@ class DepositProcessorService {
     if (existingEntry && existingEntry.status === 'CONFIRMED') {
       this.logger.debug(`[DepositProcessorService] Skipping tx ${transactionHash} — already confirmed.`);
       return;
+    }
+
+    // Check for magic amount wallet linking
+    if (this.walletLinkingService) {
+      try {
+        const linkingRequest = await this.walletLinkingService.findPendingRequestByAmount(amountStr, tokenAddress);
+        if (linkingRequest) {
+          this.logger.info(`[DepositProcessorService] Magic amount match for tx ${transactionHash} — completing wallet linking for request ${linkingRequest._id}`);
+          await this.walletLinkingService.completeLinkingAndGenerateFirstApiKey(
+            linkingRequest.master_account_id,
+            linkingRequest._id,
+            depositorAddress
+          );
+        }
+      } catch (err) {
+        this.logger.error(`[DepositProcessorService] Magic amount linking check failed for tx ${transactionHash}:`, err.message);
+      }
     }
 
     // Resolve user account

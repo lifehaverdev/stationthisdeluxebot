@@ -94,7 +94,7 @@ class WalletLinkingService {
    * @param {ObjectId} requestId - The ID of the linking request.
    * @returns {Promise<void>}
    */
-  async completeLinkingAndGenerateFirstApiKey(masterAccountId, requestId) {
+  async completeLinkingAndGenerateFirstApiKey(masterAccountId, requestId, walletAddress = null) {
     this.logger.info(`[WalletLinkingService] Completing linking for masterAccountId ${masterAccountId}, request ID ${requestId}`);
     // 1. Generate a new API key
     const { apiKey, keyHash, keyPrefix } = generateApiKey();
@@ -114,6 +114,14 @@ class WalletLinkingService {
     
     // 3. Update the user's status to active
     await this.userCoreDb.updateUserStatus(masterAccountId, 'active');
+
+    // 3b. Link the depositing wallet address to the user
+    if (walletAddress) {
+      await this.userCoreDb.addWallet(masterAccountId, { address: walletAddress.toLowerCase(), verified: true, tag: 'magic-link-deposit' });
+    }
+
+    // 3c. Mark the linking request as COMPLETED so polling returns the key
+    await this.walletLinkingRequestDb.updateRequestStatus(requestId, 'COMPLETED');
 
     // 4. Cache the raw API key so it can be claimed, with a short expiry.
     const claimKey = `api_key_claim:${requestId}`;
@@ -135,6 +143,10 @@ class WalletLinkingService {
    * @param {string} requestId - The ID of the linking request.
    * @returns {Promise<{status: string, apiKey: string|null}>}
    */
+  async findPendingRequestByAmount(amountWei, tokenAddress) {
+    return this.walletLinkingRequestDb.findPendingRequestByAmount(amountWei, tokenAddress);
+  }
+
   async getLinkingStatusAndClaimKey(requestId) {
     const linkingRequest = await this.walletLinkingRequestDb.findById(new ObjectId(requestId));
     if (!linkingRequest || linkingRequest.status === 'EXPIRED') {
