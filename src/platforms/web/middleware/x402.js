@@ -24,7 +24,7 @@ const DEFAULT_FACILITATOR_URL = 'https://api.cdp.coinbase.com/platform/v2/x402';
 
 /**
  * @typedef {Object} X402Config
- * @property {string} receiverAddress - Address to receive USDC payments (Foundation on Base)
+ * @property {string} receiverAddress - Address to receive USDC payments (CreditVault on Base)
  * @property {string} network - CAIP-2 network ID (e.g., 'eip155:8453' for Base)
  * @property {string} [facilitatorUrl] - Facilitator URL (defaults to x402.org)
  */

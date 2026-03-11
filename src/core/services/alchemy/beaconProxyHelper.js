@@ -103,10 +103,9 @@ function predictDeterministicAddressERC1967BeaconProxy(beacon, args, salt, deplo
 }
 
 /**
- * Queries Foundation.computeCharterAddress on-chain for a given owner + salt.
- * This is the most reliable way to obtain the deterministic proxy address
- * because the calculation happens inside Solidity using the very same
- * library code that will be used at deployment time.
+ * @deprecated LEGACY — Queries Foundation.computeCharterAddress on-chain.
+ * Used only by legacy Foundation-based salt mining (saltMiningWorker / ReferralVaultService).
+ * TODO: Remove when CreateX migration is complete.
  *
  * @param {import('ethers').Contract} foundationContract – ethers Contract object already connected to a provider.
  * @param {string} owner – wallet that will own the fund.
@@ -118,8 +117,9 @@ async function computeCharterAddressOnChain(foundationContract, owner, salt) {
 }
 
 /**
- * Encodes the initialization arguments for a CharteredFund proxy.
- * Matches Solidity's abi.encodeWithSelector(CharteredFundImplementation.initialize.selector, foundation, owner)
+ * @deprecated LEGACY — Encodes initialization arguments for a CharteredFund beacon proxy.
+ * Used only by legacy Foundation-based salt mining (saltMiningWorker / ReferralVaultService).
+ * TODO: Remove when CreateX migration is complete.
  * @param {string} foundation - The foundation contract address
  * @param {string} owner - The owner's address
  * @returns {Uint8Array} The encoded initialization arguments

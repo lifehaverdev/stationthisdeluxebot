@@ -1,3 +1,8 @@
+/**
+ * @deprecated LEGACY — Foundation-based salt mining worker.
+ * Mines CREATE2 salts against Foundation.sol (charterFund / computeCharterAddress).
+ * TODO: Replace with CreateX-based vanity salt mining for project vault deployments.
+ */
 const { ethers } = require('ethers');
 const { workerData, parentPort } = require('worker_threads');
 const { predictDeterministicAddressERC1967BeaconProxy, encodeCharteredFundInitArgs, hasVanityPrefix } = require('./beaconProxyHelper');

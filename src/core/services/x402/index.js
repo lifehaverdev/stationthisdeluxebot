@@ -10,7 +10,7 @@
  * 4. Middleware decodes + verifies with facilitator
  * 5. Server executes generation
  * 6. Server calls settle() → Facilitator executes on-chain transfer
- * 7. USDC moves from payer → receiverAddress (Foundation)
+ * 7. USDC moves from payer → receiverAddress (CreditVault)
  */
 
 const {

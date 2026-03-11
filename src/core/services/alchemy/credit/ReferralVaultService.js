@@ -1,8 +1,10 @@
 /**
- * ReferralVaultService
- * 
- * Handles referral vault creation, deployment, and finalization.
- * Manages the lifecycle of referral vaults from creation to active deployment.
+ * @deprecated LEGACY — ReferralVaultService (Foundation-based chartered fund deployment)
+ *
+ * Handles referral vault creation via Foundation.charterFund (CREATE2 through Foundation.sol).
+ * The Foundation-based chartered fund system has been superseded by CreditVault.
+ * Salt mining here uses the legacy SaltMiningService (Foundation + beacon proxy pattern).
+ * TODO: Replace with CreateX-based vault deployment when migration is complete.
  */
 const { ethers } = require('ethers');
 

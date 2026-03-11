@@ -365,7 +365,7 @@ function createAdminApi(dependencies) {
 
   /**
    * GET /vault-balances
-   * Get Foundation protocolEscrow and chartered vault balances
+   * Get CreditVault and chartered vault balances
    * Query params: chainId (default: '1'), wallet (admin wallet address)
    * Full path: /api/v1/admin/vaults/vault-balances
    */
@@ -437,8 +437,8 @@ function createAdminApi(dependencies) {
       
       logger.info(`[AdminApi] Checking balances for ${tokenAddresses.length} tokens:`, tokenAddresses);
 
-      // Get Foundation protocolEscrow balances and calculate real user-owned based on points
-      const foundationBalances = await Promise.all(
+      // Get CreditVault balances and calculate real user-owned based on points
+      const creditVaultBalances = await Promise.all(
         tokenAddresses.map(async (tokenAddress) => {
           try {
             // CreditVault has no onchain custody model — tokens are held directly
@@ -462,7 +462,7 @@ function createAdminApi(dependencies) {
             }
 
             // Calculate real user-owned balance based on points_remaining.
-            // Include ALL vaults (Foundation + CharterFund) so that pendingSeizureWei reflects
+            // Include ALL vaults (CreditVault + CharterFund) so that pendingSeizureWei reflects
             // the total protocol claim across all vaults. The frontend grandTotals computation
             // avoids double-counting by only adding CharterFund on-chain escrow on top of this.
             const tokenDeposits = allDeposits.filter(d =>
@@ -556,7 +556,7 @@ function createAdminApi(dependencies) {
       );
 
       // Filter out null results
-      const foundation = foundationBalances.filter(b => b !== null);
+      const creditVault = creditVaultBalances.filter(b => b !== null);
 
       // Get all chartered vaults
       const charteredVaults = await creditLedgerDb.findMany({
@@ -610,13 +610,13 @@ function createAdminApi(dependencies) {
       );
 
       const response = {
-        foundation,
+        creditVault,
         charteredVaults: charteredVaultsWithBalances,
         chainId,
         requestId
       };
 
-      logger.info(`[AdminApi] Returning ${foundation.length} foundation token balances and ${charteredVaultsWithBalances.length} chartered vaults`);
+      logger.info(`[AdminApi] Returning ${creditVault.length} credit vault token balances and ${charteredVaultsWithBalances.length} chartered vaults`);
       logger.debug(`[AdminApi] Response data:`, JSON.stringify(response, null, 2));
 
       res.json(response);

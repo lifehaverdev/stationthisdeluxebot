@@ -9,14 +9,14 @@ const { ethers } = require('ethers');
 const { v4: uuidv4 } = require('uuid');
 
 class SpellPaymentService {
-  constructor({ logger, ethereumService, creditService, guestAccountService, guestAuthService, foundationConfig }) {
+  constructor({ logger, ethereumService, creditService, guestAccountService, guestAuthService, creditVaultConfig }) {
     this.logger = logger;
     this.ethereumService = ethereumService;
     this.creditService = creditService;
     this.guestAccountService = guestAccountService;
     this.guestAuthService = guestAuthService;
-    this.foundationAddress = foundationConfig.address;
-    this.foundationAbi = foundationConfig.abi;
+    this.creditVaultAddress = creditVaultConfig.address;
+    this.creditVaultAbi = creditVaultConfig.abi;
     this.USD_TO_POINTS_CONVERSION_RATE = 0.000337;
     
     // In-memory cache for spellPaymentId -> txHash mapping
@@ -76,7 +76,7 @@ class SpellPaymentService {
         
         // Generate transaction parameters for ETH
         const txParams = {
-          to: this.foundationAddress,
+          to: this.creditVaultAddress,
           value: ethers.parseEther(tokenAmount.toFixed(18)),
           data: '0x'
         };
@@ -161,7 +161,7 @@ class SpellPaymentService {
           to: tokenAddress,
           value: '0x0',
           data: iface.encodeFunctionData('transfer', [
-            this.foundationAddress,
+            this.creditVaultAddress,
             ethers.parseUnits(tokenAmount.toFixed(decimals), decimals)
           ])
         };

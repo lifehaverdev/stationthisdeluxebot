@@ -1,3 +1,9 @@
+/**
+ * @deprecated LEGACY — Foundation-based salt mining.
+ * This service mines CREATE2 salts against Foundation.sol's charterFund / computeCharterAddress.
+ * The Foundation-based chartered fund system has been replaced by CreditVault.
+ * TODO: Replace with CreateX-based vanity salt mining for project vault deployments.
+ */
 const { ethers } = require('ethers');
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
 const path = require('path');

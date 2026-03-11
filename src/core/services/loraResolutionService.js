@@ -84,7 +84,7 @@ async function resolveLoraTriggers(promptString, masterAccountId, toolBaseModel,
   const warnings = [];
   const lorasAppliedThisRun = new Set(); // Tracks slugs of LoRAs applied in this run
 
-  const triggerMap = await _getTriggerMap(masterAccountId);
+  const triggerMap = await (dependencies?._getTriggerMap || _getTriggerMap)(masterAccountId);
 
   if (!triggerMap || triggerMap.size === 0) {
     return { modifiedPrompt: rawPrompt, rawPrompt, appliedLoras, warnings };

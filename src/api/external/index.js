@@ -423,12 +423,11 @@ function initializeExternalApi(dependencies) {
     }
   });
 
-  // --- Public: Supported Chains (Foundation deployments) ---
+  // --- Public: Supported Chains (CreditVault deployments) ---
   externalApiRouter.get('/points/supported-chains', (req, res) => {
-    const { FOUNDATION_ADDRESSES } = require('../../core/services/alchemy/foundationConfig');
-    const chains = Object.entries(FOUNDATION_ADDRESSES).map(([chainId, address]) => {
-      const nameMap = { '1': 'Ethereum Mainnet', '11155111': 'Sepolia' };
-      return { chainId, name: nameMap[chainId] || `Chain ${chainId}`, foundationAddress: address };
+    const { CREDIT_VAULT_ADDRESSES, CHAIN_NAMES } = require('../../core/services/alchemy/foundationConfig');
+    const chains = Object.entries(CREDIT_VAULT_ADDRESSES).map(([chainId, address]) => {
+      return { chainId, name: CHAIN_NAMES[chainId] || `Chain ${chainId}`, creditVaultAddress: address };
     });
     return res.json({ chains });
   });

@@ -11,7 +11,7 @@
 ## Polish
 - [ ] Admin dashboard — port remaining sections from old code: free points dashboard, rankings table, active users table, business accounting, cost entry form, cost totals, deposit follow-up queue with full CRUD, deposit diagnostics (on-chain custody key check).
 - [ ] Admin — replace `confirm()` / `prompt()` calls with proper microact modals.
-- [ ] Admin — on-chain balance verification (reading Foundation contract custody keys for mismatch detection).
+- [ ] Admin — on-chain balance verification (reading CreditVault deposit events for mismatch detection).
 - [ ] Landing — port features auto-scroll/shuffle, cost badges from tool registry, reviews scroller, "used by" section.
 - [ ] Docs — port tool detail expand/collapse toggle.
 - [ ] Shared — notification toast system (currently `showNotification` is missing).

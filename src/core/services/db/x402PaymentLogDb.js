@@ -19,7 +19,7 @@ const { getCachedClient } = require('./utils/queue');
  * @property {string} amount - Amount in atomic units
  * @property {string} asset - Token contract address
  * @property {string} network - CAIP-2 network ID
- * @property {string} pay_to - Receiver address (our Foundation)
+ * @property {string} pay_to - Receiver address (our CreditVault)
  * @property {string} [tx_hash] - On-chain transaction hash (after settlement)
  * @property {string} tool_id - Tool that was executed
  * @property {string} [generation_id] - Generation ID if applicable

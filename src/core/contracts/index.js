@@ -5,17 +5,13 @@ const uniswapV3QuoterV2Abi = require('./abis/uniswapV3QuoterV2.json');
 const { FOUNDATION_ADDRESSES, CREDIT_VAULT_ADDRESSES, getFoundationAddress } = require('../services/alchemy/foundationConfig');
 
 const contracts = {
+  // LEGACY: Foundation.sol factory (chartered fund deployment via charterFund / CREATE2).
+  // Retained for legacy SaltMiningService and ReferralVaultService only.
+  // TODO: Remove when CreateX migration is complete.
   foundation: {
     abi: foundationAbi,
     addresses: {
       '1': FOUNDATION_ADDRESSES['1'] || null,
-      '11155111': FOUNDATION_ADDRESSES['11155111'] || null,
-      '8453': FOUNDATION_ADDRESSES['8453'] || null,
-      '42161': FOUNDATION_ADDRESSES['42161'] || null,
-      mainnet: FOUNDATION_ADDRESSES['1'] || null,
-      sepolia: FOUNDATION_ADDRESSES['11155111'] || null,
-      base: FOUNDATION_ADDRESSES['8453'] || null,
-      arbitrum: FOUNDATION_ADDRESSES['42161'] || null,
     },
   },
   creditVault: {

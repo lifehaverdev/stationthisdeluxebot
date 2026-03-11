@@ -1,7 +1,7 @@
 const { ethers } = require('ethers');
 const { escapeMarkdownV2 } = require('../../../utils/stringUtils');
 const axios = require('axios');
-const { FOUNDATION_ADDRESSES, getFoundationAddress, CHAIN_NAMES } = require('../../../core/services/alchemy/foundationConfig');
+const { CREDIT_VAULT_ADDRESSES, getCreditVaultAddress, CHAIN_NAMES } = require('../../../core/services/alchemy/foundationConfig');
 
 /**
  * Handler for /wallet command – initiates magic-amount linking flow
@@ -86,12 +86,12 @@ async function initiateMagicLink(bot, chatId, replyToMessageId, deps = {}, maste
     // Default to Ethereum Mainnet (1); adjust if multi-chain selection is added
     let depositToAddress;
     try {
-      depositToAddress = getFoundationAddress('1');
+      depositToAddress = getCreditVaultAddress('1');
     } catch (_) {
       depositToAddress = 'N/A';
     }
 
-    const chainsText = Object.keys(FOUNDATION_ADDRESSES)
+    const chainsText = Object.keys(CREDIT_VAULT_ADDRESSES)
         .map(id => CHAIN_NAMES[id] || `Chain ${id}`)
         .join(', ');
 
@@ -196,8 +196,9 @@ function createCallbackHandler(dependencies) {
 
 function registerHandlers(dispatchers, dependencies) {
   const { commandDispatcher, callbackQueryDispatcher } = dispatchers;
-  const walletCmdRegex = /^\/wallet(?:@\w+)?$/i;
-  commandDispatcher.register(walletCmdRegex, createWalletCommandHandler(dependencies));
+  const walletHandler = createWalletCommandHandler(dependencies);
+  commandDispatcher.register(/^\/wallet(?:@\w+)?$/i, walletHandler);
+  commandDispatcher.register(/^\/signin(?:@\w+)?$/i, walletHandler);
 
   callbackQueryDispatcher.register('wallet', createCallbackHandler(dependencies));
 }

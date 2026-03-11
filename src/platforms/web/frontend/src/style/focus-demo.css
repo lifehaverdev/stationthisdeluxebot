@@ -33,6 +33,9 @@
   position: absolute;
   transform-origin: 0 0;
   will-change: transform;
+}
+
+.fd-viewport--animating {
   transition: transform 300ms cubic-bezier(0.25, 0, 0, 1);
   background-image:
     repeating-linear-gradient(90deg, rgba(255,255,255,0.03) 0 1px, transparent 1px 100%),
@@ -351,6 +354,20 @@
 .fd-card-mono {
   font-family: var(--ff-mono);
   font-size: var(--fs-xs);
+  color: var(--text-secondary);
+}
+
+.fd-card-description {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.fd-card-param-mono {
+  font-family: var(--ff-mono);
   color: var(--text-secondary);
 }
 
@@ -853,4 +870,200 @@
 .fd-tweaker-reset:hover {
   color: var(--text-1, #eee);
   border-color: var(--text-2, #888);
+}
+
+/* ── Node Mode — redesigned cards ───── */
+
+/* Delivery mode badge */
+.fd-delivery-badge {
+  font-family: var(--ff-mono);
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+.fd-delivery-immediate { color: #4ade80; border-color: #4ade8044; }
+.fd-delivery-async     { color: #facc15; border-color: #facc1544; }
+.fd-delivery-webhook   { color: #60a5fa; border-color: #60a5fa44; }
+
+/* Provider tag */
+.fd-provider-tag {
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  padding: 2px 7px;
+  border-radius: 3px;
+}
+
+/* Pricing rows inside card 1 */
+.fd-card-pricing {
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  display: flex;
+  gap: 24px;
+}
+.fd-pricing-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.fd-pricing-label {
+  font-family: var(--ff-mono);
+  font-size: 10px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.fd-pricing-val {
+  font-family: var(--ff-mono);
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+/* Card 2: Parameters two-column layout */
+.fd-card-params {
+  flex-direction: row;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  align-items: stretch;
+}
+.fd-params-col {
+  flex: 1;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 60vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.fd-params-col + .fd-params-col {
+  border-left: 1px solid var(--border);
+}
+.fd-params-col-label {
+  font-family: var(--ff-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.fd-params-loading {
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 12px;
+}
+
+/* Individual parameter row */
+.fd-param-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.fd-param-row-input  { flex-direction: row; }
+.fd-param-row-output { flex-direction: row-reverse; }
+
+.fd-param-anchor {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin-top: 2px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: border-color 0.15s, background 0.15s;
+}
+.fd-param-anchor:hover {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+.fd-param-anchor-connected {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+.fd-param-anchor .fd-anchor-icon {
+  font-size: 10px;
+}
+
+.fd-param-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.fd-params-outputs .fd-param-body {
+  align-items: flex-end;
+}
+.fd-param-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-family: var(--ff-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fd-param-required {
+  color: var(--accent);
+  margin-left: 2px;
+}
+.fd-param-type {
+  font-size: 10px;
+  font-family: var(--ff-mono);
+  color: var(--text-secondary);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  padding: 1px 5px;
+  border-radius: 3px;
+  align-self: flex-start;
+}
+.fd-params-outputs .fd-param-type {
+  align-self: flex-end;
+}
+
+/* Param inputs */
+.fd-param-input,
+.fd-param-select {
+  width: 100%;
+  font-family: var(--ff-mono);
+  font-size: 11px;
+  color: var(--text-primary);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 3px 6px;
+  outline: none;
+  min-width: 0;
+}
+.fd-param-input:focus,
+.fd-param-select:focus {
+  border-color: var(--accent);
+}
+.fd-param-checkbox {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+}
+.fd-param-wired {
+  font-size: 11px;
+}
+.fd-param-wired-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-end;
+  font-size: 11px;
 }

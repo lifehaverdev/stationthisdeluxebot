@@ -204,8 +204,7 @@ async function initializeServices(options = {}) {
       };
       const normalizeChainId = (cid) => CHAIN_NAME_TO_ID[String(cid).toLowerCase()] || String(cid);
       const chainIdSet = new Set();
-      const targetChains = Object.keys(contracts.foundation.addresses)
-        .filter(cid => contracts.foundation.addresses[cid])
+      const targetChains = Object.keys(CREDIT_VAULT_ADDRESSES)
         .map(cid => {
           const normalized = normalizeChainId(cid);
           if (!chainIdSet.has(normalized)) {
@@ -228,16 +227,16 @@ async function initializeServices(options = {}) {
       dexService = null; // Will be instantiated when mainnet EthereumService is ready
       tokenRiskEngine = null; // Defer until dexService ready
 
-      // --- Instantiate shared SaltMiningService (mainnet assumed) ---
+      // --- LEGACY: Foundation-based SaltMiningService (pending migration to CreateX) ---
+      // TODO: Replace with CreateX-based vanity salt mining for project vault deployments.
       try {
         saltMiningService = new SaltMiningService({
           foundationAddress: getFoundationAddress('1'),
-          foundationAbi: contracts.foundation.abi,
           charterBeacon: getCharterBeaconAddress('1'),
         }, logger);
-        logger.debug('[initializeServices] SaltMiningService initialized.');
+        logger.debug('[initializeServices] SaltMiningService (legacy) initialized.');
       } catch (err) {
-        logger.error('[initializeServices] Failed to initialize SaltMiningService:', err);
+        logger.warn('[initializeServices] Legacy SaltMiningService failed to initialize (non-critical):', err.message);
       }
 
       for (const chainId of targetChains) {
@@ -266,8 +265,8 @@ async function initializeServices(options = {}) {
           }
 
           const creditServiceConfig = {
-            foundationAddress: vaultAddr,
-            foundationAbi: contracts.creditVault.abi,
+            contractAddress: vaultAddr,
+            contractAbi: contracts.creditVault.abi,
             disableWebhookActions: process.env.DISABLE_CREDIT_WEBHOOK_ACTIONS === '1',
           };
           const creditDeps = {
@@ -453,17 +452,15 @@ async function initializeServices(options = {}) {
     let spellPaymentService = null;
     if (creditServices && creditServices['1'] && guestAccountService && guestAuthService) {
       try {
-        // Import getFoundationAddress here since it's scoped to the try block above
-        const { getFoundationAddress } = require('./alchemy/foundationConfig');
         spellPaymentService = new SpellPaymentService({
           logger,
           ethereumService: ethereumServices['1'],
           creditService: creditServices['1'],
           guestAccountService,
           guestAuthService,
-          foundationConfig: {
-            address: getFoundationAddress('1'),
-            abi: contracts.foundation.abi
+          creditVaultConfig: {
+            address: getCreditVaultAddress('1'),
+            abi: contracts.creditVault.abi
           }
         });
         logger.debug('SpellPaymentService initialized.');

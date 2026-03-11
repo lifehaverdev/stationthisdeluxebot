@@ -684,14 +684,14 @@ Response:
   "magicAmount": "0.000047829156382",
   "tokenAddress": "0x0000000000000000000000000000000000000000",
   "expiresAt": "2026-02-03T12:15:00Z",
-  "depositToAddress": "0xFoundationContractAddress..."
+  "depositToAddress": "0xCreditVaultAddress..."
 }
 ```
 
 **Key fields:**
 - `requestId`: Use this to poll for status
 - `magicAmount`: The exact amount (in ETH) you must send
-- `depositToAddress`: The Foundation contract address to send to
+- `depositToAddress`: The CreditVault contract address to send to
 - `expiresAt`: Request expires after 15 minutes
 
 **Step 2: Send the Magic Amount Deposit**
@@ -772,7 +772,7 @@ X-API-Key: sat_abc123def456...
 **Complete Magic Amount Flow:**
 ```
 1. POST /wallets/initiate    → Get unique magic amount + deposit address
-2. Send exact magic amount   → Deposit to Foundation contract
+2. Send exact magic amount   → Deposit to CreditVault contract
 3. System detects deposit    → Matches amount, links wallet, generates key
 4. GET /wallets/status/:id   → Poll until COMPLETED, retrieve API key
 5. Use X-API-Key header      → Make generation requests
@@ -781,7 +781,7 @@ X-API-Key: sat_abc123def456...
 **How It Works Under the Hood:**
 
 1. **Initiation**: Creates a linking request with a unique 6-byte random amount (in wei)
-2. **Detection**: Alchemy webhooks monitor the Foundation contract for deposits
+2. **Detection**: Alchemy webhooks monitor the CreditVault contract for deposits
 3. **Matching**: `MagicAmountLinkingService` checks if deposit amount matches any pending request
 4. **Linking**: On match, wallet is added to user with `verified: true` and `tag: magic-link-deposit`
 5. **Key Generation**: API key generated (SHA-256 hashed for storage), raw key cached for claiming

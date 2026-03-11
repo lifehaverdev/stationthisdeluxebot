@@ -39,10 +39,10 @@ async function startFlow(interaction, masterAccountId, dependencies) {
             mode: 'contribute'
         })).data;
 
-        const { getFoundationAddress } = require('../../../core/services/alchemy/foundationConfig');
+        const { getCreditVaultAddress } = require('../../../core/services/alchemy/foundationConfig');
         let depositAddress;
         try {
-            depositAddress = getFoundationAddress('1');
+            depositAddress = getCreditVaultAddress('1');
         } catch (_) {
             depositAddress = 'N/A';
         }
@@ -51,7 +51,7 @@ async function startFlow(interaction, masterAccountId, dependencies) {
             .setColor(0x0099FF)
             .setTitle('💰 Purchase Points via Contribution')
             .setDescription(
-                `Send native ETH directly to our foundation address:\n` +
+                `Send native ETH directly to our credit vault address:\n` +
                 `\`${depositAddress}\`\n\n` +
                 `Direct ETH transfers are counted as contributions and must be committed for point delivery.\n\n` +
                 `For reference, sending 0.01 ETH right now would credit approximately **${quote.pointsCredited}** points.\n\n` +

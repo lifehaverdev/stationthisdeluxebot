@@ -2,7 +2,6 @@ import { createPosition, flatDistance } from '../spatial/SphericalGrid.js';
 import {
   connectedAttraction,
   connectionLineRepulsion,
-  groupForce,
   leftRightPolarity,
   pinSpring,
 } from './Forces.js';
@@ -155,35 +154,7 @@ export class PhysicsEngine {
       }
     }
 
-    // 4. Group forces (between group centroids, applied to members)
-    const groups = new Map();
-    for (const [id, node] of this._nodes) {
-      if (!node.group) continue;
-      if (!groups.has(node.group)) groups.set(node.group, []);
-      groups.get(node.group).push(id);
-    }
-    const groupIds = [...groups.keys()];
-    for (let i = 0; i < groupIds.length; i++) {
-      for (let j = i + 1; j < groupIds.length; j++) {
-        const membersA = groups.get(groupIds[i]);
-        const membersB = groups.get(groupIds[j]);
-        const centA = this._centroid(membersA);
-        const centB = this._centroid(membersB);
-        const gf = groupForce(centA, centB);
-        for (const id of membersA) {
-          const f = forces.get(id);
-          f.fx += gf.fx / membersA.length;
-          f.fy += gf.fy / membersA.length;
-        }
-        for (const id of membersB) {
-          const f = forces.get(id);
-          f.fx -= gf.fx / membersB.length;
-          f.fy -= gf.fy / membersB.length;
-        }
-      }
-    }
-
-    // 5. Pin springs
+    // 4. Pin springs
     for (const [id, node] of this._nodes) {
       if (!node.pinned) continue;
       const spring = pinSpring(node.position, node.pinned);

@@ -16,8 +16,8 @@ const ZOOM_LEVELS = {
 
 const TWEAK_DEFAULTS = {
   // Gestures
-  friction:             { value: 0.97,  min: 0.80, max: 0.99,  step: 0.01, label: 'Momentum friction',           tweakable: true },
-  minVelocity:          { value: 0.5,   min: 0.1,  max: 3.0,   step: 0.1,  label: 'Min velocity (px/ms)',        tweakable: true },
+  friction:             { value: 0.985, min: 0.80, max: 0.99,  step: 0.005, label: 'Momentum friction',           tweakable: true },
+  minVelocity:          { value: 0.1,   min: 0.05, max: 3.0,   step: 0.05, label: 'Min velocity (px/ms)',        tweakable: true },
   zoneBottom:           { value: 0.15,  min: 0.05, max: 0.40,  step: 0.01, label: 'Zoom zone bottom %',          tweakable: true },
   zoneWidth:            { value: 0.30,  min: 0.10, max: 0.80,  step: 0.01, label: 'Zoom zone width %',           tweakable: true },
   // Physics
@@ -68,10 +68,10 @@ export class FocusDemo extends Component {
     this._cloneCounters = new Map();
     this._groupCounter = 0;
     this._tweaks = defaultTweakValues();
-    this._momentum = { vx: 0, vy: 0, rafId: null, gen: 0 };
-    this._velBuffer = []; // ring buffer: [{dx, dy, dt}] last 3 frames
-    this._momentumPanX = null; // mutable live pan during momentum (null = not active)
-    this._momentumPanY = null;
+    this._momentum = { vx: 0, vy: 0, running: false, lastTs: 0 };
+    this._velBuffer = []; // time-window buffer: [{dx, dy, dt, t}] last 100ms
+    this._panX = 0; // always-live pan position — render always reads this, never falls back to state
+    this._panY = 0;
 
     this._fsm.onChange((from, to, nodeId) => {
       this._onStateChange(from, to, nodeId);
@@ -79,7 +79,7 @@ export class FocusDemo extends Component {
   }
 
   didMount() {
-    this._seedDemo();
+    this._loadTools();
     this._startSimulation();
     window.focusDemo = this;
 
@@ -93,7 +93,6 @@ export class FocusDemo extends Component {
 
   willUnmount() {
     if (this._rafId) cancelAnimationFrame(this._rafId);
-    if (this._momentum.rafId) cancelAnimationFrame(this._momentum.rafId);
     document.removeEventListener('keydown', this._boundKeyDown);
     window.focusDemo = null;
   }
@@ -104,7 +103,6 @@ export class FocusDemo extends Component {
   }
 
   _startMomentum() {
-    if (this._momentum.rafId) cancelAnimationFrame(this._momentum.rafId);
     if (this._velBuffer.length === 0) return;
 
     // Total displacement / total time = stable average velocity (px/ms)
@@ -117,43 +115,14 @@ export class FocusDemo extends Component {
     }
     this._velBuffer = [];
 
-    const vxMs = totalDt > 0 ? sumDx / totalDt : 0;
-    const vyMs = totalDt > 0 ? sumDy / totalDt : 0;
-    if (Math.hypot(vxMs, vyMs) < this._tweaks.minVelocity) return;
+    const vx = totalDt > 0 ? sumDx / totalDt : 0;
+    const vy = totalDt > 0 ? sumDy / totalDt : 0;
+    if (Math.hypot(vx, vy) < this._tweaks.minVelocity) return;
 
-    this._momentum.vx = vxMs;
-    this._momentum.vy = vyMs;
-    const gen = ++this._momentum.gen;
-
-    // Seed live pan from current state — these mutable vars are read by render()
-    // instead of state.viewport so no setState is needed during the tick loop.
-    this._momentumPanX = this.state.viewport.panX;
-    this._momentumPanY = this.state.viewport.panY;
-
-    let lastTs = performance.now();
-    const tick = (ts) => {
-      if (this._momentum.gen !== gen) return; // killed externally
-      const elapsed = Math.min(ts - lastTs, 64);
-      lastTs = ts;
-      const decay = Math.pow(this._tweaks.friction, elapsed / 16.67);
-      this._momentum.vx *= decay;
-      this._momentum.vy *= decay;
-      if (Math.hypot(this._momentum.vx, this._momentum.vy) < 0.01) {
-        // Natural stop: sync into state. Keep _momentumPanX/Y non-null until next pan
-        // so render holds the stopped position while the async setState is pending.
-        this.setState({
-          viewport: { ...this.state.viewport, panX: this._momentumPanX, panY: this._momentumPanY },
-        });
-        this._momentum.rafId = null;
-        return;
-      }
-      // Update mutable vars — the physics loop's setState re-renders every frame,
-      // so render() will pick these up without us needing to call setState here.
-      this._momentumPanX += this._momentum.vx * elapsed;
-      this._momentumPanY += this._momentum.vy * elapsed;
-      this._momentum.rafId = requestAnimationFrame(tick);
-    };
-    this._momentum.rafId = requestAnimationFrame(tick);
+    this._momentum.vx = vx;
+    this._momentum.vy = vy;
+    this._momentum.lastTs = performance.now();
+    this._momentum.running = true;
   }
 
   _isInZoomZone(x, y) {
@@ -180,9 +149,6 @@ export class FocusDemo extends Component {
   }
 
   _onStateChange(from, to, nodeId) {
-    // Any FSM transition that changes the viewport overrides momentum position
-    this._momentumPanX = null;
-    this._momentumPanY = null;
     const update = { fsmState: to, focusedNodeId: nodeId, activatedGlowId: null };
 
     // Compute transition direction
@@ -223,6 +189,10 @@ export class FocusDemo extends Component {
       }
     }
 
+    if (to === STATES.NODE_MODE && nodeId) {
+      this._loadToolDetail(nodeId);
+    }
+
     if (to === STATES.CONNECTION_MODE) {
       const pos = this.state.positions.get(nodeId);
       if (pos) {
@@ -235,6 +205,29 @@ export class FocusDemo extends Component {
         };
       }
       update.connectionPickerNodeId = null;
+    }
+
+    // Kill any running momentum and sync _panX/Y to new viewport (always-live)
+    if (this._momentum.running) {
+      this._momentum.running = false;
+      this._momentum.vx = 0;
+      this._momentum.vy = 0;
+    }
+    if (update.viewport) {
+      this._panX = update.viewport.panX;
+      this._panY = update.viewport.panY;
+      // Apply transition class only for FSM-driven viewport changes (zoom/pan-to-node),
+      // not during finger pan or momentum where every frame must be instant.
+      if (this._rootEl) {
+        const viewport = this._rootEl.querySelector('.fd-viewport');
+        if (viewport) {
+          viewport.classList.add('fd-viewport--animating');
+          clearTimeout(this._viewportTransitionTimeout);
+          this._viewportTransitionTimeout = setTimeout(() => {
+            viewport.classList.remove('fd-viewport--animating');
+          }, 320);
+        }
+      }
     }
 
     this.setState(update);
@@ -286,7 +279,7 @@ export class FocusDemo extends Component {
   _onMouseDown(e) {
     if (e.button !== 0) return;
     if (this.state.fsmState === STATES.NODE_MODE) return;
-    this._panStart = { x: e.clientX - this.state.viewport.panX, y: e.clientY - this.state.viewport.panY };
+    this._panStart = { x: e.clientX - this._panX, y: e.clientY - this._panY };
     const startX = e.clientX;
     const startY = e.clientY;
     // Long-press detection (desktop)
@@ -310,11 +303,15 @@ export class FocusDemo extends Component {
           this._longPressTimeout = null;
         }
       }
+      const mousePanX = ev.clientX - this._panStart.x;
+      const mousePanY = ev.clientY - this._panStart.y;
+      this._panX = mousePanX;
+      this._panY = mousePanY;
       this.setState({
         viewport: {
           ...this.state.viewport,
-          panX: ev.clientX - this._panStart.x,
-          panY: ev.clientY - this._panStart.y,
+          panX: mousePanX,
+          panY: mousePanY,
         },
       });
     };
@@ -331,27 +328,14 @@ export class FocusDemo extends Component {
   }
 
   _onTouchStart(e) {
-    if (this._momentum.rafId) {
-      this._momentum.gen++; // invalidate tick closure
-      cancelAnimationFrame(this._momentum.rafId);
-      this._momentum.rafId = null;
+    if (this._momentum.running) {
+      this._momentum.running = false;
       this._momentum.vx = 0;
       this._momentum.vy = 0;
       this._velBuffer = [];
-      this._momentumKilled = true;
-      // Sync stopped position into state. Keep _momentumPanX/Y non-null until the next
-      // pan gesture — that way render keeps showing the stopped position even while the
-      // async setState is still pending (avoids snap back to stale state.viewport).
-      if (this._momentumPanX !== null) {
-        this.setState({
-          viewport: { ...this.state.viewport, panX: this._momentumPanX, panY: this._momentumPanY },
-        });
-        // Do NOT clear _momentumPanX here — cleared in the next pan's touchstart
-      }
       e.preventDefault();
-      return; // consume the touch — do nothing else
+      return;
     }
-    this._momentumKilled = false;
     if (e.touches.length === 1) {
       const t = e.touches[0];
       this._gestureStart = { x: t.clientX, y: t.clientY, time: performance.now(), target: e.target };
@@ -367,13 +351,8 @@ export class FocusDemo extends Component {
       }
 
       e.preventDefault();
-      // Set up pan tracking. If momentum just ended and state hasn't caught up yet,
-      // use the live momentum position as the base so pan starts from the right place.
-      const basePanX = this._momentumPanX !== null ? this._momentumPanX : this.state.viewport.panX;
-      const basePanY = this._momentumPanY !== null ? this._momentumPanY : this.state.viewport.panY;
-      this._momentumPanX = null;
-      this._momentumPanY = null;
-      this._panStart = { x: t.clientX - basePanX, y: t.clientY - basePanY };
+      // _panX/Y are always current — no fallback needed.
+      this._panStart = { x: t.clientX - this._panX, y: t.clientY - this._panY };
       // Long-press detection for multi-select
       if (this.state.fsmState === STATES.CANVAS_Z1 || this.state.fsmState === STATES.CANVAS_Z2) {
         const target = e.target;
@@ -398,8 +377,8 @@ export class FocusDemo extends Component {
         scale: this.state.viewport.scale,
         midX: (a.clientX + b.clientX) / 2,
         midY: (a.clientY + b.clientY) / 2,
-        panX: this.state.viewport.panX,
-        panY: this.state.viewport.panY,
+        panX: this._panX,
+        panY: this._panY,
       };
     }
   }
@@ -427,20 +406,26 @@ export class FocusDemo extends Component {
       // Track velocity for momentum
       const newPanX = t.clientX - this._panStart.x;
       const newPanY = t.clientY - this._panStart.y;
-      const prevVp = this.state.viewport;
-      const dx = newPanX - prevVp.panX;
-      const dy = newPanY - prevVp.panY;
+      const dx = newPanX - this._panX; // delta from always-live position (not stale state)
+      const dy = newPanY - this._panY;
       const dt = now - (this._lastMoveTime || now);
       this._lastMoveTime = now;
 
+      this._panX = newPanX;
+      this._panY = newPanY;
+
       if (dt > 0) {
-        this._velBuffer.push({ dx, dy, dt });
-        if (this._velBuffer.length > 3) this._velBuffer.shift();
+        this._velBuffer.push({ dx, dy, dt, t: now });
+        // Prune samples older than 100ms so we capture the fast-phase, not finger deceleration
+        const cutoff = now - 100;
+        while (this._velBuffer.length > 1 && this._velBuffer[0].t < cutoff) {
+          this._velBuffer.shift();
+        }
       }
 
-      this.setState({
-        viewport: { ...this.state.viewport, panX: newPanX, panY: newPanY },
-      });
+      // Trigger a render so the display tracks the finger without waiting for the next rAF tick.
+      // Render reads _panX directly, so no conflict with the physics loop's setState.
+      this.setState({});
     } else if (e.touches.length === 2 && this._pinchStart) {
       e.preventDefault();
       const [a, b] = [e.touches[0], e.touches[1]];
@@ -448,10 +433,14 @@ export class FocusDemo extends Component {
       const ratio = dist / this._pinchStart.dist;
       const newScale = Math.max(0.15, Math.min(4.0, this._pinchStart.scale * ratio));
       const scaleRatio = newScale / this._pinchStart.scale;
+      const pinchPanX = this._pinchStart.midX - (this._pinchStart.midX - this._pinchStart.panX) * scaleRatio;
+      const pinchPanY = this._pinchStart.midY - (this._pinchStart.midY - this._pinchStart.panY) * scaleRatio;
+      this._panX = pinchPanX;
+      this._panY = pinchPanY;
       this.setState({
         viewport: {
-          panX: this._pinchStart.midX - (this._pinchStart.midX - this._pinchStart.panX) * scaleRatio,
-          panY: this._pinchStart.midY - (this._pinchStart.midY - this._pinchStart.panY) * scaleRatio,
+          panX: pinchPanX,
+          panY: pinchPanY,
           scale: newScale,
         },
       });
@@ -589,49 +578,107 @@ export class FocusDemo extends Component {
     }
   }
 
+  async _loadTools() {
+    try {
+      const res = await fetch('/api/v1/tools');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const tools = await res.json();
+
+      // Group tools by service for clustered initial layout
+      const byService = {};
+      for (const tool of tools) {
+        const svc = tool.service || 'other';
+        if (!byService[svc]) byService[svc] = [];
+        byService[svc].push(tool);
+      }
+
+      const nodeMap = new Map();
+      const COL_GAP = 400;
+      const ROW_GAP = 220;
+      let col = 0;
+
+      for (const [service, serviceTools] of Object.entries(byService)) {
+        const colHeight = serviceTools.length * ROW_GAP;
+        serviceTools.forEach((tool, row) => {
+          const x = col * COL_GAP;
+          const y = row * ROW_GAP - colHeight / 2;
+          this._engine.addNode(tool.toolId, createPosition(x, y));
+          this._engine.setGroup(tool.toolId, service);
+          nodeMap.set(tool.toolId, {
+            id: tool.toolId,
+            label: tool.displayName,
+            type: tool.service || null,
+            group: service,
+            toolData: tool,
+          });
+        });
+        col++;
+      }
+
+      // Pre-built demo spell: chatgpt → dalleiii → joycaption, dalleiii → ltx-video
+      const demoConnections = [];
+      const has = (id) => nodeMap.has(id);
+      if (has('chatgpt-free') && has('dall-e-3-image')) {
+        this._engine.addConnection('dc1', 'chatgpt-free', 'dall-e-3-image');
+        demoConnections.push({ id: 'dc1', from: 'chatgpt-free', to: 'dall-e-3-image', fromOutput: 'response', toInput: 'prompt', dataType: 'text' });
+      }
+      if (has('dall-e-3-image') && has('joycaption')) {
+        this._engine.addConnection('dc2', 'dall-e-3-image', 'joycaption');
+        demoConnections.push({ id: 'dc2', from: 'dall-e-3-image', to: 'joycaption', fromOutput: 'image', toInput: 'imageUrl', dataType: 'image' });
+      }
+      if (has('dall-e-3-image') && has('ltx-video')) {
+        this._engine.addConnection('dc3', 'dall-e-3-image', 'ltx-video');
+        demoConnections.push({ id: 'dc3', from: 'dall-e-3-image', to: 'ltx-video', fromOutput: 'image', toInput: 'imageUrl', dataType: 'image' });
+      }
+
+      this.setState({ nodes: nodeMap, connections: demoConnections });
+    } catch (err) {
+      console.error('[FocusDemo] Failed to load tools, falling back to seed:', err);
+      this._seedDemo();
+    }
+  }
+
+  async _loadToolDetail(toolId) {
+    const node = this.state.nodes.get(toolId);
+    if (!node || node.toolData?.inputSchema) return; // already have full detail
+    try {
+      const res = await fetch(`/api/v1/tools/registry/${toolId}`);
+      if (!res.ok) return;
+      const full = await res.json();
+      // Pre-populate paramValues from schema defaults
+      const paramValues = {};
+      for (const [key, field] of Object.entries(full.inputSchema || {})) {
+        paramValues[key] = field.default ?? '';
+      }
+      const nodes = new Map(this.state.nodes);
+      nodes.set(toolId, { ...nodes.get(toolId), toolData: full, paramValues });
+      this.setState({ nodes });
+    } catch (err) {
+      console.error('[FocusDemo] Failed to load tool detail:', err);
+    }
+  }
+
   _seedDemo() {
     const seed = [
-      // Spell 1: Portrait Generator
-      { id: 'chatgpt',    label: 'ChatGPT',      type: 'text-to-text',  group: 'portrait-gen', x: 0,    y: 0,
-        params: { prompt: 'A cinematic portrait of a cyberpunk woman...', instructions: 'You refine image prompts for maximum detail', temperature: 0.7 } },
-      { id: 'flux-gen',   label: 'Flux Gen',      type: 'text-to-image', group: 'portrait-gen', x: 300,  y: 0,
-        params: { width: 1024, height: 1024, steps: 4, baseModel: 'flux-schnell' } },
-      { id: 'joycaption', label: 'JoyCaption',    type: 'image-to-text', group: 'portrait-gen', x: 600,  y: 0 },
-      { id: 'upscaler',   label: 'Upscaler 4\u00D7', type: 'img2img',   group: 'portrait-gen', x: 600,  y: 200 },
-
-      // Spell 2: Video from Still
-      { id: 'static-img', label: 'Static Image',  type: 'upload',        group: 'vid-from-still', x: 100,  y: -300 },
-      { id: 'ltx-video',  label: 'LTX Video',     type: 'video',         group: 'vid-from-still', x: 400,  y: -300,
-        params: { frames: 97, fps: 24, width: 768, height: 512 } },
-
-      // Loose experimentation nodes
-      { id: 'dalle3',     label: 'DALL\u00B7E 3',  type: 'text-to-image', x: -200, y: 300 },
-      { id: 'qwen',       label: 'Qwen Layered',   type: 'text-to-text',  x: -100, y: 450 },
-    ];
-
-    const connections = [
-      // Portrait Generator pipeline
-      { id: 'c1', from: 'chatgpt',    to: 'flux-gen',   fromOutput: 'response',  toInput: 'prompt',   dataType: 'text' },
-      { id: 'c2', from: 'flux-gen',   to: 'joycaption', fromOutput: 'image',     toInput: 'imageUrl', dataType: 'image' },
-      { id: 'c3', from: 'flux-gen',   to: 'upscaler',   fromOutput: 'image',     toInput: 'imageUrl', dataType: 'image' },
-      // Video from Still pipeline
-      { id: 'c4', from: 'static-img', to: 'ltx-video',  fromOutput: 'imageUrl',  toInput: 'imageUrl', dataType: 'image' },
+      { id: 'chatgpt',    label: 'ChatGPT',         type: 'text-to-text',  group: 'openai',    x: 0,    y: 0 },
+      { id: 'flux-gen',   label: 'Flux General',     type: 'text-to-image', group: 'comfyui',   x: 400,  y: 0 },
+      { id: 'joycaption', label: 'JoyCaption',       type: 'image-to-text', group: 'comfyui',   x: 400,  y: 220 },
+      { id: 'upscaler',   label: 'Upscaler 4\u00D7', type: 'img2img',       group: 'comfyui',   x: 400,  y: 440 },
+      { id: 'ltx-video',  label: 'LTX Video',        type: 'video',         group: 'comfyui',   x: 400,  y: 660 },
+      { id: 'dalle3',     label: 'DALL\u00B7E 3',    type: 'text-to-image', group: 'openai',    x: 0,    y: 220 },
+      { id: 'vidu',       label: 'Vidu',             type: 'video',         group: 'vidu',      x: 800,  y: 0 },
     ];
 
     const nodeMap = new Map();
     for (const n of seed) {
       this._engine.addNode(n.id, createPosition(n.x, n.y));
       if (n.group) this._engine.setGroup(n.id, n.group);
-      nodeMap.set(n.id, { id: n.id, label: n.label, type: n.type || null, group: n.group || null, params: n.params || null });
-    }
-
-    for (const c of connections) {
-      this._engine.addConnection(c.id, c.from, c.to);
+      nodeMap.set(n.id, { id: n.id, label: n.label, type: n.type || null, group: n.group || null, toolData: null });
     }
 
     this.setState({
       nodes: nodeMap,
-      connections,
+      connections: [],
     });
   }
 
@@ -642,14 +689,35 @@ export class FocusDemo extends Component {
       const dt = Math.min(now - lastTime, 32);
       lastTime = now;
 
+      // 1. Physics step
       const t0 = performance.now();
       const positions = this._engine.step(dt, this._tweaks);
       const stepMs = performance.now() - t0;
-
       this._perfSamples.push(stepMs);
       if (this._perfSamples.length > 120) this._perfSamples.shift();
 
-      this.setState({ positions });
+      // 2. Momentum step
+      if (this._momentum.running) {
+        const elapsed = Math.min(now - this._momentum.lastTs, 64);
+        this._momentum.lastTs = now;
+        const decay = Math.pow(this._tweaks.friction, elapsed / 16.67);
+        this._momentum.vx *= decay;
+        this._momentum.vy *= decay;
+        if (Math.hypot(this._momentum.vx, this._momentum.vy) < 0.01) {
+          this._momentum.running = false;
+          this._momentum.vx = 0;
+          this._momentum.vy = 0;
+        } else {
+          this._panX += this._momentum.vx * elapsed;
+          this._panY += this._momentum.vy * elapsed;
+        }
+      }
+
+      // 3. ONE setState per frame — no races
+      this.setState({
+        positions,
+        viewport: { ...this.state.viewport, panX: this._panX, panY: this._panY },
+      });
       this._rafId = requestAnimationFrame(tick);
     };
 
@@ -962,6 +1030,41 @@ export class FocusDemo extends Component {
     this._fsm.enterConnectionMode(sourceNodeId);
   }
 
+  _renderParamInput(nodeId, key, field) {
+    const val = this.state.nodes.get(nodeId)?.paramValues?.[key] ?? '';
+    const onchange = (e) => {
+      const nodes = new Map(this.state.nodes);
+      const n = nodes.get(nodeId);
+      nodes.set(nodeId, { ...n, paramValues: { ...(n.paramValues || {}), [key]: e.target.value } });
+      this.setState({ nodes });
+    };
+    if (field.type === 'image' || field.type === 'video' || field.type === 'audio') {
+      return h('span', { className: 'fd-param-type' }, field.type);
+    }
+    if (field.enum) {
+      return h('select', { className: 'fd-param-select', value: val, onchange },
+        ...field.enum.map(opt => h('option', { value: opt, selected: opt === val }, opt)),
+      );
+    }
+    if (field.type === 'boolean') {
+      return h('input', { className: 'fd-param-checkbox', type: 'checkbox', checked: !!val,
+        onchange: (e) => {
+          const nodes = new Map(this.state.nodes);
+          const n = nodes.get(nodeId);
+          nodes.set(nodeId, { ...n, paramValues: { ...(n.paramValues || {}), [key]: e.target.checked } });
+          this.setState({ nodes });
+        },
+      });
+    }
+    return h('input', {
+      className: 'fd-param-input',
+      type: field.type === 'number' ? 'number' : 'text',
+      value: val,
+      placeholder: field.description || key,
+      onchange,
+    });
+  }
+
   _renderNodeMode() {
     const { focusedNodeId, nodes } = this.state;
     const node = nodes.get(focusedNodeId);
@@ -985,85 +1088,88 @@ export class FocusDemo extends Component {
       }, 'Back to Canvas'),
 
       h('div', { className: 'fd-nodemode-cards' },
-        // Card 1: Header with anchors
+        // Card 1: Tool identity + pricing
         h('div', { className: 'fd-card fd-card-header' },
-          h('div', {
-            className: 'fd-anchor fd-anchor-input fd-anchor-nodemode',
-            onclick: (e) => e.stopPropagation(),
-          }, h('span', { className: 'fd-anchor-icon' })),
-          h('div', {
-            className: 'fd-anchor fd-anchor-output fd-anchor-nodemode',
-            onclick: (e) => {
-              e.stopPropagation();
-              this._startConnection(focusedNodeId);
-            },
-          }, h('span', { className: 'fd-anchor-icon' })),
           h('div', { className: 'fd-card-title' }, node.label),
           h('div', { className: 'fd-card-meta' },
-            h('span', null, node.id),
-            node.group ? h('span', { className: 'fd-group-tag', style: { background: this._getGroupColor(node.group) } }, node.group) : null,
+            node.toolData?.deliveryMode ? h('span', { className: `fd-delivery-badge fd-delivery-${node.toolData.deliveryMode}` }, node.toolData.deliveryMode) : null,
+            node.toolData?.metadata?.provider
+              ? h('span', { className: 'fd-provider-tag' }, node.toolData.metadata.provider)
+              : node.type ? h('span', { className: 'fd-provider-tag' }, node.type) : null,
             isPinned ? h('span', { className: 'fd-pin-tag' }, 'pinned') : null,
           ),
-          node.type ? h('div', { className: 'fd-card-type-badge' }, node.type) : null,
-        ),
-
-        // Card 2: Connections
-        (inputConns.length || outputConns.length) ? h('div', { className: 'fd-card' },
-          h('div', { className: 'fd-card-section' }, 'Connections'),
-          inputConns.length ? h('div', { className: 'fd-card-row' },
-            h('span', { className: 'fd-card-label' }, 'Inputs'),
-            ...inputConns.map(c => {
-              const fromNode = nodes.get(c.from);
-              const label = fromNode ? fromNode.label : c.from;
-              const detail = c.toInput ? `\u2192 ${c.toInput}` : '';
-              const typeTag = c.dataType || '';
-              return h('div', { className: 'fd-card-conn' },
-                h('button', {
-                  className: 'fd-card-link',
-                  onclick: (e) => { e.stopPropagation(); this._fsm.navigateToNode(c.from); },
-                }, label),
-                detail ? h('span', { className: 'fd-card-conn-param' }, detail) : null,
-                typeTag ? h('span', { className: 'fd-card-conn-type' }, typeTag) : null,
-              );
-            }),
-          ) : null,
-          outputConns.length ? h('div', { className: 'fd-card-row' },
-            h('span', { className: 'fd-card-label' }, 'Outputs'),
-            ...outputConns.map(c => {
-              const toNode = nodes.get(c.to);
-              const label = toNode ? toNode.label : c.to;
-              const detail = c.fromOutput ? `${c.fromOutput} \u2192` : '';
-              const typeTag = c.dataType || '';
-              return h('div', { className: 'fd-card-conn' },
-                h('button', {
-                  className: 'fd-card-link',
-                  onclick: (e) => { e.stopPropagation(); this._fsm.navigateToNode(c.to); },
-                }, label),
-                detail ? h('span', { className: 'fd-card-conn-param' }, detail) : null,
-                typeTag ? h('span', { className: 'fd-card-conn-type' }, typeTag) : null,
-              );
-            }),
-          ) : null,
-        ) : null,
-
-        // Card 3: Parameters (only if node has params)
-        node.params ? h('div', { className: 'fd-card' },
-          h('div', { className: 'fd-card-section' }, 'Parameters'),
-          ...Object.entries(node.params).map(([key, val]) =>
-            h('div', { className: 'fd-card-param' },
-              h('span', { className: 'fd-card-param-key' }, key),
-              h('span', { className: 'fd-card-param-val' }, String(val)),
+          node.toolData?.description ? h('div', { className: 'fd-card-description' }, node.toolData.description) : null,
+          h('div', { className: 'fd-card-pricing' },
+            h('div', { className: 'fd-pricing-row' },
+              h('span', { className: 'fd-pricing-label' }, 'per call'),
+              h('span', { className: 'fd-pricing-val' },
+                node.toolData?.costingModel?.staticCost?.amount > 0
+                  ? `$${node.toolData.costingModel.staticCost.amount.toFixed(4)}`
+                  : node.toolData?.metadata?.avgHistoricalDurationMs
+                    ? `~${(node.toolData.metadata.avgHistoricalDurationMs / 1000).toFixed(1)}s`
+                    : '—'
+              ),
+            ),
+            h('div', { className: 'fd-pricing-row' },
+              h('span', { className: 'fd-pricing-label' }, 'spent'),
+              h('span', { className: 'fd-pricing-val' }, '—'),
             ),
           ),
-        ) : null,
-
-        // Card 4: Position
-        h('div', { className: 'fd-card' },
-          h('div', { className: 'fd-card-section' }, 'Position'),
-          engineNode ? h('div', { className: 'fd-card-mono' },
-            `x: ${engineNode.position.x.toFixed(1)}  y: ${engineNode.position.y.toFixed(1)}  z: ${engineNode.position.z}`,
-          ) : null,
         ),
+
+        // Card 2: Parameters — inputs left, outputs right
+        node.toolData ? h('div', { className: 'fd-card fd-card-params' },
+          node.toolData.inputSchema ? h('div', { className: 'fd-params-col fd-params-inputs' },
+            h('div', { className: 'fd-params-col-label' }, 'Inputs'),
+            ...Object.entries(node.toolData.inputSchema).map(([key, field]) => {
+              const connectedFrom = this.state.connections.find(c => c.to === focusedNodeId && c.toInput === key);
+              return h('div', { className: 'fd-param-row fd-param-row-input' },
+                h('button', {
+                  className: `fd-param-anchor${connectedFrom ? ' fd-param-anchor-connected' : ''}`,
+                  title: connectedFrom ? `Wired from ${nodes.get(connectedFrom.from)?.label || connectedFrom.from}` : 'Wire input',
+                  onclick: (e) => { e.stopPropagation(); this._startConnection(focusedNodeId); },
+                }, h('span', { className: 'fd-anchor-icon' })),
+                h('div', { className: 'fd-param-body' },
+                  h('label', { className: 'fd-param-label' },
+                    field.name || key,
+                    field.required ? h('span', { className: 'fd-param-required' }, '*') : null,
+                  ),
+                  connectedFrom
+                    ? h('div', { className: 'fd-param-wired' },
+                        h('button', {
+                          className: 'fd-card-link',
+                          onclick: (e) => { e.stopPropagation(); this._fsm.navigateToNode(connectedFrom.from); },
+                        }, `\u2190 ${nodes.get(connectedFrom.from)?.label || connectedFrom.from}`),
+                      )
+                    : this._renderParamInput(focusedNodeId, key, field),
+                ),
+              );
+            }),
+          ) : h('div', { className: 'fd-params-loading' }, 'Loading…'),
+          node.toolData.outputSchema ? h('div', { className: 'fd-params-col fd-params-outputs' },
+            h('div', { className: 'fd-params-col-label' }, 'Outputs'),
+            ...Object.entries(node.toolData.outputSchema).map(([key, field]) => {
+              const connectedTo = this.state.connections.filter(c => c.from === focusedNodeId && c.fromOutput === key);
+              return h('div', { className: 'fd-param-row fd-param-row-output' },
+                h('div', { className: 'fd-param-body' },
+                  h('label', { className: 'fd-param-label' }, field.name || key),
+                  h('span', { className: 'fd-param-type' }, field.type),
+                  connectedTo.length ? h('div', { className: 'fd-param-wired-list' },
+                    ...connectedTo.map(c => h('button', {
+                      className: 'fd-card-link',
+                      onclick: (e) => { e.stopPropagation(); this._fsm.navigateToNode(c.to); },
+                    }, `\u2192 ${nodes.get(c.to)?.label || c.to}`))
+                  ) : null,
+                ),
+                h('button', {
+                  className: `fd-param-anchor${connectedTo.length ? ' fd-param-anchor-connected' : ''}`,
+                  title: 'Wire output',
+                  onclick: (e) => { e.stopPropagation(); this._startConnection(focusedNodeId); },
+                }, h('span', { className: 'fd-anchor-icon' })),
+              );
+            }),
+          ) : null,
+        ) : null,
 
         // Card 4: Actions
         h('div', { className: 'fd-card' },
@@ -1283,10 +1389,7 @@ export class FocusDemo extends Component {
 
   render() {
     const { viewport, positions, nodes, connections, fsmState, focusedNodeId } = this.state;
-    // During momentum, read from mutable live vars (no setState in tick loop = no async race)
-    const panX = this._momentumPanX !== null ? this._momentumPanX : viewport.panX;
-    const panY = this._momentumPanY !== null ? this._momentumPanY : viewport.panY;
-    const transform = `translate(${panX}px, ${panY}px) scale(${viewport.scale})`;
+    const transform = `translate(${this._panX}px, ${this._panY}px) scale(${viewport.scale})`;
 
     const energy = this._engine.getEnergy();
     const avgMs = this.getAvgStepMs();

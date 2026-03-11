@@ -43,8 +43,8 @@ class CreditService {
    * @param {AdminActivityService} services.adminActivityService - Service for admin activity monitoring.
    * @param {SpellPaymentService} services.spellPaymentService - Service for spell payment tracking.
    * @param {object} config - Configuration object.
-   * @param {string} config.foundationAddress - The address of the on-chain Foundation contract.
-   * @param {Array} config.foundationAbi - The ABI of the Foundation contract.
+   * @param {string} config.contractAddress - The address of the on-chain CreditVault contract.
+   * @param {Array} config.contractAbi - The ABI of the CreditVault contract.
    * @param {object} logger - A logger instance.
    */
   constructor(services, config, logger) {
@@ -84,7 +84,7 @@ class CreditService {
     this.spellPaymentService = services.spellPaymentService || null;
     this.spellsDb = spellsDb || null;
     
-    const { foundationAddress, foundationAbi, disableWebhookActions: disableWebhookActionsConfig } = config;
+    const { contractAddress, contractAbi, disableWebhookActions: disableWebhookActionsConfig } = config;
     const disableWebhookActionsEnv = process.env.DISABLE_CREDIT_WEBHOOK_ACTIONS === '1';
     this.disableWebhookActions = (typeof disableWebhookActionsConfig === 'boolean')
       ? disableWebhookActionsConfig
@@ -92,15 +92,15 @@ class CreditService {
     if (this.disableWebhookActions) {
       this.logger.debug('[CreditService] Webhook-dependent credit actions are DISABLED for this environment.');
     }
-    if (!foundationAddress || !foundationAbi) {
+    if (!contractAddress || !contractAbi) {
       throw new Error('CreditService: Missing contract address or ABI in config.');
     }
-    this.contractConfig = { address: foundationAddress, abi: foundationAbi };
+    this.contractConfig = { address: contractAddress, abi: contractAbi };
 
     // Initialize extracted services
     this._initializeServices();
 
-    this.logger.debug(`[CreditService] Configured to use Foundation at address: ${this.contractConfig.address}`);
+    this.logger.debug(`[CreditService] Configured to use CreditVault at address: ${this.contractConfig.address}`);
     this.logger.debug('[CreditService] Initialized (refactored facade).');
   }
 

@@ -7,7 +7,7 @@
 
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { ethers } = require('ethers');
-const { FOUNDATION_ADDRESSES, getFoundationAddress, CHAIN_NAMES } = require('../../../core/services/alchemy/foundationConfig');
+const { CREDIT_VAULT_ADDRESSES, getCreditVaultAddress, CHAIN_NAMES } = require('../../../core/services/alchemy/foundationConfig');
 
 // Utility: resolve canonical internalApiClient for this module
 function getApiClient(dependencies) {
@@ -221,12 +221,12 @@ async function buildMagicLinkInstructions(masterAccountId, dependencies) {
         // Default to Ethereum Mainnet (1)
         let depositToAddress;
         try {
-            depositToAddress = getFoundationAddress('1');
+            depositToAddress = getCreditVaultAddress('1');
         } catch (_) {
             depositToAddress = 'N/A';
         }
-        
-        const chainsText = Object.keys(FOUNDATION_ADDRESSES)
+
+        const chainsText = Object.keys(CREDIT_VAULT_ADDRESSES)
             .map(id => CHAIN_NAMES[id] || `Chain ${id}`)
             .join(', ');
         
