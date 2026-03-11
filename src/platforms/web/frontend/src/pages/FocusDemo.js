@@ -824,16 +824,16 @@ export class FocusDemo extends Component {
           type: 'spell-steps',
           steps: [
             { type: 'text', text: 'A cinematic portrait, dramatic lighting, 85mm lens.' },
-            { type: 'image', url: 'https://picsum.photos/seed/spell-step2/400/400' },
             { type: 'text', text: 'Two subjects, sharp focus, dark studio background, professional headshot style.' },
+            { type: 'image', url: 'https://picsum.photos/seed/spell-final/400/600' },
           ],
         },
         outputVersions: [{
           type: 'spell-steps',
           steps: [
             { type: 'text', text: 'A cinematic portrait, dramatic lighting, 85mm lens.' },
-            { type: 'image', url: 'https://picsum.photos/seed/spell-step2/400/400' },
             { type: 'text', text: 'Two subjects, sharp focus, dark studio background, professional headshot style.' },
+            { type: 'image', url: 'https://picsum.photos/seed/spell-final/400/600' },
           ],
         }],
         currentVersionIndex: 0,
