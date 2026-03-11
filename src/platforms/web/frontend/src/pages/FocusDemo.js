@@ -411,13 +411,21 @@ export class FocusDemo extends Component {
         return;
       }
 
-      // Don't preventDefault when an overlay is open — allow native button taps
+      // Don't preventDefault when an overlay is open — allow native button taps, don't process as canvas gesture
       if (this.state.imageOverlay || this.state.textOverlayNodeId) {
+        this._gestureStart = null;
         return;
       }
 
-      // Don't preventDefault on tweaker UI — allow button clicks and sliders
+      // Don't preventDefault on tweaker UI — allow button clicks and sliders, don't process as canvas gesture
       if (e.target.closest && e.target.closest('.fd-tweaker')) {
+        this._gestureStart = null;
+        return;
+      }
+
+      // Don't preventDefault on FAB, ActionModal, or action bar — allow button taps, don't process as canvas gesture
+      if (e.target.closest && (e.target.closest('.fd-fab') || e.target.closest('.am-root') || e.target.closest('.fd-action-bar'))) {
+        this._gestureStart = null;
         return;
       }
 
@@ -529,6 +537,18 @@ export class FocusDemo extends Component {
     this._startMomentum();
 
     if (!this._gestureStart) return;
+
+    // If ActionModal is open and tap is outside it, close it
+    if (this.state.actionModalOpen) {
+      const touch0 = e.changedTouches[0];
+      const target = document.elementFromPoint(touch0.clientX, touch0.clientY);
+      if (!target?.closest('.am-root')) {
+        this.setState({ actionModalOpen: false });
+        this._gestureStart = null;
+        return;
+      }
+    }
+
     const touch = e.changedTouches[0];
     const dx = touch.clientX - this._gestureStart.x;
     const dy = touch.clientY - this._gestureStart.y;
@@ -1074,7 +1094,7 @@ export class FocusDemo extends Component {
 
   _renderActionBar() {
     const count = this._fsm.selectedNodeIds.size;
-    return h('div', { className: 'fd-action-bar' },
+    return h('div', { className: 'fd-action-bar', ontouchstart: (e) => e.stopPropagation() },
       h('span', { className: 'fd-action-bar-count' }, `${count} selected`),
       h('button', { className: 'fd-action-btn', onclick: () => this._batchGroup() }, 'Group'),
       h('button', { className: 'fd-action-btn', onclick: () => this._batchClone() }, 'Clone'),
@@ -2177,6 +2197,7 @@ export class FocusDemo extends Component {
       // + FAB
       h('button', {
         className: 'fd-fab',
+        ontouchstart: (e) => e.stopPropagation(),
         onclick: (e) => { e.stopPropagation(); this.setState({ actionModalOpen: true }); },
         title: 'Add node',
       }, '+'),

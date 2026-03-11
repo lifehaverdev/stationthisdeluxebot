@@ -1,8 +1,9 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const { ObjectId } = require('mongodb');
-const crypto = require('crypto'); // Needed for key generation
-const { PRIORITY } = require('../../core/services/db/utils/queue'); // Needed for findOne pre-check
+const crypto = require('crypto');
+const { PRIORITY } = require('../../core/services/db/utils/queue');
+const { generateApiKey } = require('../../core/services/apiKeyService');
 
 // This function initializes the routes for the User API Keys API
 module.exports = function userApiKeysApi(dependencies) {
@@ -65,10 +66,7 @@ module.exports = function userApiKeysApi(dependencies) {
 
     try {
       // 1. Generate API Key components
-      const apiKeySecret = crypto.randomBytes(24).toString('hex'); // 48 characters
-      const fullApiKey = `st_${apiKeySecret}`; // Prefix with st_
-      const keyPrefix = `st_${apiKeySecret.substring(0, 6)}`;
-      const keyHash = crypto.createHash('sha256').update(fullApiKey).digest('hex');
+      const { apiKey: fullApiKey, keyHash, keyPrefix } = generateApiKey();
       const now = new Date();
 
       const apiKeyDocumentForDb = {
