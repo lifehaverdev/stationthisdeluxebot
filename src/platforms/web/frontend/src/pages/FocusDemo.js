@@ -1088,11 +1088,10 @@ export class FocusDemo extends Component {
     };
     const connections = [...this.state.connections, newConn];
 
-    const sourceId = conn.sourceNodeId;
     this._fsm.clearConnection();
 
-    // Return to Z1 centered on source node
-    const pos = this.state.positions.get(sourceId);
+    // Return to Z1 centered on the target (connected-to) node
+    const pos = this.state.positions.get(targetNodeId);
     if (pos) {
       const cx = window.innerWidth / 2;
       const cy = window.innerHeight / 2;
@@ -1106,14 +1105,14 @@ export class FocusDemo extends Component {
       }
     }
 
-    // Force zoom state to Z1 focused on source
-    this._fsm.focusedNodeId = sourceId;
+    // Force zoom state to Z1 focused on target node
+    this._fsm.focusedNodeId = targetNodeId;
     this._fsm.state = STATES.CANVAS_Z1;
 
     this.setState({
       connections,
       fsmState: STATES.CANVAS_Z1,
-      focusedNodeId: sourceId,
+      focusedNodeId: targetNodeId,
       viewport: pos ? {
         scale: this._tweaks.scaleZ1,
         panX: this._panX,
