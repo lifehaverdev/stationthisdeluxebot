@@ -586,7 +586,13 @@ export class FocusDemo extends Component {
           }, 300);
         } else {
           // Tap on empty canvas
-          if (this.state.fsmState === STATES.CANVAS_Z1) {
+          if (this._fsm.isConnecting) {
+            if (this.state.fsmState === STATES.CANVAS_Z2) {
+              this._cancelConnection();
+            } else if (this.state.fsmState === STATES.CANVAS_Z1) {
+              this._fsm.zoomOut(); // back to Z2, keep connection active
+            }
+          } else if (this.state.fsmState === STATES.CANVAS_Z1) {
             this._fsm.zoomOut();
           }
         }
@@ -630,7 +636,7 @@ export class FocusDemo extends Component {
 
   async _loadTools() {
     try {
-      const res = await fetch('/api/v1/tools');
+      const res = await fetch('/api/v1/tools/registry');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const tools = await res.json();
 
