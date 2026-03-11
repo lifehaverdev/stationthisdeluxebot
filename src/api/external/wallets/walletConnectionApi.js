@@ -1,6 +1,7 @@
 const express = require('express');
 const { createLogger } = require('../../../utils/logger');
 const { ethers } = require('ethers');
+const { getCreditVaultAddress } = require('../../../core/services/alchemy/foundationConfig');
 
 const logger = createLogger('WalletConnectionApi');
 
@@ -32,7 +33,7 @@ function createWalletConnectionApiRouter(dependencies) {
         magicAmount: ethers.formatEther(magicAmountWei),
         tokenAddress,
         expiresAt,
-        depositToAddress: process.env.CREDIT_VAULT_CONTRACT_ADDRESS,
+        depositToAddress: getCreditVaultAddress('1'),
       });
     } catch (error) {
       logger.error('[WalletConnectionApi] /initiate failed:', error);
