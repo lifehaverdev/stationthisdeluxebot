@@ -1513,6 +1513,12 @@
 .fd-text-overlay-copy:hover {
   background: var(--accent-dim);
 }
+.fd-text-overlay-copy--done {
+  color: var(--accent);
+  border-color: var(--accent-border);
+  background: var(--accent-dim);
+  pointer-events: none;
+}
 
 .fd-text-overlay-close {
   background: none;
@@ -1535,6 +1541,53 @@
   white-space: pre-wrap;
   word-break: break-word;
   padding: 14px 16px;
+  margin: 0;
   overflow-y: auto;
   flex: 1;
+}
+
+/* ── Image overlay (lightbox) ────────────────────────── */
+
+.fd-image-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 800;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fd-image-overlay-img {
+  max-width: 92vw;
+  max-height: 92vh;
+  object-fit: contain;
+  display: block;
+}
+
+.fd-image-overlay-close {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 20px;
+  width: 36px;
+  height: 36px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+.fd-image-overlay-close:hover {
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+}
+
+/* Clickable images show pointer */
+.fd-node-result--image,
+.fd-result-img--clickable {
+  cursor: pointer;
 }

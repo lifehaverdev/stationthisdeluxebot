@@ -81,6 +81,8 @@ export class FocusDemo extends Component {
       nodeModeShowOptional: false,
       actionModalOpen: false,
       textOverlayNodeId: null,
+      textOverlayCopied: false,
+      imageOverlay: null, // { url, label }
     };
     this._engine = new PhysicsEngine();
     this._rafId = null;
@@ -1692,7 +1694,11 @@ export class FocusDemo extends Component {
     const { output } = node;
 
     if (output.type === 'image') {
-      return h('div', { className: 'fd-node-result fd-node-result--image' },
+      return h('div', {
+        className: 'fd-node-result fd-node-result--image',
+        onclick: (e) => { e.stopPropagation(); this.setState({ imageOverlay: { url: output.url, label: node.label } }); },
+        title: 'Click to expand',
+      },
         h('img', {
           src: output.url,
           className: 'fd-node-result-img',
@@ -1724,7 +1730,11 @@ export class FocusDemo extends Component {
       const steps = output.steps || [];
       const last = [...steps].reverse().find(s => s.type === 'image' || s.type === 'text');
       if (last?.type === 'image') {
-        return h('div', { className: 'fd-node-result fd-node-result--image' },
+        return h('div', {
+          className: 'fd-node-result fd-node-result--image',
+          onclick: (e) => { e.stopPropagation(); this.setState({ imageOverlay: { url: last.url, label: node.label } }); },
+          title: 'Click to expand',
+        },
           h('img', {
             src: last.url,
             className: 'fd-node-result-img',
@@ -1788,7 +1798,14 @@ export class FocusDemo extends Component {
     if (output.type === 'image') {
       return h('div', { className: 'fd-card fd-card--result' },
         h('div', { className: 'fd-card-section' }, 'Output'),
-        h('img', { src: output.url, className: 'fd-result-img', alt: '', draggable: false }),
+        h('img', {
+          src: output.url,
+          className: 'fd-result-img fd-result-img--clickable',
+          alt: '',
+          draggable: false,
+          onclick: (e) => { e.stopPropagation(); this.setState({ imageOverlay: { url: output.url, label: node.label } }); },
+          title: 'Click to expand',
+        }),
       );
     }
 
@@ -1817,7 +1834,14 @@ export class FocusDemo extends Component {
           h('div', { className: 'fd-result-spell-step', key: i },
             h('div', { className: 'fd-result-spell-step-label' }, `Step ${i + 1}`),
             step.type === 'image'
-              ? h('img', { src: step.url, className: 'fd-result-img', alt: '', draggable: false })
+              ? h('img', {
+                  src: step.url,
+                  className: 'fd-result-img fd-result-img--clickable',
+                  alt: '',
+                  draggable: false,
+                  onclick: (e) => { e.stopPropagation(); this.setState({ imageOverlay: { url: step.url, label: `${node.label} — Step ${i + 1}` } }); },
+                  title: 'Click to expand',
+                })
               : h('div', { className: 'fd-result-text' }, step.text),
           )
         ),
@@ -2036,6 +2060,23 @@ export class FocusDemo extends Component {
       fsmState === STATES.MULTI_SELECT ? this._renderActionBar() : null,
       // Node Mode overlay
       fsmState === STATES.NODE_MODE ? this._renderNodeMode() : null,
+      // Image overlay (lightbox)
+      this.state.imageOverlay ? h('div', {
+        className: 'fd-image-overlay',
+        onclick: () => this.setState({ imageOverlay: null }),
+      },
+        h('img', {
+          src: this.state.imageOverlay.url,
+          className: 'fd-image-overlay-img',
+          alt: this.state.imageOverlay.label || '',
+          draggable: false,
+          onclick: (e) => e.stopPropagation(),
+        }),
+        h('button', {
+          className: 'fd-image-overlay-close',
+          onclick: () => this.setState({ imageOverlay: null }),
+        }, '\u00d7'),
+      ) : null,
       // Text overlay
       (() => {
         const overlayNode = this.state.textOverlayNodeId && this.state.nodes.get(this.state.textOverlayNodeId);
@@ -2050,7 +2091,7 @@ export class FocusDemo extends Component {
         if (text === null) return null;
         return h('div', {
           className: 'fd-text-overlay',
-          onclick: () => this.setState({ textOverlayNodeId: null }),
+          onclick: () => this.setState({ textOverlayNodeId: null, textOverlayCopied: false }),
         },
           h('div', {
             className: 'fd-text-overlay-card',
@@ -2059,18 +2100,21 @@ export class FocusDemo extends Component {
             h('div', { className: 'fd-text-overlay-header' },
               h('span', { className: 'fd-card-section' }, overlayNode.label),
               h('button', {
-                className: 'fd-text-overlay-copy',
+                className: `fd-text-overlay-copy${this.state.textOverlayCopied ? ' fd-text-overlay-copy--done' : ''}`,
                 onclick: (e) => {
                   e.stopPropagation();
-                  navigator.clipboard?.writeText(text);
+                  navigator.clipboard?.writeText(text).catch(() => {});
+                  this.setState({ textOverlayCopied: true });
+                  clearTimeout(this._copyFeedbackTimeout);
+                  this._copyFeedbackTimeout = setTimeout(() => this.setState({ textOverlayCopied: false }), 1500);
                 },
-              }, 'Copy'),
+              }, this.state.textOverlayCopied ? 'Copied \u2713' : 'Copy'),
               h('button', {
                 className: 'fd-text-overlay-close',
-                onclick: () => this.setState({ textOverlayNodeId: null }),
+                onclick: () => this.setState({ textOverlayNodeId: null, textOverlayCopied: false }),
               }, '\u00d7'),
             ),
-            h('div', { className: 'fd-text-overlay-body' }, text),
+            h('pre', { className: 'fd-text-overlay-body' }, text),
           ),
         );
       })(),
