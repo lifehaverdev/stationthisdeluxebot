@@ -550,8 +550,7 @@ export class FocusDemo extends Component {
           this._startConnection(anchorNodeId, anchorPort, anchorDataType);
         } else if (anchorType === 'input' && anchorNodeId && this._fsm.isConnecting) {
           const conn = this._fsm.connection;
-          const typeMatch = !conn.sourceType || !anchorDataType || conn.sourceType === anchorDataType;
-          if (conn.sourceNodeId !== anchorNodeId && typeMatch) {
+          if (conn.sourceNodeId !== anchorNodeId) {
             this._completeConnection(anchorNodeId, anchorPort, anchorDataType);
           }
         }
@@ -1078,6 +1077,7 @@ export class FocusDemo extends Component {
 
     const connId = 'c' + Date.now();
     this._engine.addConnection(connId, conn.sourceNodeId, targetNodeId);
+    const typeMismatch = !!(conn.sourceType && targetType && conn.sourceType !== targetType);
     const newConn = {
       id: connId,
       from: conn.sourceNodeId,
@@ -1085,6 +1085,7 @@ export class FocusDemo extends Component {
       to: targetNodeId,
       toInput: targetPort,
       dataType: conn.sourceType,
+      ...(typeMismatch ? { typeMismatch: true } : {}),
     };
     const connections = [...this.state.connections, newConn];
 
@@ -1152,6 +1153,11 @@ export class FocusDemo extends Component {
   _cancelConnection() {
     this._fsm.clearConnection();
     this.setState({});
+  }
+
+  _disconnectConnection(connId) {
+    this._engine.removeConnection(connId);
+    this.setState({ connections: this.state.connections.filter(c => c.id !== connId) });
   }
 
   _renderParamInput(nodeId, key, field) {
@@ -1274,10 +1280,10 @@ export class FocusDemo extends Component {
                   ].filter(Boolean).join(' '),
                   title: connectedFrom
                     ? `Wired from ${nodes.get(connectedFrom.from)?.label || connectedFrom.from}`
-                    : isConnecting ? (typeMatch ? 'Connect here' : 'Type mismatch') : 'Wire input',
+                    : isConnecting ? (typeMatch ? 'Connect here' : 'Connect (type mismatch — may fail)') : 'Wire input',
                   onclick: (e) => {
                     e.stopPropagation();
-                    if (typeMatch) this._completeConnection(focusedNodeId, key, field.type);
+                    if (isIncomingTarget) this._completeConnection(focusedNodeId, key, field.type);
                   },
                 }, anchorIcon(normalizeType(field.type))),
                 h('div', { className: 'fd-param-body' },
@@ -1288,6 +1294,12 @@ export class FocusDemo extends Component {
                           className: 'fd-card-link',
                           onclick: (e) => { e.stopPropagation(); this._fsm.navigateToNode(connectedFrom.from); },
                         }, `\u2190 ${nodes.get(connectedFrom.from)?.label || connectedFrom.from}`),
+                        connectedFrom.typeMismatch ? h('span', { className: 'fd-param-mismatch', title: 'Type mismatch — connection may fail' }, '\u26a0') : null,
+                        h('button', {
+                          className: 'fd-param-disconnect',
+                          title: 'Disconnect',
+                          onclick: (e) => { e.stopPropagation(); this._disconnectConnection(connectedFrom.id); },
+                        }, '\u00d7'),
                       )
                     : this._renderParamInput(focusedNodeId, key, field),
                 ),
@@ -1317,10 +1329,18 @@ export class FocusDemo extends Component {
                   h('label', { className: 'fd-param-label' }, field.name || key),
                   h('span', { className: 'fd-param-type' }, field.type),
                   connectedTo.length ? h('div', { className: 'fd-param-wired-list' },
-                    ...connectedTo.map(c => h('button', {
-                      className: 'fd-card-link',
-                      onclick: (e) => { e.stopPropagation(); this._fsm.navigateToNode(c.to); },
-                    }, `\u2192 ${nodes.get(c.to)?.label || c.to}`))
+                    ...connectedTo.map(c => h('div', { key: c.id, className: 'fd-param-wired' },
+                      h('button', {
+                        className: 'fd-card-link',
+                        onclick: (e) => { e.stopPropagation(); this._fsm.navigateToNode(c.to); },
+                      }, `\u2192 ${nodes.get(c.to)?.label || c.to}`),
+                      c.typeMismatch ? h('span', { className: 'fd-param-mismatch', title: 'Type mismatch — connection may fail' }, '\u26a0') : null,
+                      h('button', {
+                        className: 'fd-param-disconnect',
+                        title: 'Disconnect',
+                        onclick: (e) => { e.stopPropagation(); this._disconnectConnection(c.id); },
+                      }, '\u00d7'),
+                    ))
                   ) : null,
                 ),
                 h('button', {
@@ -1578,7 +1598,7 @@ export class FocusDemo extends Component {
         style: { top: `${topPct}%`, transform: 'translate(0, -50%)', left: '-11px' },
         onclick: (e) => {
           e.stopPropagation();
-          if (isConnecting && isTarget && typeMatch) {
+          if (isConnecting && isTarget) {
             this._completeConnection(node.id, key, field.type);
           }
         },
@@ -1673,7 +1693,7 @@ export class FocusDemo extends Component {
               const isRelevant = !z1Visible || (z1Visible.has(c.from) && z1Visible.has(c.to));
               const offset = Math.max(50, Math.abs(to.x - from.x) * 0.4);
               const d = `M ${from.x + NODE_WIDTH} ${from.y + NODE_HEIGHT / 2} C ${from.x + NODE_WIDTH + offset} ${from.y + NODE_HEIGHT / 2} ${to.x - offset} ${to.y + NODE_HEIGHT / 2} ${to.x} ${to.y + NODE_HEIGHT / 2}`;
-              return h('path', { key: c.id, d, className: `fd-conn-path${isRelevant ? '' : ' fd-conn-dimmed'}`, 'data-type': c.dataType || '' });
+              return h('path', { key: c.id, d, className: `fd-conn-path${isRelevant ? '' : ' fd-conn-dimmed'}`, 'data-type': c.dataType || '', 'data-mismatch': c.typeMismatch ? 'true' : undefined });
             }),
           ),
           // Nodes

@@ -59,6 +59,7 @@
 .fd-conn-path[data-type="image"] { stroke: rgba(147, 130, 255, 0.35); }
 .fd-conn-path[data-type="text"]  { stroke: rgba(100, 200, 180, 0.35); }
 .fd-conn-path[data-type="video"] { stroke: rgba(255, 160, 100, 0.35); }
+.fd-conn-path[data-mismatch="true"] { stroke: rgba(255, 180, 50, 0.5); stroke-dasharray: 4 3; }
 
 .fd-node {
   position: absolute;
@@ -751,9 +752,13 @@
   animation: fd-pulse 1.2s ease-in-out infinite;
 }
 
-/* Non-matching anchor (target node, type mismatch) */
+/* Non-matching anchor — still tappable, shown with warning amber */
 .fd-anchor.fd-anchor--nonmatching {
-  opacity: 0.25;
+  border-color: rgba(255, 180, 50, 0.5);
+  opacity: 0.7;
+}
+.fd-anchor.fd-anchor--nonmatching svg {
+  color: rgba(255, 180, 50, 0.8);
 }
 
 /* Active source anchor (the port we're connecting FROM) */
@@ -1174,6 +1179,33 @@
 }
 .fd-param-wired {
   font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.fd-param-mismatch {
+  color: rgba(255, 180, 50, 0.9);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.fd-param-disconnect {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1;
+  margin-left: auto;
+  flex-shrink: 0;
+  opacity: 0.5;
+  transition: opacity var(--dur-micro) var(--ease), color var(--dur-micro) var(--ease);
+}
+.fd-param-disconnect:hover {
+  opacity: 1;
+  color: var(--text-primary);
 }
 .fd-param-wired-list {
   display: flex;
