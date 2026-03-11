@@ -1546,10 +1546,11 @@ export class FocusDemo extends Component {
     const toolData = node.toolData;
     const anchors = [];
 
-    // Input anchors (left side)
+    // Input anchors (left side) — only required inputs shown in Z1/Z2
+    // Optional inputs are only accessible via NODE_MODE
     const inputs = toolData?.inputSchema
-      ? Object.entries(toolData.inputSchema)
-      : [['input', { type: null, required: false }]]; // generic fallback
+      ? Object.entries(toolData.inputSchema).filter(([, f]) => f.required)
+      : []; // no schema = no input anchors
 
     inputs.forEach(([key, field], i) => {
       const total = inputs.length;
