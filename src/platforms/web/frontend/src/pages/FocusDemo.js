@@ -128,6 +128,14 @@ export class FocusDemo extends Component {
     this.setState({});
   }
 
+  _updateNode(nodeId, patch) {
+    const nodes = new Map(this.state.nodes);
+    const n = nodes.get(nodeId);
+    if (!n) return;
+    nodes.set(nodeId, { ...n, ...patch });
+    this.setState({ nodes });
+  }
+
   _startMomentum() {
     if (this._velBuffer.length === 0) return;
 
@@ -715,26 +723,106 @@ export class FocusDemo extends Component {
 
   _seedDemo() {
     const seed = [
-      { id: 'chatgpt',    label: 'ChatGPT',         type: 'text-to-text',  group: 'openai',    x: 0,    y: 0 },
-      { id: 'flux-gen',   label: 'Flux General',     type: 'text-to-image', group: 'comfyui',   x: 400,  y: 0 },
-      { id: 'joycaption', label: 'JoyCaption',       type: 'image-to-text', group: 'comfyui',   x: 400,  y: 220 },
-      { id: 'upscaler',   label: 'Upscaler 4\u00D7', type: 'img2img',       group: 'comfyui',   x: 400,  y: 440 },
-      { id: 'ltx-video',  label: 'LTX Video',        type: 'video',         group: 'comfyui',   x: 400,  y: 660 },
-      { id: 'dalle3',     label: 'DALL\u00B7E 3',    type: 'text-to-image', group: 'openai',    x: 0,    y: 220 },
-      { id: 'vidu',       label: 'Vidu',             type: 'video',         group: 'vidu',      x: 800,  y: 0 },
+      // 1. Idle — no output, ready to run
+      {
+        id: 'node-idle',
+        label: 'ChatGPT',
+        type: 'text-to-text',
+        group: 'openai',
+        x: 0, y: 0,
+      },
+      // 2. Running — executing, progress bar animating
+      {
+        id: 'node-running',
+        label: 'Flux Gen',
+        type: 'text-to-image',
+        group: 'comfyui',
+        x: 350, y: 0,
+        executing: true,
+        progress: 'Executing...',
+      },
+      // 3. Complete — image output (thumbnail extends below node)
+      {
+        id: 'node-done-img',
+        label: 'DALL\u00B7E 3',
+        type: 'text-to-image',
+        group: 'openai',
+        x: 700, y: 0,
+        output: { type: 'image', url: 'https://picsum.photos/seed/dalle3/400/400' },
+        outputVersions: [{ type: 'image', url: 'https://picsum.photos/seed/dalle3/400/400' }],
+        currentVersionIndex: 0,
+      },
+      // 4. Complete — text output (text preview extends below node)
+      {
+        id: 'node-done-txt',
+        label: 'JoyCaption',
+        type: 'image-to-text',
+        group: 'comfyui',
+        x: 175, y: 300,
+        output: { type: 'text', text: 'A cinematic portrait with dramatic side-lighting, shallow depth of field, shot on 85mm lens, dark background with subtle gradient.' },
+        outputVersions: [{ type: 'text', text: 'A cinematic portrait with dramatic side-lighting, shallow depth of field, shot on 85mm lens, dark background with subtle gradient.' }],
+        currentVersionIndex: 0,
+      },
+      // 5. Error — generic failure
+      {
+        id: 'node-error',
+        label: 'LTX Video',
+        type: 'video',
+        group: 'comfyui',
+        x: 525, y: 300,
+        error: 'CUDA out of memory on worker-3. Try again or reduce resolution.',
+      },
+      // 6. Censored — 401 content policy rejection
+      {
+        id: 'node-censored',
+        label: 'DALL\u00B7E 3',
+        type: 'text-to-image',
+        group: 'openai',
+        x: 875, y: 300,
+        error: '401 Forbidden \u2014 content policy violation',
+        censored: true,
+      },
+      // 7. Spell steps — multi-step completed output
+      {
+        id: 'node-spell',
+        label: 'Portrait Gen',
+        type: 'spell',
+        group: 'spells',
+        x: 350, y: 600,
+        output: {
+          type: 'spell-steps',
+          steps: [
+            { type: 'text', text: 'A cinematic portrait, dramatic lighting, 85mm lens.' },
+            { type: 'image', url: 'https://picsum.photos/seed/spell-step2/400/400' },
+            { type: 'text', text: 'Two subjects, sharp focus, dark studio background, professional headshot style.' },
+          ],
+        },
+        outputVersions: [{
+          type: 'spell-steps',
+          steps: [
+            { type: 'text', text: 'A cinematic portrait, dramatic lighting, 85mm lens.' },
+            { type: 'image', url: 'https://picsum.photos/seed/spell-step2/400/400' },
+            { type: 'text', text: 'Two subjects, sharp focus, dark studio background, professional headshot style.' },
+          ],
+        }],
+        currentVersionIndex: 0,
+      },
     ];
 
     const nodeMap = new Map();
     for (const n of seed) {
-      this._engine.addNode(n.id, createPosition(n.x, n.y));
-      if (n.group) this._engine.setGroup(n.id, n.group);
-      nodeMap.set(n.id, { id: n.id, label: n.label, type: n.type || null, group: n.group || null, toolData: null });
+      const { id, label, type, group, x, y, ...execState } = n;
+      this._engine.addNode(id, createPosition(x, y));
+      if (group) this._engine.setGroup(id, group);
+      nodeMap.set(id, {
+        id, label, type: type || null, group: group || null, toolData: null,
+        executing: false, progress: null, error: null, censored: false,
+        output: null, outputVersions: [], currentVersionIndex: 0,
+        ...execState,
+      });
     }
 
-    this.setState({
-      nodes: nodeMap,
-      connections: [],
-    });
+    this.setState({ nodes: nodeMap, connections: [] });
   }
 
   _startSimulation() {
@@ -1709,7 +1797,20 @@ export class FocusDemo extends Component {
             const isSelected = fsmState === STATES.MULTI_SELECT && this._fsm.selectedNodeIds.has(node.id);
             return h('div', {
               key: node.id,
-              className: `fd-node${node.group ? ' fd-grouped' : ''}${isPinned ? ' fd-pinned' : ''}${node.id === focusedNodeId ? ' fd-focused' : ''}${isDimmed ? ' fd-dimmed' : ''}${isConnSource ? ' fd-conn-source' : ''}${isConnTarget ? ' fd-conn-target' : ''}${isSelected ? ' fd-selected' : ''}`,
+              className: [
+                'fd-node',
+                node.group      ? 'fd-grouped'      : '',
+                isPinned        ? 'fd-pinned'        : '',
+                node.id === focusedNodeId ? 'fd-focused' : '',
+                isDimmed        ? 'fd-dimmed'        : '',
+                isConnSource    ? 'fd-conn-source'   : '',
+                isConnTarget    ? 'fd-conn-target'   : '',
+                isSelected      ? 'fd-selected'      : '',
+                node.executing  ? 'fd-node--running' : '',
+                node.error && !node.censored ? 'fd-node--error' : '',
+                node.censored   ? 'fd-node--censored': '',
+                node.output && !node.executing ? 'fd-node--has-result' : '',
+              ].filter(Boolean).join(' '),
               'data-node-id': node.id,
               style: {
                 transform: `translate(${pos.x}px, ${pos.y}px)`,
@@ -1725,6 +1826,18 @@ export class FocusDemo extends Component {
               ),
               node.type ? h('div', { className: 'fd-node-type' }, node.type) : null,
               ...this._renderNodeAnchors(node),
+              // Running: progress bar
+              node.executing
+                ? h('div', { className: 'fd-node-progress' },
+                    h('div', { className: 'fd-node-progress-bar' })
+                  )
+                : null,
+              // Error / censored indicator
+              node.error
+                ? h('div', { className: `fd-node-status${node.censored ? ' fd-node-status--censored' : ' fd-node-status--error'}` },
+                    node.censored ? '\u2298 censored' : '\u26a0 error'
+                  )
+                : null,
             );
           })),
         ),

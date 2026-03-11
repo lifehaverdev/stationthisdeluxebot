@@ -1214,3 +1214,62 @@
   align-items: flex-end;
   font-size: 11px;
 }
+
+/* ── Node execution states ──────────────────────────── */
+
+/* Running */
+.fd-node--running {
+  border-color: var(--accent-border);
+  animation: fd-node-pulse 1.8s ease-in-out infinite;
+}
+@keyframes fd-node-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--accent-dim); }
+  50%       { box-shadow: 0 0 0 4px var(--accent-dim); }
+}
+
+.fd-node-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.fd-node-progress-bar {
+  height: 100%;
+  background: var(--accent);
+  animation: fd-progress-sweep 1.4s ease-in-out infinite;
+  transform-origin: left;
+}
+@keyframes fd-progress-sweep {
+  0%   { transform: scaleX(0); margin-left: 0; }
+  50%  { transform: scaleX(0.6); margin-left: 0; }
+  100% { transform: scaleX(0); margin-left: 100%; }
+}
+
+/* Error */
+.fd-node--error {
+  border-color: rgba(255, 80, 80, 0.5);
+}
+.fd-node-status {
+  font-family: var(--ff-mono);
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 4px;
+  margin-top: 4px;
+}
+.fd-node-status--error   { color: rgba(255, 100, 100, 0.9); }
+.fd-node-status--censored { color: rgba(255, 160, 60, 0.9); }
+
+/* Censored */
+.fd-node--censored {
+  border-color: rgba(255, 160, 60, 0.5);
+  opacity: 0.85;
+}
+
+/* Has result */
+.fd-node--has-result {
+  border-color: var(--accent-border);
+}
