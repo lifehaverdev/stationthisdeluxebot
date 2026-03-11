@@ -141,12 +141,35 @@ export class FocusDemo extends Component {
     this.setState({ nodes });
   }
 
-  _addToolNode(tool, _workspacePos) {
+  _findEmptySpot() {
+    // Start at view center, walk down-right until clear of existing nodes
     const cx = window.innerWidth / 2;
     const cy = window.innerHeight / 2;
     const scale = this.state.viewport.scale || 1;
-    const canvasX = (cx - this._panX) / scale + (Math.random() - 0.5) * 200;
-    const canvasY = (cy - this._panY) / scale + (Math.random() - 0.5) * 200;
+    const originX = (cx - this._panX) / scale;
+    const originY = (cy - this._panY) / scale;
+
+    const PAD_X = NODE_WIDTH + 40;
+    const PAD_Y = NODE_HEIGHT + 40;
+    const STEP = 80;
+    const DIR_X = 1.2;
+    const DIR_Y = 0.8;
+
+    const occupied = [...this.state.nodes.keys()]
+      .map(id => this._engine.getNode(id)?.position)
+      .filter(Boolean);
+
+    for (let i = 0; i < 30; i++) {
+      const x = originX + DIR_X * i * STEP;
+      const y = originY + DIR_Y * i * STEP;
+      const clear = occupied.every(p => Math.abs(p.x - x) > PAD_X || Math.abs(p.y - y) > PAD_Y);
+      if (clear) return { x, y };
+    }
+    return { x: originX + DIR_X * 30 * STEP, y: originY + DIR_Y * 30 * STEP };
+  }
+
+  _addToolNode(tool, _workspacePos) {
+    const { x: canvasX, y: canvasY } = this._findEmptySpot();
 
     const id = tool.toolId || `tool-${Date.now()}`;
     this._engine.addNode(id, createPosition(canvasX, canvasY));

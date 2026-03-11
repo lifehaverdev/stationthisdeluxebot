@@ -93,7 +93,7 @@ function createWalletConnectionApiRouter(dependencies) {
       const userResponse = await internalApiClient.post(`/internal/v1/data/auth/find-or-create-by-wallet`, {
         address: walletAddress.toLowerCase()
       });
-      const user = userResponse.data;
+      const user = userResponse.data?.user;
 
       if (!user || !user._id) {
         return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'No account found for this wallet address.' } });
