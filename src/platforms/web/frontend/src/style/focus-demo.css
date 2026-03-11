@@ -366,6 +366,16 @@
   border-bottom: 1px solid var(--border);
 }
 
+.fd-desc-toggle {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+}
+
 .fd-card-param-mono {
   font-family: var(--ff-mono);
   color: var(--text-secondary);
@@ -424,8 +434,8 @@
   width: var(--glow-size, 60px);
   height: var(--glow-size, 60px);
   transform: translate(-50%, -50%);
-  transition: opacity var(--dur-interact) var(--ease);
-  gap: 2px;
+  transition: opacity var(--dur-interact) var(--ease), transform 200ms var(--ease);
+  gap: 4px;
 }
 
 .fd-glow::before {
@@ -433,12 +443,19 @@
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, transparent 70%);
+  background: radial-gradient(circle at center, rgba(255,255,255,0.18) 0%, transparent 70%);
 }
 
-.fd-glow.fd-glow-connected::before {
-  background: radial-gradient(circle, rgba(0, 223, 200, 0.25) 0%, transparent 70%);
-}
+/* Shift gradient center to the inward-facing rim per edge */
+.fd-glow-top::before    { background: radial-gradient(circle at center bottom, rgba(255,255,255,0.25) 0%, transparent 65%); }
+.fd-glow-bottom::before { background: radial-gradient(circle at center top,    rgba(255,255,255,0.25) 0%, transparent 65%); }
+.fd-glow-left::before   { background: radial-gradient(circle at right center,  rgba(255,255,255,0.25) 0%, transparent 65%); }
+.fd-glow-right::before  { background: radial-gradient(circle at left center,   rgba(255,255,255,0.25) 0%, transparent 65%); }
+
+.fd-glow.fd-glow-connected.fd-glow-top::before    { background: radial-gradient(circle at center bottom, rgba(0,223,200,0.35) 0%, transparent 65%); }
+.fd-glow.fd-glow-connected.fd-glow-bottom::before { background: radial-gradient(circle at center top,    rgba(0,223,200,0.35) 0%, transparent 65%); }
+.fd-glow.fd-glow-connected.fd-glow-left::before   { background: radial-gradient(circle at right center,  rgba(0,223,200,0.35) 0%, transparent 65%); }
+.fd-glow.fd-glow-connected.fd-glow-right::before  { background: radial-gradient(circle at left center,   rgba(0,223,200,0.35) 0%, transparent 65%); }
 
 .fd-glow-label {
   font-family: var(--ff-condensed);
@@ -455,25 +472,29 @@
   opacity: 1;
 }
 
-/* Edge-specific positioning adjustments */
-.fd-glow-top { transform: translate(-50%, 0); }
-.fd-glow-bottom { transform: translate(-50%, -100%); }
-.fd-glow-left { transform: translate(0, -50%); }
-.fd-glow-right { transform: translate(-100%, -50%); }
+/* Edge-specific: show ~30% of orb at edge — gradient center faces inward so it's bright */
+.fd-glow-top    { transform: translate(-50%, -72%); flex-direction: column; }
+.fd-glow-bottom { transform: translate(-50%,  72%); flex-direction: column-reverse; }
+.fd-glow-left   { transform: translate(-72%, -50%); flex-direction: row; }
+.fd-glow-right  { transform: translate( 72%, -50%); flex-direction: row-reverse; }
 
-/* Activated glow */
+/* Activated: slide fully inside with room for label */
 .fd-glow.fd-glow-active {
   z-index: 610;
 }
+.fd-glow.fd-glow-active.fd-glow-top    { transform: translate(-50%, 16px); }
+.fd-glow.fd-glow-active.fd-glow-bottom { transform: translate(-50%, -16px); }
+.fd-glow.fd-glow-active.fd-glow-left   { transform: translate(16px, -50%); }
+.fd-glow.fd-glow-active.fd-glow-right  { transform: translate(-16px, -50%); }
 
 .fd-glow.fd-glow-active::before {
   background: radial-gradient(circle, rgba(255,255,255,0.3) 0%, transparent 70%);
-  transform: scale(1.5);
+  transform: scale(1.4);
 }
 
 .fd-glow.fd-glow-active.fd-glow-connected::before {
   background: radial-gradient(circle, rgba(0, 223, 200, 0.4) 0%, transparent 70%);
-  transform: scale(1.5);
+  transform: scale(1.4);
 }
 
 .fd-glow.fd-glow-active .fd-glow-label {
@@ -545,7 +566,18 @@
   justify-content: center;
   cursor: pointer;
   z-index: 2;
-  transition: border-color var(--dur-interact) var(--ease), background var(--dur-interact) var(--ease);
+  opacity: 0;
+  transition: opacity var(--dur-interact) var(--ease), border-color var(--dur-interact) var(--ease), background var(--dur-interact) var(--ease);
+}
+
+/* Show anchors on focused node (Z1) */
+.fd-node.fd-focused .fd-anchor,
+/* Show matching anchors in connection mode */
+.fd-anchor.fd-anchor--matching,
+.fd-anchor.fd-anchor--active-source,
+/* Output anchors always visible for discoverability */
+.fd-anchor.fd-anchor-output {
+  opacity: 1;
 }
 
 .fd-anchor:hover {
@@ -666,20 +698,80 @@
   background: var(--accent-dim);
 }
 
-.fd-conn-hint {
+/* ── Connection Seeking Badge ──────────── */
+.fd-conn-badge {
   position: fixed;
-  top: 50px;
+  bottom: 80px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 1000;
-  font-family: var(--ff-condensed);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--accent-border);
+  border-radius: 24px;
   font-size: var(--fs-sm);
-  letter-spacing: var(--ls-wide);
-  text-transform: uppercase;
-  background: var(--surface-1);
+  color: var(--text-primary);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  animation: fd-pulse 1.8s ease-in-out infinite;
+  pointer-events: all;
+}
+
+.fd-conn-badge-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.fd-conn-badge-label {
+  font-weight: 500;
+}
+
+.fd-conn-badge-port {
   color: var(--text-secondary);
-  border: 1px solid var(--border);
-  padding: 8px 16px;
+  font-size: var(--fs-xs);
+}
+
+.fd-conn-badge-cancel {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0 0 0 4px;
+  font-size: var(--fs-sm);
+  line-height: 1;
+}
+
+.fd-conn-badge-cancel:hover {
+  color: var(--text-primary);
+}
+
+/* Matching input anchor (target node, type matches) */
+.fd-anchor.fd-anchor--matching {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  animation: fd-pulse 1.2s ease-in-out infinite;
+}
+
+/* Non-matching anchor (target node, type mismatch) */
+.fd-anchor.fd-anchor--nonmatching {
+  opacity: 0.25;
+}
+
+/* Active source anchor (the port we're connecting FROM) */
+.fd-anchor.fd-anchor--active-source {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+/* NODE_MODE param anchor — type match while connecting */
+.fd-param-anchor.fd-param-anchor--matching {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  animation: fd-pulse 1.2s ease-in-out infinite;
 }
 
 /* ── Multi-Select ────────────────────── */
@@ -935,7 +1027,7 @@
   align-items: stretch;
 }
 .fd-params-col {
-  flex: 1;
+  flex: 2;
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -944,6 +1036,9 @@
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
+.fd-params-inputs { flex: 3; }
+.fd-params-outputs { flex: 2; }
+
 .fd-params-col + .fd-params-col {
   border-left: 1px solid var(--border);
 }

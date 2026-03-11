@@ -18,8 +18,8 @@ const TWEAK_DEFAULTS = {
   // Gestures
   friction:             { value: 0.985, min: 0.80, max: 0.99,  step: 0.005, label: 'Momentum friction',           tweakable: true },
   minVelocity:          { value: 0.1,   min: 0.05, max: 3.0,   step: 0.05, label: 'Min velocity (px/ms)',        tweakable: true },
-  zoneBottom:           { value: 0.15,  min: 0.05, max: 0.40,  step: 0.01, label: 'Zoom zone bottom %',          tweakable: true },
-  zoneWidth:            { value: 0.30,  min: 0.10, max: 0.80,  step: 0.01, label: 'Zoom zone width %',           tweakable: true },
+  zoneBottom:           { value: 0.30,  min: 0.05, max: 0.40,  step: 0.01, label: 'Zoom zone bottom %',          tweakable: true },
+  zoneWidth:            { value: 0.60,  min: 0.10, max: 0.80,  step: 0.01, label: 'Zoom zone width %',           tweakable: true },
   // Physics
   repulsionStrength:    { value: 8000,  min: 500,  max: 20000, step: 500,  label: 'Repulsion strength',          tweakable: true },
   repulsionRange:       { value: 350,   min: 100,  max: 800,   step: 10,   label: 'Repulsion range (px)',         tweakable: true },
@@ -50,8 +50,8 @@ export class FocusDemo extends Component {
       positions: new Map(),
       nodes: new Map(),
       connections: [],
-      connectionPickerNodeId: null,
       tweakerOpen: false,
+      descriptionExpanded: false,
     };
     this._engine = new PhysicsEngine();
     this._rafId = null;
@@ -136,8 +136,8 @@ export class FocusDemo extends Component {
 
   _onKeyDown(e) {
     if (e.key === 'Escape') {
-      if (this.state.fsmState === STATES.CONNECTION_MODE) {
-        this._fsm.cancelConnection();
+      if (this._fsm.isConnecting) {
+        this._cancelConnection();
       } else if (this.state.fsmState === STATES.MULTI_SELECT) {
         this._fsm.exitMultiSelect();
       } else if (this.state.activatedGlowId) {
@@ -191,20 +191,11 @@ export class FocusDemo extends Component {
 
     if (to === STATES.NODE_MODE && nodeId) {
       this._loadToolDetail(nodeId);
+      update.descriptionExpanded = false;
     }
 
-    if (to === STATES.CONNECTION_MODE) {
-      const pos = this.state.positions.get(nodeId);
-      if (pos) {
-        const cx = window.innerWidth / 2;
-        const cy = window.innerHeight / 2;
-        update.viewport = {
-          scale: this._tweaks.scaleZ1,
-          panX: cx - pos.x * this._tweaks.scaleZ1,
-          panY: cy - pos.y * this._tweaks.scaleZ1,
-        };
-      }
-      update.connectionPickerNodeId = null;
+    if (to === STATES.CANVAS_Z1 && nodeId) {
+      this._loadToolDetail(nodeId);
     }
 
     // Kill any running momentum and sync _panX/Y to new viewport (always-live)
@@ -235,11 +226,17 @@ export class FocusDemo extends Component {
 
   _onNodeClick(nodeId, e) {
     e.stopPropagation();
-    if (this.state.fsmState === STATES.CONNECTION_MODE) {
-      if (nodeId === this._fsm.sourceNodeId) return;
-      this.setState({ connectionPickerNodeId: nodeId });
+
+    // In connection mode: tap node → go to Z1 of target (for anchor selection)
+    if (this._fsm.isConnecting) {
+      if (nodeId === this._fsm.connection.sourceNodeId) return; // can't connect to self
+      if (this.state.fsmState === STATES.CANVAS_Z2) {
+        // Navigate to Z1 of tapped node so user can see/tap its input anchors
+        this._fsm.tapNode(nodeId); // Z2 → Z1 transition
+      }
       return;
     }
+
     if (this.state.fsmState === STATES.MULTI_SELECT) {
       this._fsm.toggleSelection(nodeId);
       this.setState({});
@@ -255,11 +252,11 @@ export class FocusDemo extends Component {
 
   _onCanvasClick(e) {
     if (e.target === e.currentTarget || e.target.classList.contains('fd-viewport')) {
-      if (this.state.fsmState === STATES.CONNECTION_MODE) {
-        if (this.state.connectionPickerNodeId) {
-          this.setState({ connectionPickerNodeId: null });
-        } else {
-          this._fsm.cancelConnection();
+      if (this._fsm.isConnecting) {
+        if (this.state.fsmState === STATES.CANVAS_Z1) {
+          this._fsm.zoomOut(); // back to Z2 to navigate elsewhere
+        } else if (this.state.fsmState === STATES.CANVAS_Z2) {
+          this._cancelConnection();
         }
         return;
       }
@@ -339,6 +336,7 @@ export class FocusDemo extends Component {
     if (e.touches.length === 1) {
       const t = e.touches[0];
       this._gestureStart = { x: t.clientX, y: t.clientY, time: performance.now(), target: e.target };
+      this._panAtGestureStart = { x: this._panX, y: this._panY };
 
       if (this.state.fsmState === STATES.NODE_MODE) {
         // Don't preventDefault — allow native clicks and card scrolling
@@ -474,13 +472,20 @@ export class FocusDemo extends Component {
       this._gestureStart = null;
       this._clearTapTimeout();
       // Only zoom from the bottom-center zone
-      if (this._isInZoomZone(startX, startY)) {
+      if (this._isInZoomZone(startX, startY) && this._panAtGestureStart) {
+        // Undo any pan that accumulated during the swipe gesture
+        this._panX = this._panAtGestureStart.x;
+        this._panY = this._panAtGestureStart.y;
+        this._momentum.running = false;
+        this._velBuffer = [];
         if (dy > 0) {
           // Swipe down from zone → zoom out / cancel
-          if (this.state.fsmState === STATES.CONNECTION_MODE) {
-            this._fsm.cancelConnection();
+          if (this._fsm.isConnecting && this.state.fsmState === STATES.CANVAS_Z2) {
+            this._cancelConnection();
           } else if (this.state.fsmState === STATES.MULTI_SELECT) {
             this._fsm.exitMultiSelect();
+          } else if (this.state.fsmState === STATES.CANVAS_Z2) {
+            this._recenterCanvas();
           } else {
             this._fsm.zoomOut();
           }
@@ -512,22 +517,15 @@ export class FocusDemo extends Component {
       if (anchorEl) {
         const anchorType = anchorEl.dataset.anchor;
         const anchorNodeId = anchorEl.dataset.nodeId;
+        const anchorPort = anchorEl.dataset.port;
+        const anchorDataType = anchorEl.dataset.type || null;
         if (anchorType === 'output' && anchorNodeId) {
-          this._startConnection(anchorNodeId);
-        }
-        this._gestureStart = null;
-        return;
-      }
-
-      // Connection mode: tap node to show picker, tap empty to cancel
-      if (this.state.fsmState === STATES.CONNECTION_MODE) {
-        if (nodeId && nodeId !== this._fsm.sourceNodeId) {
-          this.setState({ connectionPickerNodeId: nodeId });
-        } else if (!nodeId) {
-          if (this.state.connectionPickerNodeId) {
-            this.setState({ connectionPickerNodeId: null });
-          } else {
-            this._fsm.cancelConnection();
+          this._startConnection(anchorNodeId, anchorPort, anchorDataType);
+        } else if (anchorType === 'input' && anchorNodeId && this._fsm.isConnecting) {
+          const conn = this._fsm.connection;
+          const typeMatch = !conn.sourceType || !anchorDataType || conn.sourceType === anchorDataType;
+          if (conn.sourceNodeId !== anchorNodeId && typeMatch) {
+            this._completeConnection(anchorNodeId, anchorPort, anchorDataType);
           }
         }
         this._gestureStart = null;
@@ -576,6 +574,31 @@ export class FocusDemo extends Component {
       clearTimeout(this._tapTimeout);
       this._tapTimeout = null;
     }
+  }
+
+  _recenterCanvas() {
+    const positions = [...this.state.nodes.keys()]
+      .map(id => this._engine.getNode(id)?.position)
+      .filter(Boolean);
+    if (!positions.length) return;
+    const cx = window.innerWidth / 2;
+    const cy = window.innerHeight / 2;
+    const scale = this._tweaks.scaleZ2;
+    const centroidX = positions.reduce((s, p) => s + p.x, 0) / positions.length;
+    const centroidY = positions.reduce((s, p) => s + p.y, 0) / positions.length;
+    const panX = cx - centroidX * scale;
+    const panY = cy - centroidY * scale;
+    this._panX = panX;
+    this._panY = panY;
+    if (this._rootEl) {
+      const vp = this._rootEl.querySelector('.fd-viewport');
+      if (vp) {
+        vp.classList.add('fd-viewport--animating');
+        clearTimeout(this._viewportTransitionTimeout);
+        this._viewportTransitionTimeout = setTimeout(() => vp.classList.remove('fd-viewport--animating'), 320);
+      }
+    }
+    this.setState({ viewport: { panX, panY, scale } });
   }
 
   async _loadTools() {
@@ -689,12 +712,15 @@ export class FocusDemo extends Component {
       const dt = Math.min(now - lastTime, 32);
       lastTime = now;
 
-      // 1. Physics step
+      // 1. Physics step — paused in NODE_MODE (canvas hidden, glows must stay stable)
+      const inNodeMode = this.state.fsmState === STATES.NODE_MODE;
       const t0 = performance.now();
-      const positions = this._engine.step(dt, this._tweaks);
+      const positions = inNodeMode ? this.state.positions : this._engine.step(dt, this._tweaks);
       const stepMs = performance.now() - t0;
-      this._perfSamples.push(stepMs);
-      if (this._perfSamples.length > 120) this._perfSamples.shift();
+      if (!inNodeMode) {
+        this._perfSamples.push(stepMs);
+        if (this._perfSamples.length > 120) this._perfSamples.shift();
+      }
 
       // 2. Momentum step
       if (this._momentum.running) {
@@ -1013,21 +1039,87 @@ export class FocusDemo extends Component {
     this.setState({ nodes, connections: [...this.state.connections, ...newConnections] });
   }
 
-  _completeConnection(targetNodeId, anchorName) {
-    const sourceId = this._fsm.sourceNodeId;
-    if (!sourceId || sourceId === targetNodeId) return;
+  _completeConnection(targetNodeId, targetPort, targetType) {
+    const conn = this._fsm.connection;
+    if (!conn || conn.sourceNodeId === targetNodeId) return;
+
     const connId = 'c' + Date.now();
-    this._engine.addConnection(connId, sourceId, targetNodeId);
-    const connections = [...this.state.connections, { id: connId, from: sourceId, to: targetNodeId }];
-    this.setState({ connections, connectionPickerNodeId: null });
-    this._fsm.completeConnection();
+    this._engine.addConnection(connId, conn.sourceNodeId, targetNodeId);
+    const newConn = {
+      id: connId,
+      from: conn.sourceNodeId,
+      fromOutput: conn.sourcePort,
+      to: targetNodeId,
+      toInput: targetPort,
+      dataType: conn.sourceType,
+    };
+    const connections = [...this.state.connections, newConn];
+
+    const sourceId = conn.sourceNodeId;
+    this._fsm.clearConnection();
+
+    // Return to Z1 centered on source node
+    const pos = this.state.positions.get(sourceId);
+    if (pos) {
+      const cx = window.innerWidth / 2;
+      const cy = window.innerHeight / 2;
+      this._panX = cx - pos.x * this._tweaks.scaleZ1;
+      this._panY = cy - pos.y * this._tweaks.scaleZ1;
+      const viewport = this._rootEl && this._rootEl.querySelector('.fd-viewport');
+      if (viewport) {
+        viewport.classList.add('fd-viewport--animating');
+        clearTimeout(this._viewportTransitionTimeout);
+        this._viewportTransitionTimeout = setTimeout(() => viewport.classList.remove('fd-viewport--animating'), 320);
+      }
+    }
+
+    // Force zoom state to Z1 focused on source
+    this._fsm.focusedNodeId = sourceId;
+    this._fsm.state = STATES.CANVAS_Z1;
+
+    this.setState({
+      connections,
+      fsmState: STATES.CANVAS_Z1,
+      focusedNodeId: sourceId,
+      viewport: pos ? {
+        scale: this._tweaks.scaleZ1,
+        panX: this._panX,
+        panY: this._panY,
+      } : this.state.viewport,
+    });
   }
 
-  _startConnection(sourceNodeId) {
-    if (this.state.fsmState !== STATES.NODE_MODE) {
-      this._fsm.doubleTapNode(sourceNodeId);
+  _startConnection(sourceNodeId, sourcePort, sourceType) {
+    // If in NODE_MODE, zoom back to Z2 first so user can navigate to target
+    if (this.state.fsmState === STATES.NODE_MODE) {
+      this._fsm.zoomOut(); // NODE_MODE → CANVAS_Z1
+      this._fsm.zoomOut(); // CANVAS_Z1 → CANVAS_Z2
+    } else if (this.state.fsmState === STATES.CANVAS_Z1) {
+      this._fsm.zoomOut(); // CANVAS_Z1 → CANVAS_Z2
     }
-    this._fsm.enterConnectionMode(sourceNodeId);
+    // Set connection overlay after zoom transitions fire
+    this._fsm.startConnection(sourceNodeId, sourcePort || 'output', sourceType || null);
+    // Center Z2 viewport on source node
+    const pos = this.state.positions.get(sourceNodeId);
+    if (pos) {
+      const cx = window.innerWidth / 2;
+      const cy = window.innerHeight / 2;
+      const scale = this._tweaks.scaleZ2;
+      this._panX = cx - pos.x * scale;
+      this._panY = cy - pos.y * scale;
+      const viewport = this._rootEl && this._rootEl.querySelector('.fd-viewport');
+      if (viewport) {
+        viewport.classList.add('fd-viewport--animating');
+        clearTimeout(this._viewportTransitionTimeout);
+        this._viewportTransitionTimeout = setTimeout(() => viewport.classList.remove('fd-viewport--animating'), 320);
+      }
+    }
+    this.setState({ fsmState: this._fsm.state });
+  }
+
+  _cancelConnection() {
+    this._fsm.clearConnection();
+    this.setState({});
   }
 
   _renderParamInput(nodeId, key, field) {
@@ -1098,7 +1190,20 @@ export class FocusDemo extends Component {
               : node.type ? h('span', { className: 'fd-provider-tag' }, node.type) : null,
             isPinned ? h('span', { className: 'fd-pin-tag' }, 'pinned') : null,
           ),
-          node.toolData?.description ? h('div', { className: 'fd-card-description' }, node.toolData.description) : null,
+          (() => {
+            const desc = node.toolData?.description;
+            if (!desc) return null;
+            const LIMIT = 100;
+            const isLong = desc.length > LIMIT;
+            const expanded = this.state.descriptionExpanded;
+            return h('div', { className: 'fd-card-description' },
+              isLong && !expanded ? desc.slice(0, LIMIT) + '\u2026' : desc,
+              isLong ? h('button', {
+                className: 'fd-desc-toggle',
+                onclick: (e) => { e.stopPropagation(); this.setState({ descriptionExpanded: !expanded }); },
+              }, expanded ? ' less' : ' more') : null,
+            );
+          })(),
           h('div', { className: 'fd-card-pricing' },
             h('div', { className: 'fd-pricing-row' },
               h('span', { className: 'fd-pricing-label' }, 'per call'),
@@ -1124,11 +1229,28 @@ export class FocusDemo extends Component {
             ...Object.entries(node.toolData.inputSchema).map(([key, field]) => {
               const connectedFrom = this.state.connections.find(c => c.to === focusedNodeId && c.toInput === key);
               return h('div', { className: 'fd-param-row fd-param-row-input' },
-                h('button', {
-                  className: `fd-param-anchor${connectedFrom ? ' fd-param-anchor-connected' : ''}`,
-                  title: connectedFrom ? `Wired from ${nodes.get(connectedFrom.from)?.label || connectedFrom.from}` : 'Wire input',
-                  onclick: (e) => { e.stopPropagation(); this._startConnection(focusedNodeId); },
-                }, h('span', { className: 'fd-anchor-icon' })),
+                (() => {
+                  const conn = this._fsm.connection;
+                  const isConnecting = this._fsm.isConnecting;
+                  const isIncomingTarget = isConnecting && conn.sourceNodeId !== focusedNodeId;
+                  const typeMatch = isIncomingTarget && (!conn.sourceType || !field.type || conn.sourceType === field.type);
+                  return h('button', {
+                    className: [
+                      'fd-param-anchor',
+                      connectedFrom ? 'fd-param-anchor-connected' : '',
+                      typeMatch ? 'fd-param-anchor--matching' : '',
+                    ].filter(Boolean).join(' '),
+                    title: connectedFrom
+                      ? `Wired from ${nodes.get(connectedFrom.from)?.label || connectedFrom.from}`
+                      : isConnecting ? (typeMatch ? 'Connect here' : 'Type mismatch') : 'Wire input',
+                    onclick: (e) => {
+                      e.stopPropagation();
+                      if (typeMatch) {
+                        this._completeConnection(focusedNodeId, key, field.type);
+                      }
+                    },
+                  }, h('span', { className: 'fd-anchor-icon' }));
+                })(),
                 h('div', { className: 'fd-param-body' },
                   h('label', { className: 'fd-param-label' },
                     field.name || key,
@@ -1164,7 +1286,10 @@ export class FocusDemo extends Component {
                 h('button', {
                   className: `fd-param-anchor${connectedTo.length ? ' fd-param-anchor-connected' : ''}`,
                   title: 'Wire output',
-                  onclick: (e) => { e.stopPropagation(); this._startConnection(focusedNodeId); },
+                  onclick: (e) => {
+                    e.stopPropagation();
+                    this._startConnection(focusedNodeId, key, field.type || null);
+                  },
                 }, h('span', { className: 'fd-anchor-icon' })),
               );
             }),
@@ -1189,10 +1314,6 @@ export class FocusDemo extends Component {
                 this.setState({});
               },
             }, isPinned ? 'Unpin' : 'Pin'),
-            h('button', {
-              className: 'fd-card-btn',
-              onclick: (e) => { e.stopPropagation(); this._startConnection(focusedNodeId); },
-            }, 'Connect'),
             h('button', {
               className: 'fd-card-btn',
               onclick: (e) => {
@@ -1244,7 +1365,7 @@ export class FocusDemo extends Component {
 
     const glows = computeGlows(focusedNodeId, nodesWithPositions, proxConns);
 
-    return h('div', { className: 'fd-periphery' },
+    return h('div', { className: 'fd-periphery', key: `periphery-${focusedNodeId}` },
       ...glows.map(glow => {
         const style = this._glowStyle(glow);
         const isActivated = this.state.activatedGlowId === glow.nodeId;
@@ -1264,9 +1385,6 @@ export class FocusDemo extends Component {
           title: glow.label,
         },
           h('span', { className: 'fd-glow-label' }, glow.label),
-          isActivated ? h('span', { className: 'fd-glow-info' },
-            glow.connected ? 'connected' : 'nearby',
-          ) : null,
         );
       }),
       // Up-arrow (zoom out) when periphery is activated
@@ -1387,6 +1505,88 @@ export class FocusDemo extends Component {
     );
   }
 
+  _renderNodeAnchors(node) {
+    const conn = this._fsm.connection;
+    const isConnecting = this._fsm.isConnecting;
+    const toolData = node.toolData;
+    const anchors = [];
+
+    // Input anchors (left side)
+    const inputs = toolData?.inputSchema
+      ? Object.entries(toolData.inputSchema)
+      : [['input', { type: null, required: false }]]; // generic fallback
+
+    inputs.forEach(([key, field], i) => {
+      const total = inputs.length;
+      const topPct = total === 1 ? 50 : 20 + (i / (total - 1)) * 60;
+      const isTarget = isConnecting && conn.sourceNodeId !== node.id;
+      const typeMatch = isConnecting && (!conn.sourceType || !field.type || conn.sourceType === field.type);
+      const cls = [
+        'fd-anchor fd-anchor-input',
+        isTarget && typeMatch ? 'fd-anchor--matching' : '',
+        isTarget && !typeMatch ? 'fd-anchor--nonmatching' : '',
+      ].filter(Boolean).join(' ');
+
+      anchors.push(h('div', {
+        key: `in-${key}`,
+        className: cls,
+        'data-anchor': 'input',
+        'data-port': key,
+        'data-type': field.type || '',
+        'data-node-id': node.id,
+        style: { top: `${topPct}%`, transform: 'translate(0, -50%)', left: '-11px' },
+        onclick: (e) => {
+          e.stopPropagation();
+          if (isConnecting && isTarget && typeMatch) {
+            this._completeConnection(node.id, key, field.type);
+          }
+        },
+      }, h('span', { className: 'fd-anchor-icon' })));
+    });
+
+    // Output anchors (right side)
+    const outputs = toolData?.outputSchema
+      ? Object.entries(toolData.outputSchema)
+      : [['output', { type: null }]]; // generic fallback
+
+    // Expand batch outputs
+    const expandedOutputs = [];
+    for (const [key, field] of outputs) {
+      const batch = field.batch && field.batch > 1 ? field.batch : 1;
+      for (let b = 0; b < batch; b++) {
+        expandedOutputs.push([batch > 1 ? `${key}_${b}` : key, field, key]);
+      }
+    }
+
+    expandedOutputs.forEach(([expandedKey, field, originalKey], i) => {
+      const total = expandedOutputs.length;
+      const topPct = total === 1 ? 50 : 20 + (i / (total - 1)) * 60;
+      const isSource = isConnecting && conn.sourceNodeId === node.id && conn.sourcePort === originalKey;
+      const cls = [
+        'fd-anchor fd-anchor-output',
+        isSource ? 'fd-anchor--active-source' : '',
+      ].filter(Boolean).join(' ');
+
+      anchors.push(h('div', {
+        key: `out-${expandedKey}`,
+        className: cls,
+        'data-anchor': 'output',
+        'data-port': originalKey,
+        'data-type': field.type || '',
+        'data-node-id': node.id,
+        style: { top: `${topPct}%`, transform: 'translate(0, -50%)', right: '-11px', left: 'auto' },
+        onclick: (e) => {
+          e.stopPropagation();
+          if (!isConnecting) {
+            this._startConnection(node.id, originalKey, field.type || null);
+          }
+        },
+      }, h('span', { className: 'fd-anchor-icon' })));
+    });
+
+    return anchors;
+  }
+
   render() {
     const { viewport, positions, nodes, connections, fsmState, focusedNodeId } = this.state;
     const transform = `translate(${this._panX}px, ${this._panY}px) scale(${viewport.scale})`;
@@ -1407,7 +1607,7 @@ export class FocusDemo extends Component {
         h('span', null, `Step: ${avgMs.toFixed(2)}ms`),
         h('span', null, `Nodes: ${nodes.size}`),
         fsmState === STATES.MULTI_SELECT ? h('span', null, `Selected: ${this._fsm.selectedNodeIds.size}`) : null,
-        fsmState === STATES.CONNECTION_MODE ? h('span', null, `Source: ${this._fsm.sourceNodeId}`) : null,
+        this._fsm.isConnecting ? h('span', null, `Connecting: ${this._fsm.connection.sourceNodeId}`) : null,
         this._clipboard ? h('span', null, `Clipboard: ${this._clipboard.nodes.length}`) : null,
       ),
       // Control panel (only on canvas states)
@@ -1443,8 +1643,8 @@ export class FocusDemo extends Component {
             const isPinned = engineNode && engineNode.pinned;
             const groupColor = this._getGroupColor(node.group);
             const isDimmed = z1Visible && !z1Visible.has(node.id);
-            const isConnSource = fsmState === STATES.CONNECTION_MODE && node.id === this._fsm.sourceNodeId;
-            const isConnTarget = fsmState === STATES.CONNECTION_MODE && node.id !== this._fsm.sourceNodeId;
+            const isConnSource = this._fsm.isConnecting && node.id === this._fsm.connection.sourceNodeId;
+            const isConnTarget = this._fsm.isConnecting && node.id !== this._fsm.connection.sourceNodeId;
             const isSelected = fsmState === STATES.MULTI_SELECT && this._fsm.selectedNodeIds.has(node.id);
             return h('div', {
               key: node.id,
@@ -1463,38 +1663,26 @@ export class FocusDemo extends Component {
                 isPinned ? h('span', { className: 'fd-pin-tag' }, 'pinned') : null,
               ),
               node.type ? h('div', { className: 'fd-node-type' }, node.type) : null,
-              h('div', {
-                className: 'fd-anchor fd-anchor-input',
-                'data-anchor': 'input',
-                'data-node-id': node.id,
-                onclick: (e) => e.stopPropagation(),
-              }, h('span', { className: 'fd-anchor-icon' })),
-              h('div', {
-                className: 'fd-anchor fd-anchor-output',
-                'data-anchor': 'output',
-                'data-node-id': node.id,
-                onclick: (e) => {
-                  e.stopPropagation();
-                  if (this.state.fsmState === STATES.NODE_MODE || this.state.fsmState === STATES.CANVAS_Z1 || this.state.fsmState === STATES.CANVAS_Z2) {
-                    this._startConnection(node.id);
-                  }
-                },
-              }, h('span', { className: 'fd-anchor-icon' })),
-              // Anchor picker (shown when this node is picked as target in connection mode)
-              (this.state.connectionPickerNodeId === node.id) ? h('div', { className: 'fd-anchor-picker' },
-                h('button', {
-                  className: 'fd-anchor-pill',
-                  onclick: (e) => { e.stopPropagation(); this._completeConnection(node.id, 'input'); },
-                }, '\u2190 Input'),
-              ) : null,
+              ...this._renderNodeAnchors(node),
             );
           })),
         ),
       ),
-      // Connection hint banner
-      fsmState === STATES.CONNECTION_MODE ? h('div', { className: 'fd-conn-hint' },
-        `Connecting from ${this._fsm.sourceNodeId} \u2014 tap a target node`,
-      ) : null,
+      // Connection seeking badge
+      this._fsm.isConnecting ? (() => {
+        const conn = this._fsm.connection;
+        const sourceNode = this.state.nodes.get(conn.sourceNodeId);
+        const sourceLabel = sourceNode?.label || conn.sourceNodeId;
+        return h('div', { className: 'fd-conn-badge' },
+          h('span', { className: 'fd-conn-badge-dot', style: { background: conn.sourceType === 'image' ? '#9382ff' : conn.sourceType === 'video' ? '#ffa064' : '#64c8b4' } }),
+          h('span', { className: 'fd-conn-badge-label' }, `${sourceLabel}`),
+          conn.sourcePort !== 'output' ? h('span', { className: 'fd-conn-badge-port' }, `\u2192 ${conn.sourcePort}`) : null,
+          h('button', {
+            className: 'fd-conn-badge-cancel',
+            onclick: (e) => { e.stopPropagation(); this._cancelConnection(); },
+          }, '\u2715'),
+        );
+      })() : null,
       // Multi-select action bar
       fsmState === STATES.MULTI_SELECT ? this._renderActionBar() : null,
       // Node Mode overlay
