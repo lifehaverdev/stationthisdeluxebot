@@ -1296,16 +1296,26 @@
 }
 
 .fd-node-result--text {
-  font-family: var(--ff-mono);
-  font-size: 8px;
-  line-height: 1.4;
-  color: var(--text-label);
-  padding: 4px 0 2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  margin: 6px -8px -8px;
   border-top: 1px solid var(--border);
-  margin-top: 4px;
+  border-radius: 0 0 3px 3px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  background: var(--surface-3, var(--surface-2));
+  transition: background var(--dur-micro) var(--ease);
+}
+.fd-node-result--text:hover {
+  background: var(--accent-dim);
+}
+.fd-node-result-text-icon {
+  font-family: var(--ff-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
 }
 
 .fd-node-result--video,
@@ -1452,4 +1462,79 @@
   background: var(--accent-dim);
   border-color: var(--accent-border);
   color: var(--accent);
+}
+
+/* ── Text overlay ────────────────────────────────────── */
+
+.fd-text-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 800;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fd-text-overlay-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  width: min(480px, 90vw);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.fd-text-overlay-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.fd-text-overlay-header .fd-card-section {
+  flex: 1;
+}
+
+.fd-text-overlay-copy {
+  font-family: var(--ff-condensed);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--ls-wide);
+  text-transform: uppercase;
+  background: var(--surface-2);
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.fd-text-overlay-copy:hover {
+  background: var(--accent-dim);
+}
+
+.fd-text-overlay-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+}
+.fd-text-overlay-close:hover {
+  color: var(--text-primary);
+}
+
+.fd-text-overlay-body {
+  font-family: var(--ff-mono);
+  font-size: var(--fs-xs);
+  line-height: 1.7;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 14px 16px;
+  overflow-y: auto;
+  flex: 1;
 }

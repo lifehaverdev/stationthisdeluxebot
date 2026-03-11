@@ -80,6 +80,7 @@ export class FocusDemo extends Component {
       descriptionExpanded: false,
       nodeModeShowOptional: false,
       actionModalOpen: false,
+      textOverlayNodeId: null,
     };
     this._engine = new PhysicsEngine();
     this._rafId = null;
@@ -1702,8 +1703,14 @@ export class FocusDemo extends Component {
     }
 
     if (output.type === 'text') {
-      const preview = (output.text || '').slice(0, 80);
-      return h('div', { className: 'fd-node-result fd-node-result--text' }, preview);
+      return h('div', {
+        className: 'fd-node-result fd-node-result--text',
+        onclick: (e) => { e.stopPropagation(); this.setState({ textOverlayNodeId: node.id }); },
+        title: 'Click to read',
+      },
+        h('span', { className: 'fd-node-result-text-icon' }, 'T'),
+        h('span', { className: 'fd-node-result-label' }, 'text'),
+      );
     }
 
     if (output.type === 'video') {
@@ -1714,9 +1721,30 @@ export class FocusDemo extends Component {
     }
 
     if (output.type === 'spell-steps') {
-      const count = output.steps?.length || 0;
+      const steps = output.steps || [];
+      const last = [...steps].reverse().find(s => s.type === 'image' || s.type === 'text');
+      if (last?.type === 'image') {
+        return h('div', { className: 'fd-node-result fd-node-result--image' },
+          h('img', {
+            src: last.url,
+            className: 'fd-node-result-img',
+            alt: '',
+            draggable: false,
+          })
+        );
+      }
+      if (last?.type === 'text') {
+        return h('div', {
+          className: 'fd-node-result fd-node-result--text',
+          onclick: (e) => { e.stopPropagation(); this.setState({ textOverlayNodeId: node.id }); },
+          title: 'Click to read',
+        },
+          h('span', { className: 'fd-node-result-text-icon' }, 'T'),
+          h('span', { className: 'fd-node-result-label' }, 'text'),
+        );
+      }
       return h('div', { className: 'fd-node-result fd-node-result--spell' },
-        h('span', { className: 'fd-node-result-label' }, `${count} steps`)
+        h('span', { className: 'fd-node-result-label' }, `${steps.length} steps`)
       );
     }
 
@@ -2008,6 +2036,44 @@ export class FocusDemo extends Component {
       fsmState === STATES.MULTI_SELECT ? this._renderActionBar() : null,
       // Node Mode overlay
       fsmState === STATES.NODE_MODE ? this._renderNodeMode() : null,
+      // Text overlay
+      (() => {
+        const overlayNode = this.state.textOverlayNodeId && this.state.nodes.get(this.state.textOverlayNodeId);
+        if (!overlayNode) return null;
+        const out = overlayNode.output;
+        let text = null;
+        if (out?.type === 'text') text = out.text || '';
+        else if (out?.type === 'spell-steps') {
+          const last = [...(out.steps || [])].reverse().find(s => s.type === 'text');
+          text = last?.text || '';
+        }
+        if (text === null) return null;
+        return h('div', {
+          className: 'fd-text-overlay',
+          onclick: () => this.setState({ textOverlayNodeId: null }),
+        },
+          h('div', {
+            className: 'fd-text-overlay-card',
+            onclick: (e) => e.stopPropagation(),
+          },
+            h('div', { className: 'fd-text-overlay-header' },
+              h('span', { className: 'fd-card-section' }, overlayNode.label),
+              h('button', {
+                className: 'fd-text-overlay-copy',
+                onclick: (e) => {
+                  e.stopPropagation();
+                  navigator.clipboard?.writeText(text);
+                },
+              }, 'Copy'),
+              h('button', {
+                className: 'fd-text-overlay-close',
+                onclick: () => this.setState({ textOverlayNodeId: null }),
+              }, '\u00d7'),
+            ),
+            h('div', { className: 'fd-text-overlay-body' }, text),
+          ),
+        );
+      })(),
       // + FAB
       h('button', {
         className: 'fd-fab',
