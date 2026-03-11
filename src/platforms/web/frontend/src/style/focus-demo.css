@@ -1566,20 +1566,21 @@
 }
 
 .fd-image-overlay-close {
-  position: fixed;
-  top: 16px;
-  right: 16px;
+  position: absolute;
+  top: max(16px, env(safe-area-inset-top, 16px));
+  right: max(16px, env(safe-area-inset-right, 16px));
   background: var(--surface-2);
   border: 1px solid var(--border);
   color: var(--text-secondary);
   font-size: 20px;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   line-height: 1;
+  z-index: 1;
 }
 .fd-image-overlay-close:hover {
   color: var(--text-primary);

@@ -75,6 +75,15 @@ function createX402GenerationApi(dependencies) {
    *   - url: string (required if mode is 'webhook')
    *   - secret: string (optional, for webhook signature verification)
    */
+  router.get('/generate', (req, res) => {
+    res.setHeader('Allow', 'POST');
+    res.status(405).json({
+      error: 'METHOD_NOT_ALLOWED',
+      message: 'POST required. Send a POST with {"toolId","inputs"} — the first call returns 402 with payment requirements.',
+      docs: 'https://noema.art/.well-known/ai-skill.md'
+    });
+  });
+
   router.post('/generate', async (req, res) => {
     const { toolId, inputs, delivery } = req.body;
 
