@@ -2085,17 +2085,21 @@ export class FocusDemo extends Component {
         className: 'fd-image-overlay',
         onclick: () => this.setState({ imageOverlay: null }),
       },
-        h('img', {
-          src: this.state.imageOverlay.url,
-          className: 'fd-image-overlay-img',
-          alt: this.state.imageOverlay.label || '',
-          draggable: false,
-          onclick: (e) => e.stopPropagation(),
-        }),
-        h('button', {
-          className: 'fd-image-overlay-close',
-          onclick: () => this.setState({ imageOverlay: null }),
-        }, '\u00d7'),
+        h('div', { className: 'fd-image-overlay-bar', onclick: (e) => e.stopPropagation() },
+          h('span', { className: 'fd-image-overlay-label' }, this.state.imageOverlay.label || ''),
+          h('button', {
+            className: 'fd-image-overlay-close',
+            onclick: () => this.setState({ imageOverlay: null }),
+          }, '\u00d7'),
+        ),
+        h('div', { className: 'fd-image-overlay-body' },
+          h('img', {
+            src: this.state.imageOverlay.url,
+            className: 'fd-image-overlay-img',
+            alt: this.state.imageOverlay.label || '',
+            draggable: false,
+          }),
+        ),
       ) : null,
       // Text overlay
       (() => {
