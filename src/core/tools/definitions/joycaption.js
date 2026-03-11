@@ -77,7 +77,7 @@ const joycaptionTool = {
   outputSchema: {
     description: {
       name: 'description',
-      type: 'string',
+      type: 'text',
       description: 'The generated text description of the image.'
     }
   },

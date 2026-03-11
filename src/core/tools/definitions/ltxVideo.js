@@ -9,7 +9,7 @@ const ltxVideoTool = {
   inputSchema: {
     prompt: {
       name: 'prompt',
-      type: 'string',
+      type: 'text',
       required: true,
       description: 'Text prompt describing the video to generate.'
     },
@@ -70,7 +70,7 @@ const ltxVideoTool = {
   outputSchema: {
     video: {
       name: 'video',
-      type: 'string',
+      type: 'video',
       description: 'URL of the generated video file.'
     }
   },

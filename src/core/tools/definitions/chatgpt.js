@@ -23,7 +23,7 @@ const chatGptTool = {
   inputSchema: {
     prompt: {
       name: 'prompt',
-      type: 'string',
+      type: 'text',
       required: true,
       description: 'The text prompt to send to the AI.'
     },
@@ -46,7 +46,7 @@ const chatGptTool = {
   outputSchema: {
       response: {
           name: 'response',
-          type: 'string',
+          type: 'text',
           description: 'The text response from the AI.'
       }
   },
