@@ -1,0 +1,404 @@
+/* sandbox2.css — SandboxCanvas2 styles */
+
+.sc2-root {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--bg);
+  touch-action: none;
+  user-select: none;
+}
+
+.sc2-viewport {
+  position: absolute;
+  top: 0; left: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.sc2-viewport--animating {
+  transition: transform 280ms var(--ease, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+/* Origin home marker */
+.sc2-origin-marker {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent, #90caf9);
+  opacity: 0.35;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  box-shadow: 0 0 0 4px var(--accent-dim, rgba(144,202,249,0.15));
+}
+
+/* Node chips */
+.sc2-node {
+  position: absolute;
+  width: 140px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+}
+
+.sc2-node--focused {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dim);
+}
+
+/* Executing state */
+.sc2-node--executing {
+  border-color: var(--accent);
+  overflow: hidden;
+}
+
+.sc2-node-progress-bar {
+  position: absolute;
+  top: 0; left: 0;
+  height: 2px;
+  width: 40%;
+  background: var(--accent, #90caf9);
+  border-radius: 0 2px 2px 0;
+  animation: sc2-progress-sweep 1.4s ease-in-out infinite;
+}
+
+@keyframes sc2-progress-sweep {
+  0%   { left: -40%; width: 40%; }
+  50%  { left: 80%; width: 40%; }
+  100% { left: 120%; width: 40%; }
+}
+
+.sc2-node--pinned::after {
+  content: '📌';
+  position: absolute;
+  top: 4px; right: 6px;
+  font-size: 10px;
+}
+
+.sc2-node-label {
+  font-family: var(--ff-condensed);
+  font-size: var(--fs-sm);
+  letter-spacing: var(--ls-wide);
+  text-transform: uppercase;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sc2-node-type {
+  font-family: var(--ff-mono);
+  font-size: 8px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-label);
+  opacity: 0.6;
+  margin-top: 2px;
+}
+
+.sc2-node-thumb {
+  width: 100%;
+  aspect-ratio: 16/9;
+  object-fit: cover;
+  margin-top: 6px;
+  background: var(--surface-2);
+}
+
+.sc2-node-thumb--clickable {
+  cursor: zoom-in;
+}
+
+/* Connection SVG */
+.sc2-conn-layer {
+  position: absolute;
+  top: 0; left: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.sc2-conn-path {
+  fill: none;
+  stroke: rgba(255,255,255,0.18);
+  stroke-width: 2;
+}
+
+.sc2-conn-path--pending {
+  stroke-dasharray: 6 4;
+  stroke: rgba(255,255,255,0.35);
+}
+
+.sc2-conn-path[data-type="text"]  { stroke: rgba(100, 200, 180, 0.4); }
+.sc2-conn-path[data-type="image"] { stroke: rgba(147, 130, 255, 0.4); }
+.sc2-conn-path[data-type="video"] { stroke: rgba(255, 160, 100, 0.4); }
+.sc2-conn-path[data-type="audio"] { stroke: rgba(255, 220, 80, 0.4); }
+
+/* NODE_MODE panel */
+.sc2-node-mode {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  max-height: 70vh;
+  background: var(--surface-1);
+  border-top: 1px solid var(--border);
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  animation: sc2-slide-up 200ms var(--ease, cubic-bezier(0.4,0,0.2,1)) both;
+}
+
+@keyframes sc2-slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.sc2-nm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.sc2-nm-title {
+  font-family: var(--ff-condensed);
+  font-size: var(--fs-sm);
+  letter-spacing: var(--ls-wide);
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+
+.sc2-nm-back {
+  font-family: var(--ff-condensed);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--ls-wide);
+  color: var(--text-label);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.sc2-nm-body {
+  overflow-y: auto;
+  flex: 1;
+  padding: 16px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.sc2-nm-placeholder {
+  color: var(--text-label);
+  font-family: var(--ff-mono);
+  font-size: var(--fs-xs);
+  padding: 8px 0;
+}
+
+.sc2-disconnect-btn {
+  background: none;
+  border: none;
+  color: var(--text-label);
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 12px;
+  opacity: 0.6;
+}
+.sc2-disconnect-btn:hover { opacity: 1; color: #f66; }
+
+/* Multi-select action bar */
+.sc2-action-bar {
+  position: fixed;
+  bottom: max(16px, env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  max-width: calc(100vw - 32px);
+  z-index: 600;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+.sc2-action-btn {
+  font-family: var(--ff-condensed);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--ls-wide);
+  text-transform: uppercase;
+  color: var(--text-primary);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.sc2-action-btn:hover { border-color: var(--accent); color: var(--accent); }
+.sc2-action-btn--danger { color: #f66; border-color: rgba(255,102,102,0.4); }
+.sc2-action-btn--danger:hover { border-color: #f66; }
+
+/* Canvas paste menu */
+.sc2-canvas-menu {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  display: flex;
+  gap: 8px;
+}
+
+/* Wired inputs section in NODE_MODE */
+.sc2-nm-connections {
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 10px;
+}
+
+.sc2-nm-conn-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 0;
+}
+
+.sc2-nm-conn-label {
+  font-family: var(--ff-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-label);
+  opacity: 0.7;
+}
+
+
+.sc2-node--selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dim);
+  opacity: 0.85;
+}
+
+/* + FAB button */
+.sc2-fab {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--accent, #90caf9);
+  color: #000;
+  border: none;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  transition: transform 120ms, box-shadow 120ms;
+}
+.sc2-fab:hover {
+  transform: scale(1.08);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+}
+.sc2-fab:active { transform: scale(0.95); }
+
+/* Anchor buttons — output (right edge) and input (left edge) */
+.sc2-anchor {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  cursor: pointer;
+  padding: 0;
+  color: var(--text-label);
+  transition: border-color 120ms, color 120ms, box-shadow 120ms;
+  z-index: 10;
+}
+
+.sc2-anchor--output {
+  right: -9px;
+}
+
+.sc2-anchor--input {
+  left: -9px;
+  transform: translateX(0) translateY(-50%);
+  /* top is set inline per-port */
+}
+
+.sc2-anchor:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dim);
+}
+
+.sc2-anchor--active {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+.sc2-anchor--matching {
+  border-color: rgba(100, 200, 180, 0.6);
+  color: rgb(100, 200, 180);
+}
+
+.sc2-anchor--matching:hover {
+  border-color: rgb(100, 200, 180);
+  box-shadow: 0 0 0 2px rgba(100, 200, 180, 0.25);
+}
+
+.sc2-anchor--nonmatching {
+  border-color: rgba(255, 180, 80, 0.4);
+  color: rgba(255, 180, 80, 0.7);
+}
+
+.sc2-anchor--nonmatching:hover {
+  border-color: rgba(255, 180, 80, 0.8);
+  color: rgba(255, 180, 80, 1);
+}
+
+.sc2-anchor--idle {
+  border-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.25);
+  opacity: 0.6;
+}
+
+.sc2-anchor--idle:hover {
+  opacity: 1;
+  border-color: var(--border);
+  color: var(--text-label);
+}
+
+.sc2-anchor--wired {
+  border-color: rgba(255, 102, 102, 0.5);
+  color: rgba(255, 102, 102, 0.7);
+}
+
+/* Batch anchor — larger, circular pill, accent-tinted */
+.sc2-anchor--batch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border-color: rgba(147, 130, 255, 0.5);
+  color: rgba(147, 130, 255, 0.9);
+  background: rgba(147, 130, 255, 0.08);
+}
+
+.sc2-anchor--batch:hover {
+  border-color: rgba(147, 130, 255, 0.9);
+  box-shadow: 0 0 0 3px rgba(147, 130, 255, 0.2);
+}
+
+.sc2-anchor--batch.sc2-anchor--active {
+  border-color: rgba(147, 130, 255, 1);
+  box-shadow: 0 0 0 3px rgba(147, 130, 255, 0.3);
+}

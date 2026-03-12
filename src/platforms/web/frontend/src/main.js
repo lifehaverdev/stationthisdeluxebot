@@ -6,6 +6,7 @@ import { Landing } from './pages/Landing.js';
 import { Docs } from './pages/Docs.js';
 import './style/main.css';
 import './style/sandbox.css';
+import './style/sandbox2.css';
 
 const app = document.getElementById('app');
 

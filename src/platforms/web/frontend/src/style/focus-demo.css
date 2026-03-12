@@ -415,6 +415,96 @@
   background: var(--danger-dim);
 }
 
+.fd-card-btn-execute {
+  color: var(--accent);
+  border-color: var(--accent);
+  flex: 1;
+}
+
+.fd-card-btn-execute:hover {
+  background: var(--accent-dim);
+}
+
+.fd-card-btn--loading {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* ── Output card ───────────────────────── */
+.fd-card-output {
+  gap: 8px;
+}
+
+.fd-card-output--running {
+  position: relative;
+  overflow: hidden;
+}
+
+.fd-output-progress-bar {
+  position: absolute;
+  top: 0; left: 0;
+  height: 2px;
+  width: 40%;
+  background: var(--accent, #90caf9);
+  animation: sc2-progress-sweep 1.4s ease-in-out infinite;
+}
+
+.fd-output-status {
+  font-family: var(--ff-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-label);
+  padding: 8px 0 4px;
+}
+
+.fd-output-error {
+  font-family: var(--ff-mono);
+  font-size: var(--fs-xs);
+  color: var(--danger, #f66);
+  padding: 4px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.fd-output-image {
+  width: 100%;
+  border-radius: 4px;
+  display: block;
+}
+
+.fd-output-video {
+  width: 100%;
+  border-radius: 4px;
+  display: block;
+}
+
+.fd-output-text {
+  font-family: var(--ff-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.fd-output-files {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.fd-output-file-link {
+  font-family: var(--ff-mono);
+  font-size: var(--fs-xs);
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ── Periphery Glows ───────────────────── */
 .fd-periphery {
   position: fixed;
@@ -789,7 +879,9 @@
   transform: translateX(-50%);
   z-index: 1000;
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+  max-width: calc(100vw - 32px);
   background: var(--surface-1);
   border: 1px solid var(--border);
   padding: 8px 12px;
@@ -815,8 +907,9 @@
   background: var(--surface-2);
   color: var(--text-primary);
   border: 1px solid var(--border);
-  padding: 8px 12px;
+  padding: 8px 10px;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .fd-action-btn:hover {
@@ -830,6 +923,37 @@
 
 .fd-action-btn-danger:hover {
   background: var(--danger-dim);
+}
+
+/* ── Canvas context menu ─────────────────── */
+.fd-canvas-menu {
+  position: fixed;
+  z-index: 1100;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  padding: 4px;
+  animation: fd-slide-up 150ms var(--ease) both;
+}
+
+.fd-canvas-menu-item {
+  display: block;
+  width: 100%;
+  padding: 10px 14px;
+  font-family: var(--ff-condensed);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--ls-wide);
+  text-transform: uppercase;
+  color: var(--text-primary);
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.fd-canvas-menu-item:hover {
+  background: var(--surface-2);
+  color: var(--accent);
 }
 
 .fd-action-btn-cancel {

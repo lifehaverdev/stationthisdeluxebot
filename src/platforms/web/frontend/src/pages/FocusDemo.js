@@ -1,4 +1,4 @@
-import { Component, h } from '@monygroupcorp/microact';
+import { Component, h, eventBus } from '@monygroupcorp/microact';
 import { PhysicsEngine } from '../sandbox/focus/physics/PhysicsEngine.js';
 import { createPosition } from '../sandbox/focus/spatial/SphericalGrid.js';
 import { FocusStateMachine, STATES } from '../sandbox/focus/state/FocusStateMachine.js';
@@ -80,6 +80,7 @@ export class FocusDemo extends Component {
       descriptionExpanded: false,
       nodeModeShowOptional: false,
       actionModalOpen: false,
+      canvasMenu: null, // { x, y } screen coords
       textOverlayNodeId: null,
       textOverlayCopied: false,
       imageOverlay: null, // { url, label }
@@ -168,8 +169,72 @@ export class FocusDemo extends Component {
     return { x: originX + DIR_X * 30 * STEP, y: originY + DIR_Y * 30 * STEP };
   }
 
+  _panToCanvasPoint(canvasX, canvasY) {
+    const scale = this.state.viewport.scale || 1;
+    const panX = window.innerWidth / 2 - canvasX * scale;
+    const panY = window.innerHeight / 2 - canvasY * scale;
+    this._panX = panX;
+    this._panY = panY;
+    if (this._rootEl) {
+      const vp = this._rootEl.querySelector('.fd-viewport');
+      if (vp) {
+        vp.classList.add('fd-viewport--animating');
+        clearTimeout(this._viewportTransitionTimeout);
+        this._viewportTransitionTimeout = setTimeout(() => vp.classList.remove('fd-viewport--animating'), 320);
+      }
+    }
+    this.setState({ viewport: { panX, panY, scale } });
+  }
+
+  async _ensureToolsForModal() {
+    if (this._toolsLoaded) return;
+    this._toolsLoaded = true;
+    try {
+      const res = await fetch('/api/v1/tools/registry');
+      if (!res.ok) return;
+      const tools = await res.json();
+      eventBus.emit('sandbox:availableTools', tools);
+    } catch {}
+  }
+
+  _openActionModal() {
+    this._ensureToolsForModal();
+    const spot = this._findEmptySpot();
+    this._pendingNodeSpot = spot;
+
+    // Pan to spot at Z1 scale, then enter Z1 state
+    const scale = this._tweaks.scaleZ1;
+    const panX = window.innerWidth / 2 - spot.x * scale;
+    const panY = window.innerHeight / 2 - spot.y * scale;
+    this._panX = panX;
+    this._panY = panY;
+    if (this._rootEl) {
+      const vp = this._rootEl.querySelector('.fd-viewport');
+      if (vp) {
+        vp.classList.add('fd-viewport--animating');
+        clearTimeout(this._viewportTransitionTimeout);
+        this._viewportTransitionTimeout = setTimeout(() => vp.classList.remove('fd-viewport--animating'), 320);
+      }
+    }
+    this.setState({ viewport: { panX, panY, scale } });
+
+    // Transition FSM to Z1 (zoomIn with no node doesn't override our pan)
+    if (this.state.fsmState === STATES.CANVAS_Z2) {
+      this._fsm.zoomIn();
+    }
+
+    setTimeout(() => this.setState({ actionModalOpen: true }), 320);
+  }
+
   _addToolNode(tool, _workspacePos) {
-    const { x: canvasX, y: canvasY } = this._findEmptySpot();
+    // Use the pre-panned spot if available, otherwise fall back to view center
+    const spot = this._pendingNodeSpot || (() => {
+      const scale = this.state.viewport.scale || 1;
+      return { x: (window.innerWidth / 2 - this._panX) / scale, y: (window.innerHeight / 2 - this._panY) / scale };
+    })();
+    this._pendingNodeSpot = null;
+    const canvasX = spot.x;
+    const canvasY = spot.y;
 
     const id = tool.toolId || `tool-${Date.now()}`;
     this._engine.addNode(id, createPosition(canvasX, canvasY));
@@ -380,6 +445,8 @@ export class FocusDemo extends Component {
         if (nodeId) {
           this._fsm.enterMultiSelect(nodeId);
           this.setState({});
+        } else if (this._clipboard) {
+          this.setState({ canvasMenu: { x: startX, y: startY } });
         }
       }, 500);
     }
@@ -434,7 +501,14 @@ export class FocusDemo extends Component {
         return;
       }
 
-      // Don't preventDefault when an overlay is open — allow native button taps, don't process as canvas gesture
+      // Don't preventDefault when an overlay or canvas menu is open — allow native button taps, don't process as canvas gesture
+      if (this.state.canvasMenu) {
+        if (!e.target.closest?.('.fd-canvas-menu')) {
+          this.setState({ canvasMenu: null });
+        }
+        this._gestureStart = null;
+        return;
+      }
       if (this.state.imageOverlay || this.state.textOverlayNodeId) {
         this._gestureStart = null;
         return;
@@ -455,9 +529,11 @@ export class FocusDemo extends Component {
       e.preventDefault();
       // _panX/Y are always current — no fallback needed.
       this._panStart = { x: t.clientX - this._panX, y: t.clientY - this._panY };
-      // Long-press detection for multi-select
+      // Long-press detection for multi-select (on node) or canvas menu (on empty canvas)
       if (this.state.fsmState === STATES.CANVAS_Z1 || this.state.fsmState === STATES.CANVAS_Z2) {
         const target = e.target;
+        const touchX = t.clientX;
+        const touchY = t.clientY;
         this._longPressTimeout = setTimeout(() => {
           this._longPressTimeout = null;
           const nodeEl = target.closest && target.closest('.fd-node');
@@ -465,6 +541,9 @@ export class FocusDemo extends Component {
           if (nodeId) {
             this._fsm.enterMultiSelect(nodeId);
             this.setState({});
+            this._gestureStart = null;
+          } else if (this._clipboard) {
+            this.setState({ canvasMenu: { x: touchX, y: touchY } });
             this._gestureStart = null;
           }
         }, 500);
@@ -1115,12 +1194,32 @@ export class FocusDemo extends Component {
     this.setState({ nodes, connections });
   }
 
+  _renderCanvasMenu() {
+    const { canvasMenu } = this.state;
+    if (!canvasMenu) return null;
+    const MENU_W = 120;
+    // Keep menu inside viewport
+    const x = Math.min(canvasMenu.x, window.innerWidth - MENU_W - 8);
+    const y = Math.max(canvasMenu.y - 48, 8);
+    return h('div', {
+      className: 'fd-canvas-menu',
+      ontouchstart: (e) => e.stopPropagation(),
+      style: { left: `${x}px`, top: `${y}px` },
+    },
+      h('button', {
+        className: 'fd-canvas-menu-item',
+        onclick: () => { this._batchPaste(); this.setState({ canvasMenu: null }); },
+      }, `Paste (${this._clipboard.nodes.length})`),
+    );
+  }
+
   _renderActionBar() {
     const count = this._fsm.selectedNodeIds.size;
     return h('div', { className: 'fd-action-bar', ontouchstart: (e) => e.stopPropagation() },
       h('span', { className: 'fd-action-bar-count' }, `${count} selected`),
       h('button', { className: 'fd-action-btn', onclick: () => this._batchGroup() }, 'Group'),
       h('button', { className: 'fd-action-btn', onclick: () => this._batchClone() }, 'Clone'),
+      h('button', { className: 'fd-action-btn', onclick: () => this._batchCopy() }, 'Copy'),
       h('button', { className: 'fd-action-btn', onclick: () => this._batchCut() }, 'Cut'),
       this._clipboard ? h('button', { className: 'fd-action-btn', onclick: () => this._batchPaste() }, 'Paste') : null,
       h('button', { className: 'fd-action-btn fd-action-btn-danger', onclick: () => this._batchDelete() }, 'Delete'),
@@ -1161,7 +1260,9 @@ export class FocusDemo extends Component {
         engineNode.position.y + 50,
       );
       this._engine.addNode(newId, pos);
-      nodes.set(newId, { id: newId, label: sourceNode.label, type: sourceNode.type, group: sourceNode.group, params: sourceNode.params });
+      nodes.set(newId, { id: newId, label: sourceNode.label, type: sourceNode.type, group: sourceNode.group, params: sourceNode.params,
+        executing: false, progress: null, progressPercent: null, error: null, censored: false,
+        output: null, outputVersions: [], currentVersionIndex: 0 });
       if (sourceNode.group) {
         this._engine.setGroup(newId, sourceNode.group);
       }
@@ -1182,6 +1283,7 @@ export class FocusDemo extends Component {
 
   _batchDelete() {
     const ids = [...this._fsm.selectedNodeIds];
+    const focusedDeleted = ids.includes(this.state.focusedNodeId);
     for (const id of ids) {
       this._engine.removeNode(id);
     }
@@ -1191,6 +1293,7 @@ export class FocusDemo extends Component {
       c => !this._fsm.selectedNodeIds.has(c.from) && !this._fsm.selectedNodeIds.has(c.to)
     );
     this._fsm.exitMultiSelect();
+    if (focusedDeleted) this._fsm.zoomOut();
     this.setState({ nodes, connections });
   }
 
@@ -1206,6 +1309,21 @@ export class FocusDemo extends Component {
     }
     this._fsm.exitMultiSelect();
     this.setState({ nodes });
+  }
+
+  _batchCopy() {
+    const ids = [...this._fsm.selectedNodeIds];
+    const clipNodes = ids.map(id => {
+      const node = this.state.nodes.get(id);
+      const engineNode = this._engine.getNode(id);
+      return { ...node, position: engineNode ? { ...engineNode.position } : null };
+    }).filter(Boolean);
+    const clipConns = this.state.connections.filter(
+      c => this._fsm.selectedNodeIds.has(c.from) && this._fsm.selectedNodeIds.has(c.to)
+    );
+    this._clipboard = { nodes: clipNodes, connections: clipConns };
+    this._fsm.exitMultiSelect();
+    this.setState({});
   }
 
   _batchClone() {
@@ -1255,7 +1373,9 @@ export class FocusDemo extends Component {
         ? createPosition(cx + (cn.position.x - avgX), cy + (cn.position.y - avgY))
         : createPosition(cx, cy);
       this._engine.addNode(newId, pos);
-      nodes.set(newId, { id: newId, label: cn.label, type: cn.type, group: cn.group, params: cn.params });
+      nodes.set(newId, { id: newId, label: cn.label, type: cn.type, group: cn.group, params: cn.params,
+        executing: false, progress: null, progressPercent: null, error: null, censored: false,
+        output: null, outputVersions: [], currentVersionIndex: 0 });
       if (cn.group) this._engine.setGroup(newId, cn.group);
     }
 
@@ -2155,6 +2275,7 @@ export class FocusDemo extends Component {
       })() : null,
       // Multi-select action bar
       fsmState === STATES.MULTI_SELECT ? this._renderActionBar() : null,
+      this._renderCanvasMenu(),
       // Node Mode overlay
       fsmState === STATES.NODE_MODE ? this._renderNodeMode() : null,
       // Image overlay (lightbox)
@@ -2221,7 +2342,7 @@ export class FocusDemo extends Component {
       h('button', {
         className: 'fd-fab',
         ontouchstart: (e) => e.stopPropagation(),
-        onclick: (e) => { e.stopPropagation(); this.setState({ actionModalOpen: true }); },
+        onclick: (e) => { e.stopPropagation(); this._openActionModal(); },
         title: 'Add node',
       }, '+'),
       // ActionModal
@@ -2231,7 +2352,7 @@ export class FocusDemo extends Component {
         y: window.innerHeight / 2,
         workspacePosition: { x: 0, y: 0 },
         onToolSelect: (tool, pos) => this._addToolNode(tool, pos),
-        onClose: () => this.setState({ actionModalOpen: false }),
+        onClose: () => { this._pendingNodeSpot = null; this.setState({ actionModalOpen: false }); },
       }),
     );
   }

@@ -9,7 +9,8 @@ import { CheckpointPickerModal } from '../sandbox/components/CheckpointPickerMod
 import { InstructionPickerModal } from '../sandbox/components/InstructionPickerModal.js';
 import { AuthWidget } from '../sandbox/components/AuthWidget.js';
 import { initStore } from '../sandbox/store.js';
-import { SandboxCanvas, loadCanvasState } from '../sandbox/canvas/SandboxCanvas.js';
+import { SandboxCanvas2 as SandboxCanvas } from '../sandbox/canvas2/SandboxCanvas2.js';
+import { loadCanvasState } from '../sandbox/canvas/SandboxCanvas.js';
 import { initializeTools } from '../sandbox/io.js';
 import { BatchPanel } from '../sandbox/components/BatchPanel.js';
 
@@ -51,11 +52,7 @@ export class Sandbox extends Component {
     document.body.style.overflow = 'hidden';
     document.documentElement.style.overflow = 'hidden';
 
-    // Desktop: canvas click → open ActionModal.
-    // click fires after mouseup and only when the pointer hasn't dragged (browser guarantee),
-    // so lasso drags never trigger it.
-    this._clickHandler = (e) => this._onCanvasClick(e);
-    document.addEventListener('click', this._clickHandler);
+    this._clickHandler = null; // ActionModal only opens via + FAB
 
     // Desktop dismiss: close modal on any mousedown that lands outside the modal.
     // This handles lasso-start (mousedown → drag → no click) and plain outside-clicks.
@@ -68,6 +65,14 @@ export class Sandbox extends Component {
       this.setState({ actionModal: { visible: false, x: 0, y: 0, workspacePos: null } });
     };
     document.addEventListener('mousedown', this._mouseDownHandler);
+
+    // Mobile: dismiss action modal on any touch outside it
+    this._touchDismissHandler = (e) => {
+      if (!this.state.actionModal.visible) return;
+      if (e.target.closest('.am-root, .am-tools-panel, .am-upload-panel')) return;
+      this.setState({ actionModal: { visible: false, x: 0, y: 0, workspacePos: null } });
+    };
+    document.addEventListener('touchstart', this._touchDismissHandler, { passive: true });
 
     // Mobile: SandboxCanvas emits sandbox:canvasTap when a finger taps without panning.
     this._onCanvasTap = ({ x, y }) => {
@@ -151,6 +156,7 @@ export class Sandbox extends Component {
   willUnmount() {
     if (this._clickHandler)    document.removeEventListener('click',     this._clickHandler);
     if (this._mouseDownHandler) document.removeEventListener('mousedown', this._mouseDownHandler);
+    if (this._touchDismissHandler) document.removeEventListener('touchstart', this._touchDismissHandler);
     if (this._escHandler)      document.removeEventListener('keydown',   this._escHandler);
     if (this._onCanvasTap)     eventBus.off('sandbox:canvasTap',         this._onCanvasTap);
     if (this._onOpenTextEdit)           eventBus.off('sandbox:openTextEdit',           this._onOpenTextEdit);
@@ -217,7 +223,7 @@ export class Sandbox extends Component {
   _openActionModal(clientX, clientY) {
     const canvas = window.sandboxCanvas;
     const workspacePos = canvas ? canvas.screenToWorkspace(clientX, clientY) : { x: 200, y: 200 };
-    const canvasEl = document.querySelector('.sc-root');
+    const canvasEl = document.querySelector('.sc2-root, .sc-root');
     if (!canvasEl) return;
     const rect = canvasEl.getBoundingClientRect();
     const pad = 80;
@@ -228,8 +234,8 @@ export class Sandbox extends Component {
 
   _onCanvasClick(e) {
     // Only handle clicks on the canvas background — not on windows or other UI
-    if (!e.target.closest('.sc-root')) return;
-    if (e.target.closest('.nw-root, .am-root, .am-upload-panel, .am-tools-panel, #sidebar, .sidebar-toggle, .cost-hud, .sb-header, .ws-suite, .cdp-root')) return;
+    if (!e.target.closest('.sc-root, .sc2-root')) return;
+    if (e.target.closest('.nw-root, .sc2-node, .sc2-node-mode, .sc2-action-bar, .sc2-canvas-menu, .am-root, .am-upload-panel, .am-tools-panel, #sidebar, .sidebar-toggle, .cost-hud, .sb-header, .ws-suite, .cdp-root')) return;
 
     // Spec 3: an anchor was just dropped on empty canvas — drop picker handles it.
     if (window.sandboxCanvas?._anchorDropPending) return;

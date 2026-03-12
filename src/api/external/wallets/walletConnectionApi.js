@@ -83,9 +83,15 @@ function createWalletConnectionApiRouter(dependencies) {
    * No auth required — identity is proven by the magic amount deposit from the claimed wallet.
    */
   router.post('/relink', async (req, res) => {
-    const { walletAddress } = req.body;
-    if (!walletAddress || !ethers.isAddress(walletAddress)) {
-      return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'A valid walletAddress is required.' } });
+    const rawAddress = req.body.walletAddress || req.body.address;
+    if (!rawAddress) {
+      return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'A valid walletAddress is required.', received: req.body } });
+    }
+    let walletAddress;
+    try {
+      walletAddress = ethers.getAddress(rawAddress); // normalizes to EIP-55 checksum
+    } catch {
+      return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Invalid Ethereum address.', received: rawAddress } });
     }
 
     try {

@@ -99,45 +99,42 @@ describe('FocusStateMachine', () => {
     });
   });
 
-  describe('CONNECTION_MODE transitions', () => {
+  describe('connection overlay (startConnection / clearConnection)', () => {
     beforeEach(() => {
       sm.doubleTapNode('n1'); // go to NODE_MODE
     });
 
-    it('enterConnectionMode → CONNECTION_MODE with source', () => {
-      sm.enterConnectionMode('n1');
-      expect(sm.state).toBe('CONNECTION_MODE');
-      expect(sm.sourceNodeId).toBe('n1');
-      expect(sm.focusedNodeId).toBe('n1');
+    it('startConnection sets isConnecting with source', () => {
+      sm.startConnection('n1', 'output', 'text');
+      expect(sm.isConnecting).toBe(true);
+      expect(sm.connection.sourceNodeId).toBe('n1');
+      expect(sm.connection.sourcePort).toBe('output');
     });
 
-    it('enterConnectionMode ignored outside NODE_MODE', () => {
+    it('startConnection does not change FSM state', () => {
+      sm.startConnection('n1', 'output', 'text');
+      expect(sm.state).toBe('NODE_MODE');
+    });
+
+    it('clearConnection clears isConnecting', () => {
+      sm.startConnection('n1', 'output', 'text');
+      sm.clearConnection();
+      expect(sm.isConnecting).toBe(false);
+      expect(sm.connection).toBe(null);
+    });
+
+    it('startConnection works from any state', () => {
       sm.zoomOut(); // back to Z1
-      sm.enterConnectionMode('n1');
+      sm.startConnection('n1', 'output', 'text');
+      expect(sm.isConnecting).toBe(true);
       expect(sm.state).toBe('CANVAS_Z1');
     });
 
-    it('completeConnection → NODE_MODE on source', () => {
-      sm.enterConnectionMode('n1');
-      sm.completeConnection();
-      expect(sm.state).toBe('NODE_MODE');
-      expect(sm.focusedNodeId).toBe('n1');
-      expect(sm.sourceNodeId).toBe(null);
-    });
-
-    it('cancelConnection → NODE_MODE on source', () => {
-      sm.enterConnectionMode('n1');
-      sm.cancelConnection();
-      expect(sm.state).toBe('NODE_MODE');
-      expect(sm.focusedNodeId).toBe('n1');
-      expect(sm.sourceNodeId).toBe(null);
-    });
-
-    it('zoomOut in CONNECTION_MODE cancels', () => {
-      sm.enterConnectionMode('n1');
-      sm.zoomOut();
-      expect(sm.state).toBe('NODE_MODE');
-      expect(sm.sourceNodeId).toBe(null);
+    it('zoomOut while connecting still transitions state (caller must clearConnection)', () => {
+      sm.startConnection('n1', 'output', 'text');
+      sm.zoomOut(); // NODE_MODE → CANVAS_Z1
+      expect(sm.state).toBe('CANVAS_Z1');
+      expect(sm.isConnecting).toBe(true); // connection persists until cleared
     });
   });
 

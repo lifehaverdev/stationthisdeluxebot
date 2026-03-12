@@ -148,6 +148,9 @@ class WalletLinkingService {
   }
 
   async getLinkingStatusAndClaimKey(requestId) {
+    if (!requestId || !ObjectId.isValid(requestId)) {
+      return { status: 'NOT_FOUND', apiKey: null };
+    }
     const linkingRequest = await this.walletLinkingRequestDb.findById(new ObjectId(requestId));
     if (!linkingRequest || linkingRequest.status === 'EXPIRED') {
       return { status: 'EXPIRED', apiKey: null };
