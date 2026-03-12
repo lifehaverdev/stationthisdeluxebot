@@ -102,6 +102,7 @@ export class SandboxCanvas2 extends Component {
       windows: this._engine.windows,         // live Map ref for window.sandboxCanvas compat
       connections: this._engine.connections,  // live Map ref for window.sandboxCanvas compat
       nodeModeShowOptional: false,
+      nodeModeOutputExpanded: false,
       descriptionExpanded: false,
       originPos: null, // workspace coords { x, y } for Z2 home swipe
       imageOverlay: null, // { url, label } for lightbox
@@ -916,7 +917,7 @@ export class SandboxCanvas2 extends Component {
       if (id !== sourceId) {
         // Enter NODE_MODE for the target so the user can pick the specific port
         this._enterNodeMode(id);
-        this.setState({ nodeModeShowOptional: false });
+        this.setState({ nodeModeShowOptional: false, nodeModeOutputExpanded: false });
       }
       return;
     }
@@ -930,7 +931,7 @@ export class SandboxCanvas2 extends Component {
     // Z1: any tap on a node enters NODE_MODE for that node directly
     if (this.state.fsmState === 'CANVAS_Z1') {
       this._engine.doubleTapNode(id);
-      this.setState({ nodeModeShowOptional: false });
+      this.setState({ nodeModeShowOptional: false, nodeModeOutputExpanded: false });
       return;
     }
 
@@ -939,7 +940,7 @@ export class SandboxCanvas2 extends Component {
 
   _onDoubleTapNode(id) {
     this._engine.doubleTapNode(id);
-    this.setState({ nodeModeShowOptional: false });
+    this.setState({ nodeModeShowOptional: false, nodeModeOutputExpanded: false });
   }
 
   _isPortWired(windowId, inputKey) {
@@ -1149,8 +1150,26 @@ export class SandboxCanvas2 extends Component {
     const desc = tool?.description;
     const LIMIT = 120;
     const isLong = desc && desc.length > LIMIT;
+    const versions = win.outputVersions || [];
+    const vIdx = win.currentVersionIndex >= 0 ? win.currentVersionIndex : versions.length - 1;
+    const headerVersionNav = versions.length > 0 ? h('div', { className: 'fd-header-version-nav' },
+      h('button', {
+        className: 'fd-output-version-btn',
+        disabled: vIdx <= 0,
+        onclick: (e) => { e.stopPropagation(); this._engine.updateWindow(windowId, { currentVersionIndex: vIdx - 1, output: versions[vIdx - 1] }); this.setState({}); },
+      }, '‹'),
+      h('span', { className: 'fd-output-version-label' }, `v${vIdx + 1} / ${versions.length}`),
+      h('button', {
+        className: 'fd-output-version-btn',
+        disabled: vIdx >= versions.length - 1,
+        onclick: (e) => { e.stopPropagation(); this._engine.updateWindow(windowId, { currentVersionIndex: vIdx + 1, output: versions[vIdx + 1] }); this.setState({}); },
+      }, '›'),
+    ) : null;
     const identityCard = h('div', { className: 'fd-card fd-card-header' },
-      h('div', { className: 'fd-card-title' }, tool?.displayName || win.spell?.name || win.type),
+      h('div', { className: 'fd-card-header-row' },
+        h('div', { className: 'fd-card-title' }, tool?.displayName || win.spell?.name || win.type),
+        headerVersionNav,
+      ),
       h('div', { className: 'fd-card-meta' },
         tool?.deliveryMode ? h('span', { className: `fd-delivery-badge fd-delivery-${tool.deliveryMode}` }, tool.deliveryMode) : null,
         tool?.metadata?.provider ? h('span', { className: 'fd-provider-tag' }, tool.metadata.provider) : null,
@@ -1347,6 +1366,7 @@ export class SandboxCanvas2 extends Component {
     // ── Card 3: Output result ─────────────────────────────────────────────────
     let outputCard = null;
     if (win.executing) {
+      // Always show progress in-place (not collapsible while running)
       outputCard = h('div', { className: 'fd-card fd-card-output fd-card-output--running' },
         h('div', { className: 'fd-output-progress-bar' }),
         h('div', { className: 'fd-output-status' }, win.progress || 'Running…'),
@@ -1361,9 +1381,11 @@ export class SandboxCanvas2 extends Component {
       const vIdx = win.currentVersionIndex >= 0 ? win.currentVersionIndex : versions.length - 1;
       const out = versions.length > 0 ? versions[vIdx] : win.output;
       const label = win.tool?.displayName || win.type;
+      const hasOutput = !!out;
+      const outputExpanded = this.state.nodeModeOutputExpanded;
+      const isPastVersion = versions.length > 0 && vIdx < versions.length - 1;
 
-      const renderOutBody = (o) => {
-        if (!o) return h('div', { className: 'fd-output-status' }, 'No output yet');
+      const renderSingleItem = (o) => {
         if (o.type === 'image' && o.url) {
           return h('img', {
             className: 'fd-output-image fd-result-img--clickable',
@@ -1385,26 +1407,27 @@ export class SandboxCanvas2 extends Component {
         return h('div', { className: 'fd-output-status' }, o.type || 'unknown');
       };
 
-      const versionNav = versions.length > 1 ? h('div', { className: 'fd-output-version-nav' },
-        h('button', {
-          className: 'fd-output-version-btn',
-          disabled: vIdx <= 0,
-          onclick: (e) => { e.stopPropagation(); this._engine.updateWindow(windowId, { currentVersionIndex: vIdx - 1, output: versions[vIdx - 1] }); this.setState({}); },
-        }, '‹'),
-        h('span', { className: 'fd-output-version-label' }, `${vIdx + 1} / ${versions.length}`),
-        h('button', {
-          className: 'fd-output-version-btn',
-          disabled: vIdx >= versions.length - 1,
-          onclick: (e) => { e.stopPropagation(); this._engine.updateWindow(windowId, { currentVersionIndex: vIdx + 1, output: versions[vIdx + 1] }); this.setState({}); },
-        }, '›'),
-      ) : null;
+      const renderOutBody = (o) => {
+        if (!o) return h('div', { className: 'fd-output-status' }, 'No output yet');
+        const allItems = o.items || [o];
+        if (allItems.length > 1) {
+          return h('div', { className: 'fd-output-batch-grid' },
+            ...allItems.map((item, i) => h('div', { key: i, className: 'fd-output-batch-item' }, renderSingleItem(item))),
+          );
+        }
+        return renderSingleItem(o);
+      };
 
       outputCard = h('div', { className: 'fd-card fd-card-output' },
-        h('div', { className: 'fd-output-header' },
+        h('div', {
+          className: `fd-output-header${hasOutput ? ' fd-output-header--toggle' : ''}`,
+          onclick: hasOutput ? (e) => { e.stopPropagation(); this.setState({ nodeModeOutputExpanded: !outputExpanded }); } : null,
+        },
           h('div', { className: 'fd-card-section' }, 'Output'),
-          versionNav,
+          isPastVersion ? h('span', { className: 'fd-output-past-badge' }, 'past — execute → saves as new') : null,
+          hasOutput ? h('span', { className: 'fd-output-toggle-icon' }, outputExpanded ? '▲' : '▼') : null,
         ),
-        renderOutBody(out),
+        (!hasOutput || outputExpanded) ? renderOutBody(out) : null,
       );
     }
 
@@ -2277,37 +2300,63 @@ export class SandboxCanvas2 extends Component {
   _normalizeOutput(result) {
     const outputs = result.outputs || {};
     const gid = result.generationId;
-    if (Array.isArray(outputs.images) && outputs.images[0]?.url)
-      return { type: 'image', url: outputs.images[0].url, generationId: gid };
-    if (outputs.imageUrl) return { type: 'image', url: outputs.imageUrl, generationId: gid };
-    if (outputs.response) return { type: 'text', text: outputs.response, generationId: gid };
-    if (outputs.text) return { type: 'text', text: outputs.text, generationId: gid };
-    if (outputs.description) return { type: 'text', text: outputs.description, generationId: gid };
-    if (outputs.type === 'text' && outputs.data?.text) {
-      const txt = Array.isArray(outputs.data.text) ? outputs.data.text[0] : outputs.data.text;
-      if (txt) return { type: 'text', text: txt, generationId: gid };
+    const items = [];
+
+    const addImg = (url) => url && items.push({ type: 'image', url, generationId: gid });
+    const addTxt = (text) => text && items.push({ type: 'text', text, generationId: gid });
+
+    if (Array.isArray(outputs.images)) {
+      outputs.images.forEach(img => addImg(img?.url));
     }
-    if (outputs.type === 'image' && Array.isArray(outputs.data?.images) && outputs.data.images[0]?.url)
-      return { type: 'image', url: outputs.data.images[0].url, generationId: gid };
+    if (outputs.imageUrl) addImg(outputs.imageUrl);
+    if (outputs.response) addTxt(outputs.response);
+    if (outputs.text) addTxt(outputs.text);
+    if (outputs.description) addTxt(outputs.description);
+    if (outputs.type === 'text' && outputs.data?.text) {
+      const texts = Array.isArray(outputs.data.text) ? outputs.data.text : [outputs.data.text];
+      texts.forEach(t => addTxt(t));
+    }
+    if (outputs.type === 'image' && Array.isArray(outputs.data?.images)) {
+      outputs.data.images.forEach(img => addImg(img?.url));
+    }
     if (Array.isArray(outputs)) {
       for (const item of outputs) {
-        if (item.type === 'image' && Array.isArray(item.data?.images) && item.data.images[0]?.url)
-          return { type: 'image', url: item.data.images[0].url, generationId: gid };
+        if (item.type === 'image' && Array.isArray(item.data?.images))
+          item.data.images.forEach(img => addImg(img?.url));
         if (item.type === 'text' && item.data?.text) {
           const txt = Array.isArray(item.data.text) ? item.data.text[0] : item.data.text;
-          if (txt) return { type: 'text', text: txt, generationId: gid };
+          addTxt(txt);
         }
       }
     }
     if (typeof outputs === 'object' && !Array.isArray(outputs)) {
       for (const node of Object.values(outputs)) {
-        if (node && typeof node === 'object' && node.data) {
-          if (Array.isArray(node.data.images) && node.data.images[0]?.url)
-            return { type: 'image', url: node.data.images[0].url, generationId: gid };
-        }
+        if (node?.data && Array.isArray(node.data.images))
+          node.data.images.forEach(img => addImg(img?.url));
       }
     }
-    return { type: 'unknown', generationId: gid, ...outputs };
+    if (outputs.videoUrl || outputs.video) {
+      items.push({ type: 'video', url: outputs.videoUrl || outputs.video, generationId: gid });
+    }
+    if (Array.isArray(outputs.files) && outputs.files.length) {
+      const vid = outputs.files.find(f => /\.(mp4|webm|mov)$/i.test(f.url || f.filename || ''));
+      if (vid) items.push({ type: 'video', url: vid.url, generationId: gid });
+      else items.push({ type: 'file', files: outputs.files, generationId: gid });
+    }
+
+    // Deduplicate by url/text
+    const seen = new Set();
+    const unique = items.filter(it => {
+      const key = it.url || it.text || it.type;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    if (unique.length === 0) return { type: 'unknown', generationId: gid };
+    const primary = unique[0];
+    // Store all items on the version entry so the output card can render a batch grid
+    return unique.length > 1 ? { ...primary, items: unique } : primary;
   }
 
   async _pollGenerationStatus(generationId) {

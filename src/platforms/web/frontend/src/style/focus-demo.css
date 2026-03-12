@@ -471,6 +471,28 @@
   display: block;
 }
 
+/* Batch output grid */
+.fd-output-batch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 6px;
+}
+.fd-output-batch-item .fd-output-image {
+  height: 120px;
+  object-fit: cover;
+}
+
+/* Past version indicator */
+.fd-output-past-badge {
+  font-family: var(--ff-mono);
+  font-size: 10px;
+  color: var(--text-label);
+  letter-spacing: 0.04em;
+  flex: 1;
+  text-align: right;
+  padding-right: 6px;
+}
+
 .fd-output-video {
   width: 100%;
   border-radius: 4px;
@@ -509,6 +531,18 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+.fd-output-header--toggle {
+  cursor: pointer;
+  user-select: none;
+}
+.fd-output-header--toggle:hover .fd-card-section {
+  color: var(--accent);
+}
+.fd-output-toggle-icon {
+  font-size: 9px;
+  color: var(--text-label);
+  margin-left: 4px;
 }
 
 .fd-output-version-nav {
@@ -742,6 +776,24 @@
 .fd-card-header {
   position: relative;
   border-left: 3px solid var(--accent);
+}
+
+.fd-card-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.fd-card-header-row .fd-card-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.fd-header-version-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
 }
 
 .fd-anchor-nodemode {
