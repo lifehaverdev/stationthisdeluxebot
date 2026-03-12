@@ -64,6 +64,7 @@ export class CanvasEngine {
     const win = {
       id, type: 'primitive', x: position.x, y: position.y,
       outputType,
+      value: outputType === 'text' ? '' : undefined,
       output: null, executing: false, error: null,
     };
     this.windows.set(id, win);

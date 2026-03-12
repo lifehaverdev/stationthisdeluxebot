@@ -75,12 +75,12 @@ export class Sandbox extends Component {
     document.addEventListener('touchstart', this._touchDismissHandler, { passive: true });
 
     // Mobile: SandboxCanvas emits sandbox:canvasTap when a finger taps without panning.
-    this._onCanvasTap = ({ x, y }) => {
+    this._onCanvasTap = ({ x, y, connecting }) => {
       if (this.state.actionModal.visible) {
-        this.setState({ actionModal: { visible: false, x: 0, y: 0, workspacePos: null } });
+        this.setState({ actionModal: { visible: false, x: 0, y: 0, workspacePos: null, connecting: false } });
         return;
       }
-      this._openActionModal(x, y);
+      this._openActionModal(x, y, !!connecting);
     };
     eventBus.on('sandbox:canvasTap', this._onCanvasTap);
 
@@ -220,7 +220,7 @@ export class Sandbox extends Component {
     }
   }
 
-  _openActionModal(clientX, clientY) {
+  _openActionModal(clientX, clientY, connecting = false) {
     const canvas = window.sandboxCanvas;
     const workspacePos = canvas ? canvas.screenToWorkspace(clientX, clientY) : { x: 200, y: 200 };
     const canvasEl = document.querySelector('.sc2-root, .sc-root');
@@ -229,7 +229,7 @@ export class Sandbox extends Component {
     const pad = 80;
     const mx = Math.max(rect.left + pad, Math.min(rect.right  - pad, clientX));
     const my = Math.max(rect.top  + pad, Math.min(rect.bottom - pad, clientY));
-    this.setState({ actionModal: { visible: true, x: mx, y: my, workspacePos } });
+    this.setState({ actionModal: { visible: true, x: mx, y: my, workspacePos, connecting } });
   }
 
   _onCanvasClick(e) {
@@ -530,7 +530,8 @@ export class Sandbox extends Component {
         x: am.x,
         y: am.y,
         workspacePosition: am.workspacePos,
-        onClose: () => this.setState({ actionModal: { visible: false, x: 0, y: 0, workspacePos: null } }),
+        connecting: am.connecting,
+        onClose: () => this.setState({ actionModal: { visible: false, x: 0, y: 0, workspacePos: null, connecting: false } }),
       }),
       te.visible
         ? h('div', {

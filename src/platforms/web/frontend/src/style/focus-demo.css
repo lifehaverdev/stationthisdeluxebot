@@ -505,6 +505,39 @@
   text-overflow: ellipsis;
 }
 
+.fd-output-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.fd-output-version-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.fd-output-version-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-label);
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 6px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.fd-output-version-btn:disabled { opacity: 0.3; cursor: default; }
+.fd-output-version-btn:not(:disabled):hover { border-color: var(--accent); color: var(--accent); }
+
+.fd-output-version-label {
+  font-family: var(--ff-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-label);
+  min-width: 40px;
+  text-align: center;
+}
+
 /* ── Periphery Glows ───────────────────── */
 .fd-periphery {
   position: fixed;
@@ -1302,6 +1335,51 @@
   height: 14px;
   accent-color: var(--accent);
 }
+.fd-param-input-tap {
+  width: 100%;
+  font-family: var(--ff-mono);
+  font-size: 11px;
+  color: var(--text-primary);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 3px 6px;
+  min-width: 0;
+  min-height: 22px;
+  cursor: text;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fd-param-input-tap:hover {
+  border-color: var(--accent);
+}
+.fd-param-tap-placeholder {
+  color: var(--text-label);
+  opacity: 0.5;
+}
+.fd-param-tap-value {
+  color: var(--text-primary);
+}
+.fd-text-input-overlay-body {
+  font-family: var(--ff-mono);
+  font-size: var(--fs-xs);
+  line-height: 1.7;
+  color: var(--text-primary);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 10px 16px;
+  margin: 0 16px;
+  resize: vertical;
+  outline: none;
+  width: calc(100% - 32px);
+  min-height: 120px;
+}
+.fd-text-input-overlay-body:focus {
+  border-color: var(--accent);
+}
+
 .fd-param-wired {
   font-size: 11px;
   display: flex;

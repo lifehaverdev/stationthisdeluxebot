@@ -3,6 +3,7 @@ import { CanvasEngine } from './CanvasEngine.js';
 import { ToolWindowBody, UploadWindowBody } from '../canvas/ToolWindowBody.js';
 import * as executionClient from '../executionClient.js';
 import { emitCosts } from '../store.js';
+import { INSTRUCTION_PRESETS } from '../instructionPresets.js';
 import '../../style/focus-demo.css';
 
 // ── Type helpers ──────────────────────────────────────────────────────────────
@@ -104,29 +105,56 @@ export class SandboxCanvas2 extends Component {
       descriptionExpanded: false,
       originPos: null, // workspace coords { x, y } for Z2 home swipe
       imageOverlay: null, // { url, label } for lightbox
+      textOverlay: null, // { text, label } for text overlay
+      textOverlayCopied: false,
+      textInputOverlay: null, // { windowId, key, field, currentVal, label } for editing text params
+      textInputOverlayCopied: false,
+      instructionPickerOverlay: null, // { windowId, key, label, selectedId, editedText }
+      modelPickerOverlay: null, // { windowId, key, currentVal, label, models, loading, error, search }
+      pendingInputTarget: null,  // { windowId, key, type, label } — seeking source for an input
+      pendingOutputSource: null, // { sourceNodeId, sourcePort, sourceType } — committed when FAB tapped mid-connection
     };
   }
 
   // ─── Public API (preserves window.sandboxCanvas interface) ───────────────
 
   addToolWindow(tool, position) {
-    return this._engine.addToolWindow(tool, position || this._defaultPos());
+    const id = this._engine.addToolWindow(tool, position || this._defaultPos());
+    this._autoConnectNew(id);
+    this._enterNodeMode(id);
+    return id;
   }
 
   addSpellWindow(spell, position) {
-    return this._engine.addSpellWindow(spell, position || this._defaultPos());
+    const id = this._engine.addSpellWindow(spell, position || this._defaultPos());
+    this._autoConnectNew(id);
+    this._enterNodeMode(id);
+    return id;
   }
 
   addUploadWindow(url, position) {
-    return this._engine.addUploadWindow(url, position || this._defaultPos());
+    const id = this._engine.addUploadWindow(url, position || this._defaultPos());
+    this._autoConnectNew(id);
+    this._enterNodeMode(id);
+    return id;
   }
 
   addPrimitiveWindow(outputType, position) {
-    return this._engine.addPrimitiveWindow(outputType, position || this._defaultPos());
+    const id = this._engine.addPrimitiveWindow(outputType, position || this._defaultPos());
+    this._autoConnectNew(id);
+    this._enterNodeMode(id);
+    return id;
   }
 
   addEffectWindow(tool, position) {
-    return this._engine.addEffectWindow(tool, position || this._defaultPos());
+    // In connection mode the image is already coming from an existing node —
+    // skip the upload window and treat this as a plain tool window.
+    if (this._engine.fsm.isConnecting || this.state.pendingInputTarget || this.state.pendingOutputSource) {
+      return { toolId: this.addToolWindow(tool, position) };
+    }
+    const { uploadId, toolId } = this._engine.addEffectWindow(tool, position || this._defaultPos());
+    this._enterNodeMode(toolId);
+    return { uploadId, toolId };
   }
 
   addCollectionTestWindow(collection, position) {
@@ -140,6 +168,100 @@ export class SandboxCanvas2 extends Component {
   updateWindowOutput(id, output) { this._engine.updateWindowOutput(id, output); }
   updateWindowOutputs(id, outputs) { this._engine.updateWindowOutputs(id, outputs); }
   clearWindowOutput(id) { this._engine.clearWindowOutput(id); }
+
+  // ─── Workspace snapshot API (used by workspaces.js + WorkspaceTabs) ──────
+
+  _sanitiseOutput(o) {
+    if (!o) return null;
+    let url = (o.url && !o.url.startsWith('data:')) ? o.url : undefined;
+    if (!url && o.data?.images?.[0]?.url && !o.data.images[0].url.startsWith('data:')) url = o.data.images[0].url;
+    if (!url) return null;
+    return { type: o.type || 'image', url, generationId: o.generationId };
+  }
+
+  getSnapshot() {
+    const toolWindows = [...this._engine.windows.values()].map(w => {
+      const base = {
+        id: w.id,
+        workspaceX: w.x,
+        workspaceY: w.y,
+        output: this._sanitiseOutput(w.output),
+        ...(w.outputs?.length > 0 ? { outputs: w.outputs.filter(o => o?.url && !o.url.startsWith('data:')) } : {}),
+        outputVersions: (w.outputVersions || []).slice(-5).map(v => this._sanitiseOutput(v)),
+        currentVersionIndex: w.currentVersionIndex ?? -1,
+        parameterMappings: w.parameterMappings || {},
+        tool: w.tool || null,
+        ...(w.totalCostUsd ? { totalCostUsd: w.totalCostUsd } : {}),
+        ...(w.costVersions?.length ? { costVersions: w.costVersions } : {}),
+      };
+      if (w.type === 'spell') {
+        return { ...base, isSpell: true, spell: {
+          _id: w.spell?._id, name: w.spell?.name, slug: w.spell?.slug,
+          exposedInputs: w.spell?.exposedInputs || [],
+          steps: (w.spell?.steps || []).map(s => ({ displayName: s.displayName || s.service || s.toolId, service: s.service })),
+        }};
+      }
+      if (w.type === 'collection') return { ...base, type: 'collection', mode: w.mode, collection: { collectionId: w.collection?.collectionId, name: w.collection?.name } };
+      return { ...base, type: w.type || 'tool', displayName: w.tool?.displayName || '', toolId: w.tool?.toolId || '' };
+    });
+    return { toolWindows, connections: [...this._engine.connections.values()] };
+  }
+
+  loadFromSnapshot(snapshot) {
+    // Cost fallback from localStorage for windows missing cost in server snapshot
+    const localCostMap = {};
+    try {
+      const raw = localStorage.getItem('sandbox_canvas_state');
+      if (raw) {
+        const localData = JSON.parse(raw);
+        (localData.windows || []).forEach(lw => {
+          if (lw.id && lw.totalCostUsd > 0) localCostMap[lw.id] = { totalCostUsd: lw.totalCostUsd, costVersions: lw.costVersions || [] };
+        });
+      }
+    } catch {}
+
+    // Clear engine — remove each window through engine so physics nodes are cleaned up too
+    for (const id of [...this._engine.windows.keys()]) this._engine.removeWindow(id);
+    this._engine.connections.clear();
+
+    (snapshot.toolWindows || []).forEach(w => {
+      const localCost = localCostMap[w.id];
+      const win = {
+        id: w.id, x: w.workspaceX, y: w.workspaceY,
+        output: w.output || null,
+        ...(w.outputs?.length > 0 ? { outputs: w.outputs } : {}),
+        outputVersions: w.outputVersions || [],
+        currentVersionIndex: w.currentVersionIndex ?? -1,
+        parameterMappings: w.parameterMappings || {},
+        outputLoaded: !!(w.output || w.outputs?.length),
+        executing: false, progress: null, error: null,
+        totalCostUsd: w.totalCostUsd || localCost?.totalCostUsd || 0,
+        costVersions: w.costVersions?.length ? w.costVersions : (localCost?.costVersions || []),
+        tool: w.tool || { displayName: w.displayName || '', toolId: w.toolId || '' },
+      };
+      if (w.isSpell) {
+        win.type = 'spell'; win.spell = w.spell;
+        win.tool = win.tool || { displayName: w.spell?.name || 'Spell', toolId: `spell:${w.spell?._id}` };
+        if (win.tool?.toolId?.startsWith('spell-')) win.tool = { ...win.tool, toolId: `spell:${win.tool.toolId.substring(6)}` };
+      } else if (w.type === 'collection') {
+        win.type = 'collection'; win.collection = w.collection; win.mode = w.mode;
+      } else {
+        win.type = w.type || 'tool';
+      }
+      this._engine.windows.set(win.id, win);
+      this._engine.physics.addNode(win.id, { x: win.x, y: win.y });
+    });
+
+    (snapshot.connections || []).forEach(c => this._engine.connections.set(c.id, c));
+
+    // Reset FSM and viewport
+    this._engine.fsm.state = 'CANVAS_Z2';
+    this._engine.fsm.focusedNodeId = null;
+    this._scale = SCALE_Z2;
+    this._panX = window.innerWidth / 2;
+    this._panY = window.innerHeight / 2;
+    this.setState({ fsmState: 'CANVAS_Z2', focusedWindowId: null, windows: this._engine.windows, connections: this._engine.connections });
+  }
 
   _onParamChange(windowId, paramKey, value) {
     const win = this._engine.windows.get(windowId);
@@ -230,6 +352,10 @@ export class SandboxCanvas2 extends Component {
   _onFsmChange(from, to, nodeId) {
     const update = { fsmState: to, focusedWindowId: nodeId ?? null };
 
+    if ((to === 'CANVAS_Z1' || to === 'NODE_MODE') && nodeId) {
+      this._loadToolDetail(nodeId);
+    }
+
     if (to === 'CANVAS_Z2') {
       // Zoom out: reset scale, keep pan
       this._scale = SCALE_Z2;
@@ -302,8 +428,10 @@ export class SandboxCanvas2 extends Component {
   // ─── Rendering ───────────────────────────────────────────────────────────
 
   render() {
-    const { fsmState, focusedWindowId, multiSelectIds, canvasMenu } = this.state;
+    const { fsmState, focusedWindowId, multiSelectIds, canvasMenu, pendingInputTarget, pendingOutputSource } = this.state;
     const transform = `translate(${this._panX}px, ${this._panY}px) scale(${this._scale})`;
+    const isConnecting = this._engine.fsm.isConnecting;
+    const connection = this._engine.fsm.connection;
 
     const nodeModePanel = fsmState === 'NODE_MODE' && focusedWindowId
       ? this._renderNodeModePanel(focusedWindowId)
@@ -328,7 +456,96 @@ export class SandboxCanvas2 extends Component {
       ),
       nodeModePanel,
       actionBar,
+      (isConnecting || pendingOutputSource || pendingInputTarget) ? (() => {
+        let badgeText;
+        const src = isConnecting ? connection : pendingOutputSource;
+        if (src) {
+          const srcWin = this._engine.windows.get(src.sourceNodeId);
+          const srcName = srcWin?.tool?.displayName || srcWin?.spell?.name || srcWin?.outputType || 'node';
+          const typeTag = src.sourceType ? ` · ${src.sourceType}` : '';
+          badgeText = `${srcName}${typeTag} → tap an input`;
+        } else {
+          const tgtWin = this._engine.windows.get(pendingInputTarget.windowId);
+          const tgtName = tgtWin?.tool?.displayName || tgtWin?.spell?.name || tgtWin?.type || 'node';
+          const typeTag = pendingInputTarget.type ? ` · ${pendingInputTarget.type}` : '';
+          badgeText = `← ${tgtName} / ${pendingInputTarget.label}${typeTag}`;
+        }
+        return h('div', { className: 'sc2-seeking-badge' },
+          badgeText,
+          h('button', {
+            className: 'sc2-seeking-cancel',
+            onclick: (e) => {
+              e.stopPropagation();
+              if (isConnecting) this._engine.fsm.clearConnection();
+              this.setState({ pendingInputTarget: null, pendingOutputSource: null });
+            },
+          }, '×'),
+        );
+      })() : null,
       canvasMenu ? this._renderCanvasMenu(canvasMenu) : null,
+      this.state.textOverlay ? h('div', {
+        className: 'fd-text-overlay',
+        onclick: () => this.setState({ textOverlay: null, textOverlayCopied: false }),
+      },
+        h('div', { className: 'fd-text-overlay-card', onclick: (e) => e.stopPropagation() },
+          h('div', { className: 'fd-text-overlay-header' },
+            h('span', { className: 'fd-card-section' }, this.state.textOverlay.label),
+            h('button', {
+              className: `fd-text-overlay-copy${this.state.textOverlayCopied ? ' fd-text-overlay-copy--done' : ''}`,
+              onclick: (e) => {
+                e.stopPropagation();
+                navigator.clipboard?.writeText(this.state.textOverlay.text).catch(() => {});
+                this.setState({ textOverlayCopied: true });
+                setTimeout(() => this.setState({ textOverlayCopied: false }), 2000);
+              },
+            }, this.state.textOverlayCopied ? 'Copied ✓' : 'Copy'),
+            h('button', {
+              className: 'fd-text-overlay-close',
+              onclick: () => this.setState({ textOverlay: null, textOverlayCopied: false }),
+            }, '×'),
+          ),
+          h('pre', { className: 'fd-text-overlay-body' }, this.state.textOverlay.text),
+        ),
+      ) : null,
+      this.state.textInputOverlay ? (() => {
+        const closeInputOverlay = () => {
+          const { windowId, key, currentVal, onSave } = this.state.textInputOverlay;
+          if (onSave) onSave(currentVal);
+          else this._onParamChange(windowId, key, currentVal);
+          this.setState({ textInputOverlay: null, textInputOverlayCopied: false });
+        };
+        return h('div', {
+          className: 'fd-text-overlay',
+          onclick: closeInputOverlay,
+        },
+          h('div', { className: 'fd-text-overlay-card', onclick: (e) => e.stopPropagation() },
+            h('div', { className: 'fd-text-overlay-header' },
+              h('span', { className: 'fd-card-section' }, this.state.textInputOverlay.label),
+              h('button', {
+                className: `fd-text-overlay-copy${this.state.textInputOverlayCopied ? ' fd-text-overlay-copy--done' : ''}`,
+                onclick: (e) => {
+                  e.stopPropagation();
+                  navigator.clipboard?.writeText(this.state.textInputOverlay.currentVal).catch(() => {});
+                  this.setState({ textInputOverlayCopied: true });
+                  setTimeout(() => this.setState({ textInputOverlayCopied: false }), 2000);
+                },
+              }, this.state.textInputOverlayCopied ? 'Copied ✓' : 'Copy'),
+              h('button', {
+                className: 'fd-text-overlay-close',
+                onclick: (e) => { e.stopPropagation(); closeInputOverlay(); },
+              }, '×'),
+            ),
+            h('textarea', {
+              className: 'fd-text-input-overlay-body',
+              value: this.state.textInputOverlay.currentVal,
+              placeholder: this.state.textInputOverlay.field?.description || this.state.textInputOverlay.key,
+              rows: 8,
+              oninput: (e) => this.setState({ textInputOverlay: { ...this.state.textInputOverlay, currentVal: e.target.value } }),
+              autofocus: true,
+            }),
+          ),
+        );
+      })() : null,
       this.state.imageOverlay ? h('div', {
         className: 'fd-image-overlay',
         onclick: () => this.setState({ imageOverlay: null }),
@@ -347,14 +564,144 @@ export class SandboxCanvas2 extends Component {
           }),
         ),
       ) : null,
+      this.state.instructionPickerOverlay ? (() => {
+        const overlay = this.state.instructionPickerOverlay;
+        const close = () => this.setState({ instructionPickerOverlay: null });
+        const apply = () => {
+          this._onParamChange(overlay.windowId, overlay.key, overlay.editedText.trim());
+          close();
+        };
+        const copy = (e) => {
+          e.stopPropagation();
+          navigator.clipboard?.writeText(overlay.editedText).catch(() => {});
+          this.setState({ instructionPickerOverlay: { ...overlay, copied: true } });
+          setTimeout(() => {
+            if (this.state.instructionPickerOverlay) this.setState({ instructionPickerOverlay: { ...this.state.instructionPickerOverlay, copied: false } });
+          }, 2000);
+        };
+        const presets = INSTRUCTION_PRESETS.filter(p => p.id !== 'custom');
+        const customPreset = { id: 'custom', title: 'Custom', text: '' };
+        return h('div', {
+          className: 'sc2-modal-backdrop',
+          onmousedown: close,
+          ontouchend: (e) => { e.stopPropagation(); close(); },
+        },
+          h('div', {
+            className: 'sc2-modal-panel sc2-ipm-panel',
+            onmousedown: (e) => e.stopPropagation(),
+            ontouchstart: (e) => e.stopPropagation(),
+            ontouchend: (e) => e.stopPropagation(),
+          },
+            h('div', { className: 'sc2-modal-header' },
+              h('span', { className: 'sc2-modal-title' }, overlay.label || 'Instructions'),
+              h('button', { className: 'sc2-modal-close', onclick: close }, '×'),
+            ),
+            h('div', { className: 'sc2-ipm-body' },
+              h('div', { className: 'sc2-ipm-list' },
+                ...presets.map(preset =>
+                  h('div', {
+                    key: preset.id,
+                    className: `sc2-ipm-preset${overlay.selectedId === preset.id ? ' sc2-ipm-preset--active' : ''}`,
+                    onclick: (e) => { e.stopPropagation(); this.setState({ instructionPickerOverlay: { ...overlay, selectedId: preset.id, editedText: preset.text } }); },
+                  },
+                    h('span', { className: 'sc2-ipm-dot' }),
+                    preset.title,
+                  ),
+                ),
+                h('div', {
+                  className: `sc2-ipm-preset sc2-ipm-preset--custom${overlay.selectedId === 'custom' ? ' sc2-ipm-preset--active' : ''}`,
+                  onclick: (e) => { e.stopPropagation(); this.setState({ instructionPickerOverlay: { ...overlay, selectedId: 'custom', editedText: '' } }); },
+                },
+                  h('span', { className: 'sc2-ipm-dot' }),
+                  'Custom',
+                ),
+              ),
+              h('div', { className: 'sc2-ipm-editor' },
+                h('textarea', {
+                  className: 'sc2-ipm-textarea',
+                  value: overlay.editedText,
+                  placeholder: overlay.selectedId === 'custom' ? 'Write your own instructions…' : 'Select a preset or edit freely.',
+                  oninput: (e) => this.setState({ instructionPickerOverlay: { ...overlay, editedText: e.target.value } }),
+                }),
+                h('div', { className: 'sc2-modal-footer' },
+                  h('button', { className: 'sc2-modal-btn', onclick: close }, 'Cancel'),
+                  h('button', {
+                    className: `sc2-modal-btn${overlay.copied ? ' sc2-modal-btn--copied' : ''}`,
+                    disabled: !overlay.editedText.trim(),
+                    onclick: copy,
+                  }, overlay.copied ? 'Copied ✓' : 'Copy'),
+                  h('button', { className: 'sc2-modal-btn sc2-modal-btn--apply', disabled: !overlay.editedText.trim(), onclick: apply }, 'Apply'),
+                ),
+              ),
+            ),
+          ),
+        );
+      })() : null,
+      this.state.modelPickerOverlay ? (() => {
+        const overlay = this.state.modelPickerOverlay;
+        const close = () => this.setState({ modelPickerOverlay: null });
+        const { models, loading, error, search, currentVal, label } = overlay;
+        const q = (search || '').trim().toLowerCase();
+        const filtered = q ? models.filter(m => this._modelDisplayName(m).toLowerCase().includes(q)) : models;
+        return h('div', {
+          className: 'sc2-modal-backdrop',
+          onmousedown: close,
+          ontouchend: (e) => { e.stopPropagation(); close(); },
+        },
+          h('div', {
+            className: 'sc2-modal-panel',
+            onmousedown: (e) => e.stopPropagation(),
+            ontouchstart: (e) => e.stopPropagation(),
+            ontouchend: (e) => e.stopPropagation(),
+          },
+            h('div', { className: 'sc2-modal-header' },
+              h('span', { className: 'sc2-modal-title' }, label || 'Model'),
+              h('button', { className: 'sc2-modal-close', onclick: close }, '×'),
+            ),
+            h('div', { className: 'sc2-modal-search-wrap' },
+              h('input', {
+                className: 'sc2-modal-search',
+                type: 'text',
+                placeholder: 'search models…',
+                value: search,
+                oninput: (e) => this.setState({ modelPickerOverlay: { ...overlay, search: e.target.value } }),
+              }),
+            ),
+            h('div', { className: 'sc2-modal-list' },
+              loading ? h('div', { className: 'sc2-modal-empty' }, 'Loading…')
+              : error ? h('div', { className: 'sc2-modal-empty' }, error)
+              : filtered.length === 0 ? h('div', { className: 'sc2-modal-empty' }, search ? 'No matches.' : 'No models found.')
+              : filtered.map(m => {
+                  const name = this._modelDisplayName(m);
+                  return h('div', {
+                    key: name,
+                    className: `sc2-modal-item${name === currentVal ? ' sc2-modal-item--active' : ''}`,
+                    onclick: (e) => { e.stopPropagation(); this._onParamChange(overlay.windowId, overlay.key, name); close(); },
+                  },
+                    h('span', { className: 'sc2-modal-item-dot' }),
+                    h('span', { className: 'sc2-modal-item-name' }, name),
+                  );
+                }),
+            ),
+            !loading && !error ? h('div', { className: 'sc2-modal-count' }, `${filtered.length} model${filtered.length !== 1 ? 's' : ''}${search ? ' matched' : ''}`) : null,
+          ),
+        );
+      })() : null,
       showFab ? h('button', {
-        className: 'sc2-fab',
-        title: 'Add node',
+        className: `sc2-fab${(isConnecting || pendingOutputSource || pendingInputTarget) ? ' sc2-fab--connecting' : ''}`,
+        title: (isConnecting || pendingOutputSource || pendingInputTarget) ? 'Add + connect node' : 'Add node',
         ontouchstart: (e) => e.stopPropagation(),
+        ontouchend: (e) => e.stopPropagation(),
         onclick: (e) => {
           e.stopPropagation();
           if (this._engine.fsmState === 'NODE_MODE') {
-            this._engine.zoomOut(); // dismiss node mode panel → Z1
+            this._engine.zoomOut();
+          }
+          // Eagerly commit connection state into component state so it survives
+          // the async modal interaction intact, regardless of FSM changes.
+          if (isConnecting && connection) {
+            this.setState({ pendingOutputSource: { ...connection } });
+            this._engine.fsm.clearConnection();
           }
           const pos = this._findClearPosition();
           const cx = window.innerWidth / 2;
@@ -363,11 +710,14 @@ export class SandboxCanvas2 extends Component {
           this._panX = cx - pos.x * SCALE_Z1;
           this._panY = cy - pos.y * SCALE_Z1;
           this._animateViewport();
+          const connectingCtx = (isConnecting || pendingInputTarget || this.state.pendingOutputSource)
+            ? { connecting: true }
+            : null;
           setTimeout(() => {
-            eventBus.emit('sandbox:canvasTap', { x: cx, y: cy });
+            eventBus.emit('sandbox:canvasTap', { x: cx, y: cy, ...connectingCtx });
           }, 300);
         },
-      }, '+') : null,
+      }, (isConnecting || pendingOutputSource || pendingInputTarget) ? '⚡' : '+') : null,
     );
   }
 
@@ -379,6 +729,23 @@ export class SandboxCanvas2 extends Component {
 
   _inputSchema(win) {
     return win.tool?.inputSchema || win.tool?.metadata?.inputSchema || {};
+  }
+
+  async _loadToolDetail(windowId) {
+    const win = this._engine.windows.get(windowId);
+    if (!win || win.type !== 'tool') return;
+    if (win.tool?.inputSchema || win.tool?.metadata?.inputSchema) return; // already loaded
+    const toolId = win.tool?.toolId || win.tool?.id;
+    if (!toolId) return;
+    try {
+      const res = await fetch(`/api/v1/tools/registry/${toolId}`);
+      if (!res.ok) return;
+      const full = await res.json();
+      this._engine.updateWindow(windowId, { tool: { ...win.tool, ...full } });
+      this.setState({});
+    } catch (e) {
+      console.warn('[SandboxCanvas2] Failed to load tool detail:', e);
+    }
   }
 
   _renderConnections() {
@@ -433,17 +800,20 @@ export class SandboxCanvas2 extends Component {
       const isSelected = multiSelectIds?.has(win.id);
       const isSource = isConnecting && connection?.sourceNodeId === win.id;
       const thumbUrl = win.output?.type === 'image' ? win.output.url : null;
+      const textSnippet = win.type === 'primitive' && win.outputType === 'text' && win.value
+        ? h('div', { className: 'sc2-node-text-snippet' }, win.value)
+        : null;
       const thumb = thumbUrl ? h('img', {
         className: 'sc2-node-thumb sc2-node-thumb--clickable',
         src: thumbUrl,
         alt: '',
         onclick: (e) => {
           e.stopPropagation();
+          // Suppress if touchend already handled this tap (prevents double-fire on mobile)
+          if (this._suppressThumbClick && Date.now() - this._suppressThumbClick < 500) return;
           if (fsmState === 'CANVAS_Z2') {
-            // Z2: zoom to Z1 on this node
             this._engine.tapNode(win.id);
           } else {
-            // Z1: open lightbox
             this.setState({ imageOverlay: { url: thumbUrl, label: win.tool?.displayName || win.type } });
           }
         },
@@ -494,7 +864,7 @@ export class SandboxCanvas2 extends Component {
         const schema = this._inputSchema(win);
         // Only required inputs shown as anchors on chip; optional only accessible via NODE_MODE
         const allKeys = Object.keys(schema);
-        const keys = isConnecting ? allKeys : allKeys.filter(k => schema[k]?.required !== false);
+        const keys = allKeys.filter(k => schema[k]?.required !== false);
         const sourceType = connection?.sourceType;
         const showActive = isConnecting && !isSource;
         keys.forEach((key, i) => {
@@ -532,6 +902,7 @@ export class SandboxCanvas2 extends Component {
         h('div', { className: 'sc2-node-label' }, label),
         h('div', { className: 'sc2-node-type' }, win.executing ? (win.progress || 'Running…') : typeLabel),
         thumb,
+        textSnippet,
         outputAnchor,
         ...inputAnchors,
       ));
@@ -540,18 +911,12 @@ export class SandboxCanvas2 extends Component {
   }
 
   _onTapNode(id) {
-    if (this._engine.fsm.isConnecting) {
-      const { sourceNodeId, sourcePort, sourceType } = this._engine.fsm.connection;
-      if (id !== sourceNodeId) {
-        const targetWin = this._engine.windows.get(id);
-        const targetTool = targetWin?.tool;
-        const schema = targetTool?.metadata?.inputSchema || targetTool?.inputSchema || {};
-        const inputKey = Object.keys(schema).find(k => !this._isPortWired(id, k)) || Object.keys(schema)[0];
-        if (inputKey) {
-          const connId = this._engine._genId('c');
-          this._engine.addCanvasConnection(connId, sourceNodeId, id, sourcePort, inputKey, sourceType);
-        }
-        this._engine.fsm.clearConnection();
+    if (this._engine.fsm.isConnecting || this.state.pendingInputTarget) {
+      const sourceId = this._engine.fsm.connection?.sourceNodeId;
+      if (id !== sourceId) {
+        // Enter NODE_MODE for the target so the user can pick the specific port
+        this._enterNodeMode(id);
+        this.setState({ nodeModeShowOptional: false });
       }
       return;
     }
@@ -584,23 +949,105 @@ export class SandboxCanvas2 extends Component {
     return false;
   }
 
-  _startOutputConnection(win) {
-    const outType = normalizeType(win.tool?.metadata?.outputType || win.tool?.outputType || win.outputType);
-    this._engine.fsm.startConnection(win.id, 'output', outType);
-    // If in NODE_MODE, zoom out so the user can pick a target node
+  _enterNodeMode(id) {
     if (this._engine.fsm.state === 'NODE_MODE') {
-      this._engine.zoomOut();
+      this._engine.fsm.navigateToNode(id);
+    } else {
+      this._engine.doubleTapNode(id);
     }
+  }
+
+  // Always land at Z1 when entering connection mode
+  _ensureZ1() {
+    const state = this._engine.fsm.state;
+    if (state === 'NODE_MODE') this._engine.zoomOut();        // NODE_MODE → Z1
+    else if (state === 'CANVAS_Z2') this._engine.fsm.zoomIn(); // Z2 → Z1
+  }
+
+  // After creating a node, auto-wire it if we're mid-connection
+  _autoConnectNew(id) {
+    const pending = this.state.pendingInputTarget;
+    if (pending) {
+      // New node's output → pending input target
+      const win = this._engine.windows.get(id);
+      const outType = normalizeType(win?.tool?.metadata?.outputType || win?.tool?.outputType || win?.outputType);
+      const connId = this._engine._genId('c');
+      this._engine.addCanvasConnection(connId, id, pending.windowId, 'output', pending.key, outType);
+      this.setState({ pendingInputTarget: null });
+      return;
+    }
+    // Live FSM connection takes priority; fall back to committed FAB snapshot
+    const src = this._engine.fsm.isConnecting
+      ? this._engine.fsm.connection
+      : this.state.pendingOutputSource;
+    if (src) {
+      const { sourceNodeId, sourcePort, sourceType } = src;
+      const win = this._engine.windows.get(id);
+      const schema = this._inputSchema(win) || {};
+      const inputKey = Object.keys(schema).find(k => {
+        const portType = normalizeType(schema[k]?.type);
+        return !this._isPortWired(id, k) && (!sourceType || !portType || sourceType === portType);
+      }) || Object.keys(schema).find(k => !this._isPortWired(id, k));
+      if (inputKey) {
+        const connId = this._engine._genId('c');
+        this._engine.addCanvasConnection(connId, sourceNodeId, id, sourcePort, inputKey, sourceType);
+      }
+      this._engine.fsm.clearConnection();
+      this.setState({ pendingOutputSource: null });
+    }
+  }
+
+  _matchInstructionPreset(value) {
+    if (!value) return 'custom';
+    const match = INSTRUCTION_PRESETS.find(p => p.id !== 'custom' && p.text === value);
+    return match ? match.id : 'custom';
+  }
+
+  _modelDisplayName(m) {
+    return (m.path || m.save_path || m.name || '').split('/').pop().split('\\').pop() || m.name || m.id || '';
+  }
+
+  async _openModelPicker(windowId, key, currentVal, label, category) {
+    this.setState({ modelPickerOverlay: { windowId, key, currentVal, label, models: [], loading: true, error: null, search: '' } });
+    try {
+      const qs = category ? `category=${encodeURIComponent(category)}&limit=200` : 'limit=200';
+      const res = await fetch(`/api/v1/models?${qs}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const models = data.models || data.data?.models || (Array.isArray(data) ? data : []);
+      const overlay = this.state.modelPickerOverlay;
+      if (overlay?.windowId === windowId && overlay?.key === key) {
+        this.setState({ modelPickerOverlay: { ...overlay, models, loading: false } });
+      }
+    } catch (err) {
+      const overlay = this.state.modelPickerOverlay;
+      if (overlay) this.setState({ modelPickerOverlay: { ...overlay, loading: false, error: `Failed to load models: ${err.message}` } });
+    }
+  }
+
+  _startOutputConnection(win) {
+    // If seeking a source for a pending input, complete the reverse connection directly
+    const pending = this.state.pendingInputTarget;
+    if (pending) {
+      const outType = normalizeType(win.tool?.metadata?.outputType || win.tool?.outputType || win.outputType);
+      const connId = this._engine._genId('c');
+      this._engine.addCanvasConnection(connId, win.id, pending.windowId, 'output', pending.key, outType);
+      this.setState({ pendingInputTarget: null });
+      // Return to Z1 after connecting
+      if (this._engine.fsm.state === 'NODE_MODE') this._engine.zoomOut();
+      return;
+    }
+    const outType = normalizeType(win.tool?.metadata?.outputType || win.tool?.outputType || win.outputType);
+    this._ensureZ1();
+    this._engine.fsm.startConnection(win.id, 'output', outType);
     this.setState({ fsmState: this._engine.fsmState });
   }
 
   _startBatchConnection(win) {
     const slots = win.outputs || [];
     const batchType = normalizeType(slots[0]?.type || 'image');
+    this._ensureZ1();
     this._engine.fsm.startConnection(win.id, 'batch', batchType);
-    if (this._engine.fsm.state === 'NODE_MODE') {
-      this._engine.zoomOut();
-    }
     this.setState({ fsmState: this._engine.fsmState });
   }
 
@@ -611,8 +1058,8 @@ export class SandboxCanvas2 extends Component {
     const connId = this._engine._genId('c');
     this._engine.addCanvasConnection(connId, sourceNodeId, targetWinId, sourcePort, inputKey, sourceType || inputType);
     this._engine.fsm.clearConnection();
-    // Zoom into the target node to show it connected
-    this._engine.tapNode(targetWinId);
+    // Return to Z1 after connecting
+    this._engine.zoomOut(); // NODE_MODE → Z1
     this.setState({ fsmState: this._engine.fsmState, focusedWindowId: this._engine.focusedWindowId });
   }
 
@@ -633,13 +1080,57 @@ export class SandboxCanvas2 extends Component {
         onchange: (e) => this._onParamChange(windowId, key, e.target.checked),
       });
     }
-    return h('input', {
-      className: 'fd-param-input',
-      type: (field.type === 'number' || field.type === 'integer') ? 'number' : 'text',
-      value: currentVal,
-      placeholder: field.description || key,
-      onchange,
-    });
+    if (field.type === 'number' || field.type === 'integer') {
+      return h('input', {
+        className: 'fd-param-input',
+        type: 'number',
+        value: currentVal,
+        placeholder: field.description || key,
+        onchange,
+      });
+    }
+    // Instructions — opens preset picker
+    if (key === 'instructions') {
+      const label = field.name || key;
+      return h('div', {
+        className: 'fd-param-input-tap',
+        onclick: (e) => {
+          e.stopPropagation();
+          this.setState({ instructionPickerOverlay: {
+            windowId, key, label,
+            selectedId: this._matchInstructionPreset(currentVal ? String(currentVal) : ''),
+            editedText: currentVal ? String(currentVal) : '',
+          }});
+        },
+      }, currentVal
+        ? h('span', { className: 'fd-param-tap-value' }, String(currentVal))
+        : h('span', { className: 'fd-param-tap-placeholder' }, field.description || 'Choose instructions…'));
+    }
+    // Model / checkpoint — opens model picker
+    if (field.type === 'model' || key === 'input_model' || key === 'input_checkpoint') {
+      const label = field.name || key;
+      const category = key === 'input_checkpoint' ? 'checkpoint' : null;
+      return h('div', {
+        className: 'fd-param-input-tap',
+        onclick: (e) => {
+          e.stopPropagation();
+          this._openModelPicker(windowId, key, currentVal ? String(currentVal) : '', label, category);
+        },
+      }, currentVal
+        ? h('span', { className: 'fd-param-tap-value' }, String(currentVal))
+        : h('span', { className: 'fd-param-tap-placeholder' }, key === 'input_checkpoint' ? 'Select checkpoint…' : 'Select model…'));
+    }
+    // Text fields — tappable display that opens full-screen editor
+    const label = field.name || key;
+    return h('div', {
+      className: 'fd-param-input-tap',
+      onclick: (e) => {
+        e.stopPropagation();
+        this.setState({ textInputOverlay: { windowId, key, field, currentVal: currentVal || '', label } });
+      },
+    }, currentVal
+      ? h('span', { className: 'fd-param-tap-value' }, String(currentVal))
+      : h('span', { className: 'fd-param-tap-placeholder' }, field.description || key));
   }
 
   _renderNodeModePanel(windowId) {
@@ -680,6 +1171,8 @@ export class SandboxCanvas2 extends Component {
     const connection = this._engine.fsm.connection;
     const sourceType = connection?.sourceType;
     const isIncomingTarget = isConnecting && connection?.sourceNodeId !== windowId;
+    const isPendingTarget = !!this.state.pendingInputTarget;
+    const inConnectionMode = isIncomingTarget || isPendingTarget;
     const showOptional = this.state.nodeModeShowOptional;
 
     let bodyCard;
@@ -700,19 +1193,26 @@ export class SandboxCanvas2 extends Component {
               connectedFrom ? 'fd-param-anchor-connected' : '',
               isIncomingTarget && typeMatch ? 'fd-param-anchor--matching' : '',
             ].filter(Boolean).join(' '),
-            title: connectedFrom ? 'Wired' : isIncomingTarget ? (typeMatch ? 'Connect here' : 'Connect (type mismatch)') : 'Wire input',
+            title: connectedFrom ? 'Wired' : isIncomingTarget ? (typeMatch ? 'Connect here' : 'Connect (type mismatch)') : 'Tap to seek source',
             onclick: (e) => {
               e.stopPropagation();
-              if (isIncomingTarget) this._completeInputConnection(windowId, key, field.type);
+              if (isIncomingTarget) {
+                this._completeInputConnection(windowId, key, field.type);
+              } else if (!connectedFrom) {
+                // Enter "seeking source" mode — go to Z1 so user can tap an output anchor
+                this.setState({ pendingInputTarget: { windowId, key, type: portType, label: field.name || key } });
+                this._ensureZ1();
+              }
             },
           }, anchorIcon(portType)),
           h('div', { className: 'fd-param-body' },
             h('label', { className: 'fd-param-label' }, field.name || key),
             connectedFrom
               ? h('div', { className: 'fd-param-wired' },
-                  h('span', { className: 'fd-param-type' },
-                    this._engine.windows.get(connectedFrom.from ?? connectedFrom.fromWindowId)?.tool?.displayName || 'connected',
-                  ),
+                  h('button', {
+                    className: 'fd-card-link',
+                    onclick: (e) => { e.stopPropagation(); this._engine.fsm.navigateToNode(connectedFrom.from ?? connectedFrom.fromWindowId); },
+                  }, `← ${this._engine.windows.get(connectedFrom.from ?? connectedFrom.fromWindowId)?.tool?.displayName || 'connected'}`),
                   connectedFrom.typeMismatch ? h('span', { className: 'fd-param-mismatch' }, '⚠') : null,
                   h('button', {
                     className: 'fd-param-disconnect',
@@ -738,9 +1238,10 @@ export class SandboxCanvas2 extends Component {
             h('span', { className: 'fd-param-type' }, field.type),
             connectedTo.length ? h('div', { className: 'fd-param-wired-list' },
               ...connectedTo.map(c => h('div', { key: c.id, className: 'fd-param-wired' },
-                h('span', { className: 'fd-param-type' },
-                  this._engine.windows.get(c.to ?? c.toWindowId)?.tool?.displayName || 'connected',
-                ),
+                h('button', {
+                  className: 'fd-card-link',
+                  onclick: (e) => { e.stopPropagation(); this._engine.fsm.navigateToNode(c.to ?? c.toWindowId); },
+                }, `→ ${this._engine.windows.get(c.to ?? c.toWindowId)?.tool?.displayName || 'connected'}`),
                 h('button', {
                   className: 'fd-param-disconnect',
                   onclick: (e) => { e.stopPropagation(); this._engine.connections.delete(c.id); this.setState({}); },
@@ -756,15 +1257,22 @@ export class SandboxCanvas2 extends Component {
         );
       }) : [];
 
-      bodyCard = h('div', { className: 'fd-card fd-card-params' },
+      const connectionBanner = inConnectionMode ? h('div', { className: 'sc2-conn-banner' },
+        isIncomingTarget
+          ? `tap an input to connect${sourceType ? ` (${sourceType})` : ''}`
+          : `tap an output to connect (${this.state.pendingInputTarget?.type || 'any'})`,
+      ) : null;
+
+      bodyCard = h('div', { className: `fd-card fd-card-params${inConnectionMode ? ' fd-card-params--connecting' : ''}` },
+        connectionBanner,
         h('div', { className: 'fd-params-col fd-params-inputs' },
           h('div', { className: 'fd-params-col-label' }, 'Inputs'),
           ...required.map(([k, f]) => renderParamRow(k, f)),
-          optional.length ? h('button', {
+          !inConnectionMode && optional.length ? h('button', {
             className: `fd-params-toggle${showOptional ? ' fd-params-toggle--active' : ''}`,
             onclick: (e) => { e.stopPropagation(); this.setState({ nodeModeShowOptional: !showOptional }); },
           }, showOptional ? '− fewer' : `+ ${optional.length} more`) : null,
-          ...(showOptional ? optional.map(([k, f]) => renderParamRow(k, f)) : []),
+          ...(!inConnectionMode && showOptional ? optional.map(([k, f]) => renderParamRow(k, f)) : []),
         ),
         outRows.length ? h('div', { className: 'fd-params-col fd-params-outputs' },
           h('div', { className: 'fd-params-col-label' }, 'Outputs'),
@@ -773,6 +1281,63 @@ export class SandboxCanvas2 extends Component {
       );
     } else if (win.type === 'upload') {
       bodyCard = h('div', { className: 'fd-card' }, h(UploadWindowBody, { win, connections: windowConns }));
+    } else if (win.type === 'primitive' && win.outputType === 'text') {
+      const currentText = win.value || '';
+      const connectedTo = [...this._engine.connections.values()]
+        .filter(c => (c.from ?? c.fromWindowId) === windowId);
+      bodyCard = h('div', { className: 'fd-card fd-card-params' },
+        h('div', { className: 'fd-params-col fd-params-inputs' },
+          h('div', { className: 'fd-params-col-label' }, 'Text'),
+          h('div', { className: 'fd-param-row' },
+            h('div', { className: 'fd-param-body' },
+              h('div', {
+                className: 'fd-param-input-tap',
+                onclick: (e) => {
+                  e.stopPropagation();
+                  this.setState({ textInputOverlay: {
+                    label: 'Text',
+                    currentVal: currentText,
+                    field: { description: 'Enter text…' },
+                    key: 'value',
+                    onSave: (val) => {
+                      this._engine.updateWindow(windowId, { value: val, output: { type: 'text', text: val } });
+                    },
+                  }});
+                },
+              }, currentText
+                ? h('span', { className: 'fd-param-tap-value' }, currentText)
+                : h('span', { className: 'fd-param-tap-placeholder' }, 'Tap to enter text…'),
+              ),
+            ),
+          ),
+        ),
+        h('div', { className: 'fd-params-col fd-params-outputs' },
+          h('div', { className: 'fd-params-col-label' }, 'Outputs'),
+          h('div', { className: 'fd-param-row fd-param-row-output' },
+            h('div', { className: 'fd-param-body' },
+              h('label', { className: 'fd-param-label' }, 'text'),
+              h('span', { className: 'fd-param-type' }, 'text'),
+              connectedTo.length ? h('div', { className: 'fd-param-wired-list' },
+                ...connectedTo.map(c => h('div', { key: c.id, className: 'fd-param-wired' },
+                  h('button', {
+                    className: 'fd-card-link',
+                    onclick: (e) => { e.stopPropagation(); this._engine.fsm.navigateToNode(c.to ?? c.toWindowId); },
+                  }, `→ ${this._engine.windows.get(c.to ?? c.toWindowId)?.tool?.displayName || 'connected'}`),
+                  h('button', {
+                    className: 'fd-param-disconnect',
+                    onclick: (e) => { e.stopPropagation(); this._engine.connections.delete(c.id); this.setState({}); },
+                  }, '×'),
+                )),
+              ) : null,
+            ),
+            h('button', {
+              className: `fd-param-anchor${connectedTo.length ? ' fd-param-anchor-connected' : ''}`,
+              title: 'Wire output',
+              onclick: (e) => { e.stopPropagation(); this._startOutputConnection(win); },
+            }, anchorIcon('text')),
+          ),
+        ),
+      );
     } else {
       bodyCard = h('div', { className: 'fd-card' },
         h('div', { className: 'fd-card-label' }, win.spell?.name || win.outputType || win.type),
@@ -791,31 +1356,55 @@ export class SandboxCanvas2 extends Component {
         h('div', { className: 'fd-card-section' }, 'Error'),
         h('div', { className: 'fd-output-error' }, win.error),
       );
-    } else if (win.output) {
-      const out = win.output;
-      let outBody;
-      if (out.type === 'image' && out.url) {
-        outBody = h('img', {
-          className: 'fd-output-image fd-result-img--clickable',
-          src: out.url,
-          alt: 'Output',
+    } else {
+      const versions = win.outputVersions || [];
+      const vIdx = win.currentVersionIndex >= 0 ? win.currentVersionIndex : versions.length - 1;
+      const out = versions.length > 0 ? versions[vIdx] : win.output;
+      const label = win.tool?.displayName || win.type;
+
+      const renderOutBody = (o) => {
+        if (!o) return h('div', { className: 'fd-output-status' }, 'No output yet');
+        if (o.type === 'image' && o.url) {
+          return h('img', {
+            className: 'fd-output-image fd-result-img--clickable',
+            src: o.url, alt: 'Output', title: 'Tap to expand',
+            onclick: (e) => { e.stopPropagation(); this.setState({ imageOverlay: { url: o.url, label } }); },
+          });
+        }
+        if (o.type === 'video' && o.url) return h('video', { className: 'fd-output-video', src: o.url, controls: true, playsinline: true });
+        if (o.type === 'text' && o.text) return h('div', {
+          className: 'fd-output-text fd-result-img--clickable',
           title: 'Tap to expand',
-          onclick: (e) => { e.stopPropagation(); this.setState({ imageOverlay: { url: out.url, label: win.tool?.displayName || win.type } }); },
-        });
-      } else if (out.type === 'video' && out.url) {
-        outBody = h('video', { className: 'fd-output-video', src: out.url, controls: true, playsinline: true });
-      } else if (out.type === 'text' && out.text) {
-        outBody = h('div', { className: 'fd-output-text' }, out.text);
-      } else if (out.type === 'file' && out.files?.length) {
-        outBody = h('div', { className: 'fd-output-files' },
-          ...out.files.map(f => h('a', { className: 'fd-output-file-link', href: f.url, target: '_blank', rel: 'noopener' }, f.filename || f.url)),
-        );
-      } else {
-        outBody = h('div', { className: 'fd-output-status' }, out.type);
-      }
+          onclick: (e) => { e.stopPropagation(); this.setState({ textOverlay: { text: o.text, label }, textOverlayCopied: false }); },
+        }, o.text);
+        if (o.type === 'file' && o.files?.length) {
+          return h('div', { className: 'fd-output-files' },
+            ...o.files.map(f => h('a', { className: 'fd-output-file-link', href: f.url, target: '_blank', rel: 'noopener' }, f.filename || f.url)),
+          );
+        }
+        return h('div', { className: 'fd-output-status' }, o.type || 'unknown');
+      };
+
+      const versionNav = versions.length > 1 ? h('div', { className: 'fd-output-version-nav' },
+        h('button', {
+          className: 'fd-output-version-btn',
+          disabled: vIdx <= 0,
+          onclick: (e) => { e.stopPropagation(); this._engine.updateWindow(windowId, { currentVersionIndex: vIdx - 1, output: versions[vIdx - 1] }); this.setState({}); },
+        }, '‹'),
+        h('span', { className: 'fd-output-version-label' }, `${vIdx + 1} / ${versions.length}`),
+        h('button', {
+          className: 'fd-output-version-btn',
+          disabled: vIdx >= versions.length - 1,
+          onclick: (e) => { e.stopPropagation(); this._engine.updateWindow(windowId, { currentVersionIndex: vIdx + 1, output: versions[vIdx + 1] }); this.setState({}); },
+        }, '›'),
+      ) : null;
+
       outputCard = h('div', { className: 'fd-card fd-card-output' },
-        h('div', { className: 'fd-card-section' }, 'Output'),
-        outBody,
+        h('div', { className: 'fd-output-header' },
+          h('div', { className: 'fd-card-section' }, 'Output'),
+          versionNav,
+        ),
+        renderOutBody(out),
       );
     }
 
@@ -992,7 +1581,7 @@ export class SandboxCanvas2 extends Component {
   // ─── Touch gestures ───────────────────────────────────────────────────────
 
   _onTouchStart(e) {
-    if (this.state.imageOverlay) return;
+    if (this.state.imageOverlay || this.state.textOverlay || this.state.textInputOverlay || this.state.instructionPickerOverlay || this.state.modelPickerOverlay) return;
     if (this._momentum.running) {
       this._momentum.running = false;
       this._momentum.vx = 0;
@@ -1009,8 +1598,18 @@ export class SandboxCanvas2 extends Component {
 
       if (this.state.fsmState === 'NODE_MODE') return;
 
-      e.preventDefault();
+      // Don't preventDefault on interactive elements — let click events fire
+      const isTappable = e.target.closest('.sc2-anchor, .sc2-node-thumb--clickable, .sc2-fab, button, a');
+      if (!isTappable) e.preventDefault();
       this._panStart = { x: t.clientX - this._panX, y: t.clientY - this._panY };
+
+      // Track node under finger for potential drag
+      const nodeEl = e.target.closest && e.target.closest('.sc2-node');
+      const nodeId = nodeEl && nodeEl.dataset.windowId;
+      if (nodeId && !isTappable) {
+        const win = this._engine.windows.get(nodeId);
+        if (win) this._nodeTouchStart = { id: nodeId, touchX: t.clientX, touchY: t.clientY, nodeX: win.x, nodeY: win.y };
+      }
 
       // Long-press for multi-select
       if (this.state.fsmState === 'CANVAS_Z1' || this.state.fsmState === 'CANVAS_Z2') {
@@ -1046,7 +1645,7 @@ export class SandboxCanvas2 extends Component {
   }
 
   _onTouchMove(e) {
-    if (this.state.imageOverlay) return;
+    if (this.state.imageOverlay || this.state.textOverlay || this.state.textInputOverlay || this.state.instructionPickerOverlay || this.state.modelPickerOverlay) return;
     // Cancel long-press if finger moved
     if (this._longPressTimeout && this._gestureStart) {
       const t = e.touches[0];
@@ -1058,6 +1657,31 @@ export class SandboxCanvas2 extends Component {
     }
 
     if (this.state.fsmState === 'NODE_MODE') return;
+
+    // Node drag — activate once movement exceeds 8px from a node touch
+    if (e.touches.length === 1 && this._nodeTouchStart && !this._touchDragNodeId) {
+      const t = e.touches[0];
+      const dist = Math.hypot(t.clientX - this._nodeTouchStart.touchX, t.clientY - this._nodeTouchStart.touchY);
+      if (dist > 8) {
+        this._touchDragNodeId = this._nodeTouchStart.id;
+        this._engine.pinWindow(this._touchDragNodeId);
+        this._panStart = null; // stop canvas panning
+        this._gestureStart = null; // prevent tap detection
+        this._velBuffer = [];
+      }
+    }
+
+    if (e.touches.length === 1 && this._touchDragNodeId && this._nodeTouchStart) {
+      e.preventDefault();
+      const t = e.touches[0];
+      const dx = (t.clientX - this._nodeTouchStart.touchX) / this._scale;
+      const dy = (t.clientY - this._nodeTouchStart.touchY) / this._scale;
+      const newX = this._nodeTouchStart.nodeX + dx;
+      const newY = this._nodeTouchStart.nodeY + dy;
+      this._engine.pinWindow(this._touchDragNodeId, { x: newX, y: newY });
+      this._engine.updateWindow(this._touchDragNodeId, { x: newX, y: newY });
+      return;
+    }
 
     if (e.touches.length === 1 && this._panStart) {
       e.preventDefault();
@@ -1103,6 +1727,23 @@ export class SandboxCanvas2 extends Component {
   }
 
   _onTouchEnd(e) {
+    if (this.state.textInputOverlay) {
+      const target = e.changedTouches[0] && document.elementFromPoint(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+      if (!target?.closest?.('.fd-text-overlay-card') || target?.closest?.('.fd-text-overlay-close')) {
+        const { windowId, key, currentVal, onSave } = this.state.textInputOverlay;
+        if (onSave) onSave(currentVal);
+        else this._onParamChange(windowId, key, currentVal);
+        this.setState({ textInputOverlay: null, textInputOverlayCopied: false });
+      }
+      return;
+    }
+    if (this.state.textOverlay) {
+      const target = e.changedTouches[0] && document.elementFromPoint(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+      if (!target?.closest?.('.fd-text-overlay-card') || target?.closest?.('.fd-text-overlay-close')) {
+        this.setState({ textOverlay: null, textOverlayCopied: false });
+      }
+      return;
+    }
     if (this.state.imageOverlay) {
       // Close on tap outside the image wrap, or on the close button
       const target = e.changedTouches[0] && document.elementFromPoint(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
@@ -1118,6 +1759,16 @@ export class SandboxCanvas2 extends Component {
     this._panStart = null;
     this._pinchStart = null;
     this._lastMoveTime = null;
+
+    // End node drag
+    if (this._touchDragNodeId) {
+      this._touchDragNodeId = null;
+      this._nodeTouchStart = null;
+      this._gestureStart = null;
+      return;
+    }
+    this._nodeTouchStart = null;
+
     this._startMomentum();
 
     if (!this._gestureStart) return;
@@ -1141,7 +1792,9 @@ export class SandboxCanvas2 extends Component {
         this._panX = this._panAtGestureStart.x;
         this._panY = this._panAtGestureStart.y;
       }
-      if (this._engine.fsm.isConnecting) {
+      if (this.state.pendingInputTarget) {
+        this.setState({ pendingInputTarget: null });
+      } else if (this._engine.fsm.isConnecting) {
         this._engine.fsm.clearConnection();
       } else if (this.state.fsmState === 'CANVAS_Z2') {
         // Pan to saved origin, or workspace (0,0) if none set
@@ -1178,6 +1831,7 @@ export class SandboxCanvas2 extends Component {
         const thumbEl = target.closest('.sc2-node');
         const thumbNodeId = thumbEl?.dataset?.windowId;
         this._gestureStart = null;
+        this._suppressThumbClick = Date.now(); // prevent onclick double-fire
         if (thumbNodeId) {
           if (this.state.fsmState === 'CANVAS_Z1') {
             const w = this._engine.windows.get(thumbNodeId);
@@ -1209,7 +1863,9 @@ export class SandboxCanvas2 extends Component {
       }
 
       // Tap on empty canvas
-      if (this._engine.fsm.isConnecting) {
+      if (this.state.pendingInputTarget) {
+        this.setState({ pendingInputTarget: null });
+      } else if (this._engine.fsm.isConnecting) {
         this._engine.fsm.clearConnection();
       } else if (this.state.fsmState === 'CANVAS_Z1') {
         this._engine.zoomOut();

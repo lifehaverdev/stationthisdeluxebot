@@ -758,32 +758,43 @@ async function executeToolCall(params, apiKey, internalApiClient, baseUrl, toolR
     // First resolve user from API key
     const userInfo = await resolveUserFromApiKey(apiKey, internalApiClient);
 
+    // Extract webhook delivery fields from args (not forwarded as tool inputs)
+    const { callbackUrl, callbackSecret, ...toolInputs } = args || {};
+    const webhookMetadata = callbackUrl ? {
+      webhookUrl: callbackUrl,
+      ...(callbackSecret && { webhookSecret: callbackSecret })
+    } : {};
+
     // Execute via internal API with proper payload format
     const response = await internalApiClient.post(
       '/internal/v1/data/execute',
       {
         toolId: resolvedToolId,
-        inputs: args || {},
+        inputs: toolInputs,
         user: {
           masterAccountId: userInfo.masterAccountId,
           platform: 'mcp'
-        }
+        },
+        ...(callbackUrl && { metadata: webhookMetadata })
       }
     );
 
     const result = response.data;
     const generationId = result.generationId || result._id;
 
+    const responsePayload = {
+      success: true,
+      generationId,
+      status: result.status || 'pending',
+      pollUrl: `${baseUrl || 'https://noema.art'}/api/v1/generation/status/${generationId}`
+    };
+    if (callbackUrl) {
+      responsePayload.delivery = 'webhook';
+      responsePayload.callbackUrl = callbackUrl;
+    }
+
     return {
-      content: [{
-        type: 'text',
-        text: JSON.stringify({
-          success: true,
-          generationId,
-          status: result.status || 'pending',
-          pollUrl: `${baseUrl || 'https://noema.art'}/api/v1/generation/status/${generationId}`
-        })
-      }]
+      content: [{ type: 'text', text: JSON.stringify(responsePayload) }]
     };
   } catch (error) {
     const msg = error.response?.data?.error?.message || error.message;

@@ -331,11 +331,28 @@ export class ActionModal extends Component {
         letter-spacing: var(--ls-wide);
         text-transform: uppercase;
       }
+
+      /* Connecting mode — blue accent outline */
+      .am-root--connecting .am-segment {
+        stroke: var(--accent-border);
+      }
+      .am-tools-panel--connecting {
+        border-color: var(--accent-border);
+        box-shadow: 0 0 0 1px var(--accent-border);
+      }
+      .am-tools-panel--connecting .am-tools-header {
+        border-bottom-color: var(--accent-border);
+        background: var(--accent-dim);
+        color: var(--accent);
+      }
+      .am-tools-panel--connecting .am-tools-title {
+        color: var(--accent);
+      }
     `;
   }
 
   render() {
-    const { visible, x, y } = this.props;
+    const { visible, x, y, connecting } = this.props;
     if (!visible) return h('div', { className: 'am-root' });
 
     const { view, mode, selectedCategory, tools } = this.state;
@@ -349,7 +366,7 @@ export class ActionModal extends Component {
       // For the text category on create path, prepend a plain text primitive option
       const isText = !isEffect && selectedCategory.type === 'text';
       return h('div', {
-        className: 'am-tools-panel',
+        className: `am-tools-panel${connecting ? ' am-tools-panel--connecting' : ''}`,
         style: `left:${x}px;top:${y}px`,
         onclick: (e) => e.stopPropagation(),
         ontouchstart: (e) => e.stopPropagation(),
@@ -432,7 +449,7 @@ export class ActionModal extends Component {
       };
 
       return h('div', {
-        className: 'am-root active',
+        className: `am-root active${connecting ? ' am-root--connecting' : ''}`,
         style: `left:${x}px;top:${y}px`,
         onclick: (e) => e.stopPropagation(),
         ontouchstart: (e) => e.stopPropagation(),
@@ -488,7 +505,7 @@ export class ActionModal extends Component {
     }
 
     const n = Math.min(items.length, 5);
-    if (n === 0) return h('div', { className: 'am-root active', style: `left:${x}px;top:${y}px` });
+    if (n === 0) return h('div', { className: `am-root active${connecting ? ' am-root--connecting' : ''}`, style: `left:${x}px;top:${y}px` });
 
     const outerR = 72, innerR = 28;
     const angleStep = (2 * Math.PI) / n;
@@ -515,7 +532,7 @@ export class ActionModal extends Component {
     };
 
     return h('div', {
-      className: 'am-root active',
+      className: `am-root active${connecting ? ' am-root--connecting' : ''}`,
       style: `left:${x}px;top:${y}px`,
       onclick: (e) => e.stopPropagation(),
       ontouchstart: (e) => e.stopPropagation(),

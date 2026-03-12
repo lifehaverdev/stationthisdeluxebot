@@ -7,9 +7,47 @@ const { getPricingService } = require('../pricing');
 const { generationService } = require('../store/generations/GenerationService');
 const { economyService } = require('../store/economy/EconomyService');
 const ResponsePayloadNormalizer = require('../notifications/ResponsePayloadNormalizer');
+const { signWebhook, validateWebhookUrl } = require('../../../utils/webhookUtils');
 
 // Temporary in-memory cache for live progress (can be managed within this module)
 const activeJobProgress = new Map();
+
+/**
+ * Fire-and-forget progress webhook to agent callbackUrl.
+ * Does not retry — progress events are best-effort.
+ */
+async function sendProgressWebhook(generationRecord, { status, progress, liveStatus }, logger) {
+  const webhookUrl = generationRecord?.metadata?.webhookUrl;
+  if (!webhookUrl) return;
+
+  const validation = validateWebhookUrl(webhookUrl, process.env.NODE_ENV !== 'production');
+  if (!validation.valid) return;
+
+  const payload = {
+    event: 'generation.progress',
+    generationId: generationRecord._id?.toString(),
+    status,
+    progress: typeof progress === 'number' ? progress : null,
+    liveStatus: liveStatus || null,
+    timestamp: new Date().toISOString(),
+  };
+
+  const webhookSecret = generationRecord.metadata?.webhookSecret;
+  if (webhookSecret) {
+    payload.signature = signWebhook(payload, webhookSecret);
+  }
+
+  fetch(webhookUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'User-Agent': 'StationThis-Webhook/1.0',
+      ...(payload.signature && { 'X-Webhook-Signature': `sha256=${payload.signature}` }),
+    },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(5000),
+  }).catch(err => logger.debug(`[WebhookProcessor] Progress webhook to ${webhookUrl} failed (non-critical): ${err.message}`));
+}
 
 /**
  * Pure function to calculate costUsd from a costRate and optional timing data.
@@ -127,6 +165,10 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
                 collectionId
             }
         });
+    }
+
+    if (generationRecordForProgress) {
+      sendProgressWebhook(generationRecordForProgress, { status, progress, liveStatus: live_status }, logger);
     }
   }
 

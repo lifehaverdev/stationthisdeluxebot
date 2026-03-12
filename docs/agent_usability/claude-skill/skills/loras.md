@@ -1,67 +1,59 @@
 # NOEMA: LoRAs & Trigger Words
 
-LoRAs are trained style/character models activated by trigger words in prompts. NOEMA has 214+.
+LoRAs are style/character models activated by trigger words. 214+ available. MCP shorthand in `Skill.md`.
 
 ---
 
-## Search LoRAs
+## Search
 
-**Via MCP:**
-```json
-{"jsonrpc":"2.0","method":"resources/read","params":{"uri":"noema://lora/search?q=anime&checkpoint=SDXL"},"id":1}
 ```
-
-**Via REST:**
+read noema://lora/search?q=anime&checkpoint=SDXL
 ```
-GET https://noema.art/api/v1/loras/list?q={query}&checkpoint={FLUX|SDXL|SD1.5|All}
-```
+REST: `GET /api/v1/loras/list?q={query}&checkpoint={FLUX|SDXL|SD1.5|All}`
 
-`q` searches name, slug, triggerWords, description, tags. Search by style concept (`q=dreamy`), subject (`q=portrait`), aesthetic (`q=cyberpunk`), etc.
-
-Response fields per LoRA: `name`, `triggerWords`, `description`, `checkpoint`, `defaultWeight`, `tags`, `previewImages`
+`q` searches name, triggerWords, description, tags. Response: `name`, `triggerWords`, `checkpoint`, `defaultWeight`, `previewImages`.
 
 ---
 
 ## Using Trigger Words
 
-Include trigger words directly in your prompt:
+Include trigger words directly in the prompt — system auto-detects at default weight:
 ```
 "ghibli_style portrait of a warrior, soft lighting, whimsical atmosphere"
 ```
 
-The system auto-detects triggers — no special syntax needed at default weight.
-
-**Rule:** Only use LoRAs whose `checkpoint` matches the tool's base model. SDXL LoRA → SDXL tool.
+**Rule:** LoRA `checkpoint` must match the tool's `metadata.baseModel`. SDXL LoRA → SDXL tool.
 
 ---
 
-## Controlling Weight
+## Weight Syntax
 
-Append `:weight` to a trigger to control strength:
-```
-trigger_word:weight
-```
+Append `!!` or `..` pairs to a trigger word to nudge strength:
 
-| Weight | Effect |
+| Suffix | Effect |
 |--------|--------|
-| `0.2–0.4` | Subtle blend |
-| `0.5–0.7` | Balanced (good default when combining) |
-| `0.8–1.0` | Strong, single LoRA |
-| `1.0+` | Overpowering — risks artifacts |
+| (none) | Default weight |
+| `!!` | +0.4 |
+| `!!!!` | +0.8 |
+| `..` | −0.4 |
+| `....` | −0.8 |
+
+```
+ghibli_style!!            → stronger (+0.4)
+ghibli_style..            → weaker (−0.4)
+ghibli_style!!!!          → dominant (+0.8)
+ghibli_style....          → suppressed (−0.8)
+```
+
+Old explicit syntax also works: `trigger_word:0.7`
 
 ---
 
 ## Combining Multiple LoRAs
 
-Max 2-3 LoRAs. Reduce weights when combining — total should sum to ~1.0–1.2:
-
+Max 2-3 LoRAs. Combined strength should total ~1.0-1.2.
 ```
-ghibli_style:0.4 ethereal_portrait:0.4 portrait of a warrior, soft lighting
-```
-
-Single LoRA at full strength:
-```
-ghibli_style portrait of a warrior, soft lighting
+ghibli_style!! ethereal_portrait.... portrait of a warrior, soft lighting
 ```
 
 ---
@@ -69,12 +61,12 @@ ghibli_style portrait of a warrior, soft lighting
 ## No LoRA Found?
 
 1. Try related terms (`q=painterly`, `q=epic`, `q=magical`)
-2. Still nothing → fall back to prompt-only with DALL-E 3 (best prompt interpretation)
+2. Still nothing → prompt-only with `dall-e-3` (best prompt interpretation)
 3. For recurring needs → train a custom LoRA (`training.md`)
 
 ---
 
-## Checkpoint → Tool Matching
+## Checkpoint → Tool
 
 | Checkpoint | Compatible Tools |
 |------------|-----------------|
@@ -82,4 +74,4 @@ ghibli_style portrait of a warrior, soft lighting
 | `SDXL` | `sdxl-base`, `sdxl-img2img`, SDXL tools |
 | `SD1.5` | SD 1.5 tools |
 
-Always check `metadata.baseModel` from `tools/list` to confirm compatibility.
+Confirm via `metadata.baseModel` from `tools/list`.

@@ -101,10 +101,23 @@
 
 .sc2-node-thumb {
   width: 100%;
-  aspect-ratio: 16/9;
-  object-fit: cover;
+  height: auto;
+  display: block;
   margin-top: 6px;
   background: var(--surface-2);
+}
+
+.sc2-node-text-snippet {
+  margin-top: 6px;
+  font-family: var(--ff-mono);
+  font-size: 9px;
+  line-height: 1.5;
+  color: var(--text-label);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 48px;
+  overflow: hidden;
+  opacity: 0.8;
 }
 
 .sc2-node-thumb--clickable {
@@ -277,6 +290,40 @@
   opacity: 0.85;
 }
 
+/* Seeking-source badge (reverse connection mode) */
+.sc2-seeking-badge {
+  position: fixed;
+  top: max(16px, env(safe-area-inset-top, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface-2);
+  border: 1px solid var(--accent);
+  border-radius: 20px;
+  padding: 6px 14px 6px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--ff-condensed);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--ls-wide);
+  color: var(--accent);
+  z-index: 600;
+  white-space: nowrap;
+  pointer-events: all;
+}
+
+.sc2-seeking-cancel {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  opacity: 0.7;
+}
+.sc2-seeking-cancel:hover { opacity: 1; }
+
 /* + FAB button */
 .sc2-fab {
   position: fixed;
@@ -303,6 +350,15 @@
   box-shadow: 0 6px 20px rgba(0,0,0,0.5);
 }
 .sc2-fab:active { transform: scale(0.95); }
+.sc2-fab--connecting {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim), 0 4px 16px rgba(0,0,0,0.4);
+  animation: sc2-fab-pulse 1.4s ease-in-out infinite;
+}
+@keyframes sc2-fab-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px var(--accent-dim), 0 4px 16px rgba(0,0,0,0.4); }
+  50% { box-shadow: 0 0 0 6px var(--accent-dim), 0 4px 16px rgba(0,0,0,0.4); }
+}
 
 /* Anchor buttons — output (right edge) and input (left edge) */
 .sc2-anchor {
@@ -402,3 +458,252 @@
   border-color: rgba(147, 130, 255, 1);
   box-shadow: 0 0 0 3px rgba(147, 130, 255, 0.3);
 }
+
+/* ── Connection mode — NODE_MODE banner ───────────────────────────────────── */
+
+.sc2-conn-banner {
+  padding: 8px 14px;
+  background: var(--accent-dim);
+  border-bottom: 1px solid var(--accent);
+  font-family: var(--ff-condensed);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--ls-wide);
+  text-transform: uppercase;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.fd-card-params--connecting .fd-param-anchor {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dim);
+}
+
+.fd-card-params--connecting .fd-param-anchor:hover {
+  box-shadow: 0 0 0 3px var(--accent-dim);
+  background: var(--accent-dim);
+}
+
+/* ── Modal overlays (instruction picker, model picker) ────────────────────── */
+
+.sc2-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sc2-modal-panel {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  width: min(560px, 92vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.sc2-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-1);
+  flex-shrink: 0;
+}
+
+.sc2-modal-title {
+  font-family: var(--ff-condensed);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--ls-widest);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.sc2-modal-close {
+  background: none;
+  border: none;
+  color: var(--text-label);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0;
+}
+.sc2-modal-close:hover { color: var(--text-primary); }
+
+.sc2-modal-search-wrap {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.sc2-modal-search {
+  width: 100%;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-family: var(--ff-mono);
+  font-size: var(--fs-sm);
+  padding: 5px 8px;
+  outline: none;
+  box-sizing: border-box;
+}
+.sc2-modal-search:focus { border-color: var(--accent); }
+.sc2-modal-search::placeholder { color: var(--text-label); }
+
+.sc2-modal-list {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.sc2-modal-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  gap: 10px;
+}
+.sc2-modal-item:last-child { border-bottom: none; }
+.sc2-modal-item:hover { background: var(--surface-1); }
+.sc2-modal-item--active { background: var(--accent-dim); }
+.sc2-modal-item--active:hover { background: var(--accent-dim); }
+
+.sc2-modal-item-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+  opacity: 0;
+}
+.sc2-modal-item--active .sc2-modal-item-dot { opacity: 1; }
+
+.sc2-modal-item-name {
+  font-family: var(--ff-mono);
+  font-size: var(--fs-sm);
+  color: var(--text-primary);
+  word-break: break-word;
+}
+.sc2-modal-item--active .sc2-modal-item-name { color: var(--accent); }
+
+.sc2-modal-empty {
+  padding: 24px 12px;
+  font-family: var(--ff-mono);
+  font-size: var(--fs-sm);
+  color: var(--text-label);
+  text-align: center;
+}
+
+.sc2-modal-count {
+  font-family: var(--ff-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-label);
+  padding: 4px 10px;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  background: var(--surface-1);
+}
+
+.sc2-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-1);
+  flex-shrink: 0;
+}
+
+.sc2-modal-btn {
+  font-family: var(--ff-condensed);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--ls-wide);
+  text-transform: uppercase;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  background: none;
+  color: var(--text-label);
+}
+.sc2-modal-btn:hover { color: var(--text-primary); border-color: var(--accent); }
+.sc2-modal-btn--apply {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.sc2-modal-btn--apply:hover { background: var(--accent); color: #000; }
+.sc2-modal-btn--apply:disabled { opacity: 0.4; cursor: not-allowed; }
+.sc2-modal-btn--copied { color: var(--accent); border-color: var(--accent); }
+
+/* Instruction picker — two-column layout */
+.sc2-ipm-panel { width: min(780px, 94vw); }
+
+.sc2-ipm-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.sc2-ipm-list {
+  width: 180px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.sc2-ipm-preset {
+  padding: 10px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--ff-mono);
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sc2-ipm-preset:last-child { border-bottom: none; }
+.sc2-ipm-preset:hover { background: var(--surface-1); color: var(--text-primary); }
+.sc2-ipm-preset--active { background: var(--accent-dim); color: var(--accent); }
+.sc2-ipm-preset--active:hover { background: var(--accent-dim); }
+.sc2-ipm-preset--custom { color: var(--text-label); }
+.sc2-ipm-preset--custom.sc2-ipm-preset--active { color: var(--accent); }
+
+.sc2-ipm-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+  opacity: 0;
+}
+.sc2-ipm-preset--active .sc2-ipm-dot { opacity: 1; }
+
+.sc2-ipm-editor {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sc2-ipm-textarea {
+  flex: 1;
+  min-height: 220px;
+  background: var(--surface-1);
+  border: none;
+  color: var(--text-secondary);
+  font-family: var(--ff-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 12px;
+  resize: none;
+  outline: none;
+}
+.sc2-ipm-textarea:focus { color: var(--text-primary); }
+.sc2-ipm-textarea::placeholder { color: var(--text-label); font-style: italic; }

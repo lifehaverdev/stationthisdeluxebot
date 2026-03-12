@@ -1,20 +1,12 @@
 # NOEMA: Generation
 
-Advanced generation patterns. Assumes you have an API key (see `Skill.md`).
-
-**Base URL:** `https://noema.art` · **Auth:** `X-API-Key` header
+Advanced generation. Assumes API key — see `onboarding.md`. MCP shorthand defined in `Skill.md`.
 
 ---
 
 ## Tool Selection
 
-List available tools:
-```json
-{"jsonrpc":"2.0","method":"tools/list","id":1}
-```
-Each tool has `toolId`, `displayName`, `commandName`, `metadata.baseModel`, `inputSchema`, `costingModel`.
-
-**Aliases:** Use `commandName` (e.g. `"make"`), `displayName`, or the full `toolId` interchangeably.
+`tools/list` — each tool has `toolId`, `commandName`, `metadata.baseModel`, `inputSchema`, `costingModel`.
 
 | Use case | Tool |
 |----------|------|
@@ -23,118 +15,65 @@ Each tool has `toolId`, `displayName`, `commandName`, `metadata.baseModel`, `inp
 | Image-to-image | `sdxl-img2img` |
 | Video | `ltx-video` |
 | Upscale | `real-esrgan-4x` |
-| Image caption | `joycaption` |
+| Caption | `joycaption` |
 
 ---
 
-## Execute Generation
+## Execute
 
-**Via MCP:**
-```json
-{"jsonrpc":"2.0","method":"tools/call","params":{
-  "name": "make",
-  "arguments": {"prompt": "...", "width": 1024, "height": 1024}
-},"id":1}
-```
-
-**Via REST:**
-```
-POST https://noema.art/api/v1/generation/execute
-X-API-Key: {key}
-Content-Type: application/json
-
-{"toolId": "make", "inputs": {"prompt": "...", "width": 1024, "height": 1024}}
-```
-
-**Response** (both methods): parse `content[0].text` → `{ "generationId": "gen_abc123", "status": "pending" }`
-
----
-
-## Polling
+Before calling an unfamiliar tool, call `tools/list` and inspect its `inputSchema` to know exactly what parameters it accepts.
 
 ```
-GET https://noema.art/api/v1/generation/status/{generationId}
-X-API-Key: {key}
+call make {"prompt": "...", "width": 1024, "height": 1024}
 ```
+REST: `POST /api/v1/generation/execute` `{"toolId":"make","inputs":{...}}`
 
-| Status | Meaning |
-|--------|---------|
-| `pending` / `processing` | Poll again in 2-5s |
-| `completed` | Done — `result.image` has URL |
-| `failed` | Check `error` field |
-
-Images: 10-30s. Videos: 60-180s. Abandon after 5min.
+Response: `{"generationId":"gen_abc123","pollUrl":"..."}`. If you passed `callbackUrl`, the result is pushed to you — no polling needed. Otherwise poll per `Skill.md` (image: wait 15s, up to 6min; video: wait 90s first).
+`completed` → `result.image`.
 
 ---
 
 ## Batch Variations
 
-Use `input_batch` to generate multiple variations in one call (5-20 pieces):
-```json
-{"jsonrpc":"2.0","method":"tools/call","params":{
-  "name": "make",
-  "arguments": {
-    "input_batch": [
-      {"prompt": "cyberpunk city, rainy night"},
-      {"prompt": "cyberpunk city, golden hour"},
-      {"prompt": "cyberpunk city, neon fog"}
-    ]
-  }
-},"id":1}
+5-20 pieces in one call:
 ```
-
-For 20+ pieces with curation, use Collections (`collections.md`).
+call make {"input_batch": [{"prompt": "cyberpunk city, rain"}, {"prompt": "cyberpunk city, gold"}, {"prompt": "cyberpunk city, fog"}]}
+```
+For 20+ with curation → `collections.md`.
 
 ---
 
 ## Image Input (img2img)
 
-Tools expecting `imageUrl` accept:
-- Public HTTPS URL
-- Base64 data URL (`data:image/png;base64,...`)
-- URLs from previous NOEMA generations
-
-```json
-{"jsonrpc":"2.0","method":"tools/call","params":{
-  "name": "sdxl-img2img",
-  "arguments": {
-    "imageUrl": "https://...",
-    "prompt": "transform to watercolor style",
-    "denoisingStrength": 0.6
-  }
-},"id":1}
+Accepts public HTTPS URL, base64 `data:image/png;base64,...`, or prior NOEMA generation URL.
+```
+call sdxl-img2img {"imageUrl": "https://...", "prompt": "watercolor style", "denoisingStrength": 0.6}
 ```
 
 ---
 
 ## LoRA-First Pattern
 
-When a user mentions ANY style, search LoRAs before generating. See `loras.md` for full details.
-
-Quick search:
-```json
-{"jsonrpc":"2.0","method":"resources/read","params":{"uri":"noema://lora/search?q=ghibli&checkpoint=SDXL"},"id":1}
+When user mentions any style, search LoRAs before generating — see `loras.md`.
 ```
-Include trigger words in prompt: `"GHIBLI style, soft colors, whimsical atmosphere"`
+read noema://lora/search?q=ghibli&checkpoint=SDXL
+```
+Include trigger words in prompt. Match LoRA checkpoint to tool base model.
 
 ---
 
-## Cost
+## Cost & Balance
 
-Check `tool.costingModel` for pricing. Query credit balance:
-```
-GET https://noema.art/api/v1/points
-X-API-Key: {key}
-```
+Check `tool.costingModel`. Balance: `GET /api/v1/points`
 
 ---
 
-## Error Reference
+## Errors
 
 | Code | Meaning | Action |
 |------|---------|--------|
-| 401 | Invalid/missing API key | Check key |
-| 402 (API flow) | Insufficient credits | Add credits |
-| 404 | Tool not found | Verify via `tools/list` |
-| 429 | Rate limited | Wait and retry |
+| 401 | Bad/missing key | Check key |
+| 402 | No credits | Add credits via `onboarding.md` |
+| 404 | Tool not found | Check via `tools/list` |
+| 429 | Rate limited | Retry with backoff |
 | 502 | Backend issue | Retry after delay |
