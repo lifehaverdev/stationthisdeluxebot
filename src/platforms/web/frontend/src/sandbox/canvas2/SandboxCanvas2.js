@@ -1274,6 +1274,32 @@ export class SandboxCanvas2 extends Component {
                     title: 'Disconnect',
                     onclick: (e) => { e.stopPropagation(); this._engine.connections.delete(connectedFrom.id); this.setState({}); },
                   }, '×'),
+                  h('button', {
+                    className: 'fd-param-edit-expr',
+                    title: 'Add expression transform',
+                    onclick: (e) => {
+                      e.stopPropagation();
+                      const sourceId = connectedFrom.from ?? connectedFrom.fromWindowId;
+                      const sourceWin = this._engine.windows.get(sourceId);
+                      if (sourceWin?.type === 'expression') {
+                        this._engine.fsm.navigateToNode(sourceId);
+                        return;
+                      }
+                      const srcWin = this._engine.windows.get(sourceId);
+                      const tgtWin = this._engine.windows.get(windowId);
+                      const midX = ((srcWin?.x || 0) + (tgtWin?.x || 0)) / 2;
+                      const midY = ((srcWin?.y || 0) + (tgtWin?.y || 0)) / 2;
+                      const exprId = this._engine.addExpressionWindow({ x: midX, y: midY });
+                      const oldConnId = connectedFrom.id;
+                      this._engine.removeCanvasConnection(oldConnId);
+                      const c1 = this._engine._genId('c');
+                      this._engine.addCanvasConnection(c1, sourceId, exprId, connectedFrom.fromOutput || 'output', 'input', connectedFrom.dataType);
+                      const c2 = this._engine._genId('c');
+                      this._engine.addCanvasConnection(c2, exprId, windowId, 'output', key, 'text');
+                      this._engine.fsm.navigateToNode(exprId);
+                      this.setState({});
+                    },
+                  }, 'fx'),
                 )
               : this._renderParamInput(windowId, key, field, currentVal),
           ),

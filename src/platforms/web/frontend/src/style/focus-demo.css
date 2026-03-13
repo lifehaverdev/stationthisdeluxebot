@@ -1462,6 +1462,20 @@
   opacity: 1;
   color: var(--text-primary);
 }
+.fd-param-edit-expr {
+  background: none;
+  border: 1px solid var(--accent, #7c5cff);
+  color: var(--accent, #7c5cff);
+  border-radius: 3px;
+  font-size: 10px;
+  padding: 1px 4px;
+  cursor: pointer;
+  margin-left: 4px;
+}
+.fd-param-edit-expr:hover {
+  background: var(--accent, #7c5cff);
+  color: #fff;
+}
 .fd-param-wired-list {
   display: flex;
   flex-direction: column;
