@@ -815,6 +815,7 @@ export class SandboxCanvas2 extends Component {
       const isSelected = multiSelectIds?.has(win.id);
       const isSource = isConnecting && connection?.sourceNodeId === win.id;
       const thumbUrl = win.output?.type === 'image' ? win.output.url : null;
+      const videoUrl = win.output?.type === 'video' ? win.output.url : null;
       const textSnippet = win.type === 'primitive' && win.outputType === 'text' && win.value
         ? h('div', { className: 'sc2-node-text-snippet' }, win.value)
         : null;
@@ -833,6 +834,20 @@ export class SandboxCanvas2 extends Component {
             this._engine.tapNode(win.id);
           } else {
             this.setState({ imageOverlay: { url: thumbUrl, label: win.tool?.displayName || win.type } });
+          }
+        },
+      }) : videoUrl ? h('video', {
+        className: 'sc2-node-thumb sc2-node-thumb--clickable sc2-node-thumb--video',
+        src: videoUrl, muted: true, playsinline: true, preload: 'metadata', loop: true,
+        onmouseenter: (e) => e.target.play?.(),
+        onmouseleave: (e) => { e.target.pause?.(); e.target.currentTime = 0; },
+        onclick: (e) => {
+          e.stopPropagation();
+          if (this._suppressThumbClick && Date.now() - this._suppressThumbClick < 500) return;
+          if (fsmState === 'CANVAS_Z2') {
+            this._engine.tapNode(win.id);
+          } else {
+            this._engine.doubleTapNode(win.id);
           }
         },
       }) : null;
@@ -1530,7 +1545,8 @@ export class SandboxCanvas2 extends Component {
       const out = versions.length > 0 ? versions[vIdx] : win.output;
       const label = win.tool?.displayName || win.type;
       const hasOutput = !!out;
-      const outputExpanded = this.state.nodeModeOutputExpanded;
+      const isVideo = out?.type === 'video';
+      const outputExpanded = this.state.nodeModeOutputExpanded || isVideo;
       const isPastVersion = versions.length > 0 && vIdx < versions.length - 1;
 
       const renderSingleItem = (o) => {
@@ -1541,7 +1557,13 @@ export class SandboxCanvas2 extends Component {
             onclick: (e) => { e.stopPropagation(); this.setState({ imageOverlay: { url: o.url, label } }); },
           });
         }
-        if (o.type === 'video' && o.url) return h('video', { className: 'fd-output-video', src: o.url, controls: true, playsinline: true });
+        if (o.type === 'video' && o.url) return h('div', { className: 'fd-output-video-wrap' },
+          h('video', {
+            className: 'fd-output-video',
+            src: o.url, controls: true, playsinline: true, preload: 'metadata',
+            loop: true,
+          }),
+        );
         if (o.type === 'text' && o.text) return h('div', {
           className: 'fd-output-text fd-result-img--clickable',
           title: 'Tap to expand',

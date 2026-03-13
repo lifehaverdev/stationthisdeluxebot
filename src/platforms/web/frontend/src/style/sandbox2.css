@@ -143,6 +143,12 @@
   cursor: zoom-in;
 }
 
+.sc2-node-thumb--video {
+  max-height: 80px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
 /* Connection SVG */
 .sc2-conn-layer {
   position: absolute;
