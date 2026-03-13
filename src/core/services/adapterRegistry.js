@@ -35,7 +35,8 @@ class AdapterRegistry {
       // Attempt lazy load for common adapters
       const mapping = {
         openai: './openai/openAIAdapter',
-        huggingface: './huggingface/huggingFaceAdapter'
+        huggingface: './huggingface/huggingFaceAdapter',
+        expression: './expression/expressionAdapter',
       };
       const rel = mapping[service];
       if (rel) {
