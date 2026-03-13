@@ -864,7 +864,14 @@ export class SandboxCanvas2 extends Component {
       // Upload nodes: batch anchor when 2+ same-type outputs; single output anchor for 1 image; none for 0
       // All other nodes: single typed output anchor
       let outputAnchor = null;
-      if (!showAnchors) { /* skip at Z2 */ } else
+      // Expression nodes always show anchors (even at Z2)
+      if (win.type === 'expression') {
+        outputAnchor = h('button', {
+          className: `sc2-anchor sc2-anchor--output${isSource ? ' sc2-anchor--active' : ''}`,
+          title: 'Connect output (any)',
+          onclick: (e) => { e.stopPropagation(); this._startOutputConnection(win); },
+        }, anchorIcon('text'));
+      } else if (!showAnchors) { /* skip at Z2 */ } else
       if (win.type === 'upload') {
         const slots = win.outputs || [];
         const hasBatch = slots.length > 1 && slots.every(o => o.type === slots[0]?.type);
@@ -895,7 +902,27 @@ export class SandboxCanvas2 extends Component {
       // ── Input anchors (Z1+ only) ──────────────────────────────────────────
       // Required inputs always shown at Z1; active + type-matched when connecting
       const inputAnchors = [];
-      if (showAnchors && (win.type === 'tool' || win.type === 'spell')) {
+      // Expression nodes always show a single input anchor (any type)
+      if (win.type === 'expression') {
+        const sourceType = connection?.sourceType;
+        const showActive = isConnecting && !isSource;
+        const isWired = this._isPortWired(win.id, 'input');
+        let anchorCls = 'sc2-anchor sc2-anchor--input';
+        if (showActive) {
+          anchorCls += ' sc2-anchor--matching'; // always matches any type
+        } else {
+          anchorCls += isWired ? ' sc2-anchor--wired' : ' sc2-anchor--idle';
+        }
+        inputAnchors.push(h('button', {
+          key: 'input',
+          className: anchorCls,
+          title: 'input (any)',
+          onclick: (e) => {
+            e.stopPropagation();
+            if (isConnecting && !isSource) this._completeInputConnection(win.id, 'input', null);
+          },
+        }, anchorIcon('text')));
+      } else if (showAnchors && (win.type === 'tool' || win.type === 'spell')) {
         const schema = this._inputSchema(win);
         // Only required inputs shown as anchors on chip; optional only accessible via NODE_MODE
         const allKeys = Object.keys(schema);
@@ -1602,7 +1629,7 @@ export class SandboxCanvas2 extends Component {
     }
 
     // ── Card 4: Actions ───────────────────────────────────────────────────────
-    const canExecute = win.type === 'tool' || win.type === 'spell';
+    const canExecute = win.type === 'tool' || win.type === 'spell' || win.type === 'expression';
     const actionsCard = h('div', { className: 'fd-card' },
       h('div', { className: 'fd-card-section' }, 'Actions'),
       h('div', { className: 'fd-card-actions' },

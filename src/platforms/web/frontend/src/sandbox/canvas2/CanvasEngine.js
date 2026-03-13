@@ -115,6 +115,30 @@ export class CanvasEngine {
 
   removeWindow(id) {
     if (!this.windows.has(id)) return;
+    const win = this.windows.get(id);
+
+    // If deleting a spliced expression node, reconnect upstream → downstream
+    if (win.type === 'expression') {
+      const inConns = [];
+      const outConns = [];
+      for (const conn of this.connections.values()) {
+        if (conn.to === id) inConns.push(conn);
+        if (conn.from === id) outConns.push(conn);
+      }
+      // If exactly 1 in and 1+ out, reconnect each downstream to the upstream
+      if (inConns.length === 1 && outConns.length >= 1) {
+        const upstream = inConns[0];
+        for (const downstream of outConns) {
+          const newId = this._genId('c');
+          this.addCanvasConnection(
+            newId, upstream.from, downstream.to,
+            upstream.fromOutput, downstream.toInput,
+            upstream.dataType || downstream.dataType,
+          );
+        }
+      }
+    }
+
     // Remove all connections referencing this window
     for (const [connId, conn] of this.connections) {
       if (conn.from === id || conn.to === id) {
