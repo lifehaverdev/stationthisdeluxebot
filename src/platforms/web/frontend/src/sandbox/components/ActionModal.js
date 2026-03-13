@@ -115,6 +115,13 @@ export class ActionModal extends Component {
     this._close();
   }
 
+  _createExpression(e) {
+    e.stopPropagation();
+    const canvas = window.sandboxCanvas;
+    if (canvas) canvas.addExpressionWindow(this.props.workspacePosition);
+    this._close();
+  }
+
   _selectCategory(cat, e) {
     e.stopPropagation();
     this.setState({ view: 'tools', selectedCategory: cat });
@@ -427,6 +434,7 @@ export class ActionModal extends Component {
       const anchorItems = [
         { title: 'upload', angle: -Math.PI / 2, fn: (e) => this._addUploadNode(e), renderIcon: renderImageIcon },
         { icon: 'T', title: 'text', angle: Math.PI / 2, fn: (e) => this._createPrimitive('text', e) },
+        { icon: 'fx', title: 'expression', angle: 0, fn: (e) => this._createExpression(e) },
       ];
 
       const mainStart = Math.PI / 2; // effect on left, create on right
