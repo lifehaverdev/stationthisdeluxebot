@@ -73,6 +73,19 @@ export class CanvasEngine {
     return id;
   }
 
+  addExpressionWindow(position) {
+    const id = this._genId('w');
+    const win = {
+      id, type: 'expression', x: position.x, y: position.y,
+      expression: '',
+      output: null, executing: false, error: null,
+    };
+    this.windows.set(id, win);
+    this.physics.addNode(id, position);
+    this._notify();
+    return id;
+  }
+
   addEffectWindow(tool, position) {
     const uploadPos = { x: position.x - 320, y: position.y };
     const uploadId = this.addUploadWindow(null, uploadPos);
@@ -125,6 +138,18 @@ export class CanvasEngine {
   updateWindowOutput(id, output) { this.updateWindow(id, { output, outputLoaded: true }); }
   updateWindowOutputs(id, outputs) { this.updateWindow(id, { outputs }); }
   clearWindowOutput(id) { this.updateWindow(id, { output: null, outputLoaded: false }); }
+
+  updateWindowBatchOutput(id, outputs) {
+    const win = this.windows.get(id);
+    if (!win) return;
+    Object.assign(win, {
+      output: outputs[0] || null,
+      batchOutputs: outputs,
+      batchSize: outputs.length,
+      outputLoaded: true,
+    });
+    this._notify();
+  }
 
   // --- Connections ---
 
