@@ -1394,6 +1394,88 @@ export class SandboxCanvas2 extends Component {
           ),
         ),
       );
+    } else if (win.type === 'expression') {
+      const currentExpr = win.expression || '';
+      const connectedTo = [...this._engine.connections.values()]
+        .filter(c => (c.from ?? c.fromWindowId) === windowId);
+      const connectedFrom = [...this._engine.connections.values()]
+        .filter(c => (c.to ?? c.toWindowId) === windowId);
+
+      bodyCard = h('div', { className: 'fd-card fd-card-params' },
+        h('div', { className: 'fd-params-col fd-params-inputs' },
+          h('div', { className: 'fd-params-col-label' }, 'Expression'),
+          // Expression editor
+          h('div', { className: 'fd-param-row' },
+            h('div', { className: 'fd-param-body' },
+              h('div', {
+                className: 'fd-param-input-tap',
+                onclick: (e) => {
+                  e.stopPropagation();
+                  this._lockViewportZoom();
+                  this.setState({ textInputOverlay: {
+                    label: 'Expression',
+                    currentVal: currentExpr,
+                    field: { description: 'e.g. replace(input, "X", n + 1)' },
+                    key: 'expression',
+                    onSave: (val) => {
+                      this._engine.updateWindow(windowId, { expression: val });
+                    },
+                  }});
+                },
+              }, currentExpr
+                ? h('span', { className: 'fd-param-tap-value' }, currentExpr)
+                : h('span', { className: 'fd-param-tap-placeholder' }, 'Tap to enter expression…'),
+              ),
+            ),
+          ),
+          // Show wired inputs
+          connectedFrom.length ? h('div', { className: 'fd-params-col-label', style: 'margin-top:8px' }, 'Inputs') : null,
+          ...connectedFrom.map(c => {
+            const sourceWin = this._engine.windows.get(c.from ?? c.fromWindowId);
+            return h('div', { className: 'fd-param-row' },
+              h('div', { className: 'fd-param-body' },
+                h('div', { className: 'fd-param-wired' },
+                  h('button', {
+                    className: 'fd-card-link',
+                    onclick: (e) => { e.stopPropagation(); this._engine.fsm.navigateToNode(c.from ?? c.fromWindowId); },
+                  }, `← ${sourceWin?.tool?.displayName || sourceWin?.type || 'connected'}`),
+                  h('button', {
+                    className: 'fd-param-disconnect',
+                    title: 'Disconnect',
+                    onclick: (e) => { e.stopPropagation(); this._engine.connections.delete(c.id); this.setState({}); },
+                  }, '×'),
+                ),
+              ),
+            );
+          }),
+        ),
+        h('div', { className: 'fd-params-col fd-params-outputs' },
+          h('div', { className: 'fd-params-col-label' }, 'Output'),
+          h('div', { className: 'fd-param-row fd-param-row-output' },
+            h('div', { className: 'fd-param-body' },
+              h('label', { className: 'fd-param-label' }, 'result'),
+              h('span', { className: 'fd-param-type' }, 'text'),
+              connectedTo.length ? h('div', { className: 'fd-param-wired-list' },
+                ...connectedTo.map(c => h('div', { key: c.id, className: 'fd-param-wired' },
+                  h('button', {
+                    className: 'fd-card-link',
+                    onclick: (e) => { e.stopPropagation(); this._engine.fsm.navigateToNode(c.to ?? c.toWindowId); },
+                  }, `→ ${this._engine.windows.get(c.to ?? c.toWindowId)?.tool?.displayName || 'connected'}`),
+                  h('button', {
+                    className: 'fd-param-disconnect',
+                    onclick: (e) => { e.stopPropagation(); this._engine.connections.delete(c.id); this.setState({}); },
+                  }, '×'),
+                )),
+              ) : null,
+            ),
+            h('button', {
+              className: `fd-param-anchor${connectedTo.length ? ' fd-param-anchor-connected' : ''}`,
+              title: 'Wire output',
+              onclick: (e) => { e.stopPropagation(); this._startOutputConnection(win); },
+            }, anchorIcon('text')),
+          ),
+        ),
+      );
     } else {
       bodyCard = h('div', { className: 'fd-card' },
         h('div', { className: 'fd-card-label' }, win.spell?.name || win.outputType || win.type),
