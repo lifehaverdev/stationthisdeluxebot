@@ -24,7 +24,7 @@ const customFunctions = {
   toLowerCase: (str) => String(str).toLowerCase(),
   slice: (str, start, end) => String(str).slice(start, end),
   at: (arr, idx) => Array.isArray(arr) ? arr[idx] : String(arr).charAt(idx),
-  join: (arr, sep) => Array.isArray(arr) ? arr.join(sep ?? ',') : String(arr),
+  join: (sep, arr) => Array.isArray(arr) ? arr.join(sep ?? ',') : (Array.isArray(sep) ? sep.join(',') : String(sep)),
   includes: (str, search) => String(str).includes(String(search)),
   startsWith: (str, search) => String(str).startsWith(String(search)),
   endsWith: (str, search) => String(str).endsWith(String(search)),
@@ -42,26 +42,46 @@ const customFunctions = {
 };
 
 /**
- * Evaluate an expression string with given variables.
- * @param {string} expression - The expr-eval expression
+ * Evaluate an expression string (multi-line supported) with given variables.
+ * Each line runs in sequence. The result of each line becomes `input` for the next.
+ * Blank lines and lines starting with # are skipped.
+ * @param {string} expression - One or more expr-eval expressions, one per line
  * @param {object} variables - Variables available in the expression (e.g., { input: 'hello', n: 0, N: 6 })
- * @returns {*} The result of the expression
+ * @returns {*} The result of the last expression
  */
 export function evaluate(expression, variables = {}) {
   const vars = { ...customFunctions, ...variables };
-  return parser.evaluate(expression, vars);
+  const lines = expression.split('\n')
+    .map(l => l.trim())
+    .filter(l => l && !l.startsWith('#'));
+
+  if (lines.length === 0) throw new Error('No expression to evaluate');
+
+  let result;
+  for (const line of lines) {
+    result = parser.evaluate(line, vars);
+    // Feed result forward as `input` for next line
+    vars.input = result;
+  }
+  return result;
 }
 
 /**
- * Validate an expression string without executing it.
+ * Validate an expression string (multi-line) without executing it.
  * @param {string} expression
- * @returns {{ valid: boolean, error?: string }}
+ * @returns {{ valid: boolean, error?: string, line?: number }}
  */
 export function validate(expression) {
-  try {
-    parser.parse(expression);
-    return { valid: true };
-  } catch (err) {
-    return { valid: false, error: err.message };
+  const lines = expression.split('\n')
+    .map(l => l.trim())
+    .filter(l => l && !l.startsWith('#'));
+
+  for (let i = 0; i < lines.length; i++) {
+    try {
+      parser.parse(lines[i]);
+    } catch (err) {
+      return { valid: false, error: `Line ${i + 1}: ${err.message}`, line: i + 1 };
+    }
   }
+  return { valid: true };
 }

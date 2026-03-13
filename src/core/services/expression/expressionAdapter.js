@@ -23,7 +23,7 @@ const customFunctions = {
   toLowerCase: (str) => String(str).toLowerCase(),
   slice: (str, start, end) => String(str).slice(start, end),
   at: (arr, idx) => Array.isArray(arr) ? arr[idx] : String(arr).charAt(idx),
-  join: (arr, sep) => Array.isArray(arr) ? arr.join(sep ?? ',') : String(arr),
+  join: (sep, arr) => Array.isArray(arr) ? arr.join(sep ?? ',') : (Array.isArray(sep) ? sep.join(',') : String(sep)),
   includes: (str, search) => String(str).includes(String(search)),
   startsWith: (str, search) => String(str).startsWith(String(search)),
   endsWith: (str, search) => String(str).endsWith(String(search)),
@@ -46,9 +46,17 @@ class ExpressionAdapter {
     if (!expression) throw new Error('expression is required');
 
     const vars = { ...customFunctions, ...inputVars };
+    const lines = expression.split('\n')
+      .map(l => l.trim())
+      .filter(l => l && !l.startsWith('#'));
+    if (lines.length === 0) throw new Error('No expression to evaluate');
+
     let result;
     try {
-      result = parser.evaluate(expression, vars);
+      for (const line of lines) {
+        result = parser.evaluate(line, vars);
+        vars.input = result;
+      }
     } catch (err) {
       throw new Error(`Expression error: ${err.message}`);
     }
