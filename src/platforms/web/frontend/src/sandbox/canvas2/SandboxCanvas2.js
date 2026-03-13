@@ -147,6 +147,13 @@ export class SandboxCanvas2 extends Component {
     return id;
   }
 
+  addExpressionWindow(position) {
+    const id = this._engine.addExpressionWindow(position || this._defaultPos());
+    this._autoConnectNew(id);
+    this._enterNodeMode(id);
+    return id;
+  }
+
   addEffectWindow(tool, position) {
     // In connection mode the image is already coming from an existing node —
     // skip the upload window and treat this as a plain tool window.
@@ -811,6 +818,9 @@ export class SandboxCanvas2 extends Component {
       const textSnippet = win.type === 'primitive' && win.outputType === 'text' && win.value
         ? h('div', { className: 'sc2-node-text-snippet' }, win.value)
         : null;
+      const exprSnippet = win.type === 'expression' && win.expression
+        ? h('div', { className: 'sc2-node-text-snippet' }, win.expression)
+        : null;
       const thumb = thumbUrl ? h('img', {
         className: 'sc2-node-thumb sc2-node-thumb--clickable',
         src: thumbUrl,
@@ -911,6 +921,7 @@ export class SandboxCanvas2 extends Component {
         h('div', { className: 'sc2-node-type' }, win.executing ? (win.progress || 'Running…') : typeLabel),
         thumb,
         textSnippet,
+        exprSnippet,
         outputAnchor,
         ...inputAnchors,
       ));
@@ -1485,6 +1496,7 @@ export class SandboxCanvas2 extends Component {
             if (win.type === 'tool') this._engine.addToolWindow(win.tool, pos);
             else if (win.type === 'spell') this._engine.addSpellWindow(win.spell, pos);
             else if (win.type === 'upload') this._engine.addUploadWindow(null, pos);
+            else if (win.type === 'expression') this._engine.addExpressionWindow(pos);
           },
         }, 'Clone'),
         h('button', {
@@ -1605,6 +1617,7 @@ export class SandboxCanvas2 extends Component {
       else if (win.type === 'spell') this._engine.addSpellWindow(win.spell, pos);
       else if (win.type === 'upload') this._engine.addUploadWindow(win.url, pos);
       else if (win.type === 'primitive') this._engine.addPrimitiveWindow(win.outputType, pos);
+      else if (win.type === 'expression') this._engine.addExpressionWindow(pos);
     }
     this._engine.fsm.exitMultiSelect();
     this.setState({ multiSelectIds: new Set() });
@@ -1624,6 +1637,7 @@ export class SandboxCanvas2 extends Component {
       else if (win.type === 'spell') this._engine.addSpellWindow(win.spell, pos);
       else if (win.type === 'upload') this._engine.addUploadWindow(win.url, pos);
       else if (win.type === 'primitive') this._engine.addPrimitiveWindow(win.outputType, pos);
+      else if (win.type === 'expression') this._engine.addExpressionWindow(pos);
     }
   }
 
