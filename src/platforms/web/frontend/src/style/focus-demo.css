@@ -1475,6 +1475,74 @@
   opacity: 1;
   color: var(--text-primary);
 }
+/* ── Expression node help ── */
+.fd-expr-hint {
+  font-size: 11px;
+  color: var(--text-secondary, #888);
+  padding: 4px 8px 2px;
+  line-height: 1.4;
+}
+.fd-expr-var-hint {
+  font-size: 10px;
+  color: var(--accent, #7c5cff);
+  margin-left: 4px;
+  opacity: 0.7;
+}
+.fd-expr-help {
+  border-top: 1px solid var(--border, #333);
+  margin-top: 8px;
+  padding-top: 4px;
+}
+.fd-expr-help-toggle {
+  background: none;
+  border: none;
+  color: var(--text-secondary, #888);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 4px 8px;
+  width: 100%;
+  text-align: left;
+}
+.fd-expr-help-toggle:hover {
+  color: var(--text-primary, #fff);
+}
+.fd-expr-help-body {
+  padding: 4px 8px 8px;
+}
+.fd-expr-help-section {
+  margin-bottom: 8px;
+}
+.fd-expr-help-section:last-child {
+  margin-bottom: 0;
+}
+.fd-expr-help-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent, #7c5cff);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 3px;
+}
+.fd-expr-help-item {
+  font-size: 11px;
+  color: var(--text-secondary, #888);
+  line-height: 1.5;
+}
+.fd-expr-help-code {
+  font-family: monospace;
+  color: var(--text-primary, #fff);
+  background: var(--surface-alt, rgba(255,255,255,0.05));
+  padding: 1px 4px;
+  border-radius: 2px;
+  display: inline-block;
+  margin-top: 3px;
+}
+.fd-expr-help-desc {
+  font-size: 10px;
+  color: var(--text-secondary, #888);
+  margin-bottom: 4px;
+  padding-left: 4px;
+}
 .fd-param-edit-expr {
   background: none;
   border: 1px solid var(--accent, #7c5cff);

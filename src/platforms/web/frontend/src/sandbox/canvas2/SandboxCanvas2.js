@@ -1475,11 +1475,13 @@ export class SandboxCanvas2 extends Component {
         .filter(c => (c.from ?? c.fromWindowId) === windowId);
       const connectedFrom = [...this._engine.connections.values()]
         .filter(c => (c.to ?? c.toWindowId) === windowId);
+      const showExprHelp = this.state.exprHelpExpanded;
+      const hasInput = connectedFrom.length > 0;
 
       bodyCard = h('div', { className: 'fd-card fd-card-params' },
+        // ── Expression editor ──
         h('div', { className: 'fd-params-col fd-params-inputs' },
           h('div', { className: 'fd-params-col-label' }, 'Expression'),
-          // Expression editor
           h('div', { className: 'fd-param-row' },
             h('div', { className: 'fd-param-body' },
               h('div', {
@@ -1490,7 +1492,9 @@ export class SandboxCanvas2 extends Component {
                   this.setState({ textInputOverlay: {
                     label: 'Expression',
                     currentVal: currentExpr,
-                    field: { description: 'e.g. replace(input, "X", n + 1)' },
+                    field: { description: hasInput
+                      ? 'Use "input" for the wired value. e.g. replace(input, "old", "new")'
+                      : 'e.g. range(6) to generate a batch, or "hello" || " world"' },
                     key: 'expression',
                     onSave: (val) => {
                       this._engine.updateWindow(windowId, { expression: val });
@@ -1499,11 +1503,23 @@ export class SandboxCanvas2 extends Component {
                 },
               }, currentExpr
                 ? h('span', { className: 'fd-param-tap-value' }, currentExpr)
-                : h('span', { className: 'fd-param-tap-placeholder' }, 'Tap to enter expression…'),
+                : h('span', { className: 'fd-param-tap-placeholder' }, hasInput ? 'Tap to transform input…' : 'Tap to enter expression…'),
               ),
             ),
           ),
-          // Show wired inputs
+          // ── Quick hint ──
+          h('div', { className: 'fd-expr-hint' },
+            !currentExpr ? (hasInput
+              ? 'Write a formula to transform the connected input. The wired value is available as "input".'
+              : 'Write a formula or use range(N) to generate a batch of N items.'
+            ) : (win.batchSize > 1
+              ? `Outputs ${win.batchSize} items as a batch. Downstream nodes run once per item.`
+              : win.output?.text
+                ? `Result: ${win.output.text.length > 60 ? win.output.text.slice(0, 60) + '...' : win.output.text}`
+                : 'Hit Execute to evaluate.'
+            ),
+          ),
+          // ── Wired inputs ──
           connectedFrom.length ? h('div', { className: 'fd-params-col-label', style: 'margin-top:8px' }, 'Inputs') : null,
           ...connectedFrom.map(c => {
             const sourceWin = this._engine.windows.get(c.from ?? c.fromWindowId);
@@ -1514,6 +1530,7 @@ export class SandboxCanvas2 extends Component {
                     className: 'fd-card-link',
                     onclick: (e) => { e.stopPropagation(); this._engine.fsm.navigateToNode(c.from ?? c.fromWindowId); },
                   }, `← ${sourceWin?.tool?.displayName || sourceWin?.type || 'connected'}`),
+                  h('span', { className: 'fd-expr-var-hint' }, `= input`),
                   h('button', {
                     className: 'fd-param-disconnect',
                     title: 'Disconnect',
@@ -1524,12 +1541,13 @@ export class SandboxCanvas2 extends Component {
             );
           }),
         ),
+        // ── Output ──
         h('div', { className: 'fd-params-col fd-params-outputs' },
           h('div', { className: 'fd-params-col-label' }, 'Output'),
           h('div', { className: 'fd-param-row fd-param-row-output' },
             h('div', { className: 'fd-param-body' },
               h('label', { className: 'fd-param-label' }, 'result'),
-              h('span', { className: 'fd-param-type' }, 'text'),
+              h('span', { className: 'fd-param-type' }, win.batchSize > 1 ? `batch (${win.batchSize})` : 'text'),
               connectedTo.length ? h('div', { className: 'fd-param-wired-list' },
                 ...connectedTo.map(c => h('div', { key: c.id, className: 'fd-param-wired' },
                   h('button', {
@@ -1549,6 +1567,49 @@ export class SandboxCanvas2 extends Component {
               onclick: (e) => { e.stopPropagation(); this._startOutputConnection(win); },
             }, anchorIcon('text')),
           ),
+        ),
+        // ── Help / reference (collapsible) ──
+        h('div', { className: 'fd-expr-help' },
+          h('button', {
+            className: 'fd-expr-help-toggle',
+            onclick: (e) => { e.stopPropagation(); this.setState({ exprHelpExpanded: !showExprHelp }); },
+          }, showExprHelp ? '− Hide reference' : '+ Show reference'),
+          showExprHelp ? h('div', { className: 'fd-expr-help-body' },
+            h('div', { className: 'fd-expr-help-section' },
+              h('div', { className: 'fd-expr-help-title' }, 'Variables'),
+              h('div', { className: 'fd-expr-help-item' }, 'input — wired value from connected node'),
+              h('div', { className: 'fd-expr-help-item' }, 'n — batch index (0, 1, 2, …)'),
+              h('div', { className: 'fd-expr-help-item' }, 'N — total batch count'),
+            ),
+            h('div', { className: 'fd-expr-help-section' },
+              h('div', { className: 'fd-expr-help-title' }, 'Examples'),
+              h('div', { className: 'fd-expr-help-item fd-expr-help-code' }, 'range(6)'),
+              h('div', { className: 'fd-expr-help-desc' }, 'Generate batch of 6 items (0–5)'),
+              h('div', { className: 'fd-expr-help-item fd-expr-help-code' }, '"scene_" || (n + 1)'),
+              h('div', { className: 'fd-expr-help-desc' }, 'Concatenate text with batch index'),
+              h('div', { className: 'fd-expr-help-item fd-expr-help-code' }, 'replace(input, "X", n)'),
+              h('div', { className: 'fd-expr-help-desc' }, 'Replace "X" in input with batch index'),
+              h('div', { className: 'fd-expr-help-item fd-expr-help-code' }, 'toUpperCase(input)'),
+              h('div', { className: 'fd-expr-help-desc' }, 'Transform text to uppercase'),
+              h('div', { className: 'fd-expr-help-item fd-expr-help-code' }, 'n > 3 ? "big" : "small"'),
+              h('div', { className: 'fd-expr-help-desc' }, 'Conditional (ternary)'),
+            ),
+            h('div', { className: 'fd-expr-help-section' },
+              h('div', { className: 'fd-expr-help-title' }, 'Text'),
+              h('div', { className: 'fd-expr-help-item' }, 'replace  split  join  trim  slice  includes'),
+              h('div', { className: 'fd-expr-help-item' }, 'toUpperCase  toLowerCase  padStart  padEnd'),
+              h('div', { className: 'fd-expr-help-item' }, 'startsWith  endsWith  len  repeat  at'),
+            ),
+            h('div', { className: 'fd-expr-help-section' },
+              h('div', { className: 'fd-expr-help-title' }, 'Math'),
+              h('div', { className: 'fd-expr-help-item' }, 'round  floor  ceil  abs  min  max'),
+            ),
+            h('div', { className: 'fd-expr-help-section' },
+              h('div', { className: 'fd-expr-help-title' }, 'Operators'),
+              h('div', { className: 'fd-expr-help-item' }, '+ - * / %  ||  (text concat)'),
+              h('div', { className: 'fd-expr-help-item' }, '== != < > <= >=  &&  ?:'),
+            ),
+          ) : null,
         ),
       );
     } else {
