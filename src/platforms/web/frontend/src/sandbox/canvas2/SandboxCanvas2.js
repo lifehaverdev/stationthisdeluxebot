@@ -212,6 +212,7 @@ export class SandboxCanvas2 extends Component {
       if (w.type === 'collection') return { ...base, type: 'collection', mode: w.mode, collection: { collectionId: w.collection?.collectionId, name: w.collection?.name } };
       if (w.type === 'upload') return { ...base, type: 'upload', displayName: 'Upload', toolId: 'upload' };
       if (w.type === 'primitive') return { ...base, type: 'primitive', outputType: w.outputType, value: w.value || '', displayName: w.outputType || 'Primitive', toolId: `primitive:${w.outputType || 'unknown'}` };
+      if (w.type === 'expression') return { ...base, type: 'expression', expression: w.expression || '', displayName: 'Expression', toolId: 'expression', ...(w.batchOutputs ? { batchOutputs: w.batchOutputs, batchSize: w.batchSize } : {}) };
       return { ...base, type: w.type || 'tool', displayName: w.tool?.displayName || '', toolId: w.tool?.toolId || '' };
     });
     return { toolWindows, connections: [...this._engine.connections.values()] };
@@ -259,6 +260,9 @@ export class SandboxCanvas2 extends Component {
         win.type = 'upload';
       } else if (w.type === 'primitive') {
         win.type = 'primitive'; win.outputType = w.outputType; win.value = w.value || '';
+      } else if (w.type === 'expression') {
+        win.type = 'expression'; win.expression = w.expression || '';
+        if (w.batchOutputs) { win.batchOutputs = w.batchOutputs; win.batchSize = w.batchSize; }
       } else {
         win.type = w.type || 'tool';
       }
@@ -864,14 +868,14 @@ export class SandboxCanvas2 extends Component {
       // Upload nodes: batch anchor when 2+ same-type outputs; single output anchor for 1 image; none for 0
       // All other nodes: single typed output anchor
       let outputAnchor = null;
-      // Expression nodes always show anchors (even at Z2)
+      if (!showAnchors) { /* skip at Z2 */ } else
       if (win.type === 'expression') {
         outputAnchor = h('button', {
           className: `sc2-anchor sc2-anchor--output${isSource ? ' sc2-anchor--active' : ''}`,
           title: 'Connect output (any)',
           onclick: (e) => { e.stopPropagation(); this._startOutputConnection(win); },
         }, anchorIcon('text'));
-      } else if (!showAnchors) { /* skip at Z2 */ } else
+      } else
       if (win.type === 'upload') {
         const slots = win.outputs || [];
         const hasBatch = slots.length > 1 && slots.every(o => o.type === slots[0]?.type);
@@ -902,8 +906,8 @@ export class SandboxCanvas2 extends Component {
       // ── Input anchors (Z1+ only) ──────────────────────────────────────────
       // Required inputs always shown at Z1; active + type-matched when connecting
       const inputAnchors = [];
-      // Expression nodes always show a single input anchor (any type)
-      if (win.type === 'expression') {
+      // Expression nodes show a single input anchor (any type) at Z1+
+      if (showAnchors && win.type === 'expression') {
         const sourceType = connection?.sourceType;
         const showActive = isConnecting && !isSource;
         const isWired = this._isPortWired(win.id, 'input');
