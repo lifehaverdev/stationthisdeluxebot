@@ -2215,6 +2215,46 @@ export class SandboxCanvas2 extends Component {
     const win = this._engine.windows.get(windowId);
     if (!win || win.executing) return;
 
+    // Expression nodes evaluate client-side via expr-eval
+    if (win.type === 'expression') {
+      this._engine.updateWindow(windowId, { executing: true, error: null });
+      try {
+        const { evaluate } = await import('./expressionEval.js');
+        // Gather inputs from connections
+        const variables = {};
+        for (const conn of this._engine.connections.values()) {
+          if ((conn.to ?? conn.toWindowId) !== windowId) continue;
+          const sourceWin = this._engine.windows.get(conn.from ?? conn.fromWindowId);
+          const out = sourceWin?.output;
+          if (out?.type === 'image') variables[conn.toInput || 'input'] = out.url;
+          else if (out?.type === 'text') variables[conn.toInput || 'input'] = out.text ?? out.data?.text?.[0] ?? '';
+          else if (out?.type === 'video') variables[conn.toInput || 'input'] = out.url;
+          else if (out?.value !== undefined) variables[conn.toInput || 'input'] = out.value;
+        }
+        const result = evaluate(win.expression, variables);
+        if (Array.isArray(result)) {
+          // Expression returned a list — fans out into a batch
+          const batchOutputs = result.map(item => ({
+            type: 'text',
+            text: String(item),
+          }));
+          this._engine.updateWindowBatchOutput(windowId, batchOutputs);
+          this._engine.updateWindow(windowId, { executing: false, progress: null });
+        } else {
+          const text = String(result);
+          const output = { type: 'text', text };
+          const versions = [...(win.outputVersions || []), output];
+          this._engine.updateWindow(windowId, {
+            output, executing: false, outputLoaded: true,
+            outputVersions: versions, currentVersionIndex: versions.length - 1,
+          });
+        }
+      } catch (err) {
+        this._engine.updateWindow(windowId, { executing: false, error: err.message });
+      }
+      return;
+    }
+
     this._engine.updateWindow(windowId, { executing: true, error: null, progress: 'Starting...' });
 
     try {
