@@ -2300,6 +2300,33 @@ export class SandboxCanvas2 extends Component {
         }
       }
 
+      // --- Batch detection ---
+      let batchSource = null;
+      for (const [connKey, mapping] of Object.entries(mappings)) {
+        if (mapping?.type !== 'nodeOutput') continue;
+        const sourceWin = this._engine.windows.get(mapping.nodeId);
+        if (sourceWin?.batchOutputs && sourceWin.batchOutputs.length > 1) {
+          batchSource = { key: connKey, outputs: sourceWin.batchOutputs, nodeId: mapping.nodeId };
+          break;
+        }
+      }
+
+      // Collector tools (ffmpeg) gather all batch outputs into a single array input
+      const isCollector = win.tool?.toolId === 'ffmpeg';
+      if (isCollector && batchSource) {
+        const collectedUrls = batchSource.outputs
+          .filter(o => o?.type === 'video' || o?.url)
+          .map(o => o.url);
+        // Continue with normal single execution using array input
+        // We'll set it after the input resolution loop below
+        mappings[batchSource.key] = { type: 'static', value: collectedUrls };
+        batchSource = null; // no fan-out needed
+      }
+
+      if (batchSource) {
+        return this._executeBatchWindow(windowId, win, mappings, schema, batchSource);
+      }
+
       for (const [key, param] of Object.entries(schema)) {
         const mapping = mappings[key];
         if (mapping?.type === 'nodeOutput') {
@@ -2374,6 +2401,93 @@ export class SandboxCanvas2 extends Component {
           this._awaitCompletion(windowId, result.generationId);
         }
       }
+    } catch (err) {
+      this._engine.updateWindow(windowId, { executing: false, error: err.message, progress: null });
+    }
+  }
+
+  async _executeBatchWindow(windowId, win, mappings, schema, batchSource) {
+    const N = batchSource.outputs.length;
+    this._engine.updateWindow(windowId, { executing: true, error: null, progress: `Batch 0/${N}` });
+
+    const batchResults = [];
+    try {
+      for (let n = 0; n < N; n++) {
+        this._engine.updateWindow(windowId, { progress: `Batch ${n + 1}/${N}` });
+
+        // For expression nodes, run client-side with n/N injected
+        if (win.type === 'expression') {
+          const { evaluate } = await import('./expressionEval.js');
+          const variables = { n, N };
+          for (const conn of this._engine.connections.values()) {
+            if ((conn.to ?? conn.toWindowId) !== windowId) continue;
+            const srcId = conn.from ?? conn.fromWindowId;
+            const sourceWin = this._engine.windows.get(srcId);
+            const inputKey = conn.toInput || 'input';
+            if (srcId === batchSource.nodeId) {
+              const item = batchSource.outputs[n];
+              variables[inputKey] = item?.text ?? item?.url ?? item?.value ?? '';
+            } else {
+              const out = sourceWin?.output;
+              if (out?.type === 'text') variables[inputKey] = out.text ?? '';
+              else if (out?.type === 'image') variables[inputKey] = out.url ?? '';
+              else if (out?.type === 'video') variables[inputKey] = out.url ?? '';
+            }
+          }
+          const result = evaluate(win.expression, variables);
+          const text = Array.isArray(result) ? JSON.stringify(result) : String(result);
+          batchResults.push({ type: 'text', text });
+          continue;
+        }
+
+        // For regular tool nodes, resolve inputs with batch item substituted
+        const inputs = {};
+        for (const [key, param] of Object.entries(schema)) {
+          const mapping = mappings[key];
+          if (mapping?.type === 'nodeOutput') {
+            const sourceWin = this._engine.windows.get(mapping.nodeId);
+            if (mapping.nodeId === batchSource.nodeId) {
+              const item = batchSource.outputs[n];
+              if (item?.type === 'image') inputs[key] = item.url;
+              else if (item?.type === 'text') inputs[key] = item.text ?? '';
+              else if (item?.type === 'video') inputs[key] = item.url;
+              else inputs[key] = item?.value ?? item;
+            } else {
+              const out = sourceWin?.output;
+              if (out?.type === 'image') inputs[key] = out.url;
+              else if (out?.type === 'text') inputs[key] = out.text ?? out.data?.text?.[0] ?? '';
+              else inputs[key] = out?.value ?? out;
+            }
+          } else if (mapping?.type === 'static') {
+            inputs[key] = mapping.value;
+          }
+        }
+
+        // Randomize seeds per batch item
+        for (const [key, mapping] of Object.entries(mappings)) {
+          if (mapping?.type === 'static' && /seed/i.test(key)) {
+            inputs[key] = Math.floor(Math.random() * 1e9);
+          }
+        }
+
+        const result = await executionClient.execute({
+          toolId: win.tool.toolId,
+          inputs,
+          metadata: { platform: 'web-sandbox' },
+        });
+
+        if (result.final && result.status !== 'failed') {
+          batchResults.push(this._normalizeOutput(result));
+        } else if (result.generationId) {
+          const finalResult = await this._pollGenerationStatus(result.generationId);
+          batchResults.push(this._normalizeOutput({ ...finalResult, generationId: result.generationId }));
+        } else {
+          batchResults.push({ type: 'error', error: result.outputs?.error || 'Failed' });
+        }
+      }
+
+      this._engine.updateWindowBatchOutput(windowId, batchResults);
+      this._engine.updateWindow(windowId, { executing: false, progress: null });
     } catch (err) {
       this._engine.updateWindow(windowId, { executing: false, error: err.message, progress: null });
     }
