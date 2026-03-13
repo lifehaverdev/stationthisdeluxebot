@@ -37,6 +37,7 @@ class AdapterRegistry {
         openai: './openai/openAIAdapter',
         huggingface: './huggingface/huggingFaceAdapter',
         expression: './expression/expressionAdapter',
+        ffmpeg: './ffmpeg/ffmpegAdapter',
       };
       const rel = mapping[service];
       if (rel) {
