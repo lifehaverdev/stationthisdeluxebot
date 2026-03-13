@@ -837,11 +837,13 @@ export class SandboxCanvas2 extends Component {
         },
       }) : null;
 
+      const isBatchStack = win.batchSize > 1;
       let cls = 'sc2-node';
       if (isFocused) cls += ' sc2-node--focused';
       if (win.pinned) cls += ' sc2-node--pinned';
       if (isSelected) cls += ' sc2-node--selected';
       if (win.executing) cls += ' sc2-node--executing';
+      if (isBatchStack) cls += ' sc2-node--stack';
 
       // ── Output anchor (Z1+ only) ───────────────────────────────────────────
       // Upload nodes: batch anchor when 2+ same-type outputs; single output anchor for 1 image; none for 0
@@ -922,6 +924,7 @@ export class SandboxCanvas2 extends Component {
         thumb,
         textSnippet,
         exprSnippet,
+        isBatchStack ? h('span', { className: 'sc2-batch-badge' }, `\u00d7${win.batchSize}`) : null,
         outputAnchor,
         ...inputAnchors,
       ));
