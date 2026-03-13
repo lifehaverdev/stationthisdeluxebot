@@ -1415,7 +1415,7 @@
 }
 .fd-text-input-overlay-body {
   font-family: var(--ff-mono);
-  font-size: var(--fs-xs);
+  font-size: 16px; /* must be ≥16px to prevent iOS Safari auto-zoom on focus */
   line-height: 1.7;
   color: var(--text-primary);
   background: var(--surface-2);

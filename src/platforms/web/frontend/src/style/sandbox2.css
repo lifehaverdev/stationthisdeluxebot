@@ -293,7 +293,7 @@
 /* Seeking-source badge (reverse connection mode) */
 .sc2-seeking-badge {
   position: fixed;
-  top: max(16px, env(safe-area-inset-top, 0px));
+  top: max(48px, calc(env(safe-area-inset-top, 0px) + 48px));
   left: 50%;
   transform: translateX(-50%);
   background: var(--surface-2);
@@ -307,7 +307,7 @@
   font-size: var(--fs-xs);
   letter-spacing: var(--ls-wide);
   color: var(--accent);
-  z-index: 600;
+  z-index: 1100;
   white-space: nowrap;
   pointer-events: all;
 }

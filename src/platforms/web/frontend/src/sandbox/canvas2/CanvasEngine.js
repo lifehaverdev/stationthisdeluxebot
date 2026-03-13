@@ -129,7 +129,7 @@ export class CanvasEngine {
   // --- Connections ---
 
   addCanvasConnection(id, from, to, fromOutput, toInput, dataType) {
-    this.connections.set(id, { id, from, to, fromOutput, toInput, dataType });
+    this.connections.set(id, { id, from, to, fromWindowId: from, toWindowId: to, fromOutput, toInput, dataType });
     this.physics.addConnection(id, from, to);
     this._notify();
     return id;

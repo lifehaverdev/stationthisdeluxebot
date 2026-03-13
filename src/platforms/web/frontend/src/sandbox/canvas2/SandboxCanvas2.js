@@ -203,6 +203,8 @@ export class SandboxCanvas2 extends Component {
         }};
       }
       if (w.type === 'collection') return { ...base, type: 'collection', mode: w.mode, collection: { collectionId: w.collection?.collectionId, name: w.collection?.name } };
+      if (w.type === 'upload') return { ...base, type: 'upload', displayName: 'Upload', toolId: 'upload' };
+      if (w.type === 'primitive') return { ...base, type: 'primitive', outputType: w.outputType, value: w.value || '', displayName: w.outputType || 'Primitive', toolId: `primitive:${w.outputType || 'unknown'}` };
       return { ...base, type: w.type || 'tool', displayName: w.tool?.displayName || '', toolId: w.tool?.toolId || '' };
     });
     return { toolWindows, connections: [...this._engine.connections.values()] };
@@ -246,6 +248,10 @@ export class SandboxCanvas2 extends Component {
         if (win.tool?.toolId?.startsWith('spell-')) win.tool = { ...win.tool, toolId: `spell:${win.tool.toolId.substring(6)}` };
       } else if (w.type === 'collection') {
         win.type = 'collection'; win.collection = w.collection; win.mode = w.mode;
+      } else if (w.type === 'upload') {
+        win.type = 'upload';
+      } else if (w.type === 'primitive') {
+        win.type = 'primitive'; win.outputType = w.outputType; win.value = w.value || '';
       } else {
         win.type = w.type || 'tool';
       }
@@ -513,6 +519,7 @@ export class SandboxCanvas2 extends Component {
           const { windowId, key, currentVal, onSave } = this.state.textInputOverlay;
           if (onSave) onSave(currentVal);
           else this._onParamChange(windowId, key, currentVal);
+          this._unlockViewportZoom();
           this.setState({ textInputOverlay: null, textInputOverlayCopied: false });
         };
         return h('div', {
@@ -542,7 +549,7 @@ export class SandboxCanvas2 extends Component {
               placeholder: this.state.textInputOverlay.field?.description || this.state.textInputOverlay.key,
               rows: 8,
               oninput: (e) => this.setState({ textInputOverlay: { ...this.state.textInputOverlay, currentVal: e.target.value } }),
-              autofocus: true,
+              ref: (el) => { if (el) requestAnimationFrame(() => el.focus()); },
             }),
           ),
         );
@@ -1064,6 +1071,23 @@ export class SandboxCanvas2 extends Component {
     this.setState({ fsmState: this._engine.fsmState, focusedWindowId: this._engine.focusedWindowId });
   }
 
+  // Prevent mobile browser zoom-on-focus by locking maximum-scale while
+  // a text input overlay is open.  Restored when the overlay closes.
+  _lockViewportZoom() {
+    const meta = document.querySelector('meta[name="viewport"]');
+    if (!meta) return;
+    this._savedViewport = meta.getAttribute('content');
+    meta.setAttribute('content', (this._savedViewport || '') + ', maximum-scale=1');
+  }
+  _unlockViewportZoom() {
+    const meta = document.querySelector('meta[name="viewport"]');
+    if (!meta) return;
+    if (this._savedViewport !== undefined) {
+      meta.setAttribute('content', this._savedViewport);
+      this._savedViewport = undefined;
+    }
+  }
+
   // ─── NODE_MODE — full-screen overlay ─────────────────────────────────────
 
   _renderParamInput(windowId, key, field, currentVal) {
@@ -1127,6 +1151,7 @@ export class SandboxCanvas2 extends Component {
       className: 'fd-param-input-tap',
       onclick: (e) => {
         e.stopPropagation();
+        this._lockViewportZoom();
         this.setState({ textInputOverlay: { windowId, key, field, currentVal: currentVal || '', label } });
       },
     }, currentVal
@@ -1313,6 +1338,7 @@ export class SandboxCanvas2 extends Component {
                 className: 'fd-param-input-tap',
                 onclick: (e) => {
                   e.stopPropagation();
+                  this._lockViewportZoom();
                   this.setState({ textInputOverlay: {
                     label: 'Text',
                     currentVal: currentText,
@@ -1756,6 +1782,7 @@ export class SandboxCanvas2 extends Component {
         const { windowId, key, currentVal, onSave } = this.state.textInputOverlay;
         if (onSave) onSave(currentVal);
         else this._onParamChange(windowId, key, currentVal);
+        this._unlockViewportZoom();
         this.setState({ textInputOverlay: null, textInputOverlayCopied: false });
       }
       return;
@@ -2037,11 +2064,28 @@ export class SandboxCanvas2 extends Component {
 
   _onKeyDown(e) {
     if (e.key === 'Escape') {
-      if (this._engine.fsm.isConnecting) {
+      // Dismiss overlays first, then connection mode, then zoom out
+      if (this.state.textInputOverlay) {
+        const { windowId, key, currentVal, onSave } = this.state.textInputOverlay;
+        if (onSave) onSave(currentVal);
+        else this._onParamChange(windowId, key, currentVal);
+        this._unlockViewportZoom();
+        this.setState({ textInputOverlay: null, textInputOverlayCopied: false });
+      } else if (this.state.instructionPickerOverlay) {
+        this.setState({ instructionPickerOverlay: null });
+      } else if (this.state.modelPickerOverlay) {
+        this.setState({ modelPickerOverlay: null });
+      } else if (this.state.imageOverlay) {
+        this.setState({ imageOverlay: null });
+      } else if (this.state.textOverlay) {
+        this.setState({ textOverlay: null, textOverlayCopied: false });
+      } else if (this._engine.fsm.isConnecting) {
         this._engine.fsm.clearConnection();
+        this.setState({ pendingOutputSource: null });
       } else {
         this._engine.zoomOut();
       }
+      return;
     }
     if ((e.key === 'Delete' || e.key === 'Backspace') && e.target === document.body) {
       const focused = this._engine.focusedWindowId;
@@ -2079,8 +2123,20 @@ export class SandboxCanvas2 extends Component {
 
     try {
       const inputs = {};
-      const mappings = win.parameterMappings || {};
+      const mappings = { ...(win.parameterMappings || {}) };
       const schema = win.tool?.inputSchema || win.tool?.metadata?.inputSchema || {};
+
+      // Synthesize nodeOutput mappings from canvas connections so wired
+      // connections are available to the execution resolver.
+      for (const conn of this._engine.connections.values()) {
+        if ((conn.to ?? conn.toWindowId) === windowId && conn.toInput && !mappings[conn.toInput]) {
+          mappings[conn.toInput] = {
+            type: 'nodeOutput',
+            nodeId: conn.from ?? conn.fromWindowId,
+            outputKey: conn.fromOutput || 'output',
+          };
+        }
+      }
 
       for (const [key, param] of Object.entries(schema)) {
         const mapping = mappings[key];
