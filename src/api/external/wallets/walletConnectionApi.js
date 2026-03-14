@@ -12,7 +12,7 @@ const logger = createLogger('WalletConnectionApi');
  */
 function createWalletConnectionApiRouter(dependencies) {
   const router = express.Router();
-  const { walletLinkingService, internalApiClient } = dependencies;
+  const { walletLinkingService } = dependencies;
 
   if (!walletLinkingService) {
     logger.error('[WalletConnectionApi] walletLinkingService dependency missing.');
@@ -95,31 +95,10 @@ function createWalletConnectionApiRouter(dependencies) {
     }
 
     try {
-      // Look up existing user by wallet address (find-or-create returns existing user if wallet is known)
-      const userResponse = await internalApiClient.post(`/internal/v1/data/auth/find-or-create-by-wallet`, {
-        address: walletAddress.toLowerCase()
-      });
-      const user = userResponse.data?.user;
-
-      if (!user || !user._id) {
-        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'No account found for this wallet address.' } });
-      }
-
-      const masterAccountId = user._id.toString();
-      const tokenAddress = '0x0000000000000000000000000000000000000000'; // native ETH
-
-      // Create a new magic amount request tied to the existing masterAccountId
-      const requestResponse = await internalApiClient.post(
-        `/internal/v1/data/users/${masterAccountId}/wallets/requests/magic-amount`,
-        { tokenAddress, expiresInSeconds: 900 }
-      );
-
-      const { magicAmountWei, expiresAt } = requestResponse.data;
-
-      logger.info(`[WalletConnectionApi] /relink initiated for existing masterAccountId ${masterAccountId}, wallet ${walletAddress}`);
+      const { requestId, magicAmountWei, tokenAddress, expiresAt } = await walletLinkingService.initiateRelink(walletAddress);
 
       res.status(200).json({
-        requestId: requestResponse.data.requestId || null,
+        requestId,
         magicAmountWei,
         magicAmount: ethers.formatEther(magicAmountWei),
         tokenAddress,
@@ -128,8 +107,8 @@ function createWalletConnectionApiRouter(dependencies) {
         message: 'Send the exact magic amount from your wallet to receive a new API key.',
       });
     } catch (error) {
-      if (error.response?.status === 404) {
-        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'No account found for this wallet address.' } });
+      if (error.code === 'NOT_FOUND') {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: error.message } });
       }
       logger.error('[WalletConnectionApi] /relink failed:', error);
       res.status(500).json({ error: { code: 'RELINK_FAILED', message: 'Failed to initiate re-link process.' } });

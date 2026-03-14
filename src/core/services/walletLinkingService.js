@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const { createLogger } = require('../../utils/logger');
 const { generateApiKey } = require('./apiKeyService');
 const { ObjectId } = require('mongodb');
@@ -139,10 +140,51 @@ class WalletLinkingService {
   }
 
   /**
-   * Checks the status of a linking request and retrieves the API key if completed.
-   * @param {string} requestId - The ID of the linking request.
-   * @returns {Promise<{status: string, apiKey: string|null}>}
+   * Initiates a relink for an existing user identified by wallet address.
+   * Unlike initiateLinking(), this does NOT create a new user — it requires an existing account.
+   * @param {string} walletAddress - Normalized (lowercase) wallet address.
+   * @returns {Promise<{requestId: string, magicAmountWei: string, tokenAddress: string, expiresAt: Date}>}
    */
+  async initiateRelink(walletAddress) {
+    const normalizedAddress = walletAddress.toLowerCase();
+
+    const user = await this.userCoreDb.findUserCoreByWalletAddress(normalizedAddress);
+    if (!user || !user._id) {
+      const err = new Error('No account found for this wallet address.');
+      err.code = 'NOT_FOUND';
+      throw err;
+    }
+
+    const masterAccountId = user._id;
+    const tokenAddress = process.env.WRAPPED_NATIVE_TOKEN_ADDRESS || '0x0000000000000000000000000000000000000000';
+    const expiresInSeconds = 900;
+
+    const randomBuffer = crypto.randomBytes(6);
+    const magicAmountWei = BigInt('0x' + randomBuffer.toString('hex')).toString();
+
+    const linkingRequest = await this.walletLinkingRequestDb.createRequest({
+      masterAccountId,
+      magicAmountWei,
+      tokenAddress,
+      expiresInSeconds,
+    });
+
+    if (!linkingRequest) {
+      this.logger.error(`[WalletLinkingService] Failed to create relink request for masterAccountId ${masterAccountId}`);
+      throw new Error('Failed to create wallet relink request.');
+    }
+
+    const requestId = (linkingRequest._id || linkingRequest.insertedId)?.toString();
+    this.logger.info(`[WalletLinkingService] Relink initiated for masterAccountId ${masterAccountId}, wallet ${normalizedAddress}, requestId ${requestId}`);
+
+    return {
+      requestId,
+      magicAmountWei: linkingRequest.magic_amount_wei || magicAmountWei,
+      tokenAddress,
+      expiresAt: linkingRequest.expires_at,
+    };
+  }
+
   async findPendingRequestByAmount(amountWei, tokenAddress) {
     return this.walletLinkingRequestDb.findPendingRequestByAmount(amountWei, tokenAddress);
   }

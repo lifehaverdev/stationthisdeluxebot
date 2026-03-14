@@ -910,20 +910,27 @@ export class SandboxCanvas2 extends Component {
       if (showAnchors && win.type === 'expression') {
         const sourceType = connection?.sourceType;
         const showActive = isConnecting && !isSource;
-        const isWired = this._isPortWired(win.id, 'input');
+        const existingInputConns = [...this._engine.connections.values()]
+          .filter(c => (c.to ?? c.toWindowId) === win.id);
+        const hasAnyWired = existingInputConns.length > 0;
         let anchorCls = 'sc2-anchor sc2-anchor--input';
         if (showActive) {
           anchorCls += ' sc2-anchor--matching'; // always matches any type
         } else {
-          anchorCls += isWired ? ' sc2-anchor--wired' : ' sc2-anchor--idle';
+          anchorCls += hasAnyWired ? ' sc2-anchor--wired' : ' sc2-anchor--idle';
         }
         inputAnchors.push(h('button', {
           key: 'input',
           className: anchorCls,
-          title: 'input (any)',
+          title: hasAnyWired ? `${existingInputConns.length} input(s) — tap to add more` : 'input (any)',
           onclick: (e) => {
             e.stopPropagation();
-            if (isConnecting && !isSource) this._completeInputConnection(win.id, 'input', null);
+            if (isConnecting && !isSource) {
+              // Auto-name: input, input0, input1, input2, ...
+              const count = existingInputConns.length;
+              const name = count === 0 ? 'input' : `input${count - 1}`;
+              this._completeInputConnection(win.id, name, null);
+            }
           },
         }, anchorIcon('text')));
       } else if (showAnchors && (win.type === 'tool' || win.type === 'spell')) {
@@ -1516,7 +1523,7 @@ export class SandboxCanvas2 extends Component {
                     label: 'Expression',
                     currentVal: currentExpr,
                     field: { description: hasInput
-                      ? 'Use "input" for the wired value. e.g. replace(input, "old", "new")'
+                      ? `Use ${connectedFrom.map(c => '"' + (c.toInput || 'input') + '"').join(', ')} for wired values. e.g. replace(input, "old", "new")`
                       : 'e.g. range(6) to generate a batch, or "hello" || " world"' },
                     key: 'expression',
                     onSave: (val) => {
@@ -1533,7 +1540,7 @@ export class SandboxCanvas2 extends Component {
           // ── Quick hint ──
           h('div', { className: 'fd-expr-hint' },
             !currentExpr ? (hasInput
-              ? 'Write a formula to transform the connected input. The wired value is available as "input".'
+              ? `Variables: ${connectedFrom.map(c => c.toInput || 'input').join(', ')}. Write a formula to transform them.`
               : 'Write a formula or use range(N) to generate a batch of N items.'
             ) : (win.batchSize > 1
               ? `Outputs ${win.batchSize} items as a batch. Downstream nodes run once per item.`
@@ -1546,6 +1553,7 @@ export class SandboxCanvas2 extends Component {
           connectedFrom.length ? h('div', { className: 'fd-params-col-label', style: 'margin-top:8px' }, 'Inputs') : null,
           ...connectedFrom.map(c => {
             const sourceWin = this._engine.windows.get(c.from ?? c.fromWindowId);
+            const varName = c.toInput || 'input';
             return h('div', { className: 'fd-param-row' },
               h('div', { className: 'fd-param-body' },
                 h('div', { className: 'fd-param-wired' },
@@ -1553,7 +1561,29 @@ export class SandboxCanvas2 extends Component {
                     className: 'fd-card-link',
                     onclick: (e) => { e.stopPropagation(); this._engine.fsm.navigateToNode(c.from ?? c.fromWindowId); },
                   }, `← ${sourceWin?.tool?.displayName || sourceWin?.type || 'connected'}`),
-                  h('span', { className: 'fd-expr-var-hint' }, `= input`),
+                  h('span', { className: 'fd-expr-var-hint' }, `= ${varName}`),
+                  // Batch index expression button
+                  (() => {
+                    if (!sourceWin?.batchOutputs || sourceWin.batchOutputs.length <= 1) return null;
+                    const idxExpr = c.indexExpr || 'n';
+                    return h('button', {
+                      className: 'fd-param-batch-idx',
+                      title: `Batch index expression (×${sourceWin.batchSize}). Tap to change.`,
+                      onclick: (e) => {
+                        e.stopPropagation();
+                        this._lockViewportZoom();
+                        this.setState({ textInputOverlay: {
+                          label: `Batch index (×${sourceWin.batchSize})`,
+                          currentVal: idxExpr,
+                          field: { description: 'n = sequential, n+1 = offset by 1, 0 = always first, N-n-1 = reverse' },
+                          key: '__batchIdx',
+                          onSave: (val) => {
+                            this._engine.updateConnection(c.id, { indexExpr: val || 'n' });
+                          },
+                        }});
+                      },
+                    }, `[${idxExpr}]`);
+                  })(),
                   h('button', {
                     className: 'fd-param-disconnect',
                     title: 'Disconnect',
@@ -1600,7 +1630,7 @@ export class SandboxCanvas2 extends Component {
           showExprHelp ? h('div', { className: 'fd-expr-help-body' },
             h('div', { className: 'fd-expr-help-section' },
               h('div', { className: 'fd-expr-help-title' }, 'Variables'),
-              h('div', { className: 'fd-expr-help-item' }, 'input — wired value from connected node'),
+              h('div', { className: 'fd-expr-help-item' }, 'input — first wired value (additional inputs use their named variable)'),
               h('div', { className: 'fd-expr-help-item' }, 'n — batch index (0, 1, 2, …)'),
               h('div', { className: 'fd-expr-help-item' }, 'N — total batch count'),
             ),
@@ -2589,6 +2619,7 @@ export class SandboxCanvas2 extends Component {
 
         // Resolve batch index for each source using its indexExpr
         const resolvedBatchItems = {};
+        let skipIteration = false;
         for (const [inputKey, bs] of Object.entries(batchSources)) {
           let idx;
           try {
@@ -2596,9 +2627,11 @@ export class SandboxCanvas2 extends Component {
               ? evaluate(bs.indexExpr, { n, N })
               : Function('n', 'N', `return (${bs.indexExpr})`)(n, N);
           } catch { idx = n; }
-          idx = Math.max(0, Math.min(Math.floor(idx), bs.outputs.length - 1));
+          idx = Math.floor(idx);
+          if (idx < 0 || idx >= bs.outputs.length) { skipIteration = true; break; }
           resolvedBatchItems[inputKey] = bs.outputs[idx];
         }
+        if (skipIteration) continue;
 
         // Expression nodes: client-side eval
         if (win.type === 'expression') {
