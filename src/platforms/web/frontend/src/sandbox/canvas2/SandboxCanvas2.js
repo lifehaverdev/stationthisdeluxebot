@@ -1317,6 +1317,29 @@ export class SandboxCanvas2 extends Component {
                     className: 'fd-card-link',
                     onclick: (e) => { e.stopPropagation(); this._engine.fsm.navigateToNode(connectedFrom.from ?? connectedFrom.fromWindowId); },
                   }, `← ${this._engine.windows.get(connectedFrom.from ?? connectedFrom.fromWindowId)?.tool?.displayName || 'connected'}`),
+                  // Batch index expression — shown when source has batchOutputs
+                  (() => {
+                    const srcWin = this._engine.windows.get(connectedFrom.from ?? connectedFrom.fromWindowId);
+                    if (!srcWin?.batchOutputs || srcWin.batchOutputs.length <= 1) return null;
+                    const idxExpr = connectedFrom.indexExpr || 'n';
+                    return h('button', {
+                      className: 'fd-param-batch-idx',
+                      title: `Batch index expression (×${srcWin.batchSize}). Tap to change.`,
+                      onclick: (e) => {
+                        e.stopPropagation();
+                        this._lockViewportZoom();
+                        this.setState({ textInputOverlay: {
+                          label: `Batch index (×${srcWin.batchSize})`,
+                          currentVal: idxExpr,
+                          field: { description: 'n = sequential, n+1 = offset by 1, 0 = always first, N-n-1 = reverse' },
+                          key: '__batchIdx',
+                          onSave: (val) => {
+                            this._engine.updateConnection(connectedFrom.id, { indexExpr: val || 'n' });
+                          },
+                        }});
+                      },
+                    }, `[${idxExpr}]`);
+                  })(),
                   connectedFrom.typeMismatch ? h('span', { className: 'fd-param-mismatch' }, '⚠') : null,
                   h('button', {
                     className: 'fd-param-disconnect',
@@ -1611,6 +1634,12 @@ export class SandboxCanvas2 extends Component {
               h('div', { className: 'fd-expr-help-title' }, 'Operators'),
               h('div', { className: 'fd-expr-help-item' }, '+ - * / %  ||  (text concat)'),
               h('div', { className: 'fd-expr-help-item' }, '== != < > <= >=  &&  ?:'),
+            ),
+            h('div', { className: 'fd-expr-help-section' },
+              h('div', { className: 'fd-expr-help-title' }, 'Batch Index [n]'),
+              h('div', { className: 'fd-expr-help-item' }, 'When a batch feeds a downstream node, tap [n] on the wired input to change which item is used.'),
+              h('div', { className: 'fd-expr-help-item fd-expr-help-code' }, 'n  n+1  0  N-1  N-n-1'),
+              h('div', { className: 'fd-expr-help-desc' }, 'sequential, offset, fixed, last, reverse'),
             ),
           ) : null,
         ),
@@ -2420,31 +2449,35 @@ export class SandboxCanvas2 extends Component {
         }
       }
 
-      // --- Batch detection ---
-      let batchSource = null;
-      for (const [connKey, mapping] of Object.entries(mappings)) {
-        if (mapping?.type !== 'nodeOutput') continue;
-        const sourceWin = this._engine.windows.get(mapping.nodeId);
+      // --- Batch detection (supports multiple batch sources with indexExpr) ---
+      const batchSources = {}; // { inputKey: { outputs, nodeId, indexExpr, connId } }
+      for (const conn of this._engine.connections.values()) {
+        if ((conn.to ?? conn.toWindowId) !== windowId) continue;
+        const srcId = conn.from ?? conn.fromWindowId;
+        const sourceWin = this._engine.windows.get(srcId);
         if (sourceWin?.batchOutputs && sourceWin.batchOutputs.length > 1) {
-          batchSource = { key: connKey, outputs: sourceWin.batchOutputs, nodeId: mapping.nodeId };
-          break;
+          batchSources[conn.toInput] = {
+            outputs: sourceWin.batchOutputs,
+            nodeId: srcId,
+            indexExpr: conn.indexExpr || 'n',
+            connId: conn.id,
+          };
         }
       }
+      const hasBatchInputs = Object.keys(batchSources).length > 0;
 
       // Collector tools (ffmpeg) gather all batch outputs into a single array input
       const isCollector = win.tool?.toolId === 'ffmpeg';
-      if (isCollector && batchSource) {
-        const collectedUrls = batchSource.outputs
-          .filter(o => o?.type === 'video' || o?.url)
-          .map(o => o.url);
-        // Continue with normal single execution using array input
-        // We'll set it after the input resolution loop below
-        mappings[batchSource.key] = { type: 'static', value: collectedUrls };
-        batchSource = null; // no fan-out needed
-      }
-
-      if (batchSource) {
-        return this._executeBatchWindow(windowId, win, mappings, schema, batchSource);
+      if (isCollector && hasBatchInputs) {
+        for (const [key, bs] of Object.entries(batchSources)) {
+          const urls = bs.outputs
+            .filter(o => o?.type === 'video' || o?.url)
+            .map(o => o.url);
+          mappings[key] = { type: 'static', value: urls };
+        }
+        // Fall through to normal single execution
+      } else if (hasBatchInputs) {
+        return this._executeBatchWindow(windowId, win, mappings, schema, batchSources);
       }
 
       for (const [key, param] of Object.entries(schema)) {
@@ -2526,32 +2559,58 @@ export class SandboxCanvas2 extends Component {
     }
   }
 
-  async _executeBatchWindow(windowId, win, mappings, schema, batchSource) {
-    const N = batchSource.outputs.length;
+  _resolveBatchItem(item) {
+    if (!item) return '';
+    if (item.type === 'image') return item.url;
+    if (item.type === 'text') return item.text ?? '';
+    if (item.type === 'video') return item.url;
+    return item.value ?? item;
+  }
+
+  _resolveOutput(out) {
+    if (!out) return '';
+    if (out.type === 'image') return out.url;
+    if (out.type === 'text') return out.text ?? out.data?.text?.[0] ?? '';
+    if (out.type === 'video') return out.url;
+    return out.value ?? out;
+  }
+
+  async _executeBatchWindow(windowId, win, mappings, schema, batchSources) {
+    // N = min batch size across all sources (safe for n+1 style offsets)
+    const allSizes = Object.values(batchSources).map(bs => bs.outputs.length);
+    const N = Math.min(...allSizes);
     this._engine.updateWindow(windowId, { executing: true, error: null, progress: `Batch 0/${N}` });
 
+    const { evaluate } = win.type === 'expression' ? await import('./expressionEval.js') : {};
     const batchResults = [];
     try {
       for (let n = 0; n < N; n++) {
         this._engine.updateWindow(windowId, { progress: `Batch ${n + 1}/${N}` });
 
-        // For expression nodes, run client-side with n/N injected
+        // Resolve batch index for each source using its indexExpr
+        const resolvedBatchItems = {};
+        for (const [inputKey, bs] of Object.entries(batchSources)) {
+          let idx;
+          try {
+            idx = evaluate
+              ? evaluate(bs.indexExpr, { n, N })
+              : Function('n', 'N', `return (${bs.indexExpr})`)(n, N);
+          } catch { idx = n; }
+          idx = Math.max(0, Math.min(Math.floor(idx), bs.outputs.length - 1));
+          resolvedBatchItems[inputKey] = bs.outputs[idx];
+        }
+
+        // Expression nodes: client-side eval
         if (win.type === 'expression') {
-          const { evaluate } = await import('./expressionEval.js');
           const variables = { n, N };
           for (const conn of this._engine.connections.values()) {
             if ((conn.to ?? conn.toWindowId) !== windowId) continue;
-            const srcId = conn.from ?? conn.fromWindowId;
-            const sourceWin = this._engine.windows.get(srcId);
             const inputKey = conn.toInput || 'input';
-            if (srcId === batchSource.nodeId) {
-              const item = batchSource.outputs[n];
-              variables[inputKey] = item?.text ?? item?.url ?? item?.value ?? '';
+            if (resolvedBatchItems[inputKey] !== undefined) {
+              variables[inputKey] = this._resolveBatchItem(resolvedBatchItems[inputKey]);
             } else {
-              const out = sourceWin?.output;
-              if (out?.type === 'text') variables[inputKey] = out.text ?? '';
-              else if (out?.type === 'image') variables[inputKey] = out.url ?? '';
-              else if (out?.type === 'video') variables[inputKey] = out.url ?? '';
+              const sourceWin = this._engine.windows.get(conn.from ?? conn.fromWindowId);
+              variables[inputKey] = this._resolveOutput(sourceWin?.output);
             }
           }
           const result = evaluate(win.expression, variables);
@@ -2560,26 +2619,19 @@ export class SandboxCanvas2 extends Component {
           continue;
         }
 
-        // For regular tool nodes, resolve inputs with batch item substituted
+        // Tool nodes: resolve all inputs
         const inputs = {};
         for (const [key, param] of Object.entries(schema)) {
-          const mapping = mappings[key];
-          if (mapping?.type === 'nodeOutput') {
-            const sourceWin = this._engine.windows.get(mapping.nodeId);
-            if (mapping.nodeId === batchSource.nodeId) {
-              const item = batchSource.outputs[n];
-              if (item?.type === 'image') inputs[key] = item.url;
-              else if (item?.type === 'text') inputs[key] = item.text ?? '';
-              else if (item?.type === 'video') inputs[key] = item.url;
-              else inputs[key] = item?.value ?? item;
-            } else {
-              const out = sourceWin?.output;
-              if (out?.type === 'image') inputs[key] = out.url;
-              else if (out?.type === 'text') inputs[key] = out.text ?? out.data?.text?.[0] ?? '';
-              else inputs[key] = out?.value ?? out;
+          if (resolvedBatchItems[key] !== undefined) {
+            inputs[key] = this._resolveBatchItem(resolvedBatchItems[key]);
+          } else {
+            const mapping = mappings[key];
+            if (mapping?.type === 'nodeOutput') {
+              const sourceWin = this._engine.windows.get(mapping.nodeId);
+              inputs[key] = this._resolveOutput(sourceWin?.output);
+            } else if (mapping?.type === 'static') {
+              inputs[key] = mapping.value;
             }
-          } else if (mapping?.type === 'static') {
-            inputs[key] = mapping.value;
           }
         }
 

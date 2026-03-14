@@ -184,6 +184,13 @@ export class CanvasEngine {
     return id;
   }
 
+  updateConnection(id, patch) {
+    const conn = this.connections.get(id);
+    if (!conn) return;
+    Object.assign(conn, patch);
+    this._notify();
+  }
+
   removeCanvasConnection(id) {
     this.connections.delete(id);
     this.physics.removeConnection(id);
